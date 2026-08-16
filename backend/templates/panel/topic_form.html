@@ -1,0 +1,35 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Konu adı uygulamada ve soru bankasında görünür. Slug mobil senkron kimliğidir; mümkünse değiştirmeyin.</p>
+
+<form class="form" method="post" style="max-width:640px;">
+  {% csrf_token %}
+  <label>Konu adı
+    <input type="text" name="name" required maxlength="160" value="{{ topic.name|default:'' }}" placeholder="Örn. Üslü Sayılar">
+  </label>
+  <label>Slug (kimlik)
+    <input type="text" name="slug" maxlength="64" value="{{ topic.slug|default:'' }}" placeholder="Boş bırakılırsa otomatik üretilir">
+    <span class="hint">Örn. {{ subject.slug }}_uslu — benzersiz olmalı.</span>
+  </label>
+  <label>Alt konular
+    <textarea name="subtopics" rows="4" placeholder="Her satıra bir alt konu veya virgülle ayırın">{% if topic %}{{ topic.subtopics|join:", " }}{% endif %}</textarea>
+  </label>
+  <label>Test başına soru sayısı
+    <input type="number" name="questions_per_test" min="1" max="200" value="{{ topic.questions_per_test|default:20 }}">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="is_active" {% if topic is None or topic.is_active %}checked{% endif %}>
+    Aktif (mobil katalogda görünsün)
+  </label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_subject' subject.id %}">İptal</a>
+  </div>
+</form>
+{% endblock %}

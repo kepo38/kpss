@@ -1,0 +1,87 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  <a href="{% url 'panel_topic' topic.id 'tests' %}">{{ topic.name }}</a> /
+  Test
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Yayınlı sorulardan paket oluşturun. Soru kimliğine tıklayınca sağda önizleme açılır — teste dahil edip etmeyeceğinizi net görün. Süre 0 = süresiz.</p>
+
+<div class="workspace">
+  <form class="form" method="post">
+    {% csrf_token %}
+    <label>Başlık
+      <input type="text" name="title" required value="{{ test.title|default:'' }}">
+    </label>
+    <label>Açıklama
+      <textarea name="description">{{ test.description|default:'' }}</textarea>
+    </label>
+    <label>Süre (dakika)
+      <input type="number" name="time_limit_minutes" min="0" value="{{ test.time_limit_minutes|default:0 }}">
+    </label>
+    <label>Sorular
+      <span class="field-hint">Kimliğe tıkla → önizleme · Kutucuk → teste ekle</span>
+      <div class="q-pool" id="test-q-pool">
+        {% for q in pool %}
+        <div class="q-pool-row{% if q.id in selected_ids %} is-in-test{% endif %}" data-qid="{{ q.id }}">
+          <label class="q-pool-check">
+            <input type="checkbox" name="questions" value="{{ q.id }}" {% if q.id in selected_ids %}checked{% endif %}>
+          </label>
+          <button type="button" class="q-pool-id js-q-preview" data-qid="{{ q.id }}" title="Önizlemeyi göster">
+            {{ q.public_id }}
+          </button>
+          <span class="q-pool-stem">{{ q.stem|truncatechars:70 }}</span>
+          <span class="q-pool-date hint">{{ q.updated_at|date:"d.m.Y H:i" }}</span>
+        </div>
+        {% empty %}
+        <div class="empty">Önce yayınlı soru ekleyin.</div>
+        {% endfor %}
+      </div>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="is_published" {% if test.is_published %}checked{% endif %}>
+      Yayında
+    </label>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" type="submit">Kaydet</button>
+      <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'tests' %}">İptal</a>
+    </div>
+  </form>
+
+  <aside class="preview-pane" id="test-question-preview" aria-label="Soru önizlemesi">
+    <p class="preview-label">Soru önizlemesi</p>
+    <div class="phone">
+      <div class="phone-notch" aria-hidden="true"></div>
+      <div class="phone-screen">
+        <div class="quiz-mock-bar">
+          <span class="topic">{{ topic.name }}</span>
+          <span class="meta" id="tpv-meta">Soru seçin</span>
+        </div>
+        <div class="quiz-mock-body">
+          <div class="quiz-mock-stem is-empty" id="tpv-stem"><p>Soldan bir soru kimliğine tıklayın.</p></div>
+          <p class="quiz-mock-opts-label">Şıklar</p>
+          <div class="quiz-mock-opts">
+            {% for c in "ABCDE" %}
+            <div class="quiz-mock-opt" id="tpv-opt-{{ c }}">
+              <span class="quiz-mock-badge">{{ c }}</span>
+              <span class="quiz-mock-opt-text is-empty" id="tpv-opt-text-{{ c }}">—</span>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="quiz-mock-solution" id="tpv-solution">
+            <p class="title">Çözüm</p>
+            <div class="body" id="tpv-solution-body"></div>
+          </div>
+          <p class="tpv-include" id="tpv-include" hidden></p>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+{{ pool_data|json_script:"test-pool-data" }}
+<script src="{% static 'panel/test-pool-preview.js' %}"></script>
+{% endblock %}

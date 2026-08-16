@@ -1,0 +1,104 @@
+/* KPSS Odak — admin polish on top of Unfold */
+
+:root {
+  --kpss-champagne: #c9a86c;
+  --kpss-champagne-soft: #e2c998;
+  --kpss-ink: #0c1424;
+  --kpss-neon: #5eead4;
+}
+
+/* Login — marka odaklı */
+#login-form,
+.login {
+  font-feature-settings: "ss01";
+}
+
+/* Header brand accent */
+[data-theme="dark"] header,
+header {
+  border-bottom-color: color-mix(in oklab, var(--kpss-champagne) 35%, transparent) !important;
+}
+
+/* Subtle gold focus rings */
+input:focus,
+select:focus,
+textarea:focus {
+  outline-color: color-mix(in oklab, var(--kpss-champagne) 55%, transparent) !important;
+}
+
+/* Dashboard cards */
+.kpss-dash {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 8px 0 28px;
+}
+
+.kpss-card {
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(
+    145deg,
+    rgba(201, 168, 108, 0.12),
+    rgba(12, 20, 36, 0.4)
+  );
+  border: 1px solid rgba(201, 168, 108, 0.28);
+}
+
+.kpss-card .label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--kpss-champagne-soft);
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+
+.kpss-card .value {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: #f5f6f8;
+  line-height: 1;
+}
+
+.kpss-card .hint {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+.kpss-hero {
+  margin-bottom: 22px;
+  padding: 22px 24px;
+  border-radius: 14px;
+  background:
+    radial-gradient(520px 180px at 90% -20%, rgba(94, 234, 212, 0.16), transparent),
+    linear-gradient(135deg, #0a1220 0%, #121c30 55%, #162338 100%);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+}
+
+.kpss-hero h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: #fff;
+}
+
+.kpss-hero p {
+  margin: 8px 0 0;
+  max-width: 42rem;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.kpss-hero .brand {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  color: var(--kpss-champagne);
+}

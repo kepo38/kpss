@@ -1,0 +1,50 @@
+{% extends 'unfold/layouts/base.html' %}
+
+{% load i18n unfold %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block content %}
+{% component "unfold/components/container.html" %}
+  <div class="kpss-hero">
+    <span class="brand">KPSS ODAK</span>
+    <h1>İçerik yönetim paneli</h1>
+    <p>
+      Müfredat, soru bankası ve konu testlerini buradan yönetin.
+      Yayınladığınız içerik mobil uygulamaya API paketi olarak akar.
+    </p>
+  </div>
+
+  <div class="kpss-dash">
+    <div class="kpss-card">
+      <div class="label">Ders</div>
+      <div class="value">{{ kpss_stats.subjects }}</div>
+      <div class="hint">Aktif müfredat</div>
+    </div>
+    <div class="kpss-card">
+      <div class="label">Konu</div>
+      <div class="value">{{ kpss_stats.topics }}</div>
+      <div class="hint">Testlenebilir konular</div>
+    </div>
+    <div class="kpss-card">
+      <div class="label">Soru</div>
+      <div class="value">{{ kpss_stats.questions }}</div>
+      <div class="hint">{{ kpss_stats.published_questions }} yayınlı</div>
+    </div>
+    <div class="kpss-card">
+      <div class="label">Test</div>
+      <div class="value">{{ kpss_stats.tests }}</div>
+      <div class="hint">{{ kpss_stats.published_tests }} yayınlı</div>
+    </div>
+  </div>
+
+  {% component "unfold/components/card.html" with title="Hızlı işlemler" %}
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+      <a class="bg-primary-600 text-white px-4 py-2 rounded-default text-sm font-medium" href="{% url 'admin:content_question_add' %}">Yeni soru</a>
+      <a class="border border-base-300 dark:border-base-700 px-4 py-2 rounded-default text-sm font-medium" href="{% url 'admin:content_topictest_add' %}">Yeni test</a>
+      <a class="border border-base-300 dark:border-base-700 px-4 py-2 rounded-default text-sm font-medium" href="{% url 'admin:content_subject_changelist' %}">Müfredat</a>
+      <a class="border border-base-300 dark:border-base-700 px-4 py-2 rounded-default text-sm font-medium" href="/api/v1/pack/" target="_blank" rel="noopener">API paketi</a>
+    </div>
+  {% endcomponent %}
+{% endcomponent %}
+{% endblock %}

@@ -1,0 +1,7 @@
+<option value="auto">{{ auto_label }}</option>
+<option value="new">Yeni test başlat</option>
+{% for t in tests %}
+<option value="{{ t.id }}" {% if t.selected %}selected{% endif %}>
+  {{ t.title }} ({{ t.count }}/{{ t.capacity }}){% if t.full %} — dolu{% endif %}
+</option>
+{% endfor %}

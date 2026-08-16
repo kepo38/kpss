@@ -1,0 +1,42 @@
+{% extends "panel/base.html" %}
+
+{% block content %}
+
+<div class="crumb">
+
+  <a href="{% url 'panel_home' %}">Dersler</a> / {{ subject.name }}
+
+</div>
+
+<div class="toolbar" style="margin-bottom:16px;">
+
+  <div>
+
+    <h1 style="margin:0;">{{ subject.name }}</h1>
+
+    <p class="lead" style="margin:8px 0 0;">Konuyu açarak bilgi ve soru girin. Sıra oklarla değişir; aktif/pasif mobil paketi etkiler.</p>
+
+  </div>
+
+  <a class="btn btn-primary" href="{% url 'panel_topic_new' subject.id %}">Konu ekle</a>
+
+</div>
+
+
+
+<div class="list">
+
+  {% for topic in topics %}
+
+    {% include "panel/partials/topic_row.html" with is_first=forloop.first is_last=forloop.last %}
+
+  {% empty %}
+
+  <div class="empty">Bu derste konu yok. <a href="{% url 'panel_topic_new' subject.id %}">İlk konuyu ekleyin</a>.</div>
+
+  {% endfor %}
+
+</div>
+
+{% endblock %}
+

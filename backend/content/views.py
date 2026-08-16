@@ -1,0 +1,680 @@
+from django.db.models import Avg, Count
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.views import APIView
+
+from .auth import (
+    AuthError,
+    get_user_from_request,
+    resolve_google_claims,
+    upsert_firebase_user,
+    user_to_dict,
+)
+from .models import (
+    Announcement,
+    DailyMiniExamAttempt,
+    ExamType,
+    Question,
+    QuestionRating,
+    Subject,
+    TopicLesson,
+    TopicTest,
+)
+from .revision import get_content_version
+from .serializers import (
+    AnnouncementSerializer,
+    ContentCatalogSerializer,
+    ContentPackSerializer,
+    DeviceTokenSerializer,
+    QuestionSerializer,
+    SubjectSerializer,
+    TopicTestSerializer,
+    UserMessageSerializer,
+)
+
+
+class HealthView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response({"status": "ok", "service": "kpss-odak-content"})
+
+
+class ContentPackView(APIView):
+    """Yayınlanmış müfredat + soru + test + bilgi paketi (mobil sync)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        subjects_qs = Subject.objects.filter(is_active=True).prefetch_related(
+            "topics"
+        )
+        questions = (
+            Question.objects.filter(is_published=True, topic__is_active=True)
+            .select_related("topic", "topic__subject")
+            .order_by("public_id")
+        )
+        tests = (
+            TopicTest.objects.filter(is_published=True, topic__is_active=True)
+            .prefetch_related("questions")
+            .select_related("topic")
+            .order_by("-created_at")
+        )
+        lessons = (
+            TopicLesson.objects.filter(
+                is_published=True, topic__is_active=True
+            )
+            .select_related("topic")
+            .order_by("sort_order", "id")
+        )
+
+        payload = {
+            "version": get_content_version(),
+            "generatedAt": timezone.now(),
+            "subjects": subjects_qs,
+            "questions": questions,
+            "tests": tests,
+            "lessons": lessons,
+        }
+        data = ContentPackSerializer(payload, context={"request": request}).data
+        return Response(data)
+
+
+class ContentCatalogView(APIView):
+    """Hafif içerik kataloğu — test listesi ve ders yapısı; soru gövdeleri yok."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        subjects_qs = Subject.objects.filter(is_active=True).prefetch_related(
+            "topics"
+        )
+        tests = (
+            TopicTest.objects.filter(is_published=True, topic__is_active=True)
+            .prefetch_related("questions")
+            .select_related("topic")
+            .order_by("-created_at")
+        )
+        lessons = (
+            TopicLesson.objects.filter(
+                is_published=True, topic__is_active=True
+            )
+            .select_related("topic")
+            .order_by("sort_order", "id")
+        )
+        payload = {
+            "version": get_content_version(),
+            "generatedAt": timezone.now(),
+            "subjects": subjects_qs,
+            "tests": tests,
+            "lessons": lessons,
+        }
+        data = ContentCatalogSerializer(payload, context={"request": request}).data
+        return Response(data)
+
+
+class ContentPackVersionView(APIView):
+    """Hafif sürüm kontrolü — paket indirmeden güncelleme var mı?"""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response(
+            {
+                "version": get_content_version(),
+                "generatedAt": timezone.now(),
+            }
+        )
+
+
+class PublishedQuestionsView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        qs = Question.objects.filter(
+            is_published=True,
+            topic__is_active=True,
+        ).select_related("topic", "topic__subject")
+        ids_raw = (request.query_params.get("ids") or "").strip()
+        if ids_raw:
+            ids = [part.strip() for part in ids_raw.split(",") if part.strip()]
+            if ids:
+                qs = qs.filter(public_id__in=ids)
+        return Response(
+            QuestionSerializer(qs, many=True, context={"request": request}).data
+        )
+
+
+class TestQuestionsView(APIView):
+    """Tek testin sorularını anlık döner — mobil test başlangıcında."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, test_id: str):
+        test = get_object_or_404(
+            TopicTest,
+            public_id=test_id,
+            is_published=True,
+            topic__is_active=True,
+        )
+        questions = [
+            q
+            for q in test.questions.all()
+            if q.is_published and q.topic_id == test.topic_id
+        ]
+        return Response(
+            {
+                "testId": test.public_id,
+                "title": test.title,
+                "questionCount": len(questions),
+                "questions": QuestionSerializer(
+                    questions,
+                    many=True,
+                    context={"request": request},
+                ).data,
+            }
+        )
+
+
+def _rating_payload(question: Question, user) -> dict:
+    aggregate = question.ratings.aggregate(
+        average=Avg("stars"),
+        count=Count("id"),
+    )
+    user_rating = (
+        question.ratings.filter(user=user).values_list("stars", flat=True).first()
+    )
+    average = aggregate["average"]
+    return {
+        "userRating": user_rating,
+        "averageRating": round(float(average), 2) if average is not None else None,
+        "ratingCount": aggregate["count"],
+    }
+
+
+class QuestionRatingThrottle(SimpleRateThrottle):
+    scope = "question_rating"
+
+    def get_cache_key(self, request, view):
+        user = get_user_from_request(request)
+        if user is None:
+            return None
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": user.pk,
+        }
+
+
+class QuestionRatingView(APIView):
+    """Oturumdaki öğrencinin tekil ve değiştirilebilir soru puanı."""
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [QuestionRatingThrottle]
+
+    def _user(self, request):
+        return get_user_from_request(request)
+
+    def get(self, request, public_id: str):
+        user = self._user(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+        )
+        return Response(_rating_payload(question, user))
+
+    def put(self, request, public_id: str):
+        user = self._user(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        raw_stars = request.data.get("stars")
+        if isinstance(raw_stars, bool) or not isinstance(raw_stars, (int, str)):
+            return Response({"detail": "Yıldız 1–5 arasında olmalı."}, status=400)
+        try:
+            normalized = str(raw_stars).strip()
+            if normalized not in {"1", "2", "3", "4", "5"}:
+                raise ValueError
+            stars = int(normalized)
+        except (TypeError, ValueError):
+            return Response({"detail": "Yıldız 1–5 arasında olmalı."}, status=400)
+
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+        )
+        QuestionRating.objects.update_or_create(
+            question=question,
+            user=user,
+            defaults={"stars": stars},
+        )
+        return Response(_rating_payload(question, user))
+
+
+class PublishedTestsView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        qs = TopicTest.objects.filter(is_published=True).prefetch_related(
+            "questions"
+        )
+        return Response(TopicTestSerializer(qs, many=True).data)
+
+
+class CurriculumView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        qs = Subject.objects.filter(is_active=True).prefetch_related("topics")
+        return Response(SubjectSerializer(qs, many=True).data)
+
+
+class AnnouncementListView(APIView):
+    """Yayınlanmış duyurular (uygulama içi liste)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        qs = Announcement.objects.filter(is_published=True).order_by("-created_at")[
+            :50
+        ]
+        return Response(
+            AnnouncementSerializer(
+                qs, many=True, context={"request": request}
+            ).data
+        )
+
+
+class DeviceTokenView(APIView):
+    """Mobil FCM jetonu kaydı / yenileme."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        ser = DeviceTokenSerializer(
+            data=request.data,
+            context={"user": get_user_from_request(request)},
+        )
+        if not ser.is_valid():
+            return Response(ser.errors, status=400)
+        obj = ser.save()
+        return Response(
+            {
+                "ok": True,
+                "platform": obj.platform,
+                "topic": "kpss_duyuru",
+            },
+            status=201,
+        )
+
+
+class GoogleAuthView(APIView):
+    """Google / Play Store hesabı ile giriş — id_token doğrular, AppUser oluşturur."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        id_token = (
+            request.data.get("id_token")
+            or request.data.get("idToken")
+            or ""
+        )
+        access_token = (
+            request.data.get("access_token")
+            or request.data.get("accessToken")
+            or ""
+        )
+        try:
+            claims = resolve_google_claims(
+                id_token=str(id_token),
+                access_token=str(access_token),
+            )
+            user = upsert_firebase_user(claims)
+        except AuthError as exc:
+            return Response({"detail": exc.message}, status=exc.status)
+        except Exception:  # noqa: BLE001
+            return Response({"detail": "Giriş başarısız."}, status=400)
+
+        return Response(
+            {
+                "token": user.api_token,
+                "user": user_to_dict(user),
+            }
+        )
+
+
+class MeView(APIView):
+    """Oturum açmış kullanıcı profili."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        return Response(user_to_dict(user))
+
+    def patch(self, request):
+        """Profil güncelle — şu an yalnızca görünen ad."""
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        raw = (
+            request.data.get("isim")
+            or request.data.get("display_name")
+            or request.data.get("name")
+        )
+        if raw is None:
+            return Response({"detail": "isim alanı gerekli."}, status=400)
+
+        name = str(raw).strip()
+        if not name:
+            return Response({"detail": "Ad boş olamaz."}, status=400)
+        if len(name) > 160:
+            return Response(
+                {"detail": "Ad en fazla 160 karakter olabilir."}, status=400
+            )
+
+        user.display_name = name
+        user.save(update_fields=["display_name", "updated_at"])
+        return Response(user_to_dict(user))
+
+    def delete(self, request):
+        """Çıkış — API jetonunu geçersizleştir."""
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        from .auth import new_api_token
+
+        user.api_token = new_api_token()
+        user.save(update_fields=["api_token", "updated_at"])
+        return Response({"ok": True})
+
+
+class MeMessagesView(APIView):
+    """Kullanıcıya özel admin mesajları."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        from .models import UserMessage
+
+        qs = UserMessage.objects.filter(user=user).order_by("-created_at")[:100]
+        return Response(UserMessageSerializer(qs, many=True).data)
+
+    def patch(self, request):
+        """Mesajı okundu işaretle — {\"id\": 1} veya {\"all\": true}."""
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        from .models import UserMessage
+
+        if request.data.get("all") is True:
+            updated = UserMessage.objects.filter(
+                user=user, is_read=False
+            ).update(is_read=True)
+            return Response({"ok": True, "updated": updated})
+
+        raw_id = request.data.get("id") or request.data.get("message_id")
+        msg_id = int(raw_id) if raw_id is not None else None
+        if msg_id is None:
+            return Response({"detail": "id gerekli."}, status=400)
+        updated = UserMessage.objects.filter(
+            user=user, pk=msg_id, is_read=False
+        ).update(is_read=True)
+        return Response({"ok": True, "updated": updated})
+
+    def delete(self, request):
+        """Kullanıcı kendi mesajını siler — {\"id\": 1}."""
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        from .models import UserMessage
+
+        raw_id = request.data.get("id") or request.data.get("message_id")
+        if raw_id is None:
+            raw_id = request.query_params.get("id")
+        try:
+            msg_id = int(raw_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "id gerekli."}, status=400)
+
+        deleted, _ = UserMessage.objects.filter(user=user, pk=msg_id).delete()
+        if deleted == 0:
+            return Response({"detail": "Mesaj bulunamadı."}, status=404)
+        return Response({"ok": True})
+
+
+class DailyMiniExamView(APIView):
+    """Günün 20 soruluk ücretsiz mini denemesi ve liderlik tablosu."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def _kpss_type(self, request) -> str | None:
+        from .daily_mini_exam import VALID_KPSS_TYPES
+
+        raw = (
+            request.query_params.get("kpss_type")
+            or request.data.get("kpss_type")
+            or "lisans"
+        )
+        value = str(raw).strip()
+        if value not in VALID_KPSS_TYPES:
+            return None
+        return value
+
+    def _payload(self, request, kpss_type: str) -> dict:
+        from .daily_mini_exam import (
+            get_or_create_today_exam,
+            is_exam_open,
+            leaderboard_rows,
+            rank_for_user,
+            seconds_until_deadline,
+            window_bounds,
+        )
+
+        now, opens_at, closes_at = window_bounds()
+        exam = get_or_create_today_exam(kpss_type, now=now)
+        user = get_user_from_request(request)
+        my_attempt = None
+        my_rank = None
+        if user is not None:
+            attempt = DailyMiniExamAttempt.objects.filter(
+                user=user,
+                exam_date=exam.exam_date,
+                kpss_type=kpss_type,
+            ).first()
+            if attempt is not None:
+                my_rank, _ = rank_for_user(
+                    exam.exam_date, kpss_type, user.pk
+                )
+                my_attempt = {
+                    "correct": attempt.correct,
+                    "wrong": attempt.wrong,
+                    "blank": attempt.blank,
+                    "total": attempt.total,
+                    "durationSeconds": attempt.duration_seconds,
+                    "wrongQuestionIds": attempt.wrong_question_ids,
+                    "rank": my_rank,
+                    "completedAt": attempt.completed_at.isoformat(),
+                }
+
+        participant_count = DailyMiniExamAttempt.objects.filter(
+            exam_date=exam.exam_date,
+            kpss_type=kpss_type,
+        ).count()
+
+        return {
+            "examDate": exam.exam_date.isoformat(),
+            "kpssType": kpss_type,
+            "isOpen": is_exam_open(now),
+            "opensAt": opens_at.isoformat(),
+            "closesAt": closes_at.isoformat(),
+            "secondsRemaining": seconds_until_deadline(now),
+            "questionIds": exam.question_ids,
+            "questionCount": len(exam.question_ids),
+            "participantCount": participant_count,
+            "myAttempt": my_attempt,
+            "leaderboard": leaderboard_rows(exam.exam_date, kpss_type),
+        }
+
+    def get(self, request):
+        kpss_type = self._kpss_type(request)
+        if kpss_type is None:
+            return Response({"detail": "Geçersiz kpss_type."}, status=400)
+        return Response(self._payload(request, kpss_type))
+
+    def post(self, request):
+        from .daily_mini_exam import (
+            OPENS_HOUR,
+            QUESTION_COUNT,
+            get_or_create_today_exam,
+            is_exam_open,
+        )
+
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        kpss_type = self._kpss_type(request)
+        if kpss_type is None:
+            return Response({"detail": "Geçersiz kpss_type."}, status=400)
+
+        if not is_exam_open():
+            return Response(
+                {"detail": f"Günün mini denemesi kapalı. {OPENS_HOUR:02d}:00–00:00 arasında çözülür."},
+                status=403,
+            )
+
+        exam = get_or_create_today_exam(kpss_type)
+        expected_ids = list(exam.question_ids)
+        if len(expected_ids) < QUESTION_COUNT:
+            return Response(
+                {"detail": "Bugün için yeterli soru henüz yayınlanmadı."},
+                status=409,
+            )
+
+        if DailyMiniExamAttempt.objects.filter(
+            user=user,
+            exam_date=exam.exam_date,
+            kpss_type=kpss_type,
+        ).exists():
+            return Response(self._payload(request, kpss_type), status=200)
+
+        raw_answers = request.data.get("answers") or {}
+        if not isinstance(raw_answers, dict):
+            return Response({"detail": "answers nesne olmalı."}, status=400)
+
+        questions = {
+            q.public_id: q
+            for q in Question.objects.filter(public_id__in=expected_ids)
+        }
+        correct = wrong = blank = 0
+        wrong_ids: list[str] = []
+        graded: dict[str, str] = {}
+        for qid in expected_ids:
+            question = questions.get(qid)
+            selected = str(raw_answers.get(qid) or "").strip().upper()
+            if not selected:
+                blank += 1
+                continue
+            graded[qid] = selected[:1]
+            if question is None:
+                blank += 1
+                continue
+            if selected[:1] == question.correct_option:
+                correct += 1
+            else:
+                wrong += 1
+                wrong_ids.append(qid)
+
+        duration = request.data.get("duration_seconds") or request.data.get(
+            "durationSeconds"
+        )
+        try:
+            duration_seconds = max(0, int(duration or 0))
+        except (TypeError, ValueError):
+            duration_seconds = 0
+
+        DailyMiniExamAttempt.objects.create(
+            user=user,
+            exam_date=exam.exam_date,
+            kpss_type=kpss_type,
+            correct=correct,
+            wrong=wrong,
+            blank=blank,
+            total=len(expected_ids),
+            duration_seconds=duration_seconds,
+            wrong_question_ids=wrong_ids,
+            answers=graded,
+        )
+        return Response(self._payload(request, kpss_type), status=201)
+
+
+class PromoRedeemView(APIView):
+    """Promosyon kodu kullanımı — premium tanımlar."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        raw = request.data.get("code") or request.data.get("kod")
+        if raw is None:
+            return Response({"detail": "Promosyon kodu gerekli."}, status=400)
+
+        from .promo import PromoError, redeem_promo_code
+
+        try:
+            result = redeem_promo_code(user=user, raw_code=str(raw))
+        except PromoError as exc:
+            return Response({"detail": exc.message}, status=exc.status)
+
+        user.refresh_from_db()
+        return Response(
+            {
+                "ok": True,
+                "message": result.message,
+                "code": result.promo_code.code,
+                "premiumExpiresAt": result.premium_expires_at.isoformat(),
+                "user": user_to_dict(user),
+            }
+        )
+
+
+class ExamTypeListView(APIView):
+    """Aktif sınav tipleri ve tarihleri — mobil sayaç kataloğu."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        items = ExamType.objects.filter(is_active=True)
+        return Response({"examTypes": [item.to_api() for item in items]})

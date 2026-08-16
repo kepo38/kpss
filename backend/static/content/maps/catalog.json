@@ -1,0 +1,15 @@
+[
+  {
+    "id": "turkiye_goller",
+    "title": "Türkiye — Tuz Gölü ve Van Gölü",
+    "kind": "marker",
+    "file": "turkiye_goller.png",
+    "editor_file": "turkiye_goller_editor.png"
+  },
+  {
+    "id": "turkiye_indirgenmis_sicaklik",
+    "title": "Yıllık ortalama indirgenmiş sıcaklık dağılışı",
+    "kind": "static",
+    "file": "turkiye_indirgenmis_sicaklik.png"
+  }
+]

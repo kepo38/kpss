@@ -1,0 +1,34 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Sınav tipleri</div>
+<h1>Sınav tipleri</h1>
+<p class="lead">
+  Mobil uygulamadaki <strong>SINAVA KALAN</strong> sayacı bu listedeki aktif sınavlardan oluşur.
+  Yeni tip ekleyebilir, tarihi güncelleyebilirsiniz.
+</p>
+
+<div class="toolbar">
+  <strong>{{ exam_types|length }} kayıt</strong>
+  <a class="btn btn-primary" href="{% url 'panel_exam_type_new' %}">Yeni sınav tipi</a>
+</div>
+
+<div class="list">
+  {% for e in exam_types %}
+  <div class="row">
+    <div class="name">
+      <a href="{% url 'panel_exam_type_edit' e.id %}">{{ e.name }}</a>
+      <div class="hint">{{ e.slug }} · {{ e.get_content_type_display }} · {{ e.description|default:"—" }}</div>
+      <div class="hint">Tarih: {{ e.exam_date|date:"d.m.Y" }}{% if e.yearly_repeat %} · her yıl tekrar{% endif %}</div>
+    </div>
+    {% if e.is_active %}<span class="badge on">Aktif</span>{% else %}<span class="badge off">Kapalı</span>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'panel_exam_type_edit' e.id %}">Düzenle</a>
+    <form method="post" action="{% url 'panel_exam_type_delete' e.id %}" onsubmit="return confirm('{{ e.name }} silinsin mi?');">
+      {% csrf_token %}
+      <button class="btn btn-danger" type="submit">Sil</button>
+    </form>
+  </div>
+  {% empty %}
+  <div class="empty">Henüz sınav tipi yok. Yeni sınav tipi ekleyin.</div>
+  {% endfor %}
+</div>
+{% endblock %}

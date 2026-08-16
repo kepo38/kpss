@@ -1,0 +1,68 @@
+<div class="row" id="topic-row-{{ topic.id }}">
+
+  <div class="name" style="flex:1;min-width:0;">
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+
+      <form method="post" action="{% url 'panel_topic_reorder' subject.id topic.id %}" style="display:inline;margin:0;">
+
+        {% csrf_token %}
+
+        <input type="hidden" name="direction" value="up">
+
+        <button class="btn btn-ghost" type="submit" title="Yukarı" {% if is_first %}disabled{% endif %} style="padding:4px 8px;min-width:32px;">↑</button>
+
+      </form>
+
+      <form method="post" action="{% url 'panel_topic_reorder' subject.id topic.id %}" style="display:inline;margin:0;">
+
+        {% csrf_token %}
+
+        <input type="hidden" name="direction" value="down">
+
+        <button class="btn btn-ghost" type="submit" title="Aşağı" {% if is_last %}disabled{% endif %} style="padding:4px 8px;min-width:32px;">↓</button>
+
+      </form>
+
+      <a href="{% url 'panel_topic_home' topic.id %}">{{ topic.name }}</a>
+
+    </div>
+
+    <div class="hint">{{ topic.questions.count }} soru · {{ topic.lessons.count }} bilgi · sıra {{ topic.sort_order }}</div>
+
+  </div>
+
+  {% if topic.is_active %}
+
+  <span class="badge on">Aktif</span>
+
+  {% else %}
+
+  <span class="badge off">Pasif</span>
+
+  {% endif %}
+
+  <a class="btn btn-ghost" href="{% url 'panel_topic_edit' subject.id topic.id %}">Düzenle</a>
+
+  <button
+
+    class="btn btn-ghost"
+
+    type="button"
+
+    hx-post="{% url 'panel_topic_toggle' topic.id %}"
+
+    hx-target="#topic-row-{{ topic.id }}"
+
+    hx-swap="outerHTML"
+
+  >
+
+    {% if topic.is_active %}Pasifleştir{% else %}Aktifleştir{% endif %}
+
+  </button>
+
+  <a class="btn btn-primary" href="{% url 'panel_topic_home' topic.id %}">Aç</a>
+
+</div>
+

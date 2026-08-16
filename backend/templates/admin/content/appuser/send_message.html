@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Seçili kullanıcılara mesaj gönder</h1>
+<p>{{ users|length }} kullanıcı seçildi.</p>
+<ul>
+  {% for u in users %}
+  <li>{{ u.display_name|default:u.email }} &lt;{{ u.email }}&gt;</li>
+  {% endfor %}
+</ul>
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="send_direct_message">
+  <input type="hidden" name="apply" value="1">
+  {% for id in ids %}
+  <input type="hidden" name="{{ action_checkbox_name }}" value="{{ id }}">
+  {% endfor %}
+  <p>
+    <label>Başlık<br>
+      <input type="text" name="title" required maxlength="160" style="width:min(480px,100%);padding:8px;">
+    </label>
+  </p>
+  <p>
+    <label>Mesaj<br>
+      <textarea name="body" required rows="6" style="width:min(480px,100%);padding:8px;"></textarea>
+    </label>
+  </p>
+  <p>
+    <label>
+      <input type="checkbox" name="send_push" value="1" checked>
+      Telefona bildirim gönder (FCM)
+    </label>
+  </p>
+  <button type="submit" class="default">Gönder</button>
+  <a href="{% url 'admin:content_appuser_changelist' %}">İptal</a>
+</form>
+{% endblock %}

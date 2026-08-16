@@ -1,0 +1,149 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> / Görselden soru
+</div>
+<h1>Görselden soru ekle</h1>
+<p class="lead">
+  Görselden metin okunur; alanları kontrol edip <strong>Kaydet</strong> dediğinizde soru listeye eklenir.
+  Metni kendiniz yazacaksanız <a href="{% url 'panel_manual_question' %}">Manuel soru ekle</a> akışını kullanın.
+</p>
+
+{% if error %}
+<div class="empty" style="border-color:rgba(248,113,113,0.45);color:#f87171;margin-bottom:16px;">
+  {{ error }}
+  {% if duplicate %}
+  <div style="margin-top:10px;font-size:13px;color:#fecaca;">
+    Eşleşme: {{ duplicate.match_label }} ·
+    <a href="{{ duplicate.edit_url }}" style="color:#fde68a;text-decoration:underline;">
+      Mevcut soruyu aç ({{ duplicate.public_id }})
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8" id="quick-form">
+  {% csrf_token %}
+  {% if duplicate %}
+  <input type="hidden" name="force_duplicate" id="force-duplicate" value="">
+  {% endif %}
+
+  <div
+    class="media-box"
+    data-paste-image
+    data-input="quick-image"
+    data-preview="quick-preview"
+    data-preview-img="quick-preview-img"
+    data-status="quick-paste-status"
+    tabindex="0"
+  >
+    <div class="media-title">Soru görseli</div>
+    <p class="media-hint">Dosya seçin veya bu sayfada <strong>Ctrl+V</strong> ile kopyalanmış görseli yapıştırın (PNG, JPG, WEBP).</p>
+    <label class="file-pick">
+      <input type="file" name="image" id="quick-image" accept="image/png,image/jpeg,image/webp,image/gif" required>
+      <span>Görsel seç</span>
+    </label>
+    <p class="paste-status" id="quick-paste-status" hidden></p>
+    <div class="media-preview" id="quick-preview" hidden>
+      <img alt="Önizleme" id="quick-preview-img">
+    </div>
+  </div>
+
+  <label>Ders
+    <select name="subject_id" id="subject-select" required>
+      <option value="">Ders seçin…</option>
+      {% for s in subjects %}
+      <option value="{{ s.id }}" {% if selected_subject_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>Konu
+    <select name="topic_id" id="topic-select" required>
+      <option value="">Önce ders seçin…</option>
+      {% for t in topics %}
+      <option value="{{ t.id }}" {% if selected_topic_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>Test grubu
+    <select name="test_assignment" id="test-select">
+      {% if test_dd %}
+      <option value="auto" {% if selected_assignment == 'auto' or not selected_assignment %}selected{% endif %}>{{ test_dd.auto_label }}</option>
+      <option value="new" {% if selected_assignment == 'new' %}selected{% endif %}>Yeni test başlat</option>
+      {% for t in test_dd.tests %}
+      <option value="{{ t.id }}" {% if selected_assignment == t.id|stringformat:'s' %}selected{% endif %}>
+        {{ t.title }} ({{ t.count }}/{{ t.capacity }}){% if t.full %} — dolu{% endif %}
+      </option>
+      {% endfor %}
+      {% else %}
+      <option value="auto">Önce konu seçin…</option>
+      {% endif %}
+    </select>
+  </label>
+
+  <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+    <button class="btn btn-primary" type="submit">Onayla ve düzenle</button>
+    {% if duplicate %}
+    <button class="btn btn-ghost" type="submit" id="force-submit" style="border-color:rgba(248,113,113,0.5);color:#f87171;">
+      Yine de düzenle
+    </button>
+    {% endif %}
+    <a class="btn btn-ghost" href="{% url 'panel_home' %}">İptal</a>
+  </div>
+</form>
+
+<script src="{% static 'panel/paste-image.js' %}"></script>
+<script>
+(function () {
+  const forceBtn = document.getElementById('force-submit');
+  const forceField = document.getElementById('force-duplicate');
+  if (forceBtn && forceField) {
+    forceBtn.addEventListener('click', function () {
+      forceField.value = '1';
+    });
+  }
+  const subject = document.getElementById('subject-select');
+  const topic = document.getElementById('topic-select');
+  const testSelect = document.getElementById('test-select');
+
+  function loadTopics(subjectId) {
+    if (!subjectId) {
+      topic.innerHTML = '<option value="">Önce ders seçin…</option>';
+      testSelect.innerHTML = '<option value="auto">Önce konu seçin…</option>';
+      return;
+    }
+    fetch('/panel/ders/' + subjectId + '/konular/', {
+      headers: { 'HX-Request': 'true' }
+    })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        topic.innerHTML = html;
+        testSelect.innerHTML = '<option value="auto">Önce konu seçin…</option>';
+      });
+  }
+
+  function loadTests(topicId) {
+    if (!topicId) {
+      testSelect.innerHTML = '<option value="auto">Önce konu seçin…</option>';
+      return;
+    }
+    fetch('/panel/konu/' + topicId + '/testler/', {
+      headers: { 'HX-Request': 'true' }
+    })
+      .then(function (r) { return r.text(); })
+      .then(function (html) { testSelect.innerHTML = html; });
+  }
+
+  subject.addEventListener('change', function () {
+    loadTopics(subject.value);
+  });
+  topic.addEventListener('change', function () {
+    loadTests(topic.value);
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,12 @@
+<option value="">Konu seçin…</option>
+
+{% for t in topics %}
+
+<option value="{{ t.id }}" {% if selected_topic_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+
+{% empty %}
+
+<option value="" disabled>Bu derste aktif konu yok</option>
+
+{% endfor %}
+

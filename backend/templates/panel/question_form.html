@@ -1,0 +1,499 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  <a href="{% url 'panel_topic' topic.id 'questions' %}">{{ topic.name }}</a> /
+  Soru
+</div>
+<h1>{{ page_title }}</h1>
+{% if question and not question.pk %}
+<p class="hint" style="margin-bottom:12px;color:#fde68a;border:1px solid rgba(250,204,21,0.35);padding:10px 12px;border-radius:8px;">
+  Henüz kaydedilmedi — alanları kontrol edip <strong>Kaydet</strong> dediğinizde soru listeye eklenir.
+</p>
+{% endif %}
+{% if question.pk %}
+<p class="hint question-meta-bar">
+  Eklendi {{ question.created_at|date:"d.m.Y H:i" }} · Son güncelleme {{ question.updated_at|date:"d.m.Y H:i" }}
+</p>
+{% endif %}
+<p class="lead">
+  {% if entry_mode == 'ocr' %}
+  Görselden okunan metni kontrol edin — sağda uygulamadaki görünümü anlık görün.
+  {% else %}
+  Soru metnini ve şıkları elle girin — sağda uygulamadaki görünümü anlık görün.
+  İsterseniz aşağıdaki <strong>Görselden oku (OCR)</strong> bölümünü açarak tarama görselinden metin aktarabilirsiniz.
+  {% endif %}
+  Kalın / italik / altı çizili için metni seçip K / I / A düğmelerine basın.
+</p>
+
+<div class="workspace">
+  <form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
+    {% csrf_token %}
+    <input type="hidden" name="source_image_hash" id="source-image-hash" value="{{ question.source_image_hash|default:'' }}">
+    <input type="hidden" name="force_duplicate" id="force-duplicate" value="">
+    <div id="duplicate-banner" class="empty" hidden
+         style="border-color:rgba(248,113,113,0.45);color:#f87171;margin-bottom:16px;"></div>
+
+    <label>Ders
+      <select name="subject_id" id="subject-select" required>
+        {% for s in subjects %}
+        <option value="{{ s.id }}" {% if subject.id == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Konu
+      <select name="topic_id" id="topic-select" required>
+        <option value="">Konu seçin…</option>
+        {% for t in topics %}
+        <option value="{{ t.id }}" {% if topic.id == t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Alt konu
+      <input type="text" name="subtopic" value="{{ question.subtopic|default:'' }}" list="subtopics">
+      <datalist id="subtopics">
+        {% for s in topic.subtopics %}
+        <option value="{{ s }}">
+        {% endfor %}
+      </datalist>
+    </label>
+
+    <label>Soru metni
+      <textarea class="js-rich" name="stem" id="question-stem" placeholder="Metin ve/veya görsel kullanın. Haritayı cümleler arasına koymak için [HARITA] yazın veya aşağıdaki düğmeyi kullanın.">{{ question.stem|default:'' }}</textarea>
+      <span class="hint">Kalın/altı çizili için metni seçip K / A düğmelerine basın. Kayıtta <code>**kalın**</code> veya <code>__altı__</code> görünmeli; yoksa uygulamada biçim olmaz.</span>
+    </label>
+
+    <details class="ocr-panel" id="ocr-panel" {% if entry_mode == 'ocr' %}open{% endif %}>
+      <summary class="media-title" style="cursor:pointer;margin-bottom:8px;">Görselden oku (OCR) — isteğe bağlı</summary>
+    <div
+      class="media-box"
+      data-paste-image
+      data-input="q-image"
+      data-preview="q-image-preview"
+      data-preview-img="q-image-preview-img"
+      data-status="q-paste-status"
+      tabindex="0"
+    >
+      <p class="media-hint">Dosya seçin veya <strong>Ctrl+V</strong> — metin okunur. OCR görseli kaydedilmez; uygulamada yalnızca metin, şıklar ve (geometride) SVG şekil görünür.</p>
+      {% if question and question.image and not question.map_template %}
+      <div class="media-preview">
+        <img src="{{ question.image.url }}" alt="Mevcut soru görseli">
+      </div>
+      {% if question.figure_svg %}
+      <p class="media-hint">Geometri şekli SVG olarak kayıtlı; uygulamada vektörel gösterilir.</p>
+      {% else %}
+      <p class="media-hint">Bu kayıtta eski görsel var; kaydedince silinecek.</p>
+      {% endif %}
+      {% endif %}
+      <label class="file-pick">
+        <input type="file" name="image" id="q-image" accept="image/png,image/jpeg,image/webp,image/gif">
+        <span>{% if question and question.image %}OCR için görsel seç{% else %}Görsel seç / Ctrl+V{% endif %}</span>
+      </label>
+      <div class="ocr-actions">
+        <button type="button" class="btn btn-ghost" id="ocr-btn">Görselden oku</button>
+        <span class="paste-status" id="ocr-status" hidden></span>
+      </div>
+      <p class="paste-status" id="q-paste-status" hidden></p>
+      <div class="media-preview" id="q-image-preview" hidden>
+        <img alt="Önizleme" id="q-image-preview-img">
+      </div>
+      <details class="ocr-raw-wrap" id="ocr-raw-wrap" hidden>
+        <summary>Ham OCR metni</summary>
+        <pre class="ocr-raw" id="ocr-raw"></pre>
+      </details>
+    </div>
+    </details>
+
+    <label>Şekil kodu (SVG)
+      <textarea name="figure_svg" id="figure-svg" class="tikz-field" rows="10" spellcheck="false" placeholder="<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 200 160&quot;>&#10;  ...&#10;</svg>">{{ question.figure_svg|default:'' }}</textarea>
+      <span class="hint">Geometri şekli için SVG kodunu elle yapıştırabilirsiniz. OCR tarama görseli uygulamaya gönderilmez.</span>
+    </label>
+
+    <section class="map-editor-box" id="map-question-editor"
+             data-map-src="{% static 'content/maps/turkiye_goller.png' %}">
+      <div class="media-title">Harita sorusu</div>
+      <p class="media-hint">Şablonu seçin. Koordinatlı haritalarda tıklayarak I, II, III… işaretleri ekleyin; tematik haritalar hazır görsel olarak kullanılır. Soru metninde haritanın görüneceği yere <code>[HARITA]</code> yazın.</p>
+      <div class="map-editor-actions map-editor-actions-top">
+        <button type="button" class="btn btn-ghost" id="map-insert-placeholder">Metne [HARITA] ekle</button>
+      </div>
+      <label>Harita şablonu
+        <select name="map_template" id="map-template">
+          <option value="">Harita yok</option>
+          {% for map_id, map_title in map_template_choices %}
+          {% if map_id %}
+          <option value="{{ map_id }}" {% if question and question.map_template == map_id %}selected{% endif %}>{{ map_title }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </label>
+      <input type="hidden" name="map_markers" id="map-markers" value="[]">
+      <div class="map-editor-body" id="map-editor-body" hidden>
+        <div class="map-canvas-wrap" id="map-canvas-wrap">
+          <img src="{% static 'content/maps/turkiye_goller_editor.png' %}"
+               alt="İl sınırlı ve isimli düzenleme haritası (Tuz Gölü ve Van Gölü)"
+               id="map-base-image" draggable="false">
+          <div class="map-marker-layer" id="map-marker-layer"></div>
+        </div>
+        <div class="map-editor-actions">
+          <button type="button" class="btn btn-primary" id="map-add-marker">İşaret ekle</button>
+          <button type="button" class="btn btn-ghost" id="map-clear-markers">Tümünü sil</button>
+          <span class="media-hint" id="map-editor-status"></span>
+        </div>
+        <div class="map-marker-controls" id="map-marker-controls"></div>
+      </div>
+    </section>
+
+    <label>A
+      <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}">
+    </label>
+    <label>B
+      <input type="text" name="option_b" required value="{{ question.option_b|default:'' }}">
+    </label>
+    <label>C
+      <input type="text" name="option_c" required value="{{ question.option_c|default:'' }}">
+    </label>
+    <label>D
+      <input type="text" name="option_d" required value="{{ question.option_d|default:'' }}">
+    </label>
+    <label>E
+      <input type="text" name="option_e" required value="{{ question.option_e|default:'' }}">
+    </label>
+    <label>Doğru cevap
+      <select name="correct_option">
+        {% for c in "ABCDE" %}
+        <option value="{{ c }}" {% if question.correct_option == c %}selected{% elif not question and c == 'A' %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Test grubu
+      <select name="test_assignment" id="test-select">
+        <option value="auto" {% if not current_test and selected_test_assignment != 'new' %}selected{% endif %}>{{ test_dd.auto_label }}</option>
+        <option value="new" {% if not current_test and selected_test_assignment == 'new' %}selected{% endif %}>Yeni test başlat</option>
+        {% for t in test_dd.tests %}
+        <option value="{{ t.id }}" {% if current_test and current_test.id == t.id %}selected{% endif %}>
+          {{ t.title }} ({{ t.count }}/{{ t.capacity }}){% if t.full %} — dolu{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Çözüm
+      <textarea class="js-rich" name="solution" placeholder="Gemini sohbetinden çözümü kopyala-yapıştır.">{{ question.solution|default:'' }}</textarea>
+      <span class="hint">Çözüm için Gemini kullanın: sohbetten kopyala → buraya yapıştır. \( ... \) otomatik $...$ olur.</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="osym_sordu" id="osym-sordu" {% if question.osym_sordu %}checked{% endif %}>
+      ÖSYM sordu <span style="opacity:.7;font-weight:400">(uygulamada sorunun sağ üstünde ÖSYM rozeti)</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="is_published" {% if not question or not question.pk or question.is_published %}checked{% endif %}>
+      Yayında <span style="opacity:.7;font-weight:400">(işaretli değilse uygulamada görünmez)</span>
+    </label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary" type="submit" id="save-btn">Kaydet</button>
+      <button class="btn btn-ghost" type="submit" id="force-save-btn" hidden
+              style="border-color:rgba(248,113,113,0.5);color:#f87171;">
+        Yine de kaydet
+      </button>
+      <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'questions' %}">İptal</a>
+    </div>
+  </form>
+
+  <aside class="preview-pane" id="question-preview" aria-label="Uygulama önizlemesi">
+    <p class="preview-label">Uygulama önizlemesi</p>
+    <div class="phone">
+      <div class="phone-notch" aria-hidden="true"></div>
+      <div class="phone-screen">
+        <div class="quiz-mock-bar">
+          <span class="topic" id="pv-topic">{{ topic.name }}</span>
+          <span class="meta">Soru 1 · önizleme</span>
+        </div>
+        <div class="quiz-mock-body">
+          <div class="quiz-mock-stem-wrap">
+            <img class="quiz-mock-osym" id="pv-osym" src="{% static 'panel/osym-sordu-badge.png' %}" alt="ÖSYM sordu" hidden>
+            <div class="quiz-mock-stem is-empty" id="pv-stem"><p>Soru metni buraya…</p></div>
+          </div>
+          <div class="quiz-mock-svg" id="pv-svg" aria-hidden="true"></div>
+          <img class="quiz-mock-img" id="pv-img" alt="">
+          <p class="quiz-mock-opts-label">Şıklar</p>
+          <div class="quiz-mock-opts">
+            {% for c in "ABCDE" %}
+            <div class="quiz-mock-opt{% if question.correct_option == c or not question and c == 'A' %} is-correct{% endif %}" id="pv-opt-{{ c }}">
+              <span class="quiz-mock-badge">{{ c }}</span>
+              <span class="quiz-mock-opt-text is-empty" id="pv-opt-text-{{ c }}">Şık {{ c }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="quiz-mock-solution" id="pv-solution">
+            <p class="title">Çözüm</p>
+            <div class="body" id="pv-solution-body"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="{% static 'panel/paste-image.js' %}"></script>
+<script src="{% static 'panel/rich-format.js' %}"></script>
+{{ map_markers_json|json_script:"map-markers-data" }}
+{{ map_templates_json|json_script:"map-templates-data" }}
+<script src="{% static 'panel/map-question-editor.js' %}"></script>
+<script src="{% static 'panel/question-preview.js' %}"></script>
+{{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
+<script>
+(function () {
+  const subject = document.getElementById('subject-select');
+  const topic = document.getElementById('topic-select');
+  const testSelect = document.getElementById('test-select');
+  const subtopics = document.getElementById('subtopics');
+  const pvTopic = document.getElementById('pv-topic');
+  let subtopicMap = {};
+  try {
+    const el = document.getElementById('topic-subtopics-data');
+    subtopicMap = el ? JSON.parse(el.textContent) : {};
+  } catch (e) {
+    subtopicMap = {};
+  }
+
+  function refreshSubtopics(topicId) {
+    if (!subtopics) return;
+    subtopics.innerHTML = '';
+    (subtopicMap[String(topicId)] || []).forEach(function (name) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      subtopics.appendChild(opt);
+    });
+  }
+
+  function loadTopics(subjectId, selectedTopicId) {
+    if (!topic) return;
+    if (!subjectId) {
+      topic.innerHTML = '<option value="">Önce ders seçin…</option>';
+      if (testSelect) testSelect.innerHTML = '<option value="auto">Önce konu seçin…</option>';
+      return;
+    }
+    var url = '/panel/ders/' + subjectId + '/konular/';
+    if (selectedTopicId) url += '?selected=' + selectedTopicId;
+    fetch(url, { headers: { 'HX-Request': 'true' } })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        topic.innerHTML = html;
+        if (testSelect) testSelect.innerHTML = '<option value="auto">Önce konu seçin…</option>';
+        if (topic.value) {
+          refreshSubtopics(topic.value);
+          if (pvTopic && topic.selectedIndex >= 0) {
+            pvTopic.textContent = topic.options[topic.selectedIndex].text;
+          }
+        }
+      });
+  }
+
+  function loadTests(topicId) {
+    if (!testSelect) return;
+    if (!topicId) {
+      testSelect.innerHTML = '<option value="auto">Önce konu seçin…</option>';
+      return;
+    }
+    fetch('/panel/konu/' + topicId + '/testler/', {
+      headers: { 'HX-Request': 'true' }
+    })
+      .then(function (r) { return r.text(); })
+      .then(function (html) { testSelect.innerHTML = html; });
+  }
+
+  if (subject) {
+    subject.addEventListener('change', function () {
+      loadTopics(subject.value, null);
+    });
+  }
+  if (topic) {
+    topic.addEventListener('change', function () {
+      loadTests(topic.value);
+      refreshSubtopics(topic.value);
+      if (pvTopic && topic.selectedIndex >= 0) {
+        pvTopic.textContent = topic.options[topic.selectedIndex].text;
+      }
+    });
+    refreshSubtopics(topic.value);
+  }
+})();
+</script>
+<script>
+(function () {
+  const btn = document.getElementById('ocr-btn');
+  const input = document.getElementById('q-image');
+  const status = document.getElementById('ocr-status');
+  const rawBox = document.getElementById('ocr-raw');
+  const rawWrap = document.getElementById('ocr-raw-wrap');
+  const hashField = document.getElementById('source-image-hash');
+  const forceField = document.getElementById('force-duplicate');
+  const banner = document.getElementById('duplicate-banner');
+  const forceSave = document.getElementById('force-save-btn');
+  if (!btn || !input) return;
+
+  const existingImg = document.querySelector('.media-preview img[src]:not(#q-image-preview-img)');
+  const excludeId = '{{ question.id|default:"" }}';
+
+  function csrf() {
+    const el = document.querySelector('[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
+  }
+
+  function showDuplicate(dup) {
+    if (!banner) return;
+    if (!dup) {
+      banner.hidden = true;
+      banner.innerHTML = '';
+      if (forceSave) forceSave.hidden = true;
+      if (forceField) forceField.value = '';
+      return;
+    }
+    banner.hidden = false;
+    banner.innerHTML =
+      '<strong>Bu soruyu daha önce yüklediniz.</strong> ' +
+      'Tüm sorular benzersiz olmalı.<br>' +
+      '<span style="opacity:.9">Eşleşme: ' + (dup.match_label || '') +
+      ' · ' + (dup.subject_name || '') + ' · ' + (dup.topic_name || '') +
+      ' · <a href="' + dup.edit_url + '" style="color:#fde68a;text-decoration:underline;">' +
+      (dup.public_id || 'mevcut kayıt') + '</a></span>';
+    if (forceSave) forceSave.hidden = false;
+  }
+
+  if (forceSave && forceField) {
+    forceSave.addEventListener('click', function () {
+      forceField.value = '1';
+    });
+  }
+
+  function hasOcrContent(data) {
+    const stemText = data.stem || data.soru_metni || '';
+    if (stemText && String(stemText).trim()) return true;
+    const opts = data.options || data.siklar || {};
+    return ['A', 'B', 'C', 'D', 'E'].some(function (k) {
+      return opts[k] && String(opts[k]).trim();
+    });
+  }
+
+  function fill(data) {
+    const stem = document.querySelector('[name=stem]');
+    const stemText = data.stem || data.soru_metni || '';
+    if (stem && stemText) {
+      stem.value = stemText;
+      stem.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const map = { A: 'option_a', B: 'option_b', C: 'option_c', D: 'option_d', E: 'option_e' };
+    const opts = data.options || data.siklar || {};
+    Object.keys(map).forEach(function (k) {
+      const field = document.querySelector('[name=' + map[k] + ']');
+      if (field && opts[k]) {
+        field.value = opts[k];
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    const svgField = document.querySelector('[name=figure_svg]');
+    const fig = data.sekil_kodu || data.figure_svg || data.figure_tikz || '';
+    if (svgField && fig) {
+      svgField.value = fig;
+      svgField.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const answerRaw = (data.dogru_cevap || data.correct_option || '').toString().toUpperCase();
+    const answer = 'ABCDE'.split('').find(function (k) { return answerRaw.indexOf(k) !== -1; });
+    const answerSel = document.querySelector('[name=correct_option]');
+    if (answerSel && answer) {
+      answerSel.value = answer;
+      answerSel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const solField = document.querySelector('[name=solution]');
+    const sol = data.detayli_cozum || data.solution || '';
+    if (solField && sol) {
+      solField.value = sol;
+      solField.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (hashField && data.image_hash) {
+      hashField.value = data.image_hash;
+    }
+    if (rawBox && rawWrap) {
+      if (data.raw_text) {
+        rawWrap.hidden = false;
+        rawBox.textContent = data.raw_text;
+      } else {
+        rawWrap.hidden = true;
+        rawBox.textContent = '';
+      }
+    }
+    showDuplicate(data.duplicate || null);
+    if (window.KpssQuestionPreview) window.KpssQuestionPreview.sync();
+  }
+
+  async function imageFile() {
+    if (input.files && input.files[0]) return input.files[0];
+    if (existingImg && existingImg.src) {
+      const res = await fetch(existingImg.src);
+      const blob = await res.blob();
+      return new File([blob], 'mevcut-soru.png', { type: blob.type || 'image/png' });
+    }
+    return null;
+  }
+
+  async function runOcr() {
+    const file = await imageFile();
+    if (!file) {
+      status.hidden = false;
+      status.textContent = 'Önce görsel seçin veya Ctrl+V ile yapıştırın.';
+      return;
+    }
+    btn.disabled = true;
+    status.hidden = false;
+    status.textContent = 'Okunuyor…';
+    const fd = new FormData();
+    fd.append('image', file);
+    if (excludeId) fd.append('exclude_question_id', excludeId);
+    try {
+      const res = await fetch('{% url "panel_ocr_question" %}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf() },
+        body: fd
+      });
+      const data = await res.json();
+      if (!data.ok && !data.raw_text && !hasOcrContent(data)) {
+        status.textContent = data.error || 'Okunamadı.';
+        showDuplicate(data.duplicate || null);
+      } else {
+        fill(data);
+        if (!hasOcrContent(data)) {
+          status.style.color = '#f87171';
+          status.textContent = data.error || 'Metin okunamadı — görseli veya API anahtarını kontrol edin.';
+        } else if (data.duplicate) {
+          status.textContent = 'Uyarı: bu soru daha önce yüklendi — kaydetmeden önce kontrol edin.';
+          status.style.color = '#f87171';
+        } else {
+          status.style.color = '';
+          var engine = (data.engine || '') === 'tesseract' ? ' (Tesseract)' : '';
+          if (data.sekil_kodu || data.figure_svg || data.figure_tikz) engine += ' · şekil SVG';
+          if (data.dogru_cevap || data.correct_option) engine += ' · cevap';
+          if (data.detayli_cozum || data.solution) engine += ' · çözüm';
+          status.textContent = data.ok
+            ? 'Metin dolduruldu' + engine + ' — kontrol edip kaydedin.'
+            : (data.error || 'Kısmi okuma; düzenleyin.');
+        }
+      }
+    } catch (err) {
+      status.textContent = 'OCR isteği başarısız.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', function () { runOcr(); });
+  input.addEventListener('change', function () {
+    if (input.files && input.files[0]) runOcr();
+  });
+})();
+</script>
+{% endblock %}

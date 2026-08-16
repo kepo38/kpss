@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Ücretsiz premium tanımla</h1>
+<p>{{ users|length }} kullanıcı seçildi.</p>
+<ul>
+  {% for u in users %}
+  <li>
+    {{ u.display_name|default:u.email }} &lt;{{ u.email }}&gt;
+    {% if u.is_premium and u.premium_granted_at %}
+    — mevcut veriliş: {{ u.premium_granted_at|date:"d.m.Y H:i" }}
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="grant_free_premium">
+  <input type="hidden" name="apply" value="1">
+  {% for id in ids %}
+  <input type="hidden" name="{{ action_checkbox_name }}" value="{{ id }}">
+  {% endfor %}
+  <p>
+    <label>Bitiş tarihi (opsiyonel — boş = süresiz)<br>
+      <input type="datetime-local" name="premium_expires_at" style="padding:8px;">
+    </label>
+  </p>
+  <p>
+    <label>Not (opsiyonel)<br>
+      <input type="text" name="grant_note" maxlength="255" placeholder="Hediye, kampanya…" style="width:min(480px,100%);padding:8px;">
+    </label>
+  </p>
+  <button type="submit" class="default">Premium ver</button>
+  <a href="{% url 'admin:content_appuser_changelist' %}">İptal</a>
+</form>
+{% endblock %}

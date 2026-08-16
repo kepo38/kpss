@@ -1,0 +1,127 @@
+{% extends "panel/base.html" %}
+{% load l10n %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Soru kalitesi</div>
+
+<div class="panel-card quality-card">
+  <div class="panel-card-head">
+    <div>
+      <h1>Soru kalitesi</h1>
+      <p class="lead">Öğrenci yıldızlarına göre düşük kaliteli soruları ders ve konu bazında inceleyin.</p>
+    </div>
+  </div>
+
+  <form method="get" class="quality-filters">
+    <label>Ders
+      <select name="subject">
+        <option value="">Tüm dersler</option>
+        {% for subject in subjects %}
+          <option value="{{ subject.id }}" {% if selected_subject_id == subject.id %}selected{% endif %}>{{ subject.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Konu
+      <select name="topic">
+        <option value="">Tüm konular</option>
+        {% for topic in topics %}
+          <option value="{{ topic.id }}" {% if selected_topic_id == topic.id %}selected{% endif %}>{{ topic.subject.name }} · {{ topic.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Azami ortalama
+      <input type="number" name="max_rating" min="1" max="5" step="0.1" value="{{ max_rating|unlocalize }}">
+    </label>
+    <label>Asgari oy
+      <input type="number" name="min_votes" min="1" max="10000" step="1" value="{{ min_votes }}">
+    </label>
+    <button class="btn btn-primary" type="submit">Filtrele</button>
+  </form>
+</div>
+
+<div class="panel-card quality-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Ders kalite özeti</h2>
+      <p class="media-hint">Düşük soru: en az {{ min_votes }} oy ve en fazla {{ max_rating|floatformat:1 }} yıldız.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Ders</th>
+          <th>Ortalama</th>
+          <th>Toplam oy</th>
+          <th>{{ min_votes }}+ oy alan soru</th>
+          <th>Düşük soru</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in subject_summaries %}
+        <tr>
+          <td><strong>{{ row.subject.name }}</strong></td>
+          <td>{% if row.average_rating is not None %}<span class="quality-stars">★ {{ row.average_rating|floatformat:2 }}</span>{% else %}—{% endif %}</td>
+          <td>{{ row.total_votes }}</td>
+          <td>{{ row.eligible_questions }}</td>
+          <td><span class="{% if row.low_questions %}quality-low{% endif %}">{{ row.low_questions }}</span></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">Henüz ders bulunmuyor.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel-card quality-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>En düşük puanlı sorular</h2>
+      <p class="media-hint">Sonuçlar düşük ortalamadan yükseğe sıralanır.</p>
+    </div>
+    <span class="pill pill-gold">{{ low_question_count }} soru</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Soru</th>
+          <th>Ders · Konu</th>
+          <th>Ortalama</th>
+          <th>Oy</th>
+          <th>Son güncelleme</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for question in low_questions %}
+        <tr>
+          <td>
+            <strong>{{ question.public_id }}</strong>
+            <div class="hint">{{ question.stem|truncatechars:100 }}</div>
+          </td>
+          <td>{{ question.topic.subject.name }} · {{ question.topic.name }}</td>
+          <td><span class="quality-low">★ {{ question.rating_average|floatformat:2 }}</span></td>
+          <td>{{ question.rating_count }}</td>
+          <td class="hint">{{ question.updated_at|date:"d.m.Y H:i" }}</td>
+          <td><a class="btn btn-ghost" href="{% url 'panel_question_edit' question.topic_id question.id %}">İncele</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6"><div class="empty">Bu filtrelere uyan düşük puanlı soru yok.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if low_questions.paginator.num_pages > 1 %}
+  <nav class="quality-pagination" aria-label="Kalite sonuç sayfaları">
+    {% if low_questions.has_previous %}
+      <a class="btn btn-ghost" href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ low_questions.previous_page_number }}">Önceki</a>
+    {% endif %}
+    <span>{{ low_questions.number }} / {{ low_questions.paginator.num_pages }}</span>
+    {% if low_questions.has_next %}
+      <a class="btn btn-ghost" href="?{% if page_query %}{{ page_query }}&amp;{% endif %}page={{ low_questions.next_page_number }}">Sonraki</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

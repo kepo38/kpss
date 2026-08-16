@@ -1,0 +1,181 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  {{ topic.name }}
+</div>
+<h1>{{ topic.name }}</h1>
+<p class="lead">
+  {% if topic.is_active %}Aktif konu{% else %}Pasif konu — mobil pakete girmez{% endif %}
+</p>
+
+<form class="form capacity-form" method="post" action="{% url 'panel_topic_capacity' topic.id %}" style="max-width:420px;margin-bottom:20px;">
+  {% csrf_token %}
+  <label>Test başına soru sayısı
+    <input type="number" name="questions_per_test" min="1" max="200" value="{{ topic.questions_per_test }}" required>
+  </label>
+  <p class="media-hint" style="margin:0;">
+    Değişince bu konudaki testler yeniden dengelenir: azaltınca fazlalık yeni teste geçer,
+    artırınca sorular önceki testlerde birleşir. Soru kimlikleri aynı kalır (favoriler bozulmaz).
+  </p>
+  <button class="btn btn-primary" type="submit">Kaydet ve testleri düzenle</button>
+</form>
+
+<nav class="tabs">
+  <a href="{% url 'panel_topic' topic.id 'lessons' %}" class="{% if tab == 'lessons' %}active{% endif %}">Bilgi</a>
+  <a href="{% url 'panel_topic' topic.id 'questions' %}" class="{% if tab == 'questions' %}active{% endif %}">Sorular</a>
+  <a href="{% url 'panel_topic' topic.id 'tests' %}" class="{% if tab == 'tests' %}active{% endif %}">Testler</a>
+</nav>
+
+{% if tab == 'lessons' %}
+  <div class="toolbar">
+    <strong>Bilgi kartları</strong>
+    <a class="btn btn-primary" href="{% url 'panel_lesson_new' topic.id %}">Yeni bilgi</a>
+  </div>
+  <div class="list">
+    {% for lesson in lessons %}
+    <div class="row">
+      <div class="name">
+        <a href="{% url 'panel_lesson_edit' topic.id lesson.id %}">{{ lesson.title }}</a>
+        <div class="hint">Sıra {{ lesson.sort_order }} · {{ lesson.body|truncatechars:80 }}</div>
+      </div>
+      {% if lesson.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_lesson_edit' topic.id lesson.id %}">Düzenle</a>
+      <form method="post" action="{% url 'panel_lesson_delete' lesson.id %}" onsubmit="return confirm('Silinsin mi?');">
+        {% csrf_token %}
+        <button class="btn btn-danger" type="submit">Sil</button>
+      </form>
+    </div>
+    {% empty %}
+    <div class="empty">Henüz bilgi kartı yok. Öğrencinin “Konuyu öğren” ekranı buradan beslenir.</div>
+    {% endfor %}
+  </div>
+
+{% elif tab == 'questions' %}
+  <div class="toolbar">
+    <strong>Soru bankası</strong>
+    <span class="hint" style="margin-left:8px">
+      {{ questions_published_count }} yayında / {{ questions|length }} toplam
+      {% if questions_published_count < questions|length %}
+        · <span style="color:#fbbf24">Taslak sorular uygulamada görünmez</span>
+      {% endif %}
+    </span>
+    <a class="btn btn-primary" href="{% url 'panel_question_new' topic.id %}">Manuel ekle</a>
+    <a class="btn btn-ghost" href="{% url 'panel_quick_question' %}?subject_id={{ subject.id }}&amp;topic_id={{ topic.id }}">Görselden ekle</a>
+  </div>
+  {% if questions %}
+  <form
+    id="q-bulk-form"
+    class="bulk-form"
+    method="post"
+    action="{% url 'panel_question_bulk_delete' topic.id %}"
+  >
+    {% csrf_token %}
+    <div class="bulk-bar">
+      <label class="bulk-select-all">
+        <input type="checkbox" id="q-check-all" title="Tümünü seç">
+        <span>Tümünü seç</span>
+      </label>
+      <span class="bulk-count" id="q-bulk-count">0 seçili</span>
+      <button class="btn btn-danger" type="submit" id="q-bulk-delete" disabled>Seçilenleri sil</button>
+    </div>
+    <div class="list">
+      {% for q in questions %}
+      <div class="row">
+        <label class="row-check">
+          <input type="checkbox" name="ids" value="{{ q.id }}" class="js-q-check">
+        </label>
+        <div class="name">
+          <a href="{% url 'panel_question_edit' topic.id q.id %}">{{ q.public_id }}</a>
+          <div class="hint">{{ q.stem|truncatechars:90 }}</div>
+          <div class="hint question-meta">
+            Eklendi {{ q.created_at|date:"d.m.Y H:i" }} · Güncellendi {{ q.updated_at|date:"d.m.Y H:i" }}
+          </div>
+        </div>
+        {% if q.image %}<span class="pill-img">Görsel</span>{% endif %}
+        {% if q.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+        <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic.id q.id %}">Düzenle</a>
+        <button
+          class="btn btn-danger"
+          type="submit"
+          form="q-del-{{ q.id }}"
+          onclick="return confirm('Silinsin mi?');"
+        >Sil</button>
+      </div>
+      {% endfor %}
+    </div>
+  </form>
+  {% for q in questions %}
+  <form id="q-del-{{ q.id }}" method="post" action="{% url 'panel_question_delete' q.id %}" hidden>
+    {% csrf_token %}
+  </form>
+  {% endfor %}
+  <script>
+  (function () {
+    var form = document.getElementById("q-bulk-form");
+    if (!form) return;
+    var all = document.getElementById("q-check-all");
+    var boxes = Array.prototype.slice.call(form.querySelectorAll(".js-q-check"));
+    var btn = document.getElementById("q-bulk-delete");
+    var countEl = document.getElementById("q-bulk-count");
+    function sync() {
+      var n = boxes.filter(function (b) { return b.checked; }).length;
+      countEl.textContent = n + " seçili";
+      btn.disabled = n === 0;
+      if (all) {
+        all.checked = n > 0 && n === boxes.length;
+        all.indeterminate = n > 0 && n < boxes.length;
+      }
+    }
+    if (all) {
+      all.addEventListener("change", function () {
+        boxes.forEach(function (b) { b.checked = all.checked; });
+        sync();
+      });
+    }
+    boxes.forEach(function (b) { b.addEventListener("change", sync); });
+    form.addEventListener("submit", function (e) {
+      var n = boxes.filter(function (b) { return b.checked; }).length;
+      if (!n) {
+        e.preventDefault();
+        return;
+      }
+      if (!confirm(n + " soru silinsin mi?")) {
+        e.preventDefault();
+      }
+    });
+    sync();
+  })();
+  </script>
+  {% else %}
+  <div class="list">
+    <div class="empty">Bu konuda soru yok.</div>
+  </div>
+  {% endif %}
+
+{% else %}
+  <div class="toolbar">
+    <strong>Konu testleri</strong>
+    <a class="btn btn-primary" href="{% url 'panel_test_new' topic.id %}">Yeni test</a>
+  </div>
+  <div class="list">
+    {% for t in tests %}
+    <div class="row">
+      <div class="name">
+        <a href="{% url 'panel_test_edit' topic.id t.id %}">{{ t.title }}</a>
+        <div class="hint">{{ t.question_count }} soru · {{ t.time_limit_minutes }} dk</div>
+      </div>
+      {% if t.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_test_edit' topic.id t.id %}">Düzenle</a>
+      <form method="post" action="{% url 'panel_test_delete' t.id %}" onsubmit="return confirm('Silinsin mi?');">
+        {% csrf_token %}
+        <button class="btn btn-danger" type="submit">Sil</button>
+      </form>
+    </div>
+    {% empty %}
+    <div class="empty">Yayınlanmış test yok.</div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

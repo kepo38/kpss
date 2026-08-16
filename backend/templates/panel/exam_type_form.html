@@ -1,0 +1,62 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_exam_type_list' %}">Sınav tipleri</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Sınav adı ve tarihi uygulamadaki geri sayımı günceller. Soru bankası tipi, o sınavı seçen kullanıcıya hangi müfredatın açılacağını belirler.</p>
+
+<form class="form" method="post" style="max-width:720px;">
+  {% csrf_token %}
+  <label>Sınav adı
+    <input type="text" name="name" required maxlength="80" value="{{ exam.name|default:'' }}" placeholder="Örn. AGS, ALES, KPSS Lisans">
+  </label>
+  <label>Kısa ad
+    <input type="text" name="short_name" maxlength="40" value="{{ exam.short_name|default:'' }}" placeholder="Örn. AGS">
+  </label>
+  <label>Kimlik (slug)
+    <input type="text" name="slug" maxlength="64" value="{{ exam.slug|default:'' }}" placeholder="Boş bırakılırsa addan üretilir. Örn. ags">
+  </label>
+  <label>Açıklama
+    <input type="text" name="description" maxlength="160" value="{{ exam.description|default:'' }}" placeholder="Akademi Giriş Sınavı">
+  </label>
+  <label>Sınav tarihi
+    <input type="date" name="exam_date" required value="{{ exam.exam_date|date:'Y-m-d' }}">
+  </label>
+  <label>Soru bankası tipi
+    <select name="content_type">
+      {% for value, label in content_types %}
+      <option value="{{ value }}" {% if exam.content_type == value or not exam and value == 'lisans' %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>İkon
+    <select name="icon_key">
+      {% for value, label in icon_choices %}
+      <option value="{{ value }}" {% if exam.icon_key == value or not exam and value == 'school' %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Sıra
+    <input type="number" name="sort_order" min="0" value="{{ exam.sort_order|default:0 }}">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="yearly_repeat" {% if exam.yearly_repeat or not exam %}checked{% endif %}>
+    Tarih geçtiyse sonraki yılın aynı gününü göster
+  </label>
+  <label class="check">
+    <input type="checkbox" name="even_years_only" {% if exam.even_years_only %}checked{% endif %}>
+    Yalnızca çift yıllarda (Ön Lisans / Ortaöğretim KPSS)
+  </label>
+  <label class="check">
+    <input type="checkbox" name="is_active" {% if exam.is_active or not exam %}checked{% endif %}>
+    Uygulamada göster
+  </label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_exam_type_list' %}">Liste</a>
+  </div>
+</form>
+{% endblock %}

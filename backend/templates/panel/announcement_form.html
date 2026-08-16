@@ -1,0 +1,63 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_announcement_list' %}">Duyurular</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Metin, fotoğraf veya ikisini birden ekleyebilirsiniz. Kaydettikten sonra bildirim gönderebilirsiniz.</p>
+{% if not firebase_ready %}
+<div class="flash flash-warning">{{ firebase_hint }}</div>
+{% endif %}
+
+<form class="form" method="post" enctype="multipart/form-data" style="max-width:720px;">
+  {% csrf_token %}
+  <label>Başlık
+    <input type="text" name="title" required maxlength="160" value="{{ announcement.title|default:'' }}" placeholder="Örn. Yeni deneme eklendi">
+  </label>
+  <label>Metin <span style="opacity:.65;font-weight:400">(isteğe bağlı — fotoğraf varsa boş bırakılabilir)</span>
+    <textarea name="body" rows="6" placeholder="Duyuru metni…">{{ announcement.body|default:'' }}</textarea>
+  </label>
+  <label>Fotoğraf <span style="opacity:.65;font-weight:400">(isteğe bağlı — metin varsa zorunlu değil)</span>
+    <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif">
+  </label>
+  {% if announcement and announcement.image %}
+  <div class="media-preview" style="margin:8px 0 12px;">
+    <img src="{{ announcement.image.url }}" alt="Duyuru görseli" style="max-width:100%;max-height:280px;border-radius:8px;">
+  </div>
+  <label class="check">
+    <input type="checkbox" name="clear_image">
+    Mevcut fotoğrafı kaldır
+  </label>
+  {% endif %}
+  <label class="check">
+    <input type="checkbox" name="is_published" {% if announcement.is_published or not announcement %}checked{% endif %}>
+    Uygulama duyuru listesinde yayınla
+  </label>
+
+  {% if announcement and announcement.push_sent_at %}
+  <p class="media-hint">
+    Son bildirim: {{ announcement.push_sent_at|date:"d.m.Y H:i" }}
+    — {{ announcement.push_success_count }} başarılı / {{ announcement.push_fail_count }} hata
+  </p>
+  {% endif %}
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <button class="btn btn-primary" type="submit" name="send_push" value="1"
+      onclick="return confirm('Kaydedilip tüm kullanıcılara bildirim gönderilsin mi?');">
+      Kaydet ve bildirim gönder
+    </button>
+    <a class="btn btn-ghost" href="{% url 'panel_announcement_list' %}">Liste</a>
+  </div>
+</form>
+
+{% if announcement %}
+<form method="post" action="{% url 'panel_announcement_send' announcement.id %}" style="margin-top:16px;max-width:720px;"
+  onsubmit="return confirm('Mevcut duyuru tüm kullanıcılara tekrar gönderilsin mi?');">
+  {% csrf_token %}
+  <button class="btn btn-ghost" type="submit">Sadece bildirim gönder</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  <a href="{% url 'panel_topic' topic.id 'lessons' %}">{{ topic.name }}</a> /
+  Bilgi
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Öğrenci uygulamada bu kartı konu içinde okur. Metni seçip kalın / italik yapabilirsiniz.</p>
+
+<form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
+  {% csrf_token %}
+  <label>Başlık
+    <input type="text" name="title" required value="{{ lesson.title|default:'' }}">
+  </label>
+  <label>İçerik
+    <textarea class="js-rich" name="body" required>{{ lesson.body|default:'' }}</textarea>
+  </label>
+  <label>Sıra
+    <input type="number" name="sort_order" value="{{ lesson.sort_order|default:0 }}">
+  </label>
+  <label>Görsel
+    <input type="file" name="image" accept="image/*">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="is_published" {% if lesson.is_published %}checked{% endif %}>
+    Yayında
+  </label>
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'lessons' %}">İptal</a>
+  </div>
+</form>
+<script src="{% static 'panel/rich-format.js' %}"></script>
+{% endblock %}

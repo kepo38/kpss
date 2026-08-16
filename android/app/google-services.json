@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "89822639053",
+    "project_id": "kpss-odak",
+    "storage_bucket": "kpss-odak.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:89822639053:android:34e46eb961ddb713f50a84",
+        "android_client_info": {
+          "package_name": "com.example.kpss_odak"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "89822639053-b9icipsq1nogcesdrq0l1b8i142ncb4d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.kpss_odak",
+            "certificate_hash": "d70f79c6d2e1ce69808fd6b3834731b56a033418"
+          }
+        },
+        {
+          "client_id": "89822639053-hj0d3dqf5291nepb5evoj6oc8phv5l26.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4G-UaT2HWT13QsQjTf-qaMNJwDdewPpc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "89822639053-hj0d3dqf5291nepb5evoj6oc8phv5l26.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

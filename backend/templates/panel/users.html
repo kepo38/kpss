@@ -1,0 +1,79 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Kullanıcılar</div>
+<h1>Kullanıcılar &amp; Premium</h1>
+<p class="lead">
+  Google ile giriş yapan kullanıcılara ücretsiz premium tanımlayın.
+  Veriliş tarihi uygulama profilinde görünür.
+</p>
+
+<form class="toolbar" method="get" action="{% url 'panel_users' %}">
+  <input type="search" name="q" value="{{ query }}" placeholder="Ad veya e-posta ara…" style="min-width:240px;padding:10px 12px;border-radius:8px;border:1px solid #ccc;">
+  <button class="btn btn-primary" type="submit">Ara</button>
+  {% if query %}
+  <a class="btn btn-ghost" href="{% url 'panel_users' %}">Temizle</a>
+  {% endif %}
+</form>
+
+<div class="list">
+  {% for u in page_obj %}
+  <div class="row" style="align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div class="name" style="flex:1;min-width:220px;">
+      <strong>{{ u.display_name|default:"—" }}</strong>
+      <div class="hint">{{ u.email }}</div>
+      <div class="hint">
+        Son giriş: {% if u.last_login_at %}{{ u.last_login_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}
+        · Kayıt: {{ u.created_at|date:"d.m.Y" }}
+      </div>
+      {% if u.is_premium %}
+      <div class="hint" style="margin-top:6px;color:#1a6b3a;">
+        Premium
+        {% if u.premium_granted_at %}
+        · Veriliş: {{ u.premium_granted_at|date:"d.m.Y H:i" }}
+        {% endif %}
+        {% if u.premium_expires_at %}
+        · Bitiş: {{ u.premium_expires_at|date:"d.m.Y H:i" }}
+        {% else %}
+        · Süresiz
+        {% endif %}
+        {% if u.premium_grant_note %}
+        · {{ u.premium_grant_note }}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% if u.is_premium %}
+    <span class="badge on">Premium</span>
+    <form method="post" action="{% url 'panel_user_revoke_premium' u.id %}" onsubmit="return confirm('Premium kaldırılsın mı?');">
+      {% csrf_token %}
+      <input type="hidden" name="return_q" value="{{ query }}">
+      <button class="btn btn-danger" type="submit">Premium kaldır</button>
+    </form>
+    {% else %}
+    <span class="badge off">Standart</span>
+    <form method="post" action="{% url 'panel_user_grant_premium' u.id %}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      {% csrf_token %}
+      <input type="hidden" name="return_q" value="{{ query }}">
+      <input type="datetime-local" name="premium_expires_at" title="Bitiş (boş = süresiz)">
+      <input type="text" name="grant_note" maxlength="255" placeholder="Not (opsiyonel)" style="padding:8px;border-radius:8px;border:1px solid #ccc;">
+      <button class="btn btn-primary" type="submit">Ücretsiz premium ver</button>
+    </form>
+    {% endif %}
+  </div>
+  {% empty %}
+  <div class="empty">Kullanıcı bulunamadı. Uygulamaya en az bir kez Google ile giriş yapılmalı.</div>
+  {% endfor %}
+</div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="toolbar" style="margin-top:16px;">
+  {% if page_obj.has_previous %}
+  <a class="btn btn-ghost" href="?q={{ query|urlencode }}&amp;page={{ page_obj.previous_page_number }}">← Önceki</a>
+  {% endif %}
+  <span>Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+  <a class="btn btn-ghost" href="?q={{ query|urlencode }}&amp;page={{ page_obj.next_page_number }}">Sonraki →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

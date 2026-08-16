@@ -1,0 +1,30 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Haritalar</div>
+<div class="toolbar" style="margin-bottom:18px;">
+  <div>
+    <h1 style="margin:0;">Haritalar</h1>
+    <p class="lead" style="margin:8px 0 0;">Soru oluştururken kullanılabilecek hazır Türkiye harita şablonları.</p>
+  </div>
+</div>
+<div class="grid">
+  {% for m in maps %}
+  <article class="card map-card">
+    <div class="map-card-preview">
+      <img src="{% static m.asset %}" alt="{{ m.title }}" loading="lazy">
+    </div>
+    <strong>{{ m.title }}</strong>
+    <div class="meta">
+      {% if m.kind == "marker" %}Koordinatlı işaret{% else %}Tematik harita{% endif %}
+    </div>
+    {% if m.description %}
+    <p class="lead" style="margin:8px 0 0;font-size:0.92rem;">{{ m.description }}</p>
+    {% endif %}
+    <code style="opacity:.7;font-size:0.82rem;">{{ m.id }}</code>
+  </article>
+  {% empty %}
+  <div class="empty">Henüz kayıtlı harita yok.</div>
+  {% endfor %}
+</div>
+{% endblock %}

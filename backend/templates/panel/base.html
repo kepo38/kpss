@@ -1,0 +1,52 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title|default:"Panel" }} · KPSS Odak</title>
+  <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script defer src="{% static 'panel/math-render.js' %}"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.addEventListener('htmx:configRequest', function (e) {
+        const token = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (token) e.detail.headers['X-CSRFToken'] = token.value;
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="shell">
+    {% csrf_token %}
+    <header class="topbar">
+      <a class="brand" href="{% url 'panel_home' %}">
+        KPSS Odak
+        <span>İÇERİK PANELİ</span>
+      </a>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <a class="btn btn-primary" href="{% url 'panel_manual_question' %}">Manuel soru</a>
+        <a class="btn btn-ghost" href="{% url 'panel_quick_question' %}">Görselden soru</a>
+        <a class="btn btn-ghost" href="{% url 'panel_maps' %}">Haritalar</a>
+        <a class="btn btn-ghost" href="{% url 'panel_exam_type_list' %}">Sınavlar</a>
+        <a class="btn btn-ghost" href="{% url 'panel_announcement_list' %}">Duyurular</a>
+        <a class="btn btn-ghost" href="{% url 'panel_users' %}">Kullanıcılar</a>
+        <a class="btn btn-ghost" href="/api/v1/pack/" target="_blank" rel="noopener">API paket</a>
+        <a class="btn btn-ghost" href="/admin/">Admin</a>
+        <a class="btn btn-ghost" href="{% url 'admin:logout' %}">Çıkış</a>
+      </div>
+    </header>
+    {% if messages %}
+    <div class="flash-stack">
+      {% for message in messages %}
+      <div class="flash flash-{{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
