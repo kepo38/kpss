@@ -46,6 +46,10 @@ app.*.map.json
 
 # Firebase secrets
 backend/firebase-service-account.json
+google-services.json
+**/google-services.json
+!google-services.json.example
+!**/google-services.json.example
 
 # Django backend
 backend/db.sqlite3
