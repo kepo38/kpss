@@ -24,6 +24,8 @@ class ContentBankService extends ChangeNotifier {
   static const _kAttempts = 'content_test_attempts';
   static const _kSolvedQuestions = 'content_solved_question_ids';
   static const _kWrongQuestions = 'content_wrong_question_ids';
+  /// Yanlış defteri soru gövdeleri — katalog/oturum temizlenince kaybolmasın.
+  static const _kWrongQuestionBodies = 'content_wrong_question_bodies';
   static const _kQuestions = 'content_questions';
   static const _kLessons = 'content_lessons';
   static const _kPackVersion = 'content_pack_version';
@@ -178,12 +180,19 @@ class ContentBankService extends ChangeNotifier {
       _questions.removeWhere((q) => _sampleSeedQuestionIds.contains(q.id));
     }
 
+    // Katalog/oturum sonrası kaybolan yanlış gövdelerini geri yükle.
+    final restoredBodies = _mergeWrongQuestionBodies(
+      prefs.getString(_kWrongQuestionBodies),
+    );
+
     KpssCurriculum.loadCatalogFromJsonString(
       prefs.getString(_kCatalogSubjects),
     );
 
     _loaded = true;
-    if (prunedSeed || (_questions.isEmpty && kDebugMode)) {
+    if (prunedSeed ||
+        restoredBodies ||
+        (_questions.isEmpty && kDebugMode)) {
       unawaited(_persistAll(skipQuestions: !_fullQuestionBankPersisted));
     }
   }
@@ -192,11 +201,20 @@ class ContentBankService extends ChangeNotifier {
   Future<void> applyCatalogPack(Map<String, dynamic> pack) async {
     await initialize();
     await _applyPackMetadata(pack);
-    _questions.clear();
+    // Yanlış defteri gövdelerini katalog temizlemesinde kaybetme.
+    final keepWrong = _questions
+        .where((q) => _wrongQuestionIds.contains(q.id))
+        .toList();
+    _questions
+      ..clear()
+      ..addAll(keepWrong);
     _fullQuestionBankPersisted = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kQuestions);
-    await _persistAll(skipQuestions: true);
+    await Future.wait([
+      _persistAll(skipQuestions: true),
+      _persistWrongQuestionBodies(),
+    ]);
     notifyListeners();
   }
 
@@ -220,8 +238,9 @@ class ContentBankService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Oturum içi sorular — diske yazılmaz, yanlış defteri vb. için.
+  /// Oturum içi sorular — yanlış defterindekiler ayrıca diske yazılır.
   void mergeSessionQuestions(Iterable<QuestionModel> questions) {
+    var touchedWrong = false;
     for (final q in questions) {
       final idx = _questions.indexWhere((item) => item.id == q.id);
       if (idx >= 0) {
@@ -229,6 +248,10 @@ class ContentBankService extends ChangeNotifier {
       } else {
         _questions.add(q);
       }
+      if (_wrongQuestionIds.contains(q.id)) touchedWrong = true;
+    }
+    if (touchedWrong) {
+      unawaited(_persistWrongQuestionBodies());
     }
   }
 
@@ -477,6 +500,7 @@ class ContentBankService extends ChangeNotifier {
     if (wrongQuestionIds.isNotEmpty) {
       _wrongQuestionIds.addAll(wrongQuestionIds);
       futures.add(_persistWrongQuestions());
+      futures.add(_persistWrongQuestionBodies());
     }
     await Future.wait(futures);
     notifyListeners();
@@ -639,16 +663,25 @@ class ContentBankService extends ChangeNotifier {
 
   int get wrongQuestionCount => _visibleWrongQuestionIds.length;
 
+  /// Liste ve sayaç yalnızca yerelde gövdesi olan yanlışları gösterir.
   Set<String> get _visibleWrongQuestionIds {
-    final catalog = catalogQuestionIds.toSet();
     final local = {for (final q in _questions) q.id};
     return _wrongQuestionIds.where((id) {
       if (_sampleSeedQuestionIds.contains(id)) return false;
-      if (local.contains(id)) return true;
-      if (catalog.contains(id)) return true;
-      // Katalog/banka yokken yetim demo id'leri sayma.
-      return false;
+      return local.contains(id);
     }).toSet();
+  }
+
+  /// Gövdesi henüz yüklenmemiş yanlış ID'ler (API ile doldurulabilir).
+  List<String> get unresolvedWrongQuestionIds {
+    final local = {for (final q in _questions) q.id};
+    return _wrongQuestionIds
+        .where(
+          (id) =>
+              !_sampleSeedQuestionIds.contains(id) && !local.contains(id),
+        )
+        .toList()
+      ..sort();
   }
 
   bool _pruneSampleSeedProgress() {
@@ -658,6 +691,26 @@ class ContentBankService extends ChangeNotifier {
     _solvedQuestionIds.removeAll(_sampleSeedQuestionIds);
     return beforeWrong != _wrongQuestionIds.length ||
         beforeSolved != _solvedQuestionIds.length;
+  }
+
+  bool _mergeWrongQuestionBodies(String? raw) {
+    if (raw == null || raw.isEmpty) return false;
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      final bodies = list
+          .map(
+            (e) =>
+                QuestionModel.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
+          .where((q) => _wrongQuestionIds.contains(q.id))
+          .where((q) => !_sampleSeedQuestionIds.contains(q.id))
+          .toList();
+      if (bodies.isEmpty) return false;
+      mergeSessionQuestions(bodies);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// En çok yanlış yapılan konular (ders · konu, adet).
@@ -676,7 +729,10 @@ class ContentBankService extends ChangeNotifier {
 
   Future<void> removeWrongQuestion(String questionId) async {
     if (!_wrongQuestionIds.remove(questionId)) return;
-    await _persistWrongQuestions();
+    await Future.wait([
+      _persistWrongQuestions(),
+      _persistWrongQuestionBodies(),
+    ]);
     notifyListeners();
   }
 
@@ -689,6 +745,7 @@ class ContentBankService extends ChangeNotifier {
     if (wrongQuestionIds.isNotEmpty) {
       _wrongQuestionIds.addAll(wrongQuestionIds);
       futures.add(_persistWrongQuestions());
+      futures.add(_persistWrongQuestionBodies());
     }
     if (correctQuestionIds.isNotEmpty || wrongQuestionIds.isNotEmpty) {
       _solvedQuestionIds
@@ -812,6 +869,7 @@ class ContentBankService extends ChangeNotifier {
       _persistAttempts(),
       _persistSolvedQuestions(),
       _persistWrongQuestions(),
+      _persistWrongQuestionBodies(),
       if (!skipQuestions && _fullQuestionBankPersisted) _persistQuestions(),
       _persistLessons(),
       _persistDailyAdBonuses(),
@@ -865,6 +923,27 @@ class ContentBankService extends ChangeNotifier {
       _kWrongQuestions,
       jsonEncode(_wrongQuestionIds.toList()),
     );
+  }
+
+  Future<void> _persistWrongQuestionBodies() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bodies = _questions
+        .where((q) => _wrongQuestionIds.contains(q.id))
+        .where((q) => !_sampleSeedQuestionIds.contains(q.id))
+        .map((q) => q.toJson())
+        .toList();
+    if (bodies.isEmpty) {
+      await prefs.remove(_kWrongQuestionBodies);
+    } else {
+      await prefs.setString(_kWrongQuestionBodies, jsonEncode(bodies));
+    }
+  }
+
+  /// API'den doldurulan yanlış gövdelerini diske yaz (yanlış defteri ekranı).
+  Future<void> persistWrongQuestionBodiesNow() async {
+    await initialize();
+    await _persistWrongQuestionBodies();
+    notifyListeners();
   }
 
   Future<void> _persistQuestions() async {

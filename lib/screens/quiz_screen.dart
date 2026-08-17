@@ -725,8 +725,66 @@ class _QuizScreenState extends State<QuizScreen>
       if (_selectedAnswer != null) unawaited(_loadRating());
       unawaited(_loadErrorReportState());
     } else {
-      unawaited(_finishTest());
+      unawaited(_requestFinish());
     }
+  }
+
+  Future<void> _requestFinish() async {
+    if (_isFinishing || !mounted) return;
+    _answers[_currentIndex] = _selectedAnswer;
+    var blankCount = 0;
+    var firstBlank = -1;
+    for (var i = 0; i < widget.questions.length; i++) {
+      if (gradeAnswer(widget.questions[i], _answers[i]) == AnswerState.blank) {
+        blankCount++;
+        firstBlank = firstBlank < 0 ? i : firstBlank;
+      }
+    }
+    if (blankCount > 0) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.inkSoft,
+          title: const Text(
+            'Boş sorular var',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          content: Text(
+            blankCount == 1
+                ? '1 soruyu boş bıraktınız. Testi yine de bitirmek istiyor musunuz?'
+                : '$blankCount soruyu boş bıraktınız. Testi yine de bitirmek istiyor musunuz?',
+            style: TextStyle(
+              height: 1.45,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.champagne,
+              ),
+              child: const Text('Geri dön'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.champagne,
+                foregroundColor: AppTheme.ink,
+              ),
+              child: const Text('Yine de bitir'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) {
+        if (confirmed == false && firstBlank >= 0 && mounted) {
+          _goTo(firstBlank);
+        }
+        return;
+      }
+    }
+    await _finishTest();
   }
 
   void _previousQuestion() {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/question_model.dart';
@@ -5,6 +7,7 @@ import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
+import '../services/question_fetch_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
@@ -23,11 +26,25 @@ class WrongQuestionsScreen extends StatefulWidget {
 
 class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   String? _subjectFilter;
+  bool _hydrating = false;
 
   @override
   void initState() {
     super.initState();
     FavoritesService.instance.initialize();
+    unawaited(_hydrateMissingBodies());
+  }
+
+  Future<void> _hydrateMissingBodies() async {
+    final missing = ContentBankService.instance.unresolvedWrongQuestionIds;
+    if (missing.isEmpty || _hydrating) return;
+    setState(() => _hydrating = true);
+    try {
+      await QuestionFetchService.instance.fetchByIds(missing);
+      await ContentBankService.instance.persistWrongQuestionBodiesNow();
+    } finally {
+      if (mounted) setState(() => _hydrating = false);
+    }
   }
 
   Future<void> _afterQuiz(QuizResult? result) async {
@@ -203,15 +220,24 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
               ),
             ),
             child: allQuestions.isEmpty
-                ? const StudyEmptyCta(
-                    icon: Icons.note_alt_outlined,
-                    title: 'Henüz yanlış soru yok',
-                    message:
-                        'Konu testlerini bitirdiğinizde yanlış yaptığınız '
-                        'sorular burada toplanır. Testten erken çıkarsanız '
-                        'kaydedilmez.',
-                    kpssType: KpssType.lisans,
-                  )
+                ? (_hydrating
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: CircularProgressIndicator(
+                            color: AppTheme.champagne,
+                          ),
+                        ),
+                      )
+                    : const StudyEmptyCta(
+                        icon: Icons.note_alt_outlined,
+                        title: 'Henüz yanlış soru yok',
+                        message:
+                            'Konu testlerini bitirdiğinizde yanlış yaptığınız '
+                            'sorular burada toplanır. Testten erken çıkarsanız '
+                            'kaydedilmez.',
+                        kpssType: KpssType.lisans,
+                      ))
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

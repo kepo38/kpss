@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/subject_performance.dart';
@@ -5,6 +7,7 @@ import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
 import '../services/notes_service.dart';
 import '../services/performance_summary_service.dart';
+import '../services/question_fetch_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/account_link_card.dart';
@@ -37,6 +40,16 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
   void initState() {
     super.initState();
     FavoritesService.instance.initialize();
+    unawaited(_hydrateWrongBodies());
+  }
+
+  Future<void> _hydrateWrongBodies() async {
+    final bank = ContentBankService.instance;
+    await bank.initialize();
+    final missing = bank.unresolvedWrongQuestionIds;
+    if (missing.isEmpty) return;
+    await QuestionFetchService.instance.fetchByIds(missing);
+    await bank.persistWrongQuestionBodiesNow();
   }
 
   @override

@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 
@@ -15,6 +16,19 @@ class MainActivity : FlutterActivity() {
         applyScreenshotPolicy()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Reklam SDK / sistem katmanı FLAG_SECURE'u geri koyabiliyor.
+        applyScreenshotPolicy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyScreenshotPolicy()
+        }
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyTabletPortraitLock()
@@ -23,31 +37,52 @@ class MainActivity : FlutterActivity() {
     private fun applyScreenshotPolicy() {
         if (shouldAllowScreenshots()) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            window.setFlags(0, WindowManager.LayoutParams.FLAG_SECURE)
         } else {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 
     /**
-     * Debug sürümünde her cihazda izin; release'te yalnızca allowlist'teki
-     * geliştirici telefonunda (ekran görüntüsü / QA için).
+     * Debug sürümünde her cihazda izin; release'te yalnızca geliştirici
+     * telefonunda (ekran görüntüsü / QA için).
      */
     private fun shouldAllowScreenshots(): Boolean {
         if (BuildConfig.ALLOW_SCREENSHOTS) return true
+
         val androidId = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ANDROID_ID,
         ).orEmpty()
-        if (androidId in ALLOWED_ANDROID_IDS) return true
-        val serial = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Build.getSerial()
-            } else {
-                @Suppress("DEPRECATION")
-                Build.SERIAL
+        val model = Build.MODEL.orEmpty()
+        val allowed = androidId in ALLOWED_ANDROID_IDS ||
+            model in ALLOWED_MODELS ||
+            isAllowedSerial()
+
+        Log.i(
+            TAG,
+            "screenshotPolicy allow=$allowed model=$model androidId=$androidId",
+        )
+        return allowed
+    }
+
+    private fun isAllowedSerial(): Boolean {
+        val candidates = buildList {
+            add(Build.SERIAL.orEmpty())
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    add(Build.getSerial())
+                }
             }
-        }.getOrNull().orEmpty()
-        return serial in ALLOWED_SERIALS
+            // ADB / boot prop — izin gerektirmez.
+            runCatching {
+                val clazz = Class.forName("android.os.SystemProperties")
+                val get = clazz.getMethod("get", String::class.java, String::class.java)
+                add(get.invoke(null, "ro.serialno", "") as String)
+                add(get.invoke(null, "ro.boot.serialno", "") as String)
+            }
+        }
+        return candidates.any { it.isNotBlank() && it in ALLOWED_SERIALS }
     }
 
     private fun applyTabletPortraitLock() {
@@ -59,8 +94,16 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        private const val TAG = "KpssScreenshot"
+
         // Geliştirici telefonu (2409BRN2CA / Redmi) — release'te de SS alınabilsin.
-        private val ALLOWED_ANDROID_IDS = setOf("95cb54eeb2a4ebd4")
+        // Not: Android 8+ uygulama imzasına göre ANDROID_ID üretir; adb'deki
+        // cihaz ID'si (95cb54…) ile uygulamanın gördüğü ID (55d7e0…) farklı olabilir.
+        private val ALLOWED_ANDROID_IDS = setOf(
+            "55d7e0039fdd2679", // app-scoped (com.example.kpss_odak)
+            "95cb54eeb2a4ebd4", // adb settings android_id
+        )
         private val ALLOWED_SERIALS = setOf("GAD6ZHBU4LJJ9XVW")
+        private val ALLOWED_MODELS = setOf("2409BRN2CA")
     }
 }
