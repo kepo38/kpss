@@ -723,6 +723,9 @@ class PanelTopicManageTests(TestCase):
     def test_delete_topic_removes_questions(self):
         from content.models import Question, Topic
 
+        t3 = Topic.objects.create(
+            subject=self.subject, slug="mat_c", name="Konu C", sort_order=3
+        )
         Question.objects.create(
             topic=self.t1,
             public_id="q_del_topic_1",
@@ -743,7 +746,10 @@ class PanelTopicManageTests(TestCase):
         self.assertEqual(res.url, f"/panel/ders/{self.subject.id}/")
         self.assertFalse(Topic.objects.filter(pk=self.t1.id).exists())
         self.assertFalse(Question.objects.filter(public_id="q_del_topic_1").exists())
-        self.assertTrue(Topic.objects.filter(pk=self.t2.id).exists())
+        self.t2.refresh_from_db()
+        t3.refresh_from_db()
+        self.assertEqual(self.t2.sort_order, 1)
+        self.assertEqual(t3.sort_order, 2)
 
     def test_delete_topic_requires_staff(self):
         User = get_user_model()

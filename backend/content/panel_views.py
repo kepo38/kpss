@@ -916,6 +916,16 @@ def _topic_from_post(
     return obj
 
 
+def _renumber_topic_sort_orders(subject: Subject) -> None:
+    """Keep remaining topics on contiguous 1..N sort orders."""
+    topics = list(subject.topics.order_by("sort_order", "name", "id"))
+    with transaction.atomic():
+        for sort_order, topic in enumerate(topics, start=1):
+            if topic.sort_order != sort_order:
+                topic.sort_order = sort_order
+                topic.save(update_fields=["sort_order"])
+
+
 def _reorder_topics(subject: Subject, topic_ids: list[str]) -> bool:
     """Persist a complete drag-and-drop topic order as contiguous values."""
     topics = list(subject.topics.order_by("sort_order", "name", "id"))
@@ -989,6 +999,7 @@ def panel_topic_delete(
     name = topic.name
     q_count = topic.questions.count()
     topic.delete()
+    _renumber_topic_sort_orders(subject)
     messages.success(
         request,
         f"“{name}” silindi"

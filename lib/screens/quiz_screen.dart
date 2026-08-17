@@ -506,18 +506,21 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   String _difficultyLabel() {
-    if (_currentQuestion.difficultyVisible) {
-      return switch (_currentQuestion.difficulty) {
-        'easy' => 'Kolay',
-        'hard' => 'Zor',
-        _ => 'Orta',
+    // Yayın sürümünde de süre altında Seviye rozeti görünsün.
+    // difficultyVisible: otomatik sınıflandırma eşiği (API); etiket her zaman
+    // sorunun güncel difficulty alanından okunur.
+    if (kDebugMode && !_currentQuestion.difficultyVisible) {
+      // Debug APK'da üç rozet görünümünü incelemek için.
+      return switch (_currentIndex % 3) {
+        0 => 'Kolay',
+        1 => 'Orta',
+        _ => 'Zor',
       };
     }
-    // Debug APK'da bu telefonda üç rozet görünümünü incelemek için.
-    return switch (_currentIndex % 3) {
-      0 => 'Kolay',
-      1 => 'Orta',
-      _ => 'Zor',
+    return switch (_currentQuestion.difficulty) {
+      'easy' => 'Kolay',
+      'hard' => 'Zor',
+      _ => 'Orta',
     };
   }
 
@@ -1095,10 +1098,7 @@ class _QuizScreenState extends State<QuizScreen>
                   urgent: urgent,
                   questionLabel:
                       'Soru ${_currentIndex + 1} / ${widget.questions.length}',
-                  difficultyLabel:
-                      _currentQuestion.difficultyVisible || kDebugMode
-                          ? _difficultyLabel()
-                          : null,
+                  difficultyLabel: _difficultyLabel(),
                   attemptLabel: '$_visibleAttemptCount kişi cevapladı',
                 ),
                 SizedBox(
