@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/ad_free_campaign_service.dart';
-import '../services/ad_manager.dart';
+import '../services/ad_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
@@ -65,7 +65,9 @@ class _AdFreeCampaignCardState extends State<AdFreeCampaignCard> {
     if (_loading || !_service.canWatchNextAd) return;
     setState(() => _loading = true);
 
-    final earned = await AdManager.instance.requestCampaignRewardedAd();
+    final earned = await AdService.showRewardedAd(
+      kind: AdRewardKind.campaign,
+    );
     if (earned && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

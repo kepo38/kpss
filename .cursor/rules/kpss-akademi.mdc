@@ -7,6 +7,17 @@ alwaysApply: true
 
 Flutter mobil + Django API (`backend/`). Package: `kpss_akademi`.
 
+## Backend / API (URL uydurma)
+
+- Framework: **Django REST** — `backend/content/`
+- Base URL: yalnızca `ApiConfig.baseUrl` (`lib/config/api_config.dart`)
+  - Varsayılan cihaz: `http://192.168.1.109:8000`
+  - Emülatör: `http://10.0.2.2:8000`
+  - PC lokal: `http://127.0.0.1:8000`
+  - Override: `--dart-define=KPSS_API_BASE=...`
+- Prefix: `/api/v1/` — yeni path uydurma; `ApiConfig` + `backend/content/urls.py` kullan
+- Örnek: `/api/v1/catalog/`, `/api/v1/questions/?ids=`, `/api/v1/tests/<id>/questions/`, `/api/v1/questions/<id>/similar/`
+
 ## Klasörler (sadık kal)
 
 - `lib/screens/` — sayfalar
@@ -18,6 +29,23 @@ Flutter mobil + Django API (`backend/`). Package: `kpss_akademi`.
 - `backend/content/` — Django modeller, views, panel, embeddings
 
 Yeni dosyayı bu ağaca koy; rastgele kök klasör açma.
+
+## Model eşlemesi (Django ↔ Flutter)
+
+Mobil JSON alanları serializer camel/Türkçe; Django snake_case. Yeni model yazarken yalnızca ilgili sınıfı oku (`backend/content/models.py` + `lib/models/...`); tüm `backend/` tarama.
+
+| Django | API JSON | Flutter |
+|---|---|---|
+| `Subject.slug/name` | `slug`/`name` | müfredat `KpssSubject` / katalog |
+| `Topic.slug/name` | topic alanları | konu slug/name |
+| `Question.public_id` | `id` | `QuestionModel.id` |
+| `stem` | `soruMetni` | `soruMetni` |
+| `option_*` → map | `siklar` | `siklar` |
+| `correct_option` | `dogruCevap` | `dogruCevap` |
+| `solution` | `cozumMetni` | `cozumMetni` |
+| `TopicTest.public_id` | `id` | `TopicTestModel.id` |
+
+Kaynak gerçeklik: `backend/content/serializers.py` + `lib/models/question_model.dart` / `content_models.dart`.
 
 ## Stack (uydurma)
 
@@ -51,3 +79,9 @@ Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine g�
 - **Kaynak:** Django (`backend/content/`); mobil çekim `QuestionFetchService` (test/id/similar). Katalog hafif; gövde test başında.
 - **Reuse:** `ContentBankService.questionsForTest` / `questionsByIds` / `fetchByIds` — yeni fetch katmanı yazma.
 - **Bellek:** quiz’e tüm havuzu verme; yalnızca o testin soruları. 1000+ soruluk listeyi senkron yükleme.
+
+## Reklam (tek nokta)
+
+- `RewardedAd.load` / interstitial / banner **widget veya buton içine yazılmaz**.
+- SDK: `lib/services/ad_manager.dart`. UI çağrısı: `AdService.showRewardedAd(...)`.
+- Örnek: `AdService.showRewardedAd(kind: AdRewardKind.campaign, onComplete: () { ... });`

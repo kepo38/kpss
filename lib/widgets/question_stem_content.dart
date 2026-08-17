@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_theme.dart';
+import 'cached_remote_image.dart';
 import 'formatted_text.dart';
 
 /// Soru kökünde `[HARITA]` ile görseli metnin ortasına yerleştirir.
@@ -152,38 +153,12 @@ class _QuestionImage extends StatelessWidget {
         constraints: const BoxConstraints(maxHeight: 320),
         child: ColoredBox(
           color: Colors.white,
-          child: Image.network(
-            url,
+          child: CachedRemoteImage(
+            imageUrl: url,
             width: double.infinity,
+            height: 220,
             fit: BoxFit.contain,
             semanticLabel: 'Soru haritası veya görseli',
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return const AspectRatio(
-                aspectRatio: 16 / 7,
-                child: Center(
-                  child: CircularProgressIndicator(color: AppTheme.champagne),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return const AspectRatio(
-                aspectRatio: 16 / 7,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.broken_image_outlined, color: Colors.black45),
-                      SizedBox(height: 6),
-                      Text(
-                        'Soru görseli yüklenemedi',
-                        style: TextStyle(color: Colors.black54, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
           ),
         ),
       ),

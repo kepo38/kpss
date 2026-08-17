@@ -9,6 +9,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
+import '../services/ad_service.dart';
 import '../services/answer_feedback_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
@@ -688,8 +689,9 @@ class _QuizScreenState extends State<QuizScreen>
     }
 
     setState(() => _solutionUnlocking = true);
-    final success = await AdManager.instance.requestSolutionUnlock(
-      _currentQuestion.id,
+    final success = await AdService.showRewardedAd(
+      kind: AdRewardKind.solutionUnlock,
+      questionId: _currentQuestion.id,
     );
 
     if (!mounted) return;

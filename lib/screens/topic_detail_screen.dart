@@ -7,6 +7,7 @@ import '../data/kpss_curriculum.dart';
 import '../models/content_models.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
+import '../services/ad_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
 import '../services/question_fetch_service.dart';
@@ -279,7 +280,9 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
       ),
     );
 
-    final earned = await AdManager.instance.requestDailyTestBonus();
+    final earned = await AdService.showRewardedAd(
+      kind: AdRewardKind.dailyTestBonus,
+    );
     if (dialogNavigator.mounted && dialogNavigator.canPop()) {
       dialogNavigator.pop();
     }

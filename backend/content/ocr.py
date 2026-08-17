@@ -1134,6 +1134,27 @@ def _configure_tesseract() -> None:
         os.environ["TESSDATA_PREFIX"] = str(Path(tessdata).resolve()) + os.sep
 
 
+def _tesseract_user_error(exc: BaseException) -> str:
+    name = type(exc).__name__
+    text = str(exc) or name
+    low = text.casefold()
+    if (
+        "TesseractNotFoundError" in name
+        or "tesseract is not installed" in low
+        or "tesseractnotfound" in low
+    ):
+        return (
+            "Tesseract OCR sunucuda bulunamadı. "
+            "Tesseract kurulumunu ve TESSERACT_CMD ayarını kontrol edin."
+        )
+    if "testdata" in low or "traineddata" in low:
+        return (
+            "Tesseract dil paketi (tessdata) eksik veya hatalı. "
+            "TESSDATA_DIR ayarını kontrol edin."
+        )
+    return f"OCR sırasında hata oluştu: {text}"
+
+
 def _load_image(source: BinaryIO | bytes | Path | str) -> Image.Image:
     if isinstance(source, (str, Path)):
         img = Image.open(source)
@@ -1167,7 +1188,12 @@ def _tesseract_once(img: Image.Image, lang: str, psm: int) -> str:
 def extract_text(source: BinaryIO | bytes | Path | str) -> str:
     """Görselden ham OCR metni; biçimli (markdown) çıktı üretir."""
     _configure_tesseract()
-    img = _load_image(source)
+    try:
+        img = _load_image(source)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(
+            "Görsel açılamadı. Desteklenen bir resim dosyası yükleyin."
+        ) from exc
 
     langs = getattr(settings, "TESSERACT_LANG", "tur") or "tur"
     lang_candidates: list[str] = []
@@ -1183,11 +1209,13 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
     best_score = -1
     best_lang = "tur"
     best_psm = 6
+    last_error: BaseException | None = None
     for lang in lang_candidates:
         for psm in (6, 4, 3):
             try:
                 raw = normalize_turkish_text(_tesseract_once(img, lang, psm))
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
                 continue
             if not raw.strip():
                 continue
@@ -1208,6 +1236,8 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
             break
 
     if not best_raw.strip():
+        if last_error is not None:
+            raise RuntimeError(_tesseract_user_error(last_error)) from last_error
         return best_raw
 
     # En iyi PSM/dil ile kelime kutularından biçim (kalın/italik/altı çizili)
@@ -1531,21 +1561,51 @@ def _parse_inline_options(raw: str) -> dict[str, str]:
 
 def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResult:
     """Görsel → stem + options (yerel Tesseract OCR)."""
+    empty_opts = {k: "" for k in OPTION_KEYS}
     try:
         img_bytes, mime = _read_source_bytes(source)
     except Exception as exc:  # noqa: BLE001
         return OcrQuestionResult(
             stem="",
-            options={k: "" for k in OPTION_KEYS},
+            options=empty_opts,
             raw_text="",
             ok=False,
-            error=str(exc),
+            error=_tesseract_user_error(exc)
+            if "tesseract" in type(exc).__name__.casefold()
+            else "Görsel okunamadı. Geçerli bir resim yükleyin.",
+        )
+
+    if not img_bytes:
+        return OcrQuestionResult(
+            stem="",
+            options=empty_opts,
+            raw_text="",
+            ok=False,
+            error="Boş veya geçersiz görsel yüklendi.",
         )
 
     try:
         raw = extract_text(BytesIO(img_bytes))
     except Exception as exc:  # noqa: BLE001
-        raw = ""
+        return OcrQuestionResult(
+            stem="",
+            options=empty_opts,
+            raw_text="",
+            ok=False,
+            error=_tesseract_user_error(exc),
+        )
+
+    if not (raw or "").strip():
+        return OcrQuestionResult(
+            stem="",
+            options=empty_opts,
+            raw_text="",
+            ok=False,
+            error=(
+                "Görselden metin okunamadı. Daha net bir görsel deneyin "
+                "veya alanları elle doldurun."
+            ),
+        )
 
     stem, options = parse_question_text(raw)
     if _likely_geometry_question(stem, options, raw):

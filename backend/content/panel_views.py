@@ -640,88 +640,141 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
         image = request.FILES.get("image")
         if not image:
             error = "Soru görseli zorunlu."
+            messages.error(
+                request,
+                "Soru görseli yüklenmedi. Lütfen bir görsel seçip tekrar deneyin.",
+            )
         elif not topic_id:
             error = "Ders ve konu seçmelisiniz."
+            messages.error(request, "Ders ve konu seçmeden OCR yapılamaz.")
         else:
             topic = get_object_or_404(Topic, pk=topic_id, is_active=True)
-            img_hash = image_fingerprint(image)
-            if hasattr(image, "seek"):
-                image.seek(0)
-            ocr = ocr_question_image(image)
-            # Dosya pointer OCR sonrası başa
-            if hasattr(image, "seek"):
-                image.seek(0)
-
-            stem = (ocr.stem or "").strip()
-            if not stem:
-                stem = "Aşağıdaki görsele göre cevaplayınız."
-
-            opts = ocr.options
-            option_a = strip_option_emphasis((opts.get("A") or "").strip())
-            option_b = strip_option_emphasis((opts.get("B") or "").strip())
-            option_c = strip_option_emphasis((opts.get("C") or "").strip())
-            option_d = strip_option_emphasis((opts.get("D") or "").strip())
-            option_e = strip_option_emphasis((opts.get("E") or "").strip())
-            figure_svg = _sanitize_figure_svg(
-                getattr(ocr, "figure_svg", "") or ""
-            )
-            correct_option = getattr(ocr, "correct_option", "") or "A"
-            if correct_option not in "ABCDE":
-                correct_option = "A"
-            solution = (getattr(ocr, "solution", "") or "").strip()
-
-            c_hash = content_fingerprint(
-                stem, option_a, option_b, option_c, option_d, option_e
-            )
-            s_hash = stem_fingerprint(stem)
-            dup, match = find_duplicate_question(
-                content_hash=c_hash,
-                stem_hash=s_hash,
-                image_hash=img_hash,
-                require_options=bool(option_a and option_b and option_c),
-            )
-            if dup and not force_duplicate:
-                duplicate = duplicate_payload(dup, match)
-                error = (
-                    "Bu soruyu daha önce yüklediniz. "
-                    "Tüm sorular benzersiz olmalı. "
-                    f"Mevcut kayıt: {duplicate['subject_name']} · "
-                    f"{duplicate['topic_name']} · {duplicate['public_id']}"
-                )
-            else:
-                _store_ocr_draft(
+            try:
+                img_hash = image_fingerprint(image)
+                if hasattr(image, "seek"):
+                    image.seek(0)
+                ocr = ocr_question_image(image)
+            except Exception:  # noqa: BLE001
+                messages.error(
                     request,
-                    topic_id=topic.id,
-                    stem=stem,
-                    options={
-                        "A": option_a,
-                        "B": option_b,
-                        "C": option_c,
-                        "D": option_d,
-                        "E": option_e,
-                    },
-                    figure_svg=figure_svg,
-                    solution=solution,
-                    correct_option=correct_option,
-                    source_image_hash=img_hash,
-                    test_assignment=request.POST.get("test_assignment", "auto"),
+                    "OCR sırasında beklenmeyen bir hata oluştu. "
+                    "Görseli kontrol edip tekrar deneyin.",
                 )
-                if ocr.ok and any(opts.values()):
-                    messages.success(
+                error = "OCR başarısız."
+            else:
+                if hasattr(image, "seek"):
+                    image.seek(0)
+
+                hard_fail = (not ocr.ok) and not (
+                    (ocr.stem or "").strip() or (ocr.raw_text or "").strip()
+                )
+                if hard_fail:
+                    messages.error(
                         request,
-                        "Görselden metin okundu — kontrol edip Kaydet'e basın.",
+                        ocr.error
+                        or "Görselden metin okunamadı. "
+                        "Tesseract kurulumunu veya görsel kalitesini kontrol edin.",
                     )
-                elif ocr.raw_text:
-                    messages.warning(
-                        request,
-                        "Kısmi okuma — alanları düzenleyip Kaydet'e basın.",
-                    )
+                    error = ocr.error or "Görselden metin okunamadı."
                 else:
-                    messages.warning(
-                        request,
-                        "Metin okunamadı — alanları elle doldurup Kaydet'e basın.",
+                    stem = (ocr.stem or "").strip()
+                    if not stem:
+                        stem = "Aşağıdaki görsele göre cevaplayınız."
+
+                    opts = ocr.options
+                    option_a = strip_option_emphasis(
+                        (opts.get("A") or "").strip()
                     )
-                return redirect("panel_question_new", topic_id=topic.id)
+                    option_b = strip_option_emphasis(
+                        (opts.get("B") or "").strip()
+                    )
+                    option_c = strip_option_emphasis(
+                        (opts.get("C") or "").strip()
+                    )
+                    option_d = strip_option_emphasis(
+                        (opts.get("D") or "").strip()
+                    )
+                    option_e = strip_option_emphasis(
+                        (opts.get("E") or "").strip()
+                    )
+                    figure_svg = _sanitize_figure_svg(
+                        getattr(ocr, "figure_svg", "") or ""
+                    )
+                    correct_option = (
+                        getattr(ocr, "correct_option", "") or "A"
+                    )
+                    if correct_option not in "ABCDE":
+                        correct_option = "A"
+                    solution = (getattr(ocr, "solution", "") or "").strip()
+
+                    c_hash = content_fingerprint(
+                        stem,
+                        option_a,
+                        option_b,
+                        option_c,
+                        option_d,
+                        option_e,
+                    )
+                    s_hash = stem_fingerprint(stem)
+                    dup, match = find_duplicate_question(
+                        content_hash=c_hash,
+                        stem_hash=s_hash,
+                        image_hash=img_hash,
+                        require_options=bool(
+                            option_a and option_b and option_c
+                        ),
+                    )
+                    if dup and not force_duplicate:
+                        duplicate = duplicate_payload(dup, match)
+                        error = (
+                            "Bu soruyu daha önce yüklediniz. "
+                            "Tüm sorular benzersiz olmalı. "
+                            f"Mevcut kayıt: {duplicate['subject_name']} · "
+                            f"{duplicate['topic_name']} · "
+                            f"{duplicate['public_id']}"
+                        )
+                        messages.error(request, error)
+                    else:
+                        _store_ocr_draft(
+                            request,
+                            topic_id=topic.id,
+                            stem=stem,
+                            options={
+                                "A": option_a,
+                                "B": option_b,
+                                "C": option_c,
+                                "D": option_d,
+                                "E": option_e,
+                            },
+                            figure_svg=figure_svg,
+                            solution=solution,
+                            correct_option=correct_option,
+                            source_image_hash=img_hash,
+                            test_assignment=request.POST.get(
+                                "test_assignment", "auto"
+                            ),
+                        )
+                        if ocr.ok and any(opts.values()):
+                            messages.success(
+                                request,
+                                "Görselden metin okundu — "
+                                "kontrol edip Kaydet'e basın.",
+                            )
+                        elif ocr.raw_text:
+                            messages.warning(
+                                request,
+                                "Kısmi okuma — alanları düzenleyip "
+                                "Kaydet'e basın.",
+                            )
+                        else:
+                            messages.warning(
+                                request,
+                                "Metin okunamadı — alanları elle doldurup "
+                                "Kaydet'e basın.",
+                            )
+                        return redirect(
+                            "panel_question_new", topic_id=topic.id
+                        )
 
     return render(
         request,
@@ -774,15 +827,59 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
     """Görsel yükle → JSON stem + A–E (doğru cevap yok)."""
     image = request.FILES.get("image")
     if not image:
-        return JsonResponse({"ok": False, "error": "Görsel gerekli."}, status=400)
+        messages.error(
+            request,
+            "Soru görseli yüklenmedi. Lütfen bir görsel seçip tekrar deneyin.",
+        )
+        return JsonResponse(
+            {"ok": False, "error": "Görsel gerekli."},
+            status=400,
+        )
 
     exclude_raw = request.POST.get("exclude_question_id") or ""
     exclude_pk = int(exclude_raw) if exclude_raw.isdigit() else None
 
-    img_hash = image_fingerprint(image)
-    if hasattr(image, "seek"):
-        image.seek(0)
-    result = ocr_question_image(image)
+    try:
+        img_hash = image_fingerprint(image)
+        if hasattr(image, "seek"):
+            image.seek(0)
+        result = ocr_question_image(image)
+    except Exception:  # noqa: BLE001
+        messages.error(
+            request,
+            "OCR sırasında beklenmeyen bir hata oluştu. "
+            "Görseli kontrol edip tekrar deneyin.",
+        )
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "OCR başarısız.",
+                "stem": "",
+                "options": {k: "" for k in "ABCDE"},
+            },
+            status=500,
+        )
+
+    hard_fail = (not result.ok) and not (
+        (result.stem or "").strip() or (result.raw_text or "").strip()
+    )
+    if hard_fail:
+        err = result.error or "Görselden metin okunamadı."
+        messages.error(request, err)
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": err,
+                "stem": "",
+                "options": result.options or {k: "" for k in "ABCDE"},
+                "raw_text": result.raw_text or "",
+                "engine": getattr(result, "engine", "tesseract"),
+            },
+            status=422,
+            json_dumps_params={"ensure_ascii": False},
+            charset="utf-8",
+        )
+
     opts = result.options or {}
     c_hash = content_fingerprint(
         result.stem or "",
