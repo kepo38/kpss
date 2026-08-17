@@ -1,27 +1,69 @@
 {% extends "panel/base.html" %}
 {% load static %}
 {% block content %}
-<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Haritalar</div>
-<div class="toolbar" style="margin-bottom:18px;">
-  <div>
-    <h1 style="margin:0;">Haritalar</h1>
-    <p class="lead" style="margin:8px 0 0;">Soru oluştururken kullanılabilecek hazır Türkiye harita şablonları.</p>
+<header class="page-header">
+  <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Haritalar</div>
+  <h1>Haritalar</h1>
+  <p class="lead">Soru oluştururken kullanılabilecek Türkiye harita şablonları. Sistem haritaları silinemez; kendi yüklediklerinizi ekleyip silebilirsiniz.</p>
+</header>
+
+<div class="panel-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Yeni harita ekle</h2>
+      <p class="media-hint">PNG veya JPG yükleyin. Koordinatlı türde isteğe bağlı düzenleyici görseli ekleyebilirsiniz.</p>
+    </div>
   </div>
+  <form class="form map-upload-form" method="post" enctype="multipart/form-data" action="{% url 'panel_maps' %}">
+    {% csrf_token %}
+    <label>Başlık
+      <input type="text" name="title" maxlength="160" required placeholder="Örn. Türkiye illeri">
+    </label>
+    <label>Tür
+      <select name="kind" required>
+        {% for value, label in kind_choices %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Açıklama
+      <input type="text" name="description" maxlength="255" placeholder="Kısa açıklama (opsiyonel)">
+    </label>
+    <label>Harita görseli
+      <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required>
+    </label>
+    <label>Düzenleyici görseli (opsiyonel)
+      <input type="file" name="editor_image" accept="image/png,image/jpeg,image/webp">
+    </label>
+    <button class="btn btn-primary" type="submit">Haritayı kaydet</button>
+  </form>
 </div>
+
 <div class="grid">
   {% for m in maps %}
   <article class="card map-card">
     <div class="map-card-preview">
-      <img src="{% static m.asset %}" alt="{{ m.title }}" loading="lazy">
+      {% if m.preview_is_static %}
+      <img src="{% static m.preview %}" alt="{{ m.title }}" loading="lazy">
+      {% else %}
+      <img src="{{ m.preview }}" alt="{{ m.title }}" loading="lazy">
+      {% endif %}
     </div>
     <strong>{{ m.title }}</strong>
     <div class="meta">
       {% if m.kind == "marker" %}Koordinatlı işaret{% else %}Tematik harita{% endif %}
+      {% if m.builtin %} · Sistem{% endif %}
     </div>
     {% if m.description %}
-    <p class="lead" style="margin:8px 0 0;font-size:0.92rem;">{{ m.description }}</p>
+    <p class="map-card-desc">{{ m.description }}</p>
     {% endif %}
-    <code style="opacity:.7;font-size:0.82rem;">{{ m.id }}</code>
+    <code class="map-card-id">{{ m.id }}</code>
+    {% if m.can_delete %}
+    <form method="post" action="{% url 'panel_map_delete' m.id %}" onsubmit="return confirm('Bu harita silinsin mi?');" class="map-card-actions">
+      {% csrf_token %}
+      <button class="btn btn-danger" type="submit">Sil</button>
+    </form>
+    {% endif %}
   </article>
   {% empty %}
   <div class="empty">Henüz kayıtlı harita yok.</div>

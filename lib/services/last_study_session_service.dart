@@ -168,12 +168,14 @@ class LastStudySessionService extends ChangeNotifier {
 
   LastStudySession? _session;
   bool _initialized = false;
+  /// clearQuizProgress sonrası geç gelen recordQuizProgress yazmalarını iptal eder.
+  int _quizWriteEpoch = 0;
 
   bool get isInitialized => _initialized;
 
-  /// Yalnızca yarım kalan test veya son çalışılan konu — defter/akıllı tekrar değil.
+  /// Yalnızca yarım kalan test — konu gezintisi devam kartına yazılmaz.
   static bool isContinuableKind(LastStudyKind kind) =>
-      kind == LastStudyKind.quiz || kind == LastStudyKind.topic;
+      kind == LastStudyKind.quiz;
 
   LastStudySession? get session {
     final s = _session;
@@ -189,21 +191,16 @@ class LastStudySessionService extends ChangeNotifier {
         _session = LastStudySession.fromJson(
           Map<String, dynamic>.from(jsonDecode(raw) as Map),
         );
-        if (_session != null && !_session!.isValid) {
+        if (_session != null &&
+            (!_session!.isValid || !isContinuableKind(_session!.kind))) {
           _session = null;
-        } else if (_session != null &&
-            !isContinuableKind(_session!.kind)) {
-          _session = null;
+          await prefs.remove(storageKey);
         }
       } catch (e) {
         debugPrint('LastStudySession load error: $e');
         _session = null;
+        await prefs.remove(storageKey);
       }
-    }
-
-    if (_session == null) {
-      _session = _seedFromLatestAttempt();
-      if (_session != null) await _persist();
     }
 
     _initialized = true;
@@ -215,24 +212,7 @@ class LastStudySessionService extends ChangeNotifier {
     required String subjectId,
     required String topicId,
   }) async {
-    // Aktif yarım test varsa onu ezme.
-    if (_session?.kind == LastStudyKind.quiz && _session!.isValid) return;
-
-    final subject = KpssCurriculum.findSubject(kpssType, subjectId);
-    final topic = KpssCurriculum.findTopic(kpssType, topicId);
-    if (subject == null || topic == null) return;
-
-    await _save(
-      LastStudySession(
-        kind: LastStudyKind.topic,
-        kpssType: kpssType,
-        subjectId: subjectId,
-        topicId: topicId,
-        title: topic.name,
-        subtitle: subject.name,
-        updatedAt: DateTime.now(),
-      ),
-    );
+    // Konu açmak devam kartına yazılmaz; yalnızca yarım test kaydı tutulur.
   }
 
   Future<void> recordSmartReview(KpssType kpssType) async {
@@ -254,48 +234,52 @@ class LastStudySessionService extends ChangeNotifier {
   }) async {
     if (questionIds.isEmpty || answers.length != questionIds.length) return;
 
+    final epoch = _quizWriteEpoch;
     final subject = KpssCurriculum.findSubject(meta.kpssType, meta.subjectId);
     final topic = KpssCurriculum.findTopic(meta.kpssType, meta.topicId);
     final test = ContentBankService.instance.testById(meta.testId);
     final safeIndex = currentIndex.clamp(0, questionIds.length - 1);
 
-    await _save(
-      LastStudySession(
-        kind: LastStudyKind.quiz,
-        kpssType: meta.kpssType,
-        subjectId: meta.subjectId,
-        topicId: meta.topicId,
-        testId: meta.testId,
-        title: test?.title ?? title,
-        subtitle: subject != null && topic != null
-            ? '${subject.name} · ${topic.name}'
-            : topic?.name ?? subject?.name,
-        updatedAt: DateTime.now(),
-        questionIds: List<String>.from(questionIds),
-        answers: List<String?>.from(answers),
-        currentIndex: safeIndex,
-        timeLimitMinutes: timeLimitMinutes,
-        elapsedSeconds: elapsed.inSeconds.clamp(0, 7 * 24 * 3600),
-      ),
+    final next = LastStudySession(
+      kind: LastStudyKind.quiz,
+      kpssType: meta.kpssType,
+      subjectId: meta.subjectId,
+      topicId: meta.topicId,
+      testId: meta.testId,
+      title: test?.title ?? title,
+      subtitle: subject != null && topic != null
+          ? '${subject.name} · ${topic.name}'
+          : topic?.name ?? subject?.name,
+      updatedAt: DateTime.now(),
+      questionIds: List<String>.from(questionIds),
+      answers: List<String?>.from(answers),
+      currentIndex: safeIndex,
+      timeLimitMinutes: timeLimitMinutes,
+      elapsedSeconds: elapsed.inSeconds.clamp(0, 7 * 24 * 3600),
     );
+    // Test bitince clearQuizProgress çağrıldıysa bu yazmayı yok say.
+    if (epoch != _quizWriteEpoch) return;
+    _session = next;
+    await _persist();
+    if (epoch != _quizWriteEpoch) {
+      // Clear yarışta kazandı; quiz'i geri yazmış olabiliriz.
+      if (_session?.kind == LastStudyKind.quiz) {
+        _session = null;
+        await _persist();
+        notifyListeners();
+      }
+      return;
+    }
+    notifyListeners();
   }
 
+  /// Tamamlanan quiz'i (ve varsa devam kartını) tamamen kaldırır.
   Future<void> clearQuizProgress() async {
-    if (_session?.kind != LastStudyKind.quiz) return;
-    final s = _session!;
-    _session = null;
-    await _persist();
-    notifyListeners();
-    if (s.subjectId != null && s.topicId != null) {
-      await recordTopic(
-        kpssType: s.kpssType,
-        subjectId: s.subjectId!,
-        topicId: s.topicId!,
-      );
-    }
+    await clear();
   }
 
   Future<void> clear() async {
+    _quizWriteEpoch++;
     _session = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(storageKey);
@@ -314,12 +298,6 @@ class LastStudySessionService extends ChangeNotifier {
     return '${when.day}.${when.month}.${when.year}';
   }
 
-  Future<void> _save(LastStudySession next) async {
-    _session = next;
-    await _persist();
-    notifyListeners();
-  }
-
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
     if (_session == null) {
@@ -327,33 +305,5 @@ class LastStudySessionService extends ChangeNotifier {
       return;
     }
     await prefs.setString(storageKey, jsonEncode(_session!.toJson()));
-  }
-
-  LastStudySession? _seedFromLatestAttempt() {
-    final attempts = [
-      for (final type in KpssType.values)
-        ...ContentBankService.instance.attemptsForType(type),
-    ];
-    if (attempts.isEmpty) return null;
-
-    attempts.sort((a, b) => b.completedAt.compareTo(a.completedAt));
-    final latest = attempts.first;
-    final subjectId =
-        KpssCurriculum.subjectIdForTopic(latest.kpssType, latest.topicId);
-    final topic = KpssCurriculum.findTopic(latest.kpssType, latest.topicId);
-    final subject = subjectId == null
-        ? null
-        : KpssCurriculum.findSubject(latest.kpssType, subjectId);
-    if (subjectId == null || topic == null || subject == null) return null;
-
-    return LastStudySession(
-      kind: LastStudyKind.topic,
-      kpssType: latest.kpssType,
-      subjectId: subjectId,
-      topicId: latest.topicId,
-      title: topic.name,
-      subtitle: subject.name,
-      updatedAt: latest.completedAt,
-    );
   }
 }

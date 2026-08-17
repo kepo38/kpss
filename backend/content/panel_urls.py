@@ -5,7 +5,22 @@ from . import panel_views
 urlpatterns = [
     path("", panel_views.panel_home, name="panel_home"),
     path("kalite/", panel_views.panel_quality, name="panel_quality"),
+    path(
+        "incelenecek-sorular/",
+        panel_views.panel_error_reports,
+        name="panel_error_reports",
+    ),
+    path(
+        "hata-bildirimi/<int:report_id>/durum/",
+        panel_views.panel_error_report_status,
+        name="panel_error_report_status",
+    ),
     path("haritalar/", panel_views.panel_maps, name="panel_maps"),
+    path(
+        "haritalar/<slug:slug>/sil/",
+        panel_views.panel_map_delete,
+        name="panel_map_delete",
+    ),
     path(
         "soru/hizli/",
         panel_views.panel_quick_question,
@@ -47,7 +62,7 @@ urlpatterns = [
         name="panel_topic_edit",
     ),
     path(
-        "ders/<int:subject_id>/konu/<int:topic_id>/sirala/",
+        "ders/<int:subject_id>/konular/sirala/",
         panel_views.panel_topic_reorder,
         name="panel_topic_reorder",
     ),

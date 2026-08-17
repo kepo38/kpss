@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
@@ -11,6 +10,7 @@ import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
 import '../services/question_fetch_service.dart';
+import '../services/question_attempt_service.dart';
 import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
@@ -46,13 +46,6 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
   void initState() {
     super.initState();
     _bank.addListener(_onBankChanged);
-    unawaited(
-      LastStudySessionService.instance.recordTopic(
-        kpssType: widget.kpssType,
-        subjectId: widget.subjectId,
-        topicId: widget.topicId,
-      ),
-    );
     unawaited(_refreshContent(showSuccess: false));
   }
 
@@ -434,6 +427,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
             title: test.title,
             questions: questions,
             timeLimitMinutes: test.timeLimitMinutes,
+            statisticsTestId: test.id,
             initialIndex: resumeSameTest ? saved.currentIndex : 0,
             initialAnswers: resumeSameTest ? saved.answers : null,
             initialElapsed: resumeSameTest
@@ -450,6 +444,13 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
       );
       if (result == null || !result.completed) return;
 
+      unawaited(
+        QuestionAttemptService.instance.submit(
+          testId: test.id,
+          questionIds: result.questionIds,
+          selectedAnswers: result.selectedAnswers,
+        ),
+      );
       await _bank.recordAttempt(
         TestAttemptModel(
           id: 'att_${DateTime.now().millisecondsSinceEpoch}',
@@ -594,6 +595,14 @@ class _TestRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final metaParts = <String>[
+      '${ContentBankService.instance.catalogQuestionCount(test)} soru',
+      if (stats.attemptCount > 0) ...[
+        '${stats.attemptCount} deneme',
+        'en iyi %${(stats.bestAccuracy * 100).round()}',
+      ],
+    ];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 2),
@@ -602,54 +611,108 @@ class _TestRow extends StatelessWidget {
           bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  test.title,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${ContentBankService.instance.catalogQuestionCount(test)} soru'
-                  '${stats.attemptCount > 0 ? ' · ${stats.attemptCount} deneme · en iyi %${(stats.bestAccuracy * 100).round()}' : ''}'
-                  '${quotaHint ? (canWatchAdForBonus ? ' · Günlük hak doldu — reklam veya Premium' : ' · Günlük hak doldu') : ''}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: quotaHint
-                        ? AppTheme.champagne.withValues(alpha: 0.85)
-                        : Colors.white.withValues(alpha: 0.45),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 72,
-            height: 36,
-            child: TextButton(
-              onPressed: busy ? null : onStart,
-              style: TextButton.styleFrom(
-                foregroundColor: AppTheme.neonEdge,
-              ),
-              child: busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppTheme.neonEdge,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      test.title,
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
-                    )
-                  : const Text('BAŞLA'),
+                    ),
+                    if (metaParts.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        metaParts.join(' · '),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.45),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 72,
+                height: 36,
+                child: TextButton(
+                  onPressed: busy ? null : onStart,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.neonEdge,
+                  ),
+                  child: busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.neonEdge,
+                          ),
+                        )
+                      : const Text('BAŞLA'),
+                ),
+              ),
+            ],
+          ),
+          if (quotaHint) ...[
+            const SizedBox(height: 10),
+            _DailyQuotaBanner(canWatchAdForBonus: canWatchAdForBonus),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Günlük test hakkı dolunca satır altında belirgin uyarı.
+class _DailyQuotaBanner extends StatelessWidget {
+  final bool canWatchAdForBonus;
+
+  const _DailyQuotaBanner({required this.canWatchAdForBonus});
+
+  @override
+  Widget build(BuildContext context) {
+    const amber = Color(0xFFFBBF24);
+    final message = canWatchAdForBonus
+        ? 'Günlük hak doldu — reklam izleyerek veya Premium ile devam edebilirsin.'
+        : 'Günlük test hakkın doldu.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: amber.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: amber.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: amber.withValues(alpha: 0.95),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: Color.lerp(Colors.white, amber, 0.35),
+              ),
             ),
           ),
         ],

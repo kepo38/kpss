@@ -1,5 +1,5 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import IntegrityError, models, transaction
 
 
 class Subject(models.Model):
@@ -55,10 +55,50 @@ class Topic(models.Model):
 from .map_catalog import map_template_choices
 
 
+class MapTemplate(models.Model):
+    """Panelden yüklenen özel harita şablonu."""
+
+    KIND_MARKER = "marker"
+    KIND_STATIC = "static"
+    KIND_CHOICES = [
+        (KIND_MARKER, "Koordinatlı işaret"),
+        (KIND_STATIC, "Tematik harita"),
+    ]
+
+    slug = models.SlugField(unique=True, max_length=64)
+    title = models.CharField(max_length=160)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_STATIC)
+    description = models.CharField(max_length=255, blank=True)
+    image = models.ImageField(upload_to="maps/")
+    editor_image = models.ImageField(
+        upload_to="maps/editor/",
+        blank=True,
+        null=True,
+        help_text="Koordinatlı düzenleyici görseli; boşsa ana görsel kullanılır.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["title"]
+        verbose_name = "Harita şablonu"
+        verbose_name_plural = "Harita şablonları"
+
+    def __str__(self) -> str:
+        return self.title
+
+
 class Question(models.Model):
     """Soru bankası kaydı — metin, şıklar, görsel."""
 
-    MAP_TEMPLATE_CHOICES = map_template_choices()
+    DIFFICULTY_EASY = "easy"
+    DIFFICULTY_MEDIUM = "medium"
+    DIFFICULTY_HARD = "hard"
+    DIFFICULTY_CHOICES = [
+        (DIFFICULTY_EASY, "Kolay"),
+        (DIFFICULTY_MEDIUM, "Orta"),
+        (DIFFICULTY_HARD, "Zor"),
+    ]
+    DIFFICULTY_MIN_ATTEMPTS = 1000
 
     public_id = models.CharField(
         max_length=64,
@@ -79,9 +119,9 @@ class Question(models.Model):
         help_text="Geometri soruları için SVG çizim kodu.",
     )
     map_template = models.CharField(
-        max_length=32,
+        max_length=64,
         blank=True,
-        choices=MAP_TEMPLATE_CHOICES,
+        choices=map_template_choices,
         default="",
         help_text="Koordinatlı harita sorusu şablonu.",
     )
@@ -102,6 +142,22 @@ class Question(models.Model):
     )
     solution = models.TextField(blank=True, verbose_name="Çözüm")
     is_published = models.BooleanField(default=False)
+    difficulty = models.CharField(
+        max_length=12,
+        choices=DIFFICULTY_CHOICES,
+        default=DIFFICULTY_MEDIUM,
+        db_index=True,
+        verbose_name="Zorluk",
+    )
+    attempt_count = models.PositiveIntegerField(default=0, editable=False)
+    correct_count = models.PositiveIntegerField(default=0, editable=False)
+    wrong_count = models.PositiveIntegerField(default=0, editable=False)
+    blank_count = models.PositiveIntegerField(default=0, editable=False)
+    option_a_count = models.PositiveIntegerField(default=0, editable=False)
+    option_b_count = models.PositiveIntegerField(default=0, editable=False)
+    option_c_count = models.PositiveIntegerField(default=0, editable=False)
+    option_d_count = models.PositiveIntegerField(default=0, editable=False)
+    option_e_count = models.PositiveIntegerField(default=0, editable=False)
     osym_sordu = models.BooleanField(
         default=False,
         verbose_name="ÖSYM sordu",
@@ -133,6 +189,12 @@ class Question(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
+        indexes = [
+            models.Index(
+                fields=["topic", "difficulty", "is_published"],
+                name="question_topic_difficulty_idx",
+            ),
+        ]
         verbose_name = "Soru"
         verbose_name_plural = "Sorular"
 
@@ -162,6 +224,140 @@ class Question(models.Model):
             self.map_template,
             self.map_markers,
         )
+
+    @property
+    def correct_rate(self) -> float | None:
+        if not self.attempt_count:
+            return None
+        return self.correct_count / self.attempt_count
+
+    @property
+    def correct_percentage(self) -> float | None:
+        rate = self.correct_rate
+        return round(rate * 100, 1) if rate is not None else None
+
+    @property
+    def difficulty_visible(self) -> bool:
+        return self.attempt_count >= self.DIFFICULTY_MIN_ATTEMPTS
+
+
+class QuestionAttempt(models.Model):
+    """Bir adayın soruya verdiği ilk tamamlanmış cevap."""
+
+    OUTCOME_CORRECT = "correct"
+    OUTCOME_WRONG = "wrong"
+    OUTCOME_BLANK = "blank"
+    OUTCOME_CHOICES = [
+        (OUTCOME_CORRECT, "Doğru"),
+        (OUTCOME_WRONG, "Yanlış"),
+        (OUTCOME_BLANK, "Boş"),
+    ]
+
+    question = models.ForeignKey(
+        Question, on_delete=models.CASCADE, related_name="attempts"
+    )
+    user = models.ForeignKey(
+        "AppUser", on_delete=models.CASCADE, related_name="question_attempts"
+    )
+    outcome = models.CharField(max_length=8, choices=OUTCOME_CHOICES)
+    selected_option = models.CharField(
+        max_length=1,
+        choices=[(choice, choice) for choice in "ABCDE"],
+        blank=True,
+        default="",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question", "user"],
+                name="unique_question_attempt_per_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["question", "outcome"], name="attempt_outcome_idx"),
+        ]
+
+    @classmethod
+    def record_first_answer(
+        cls,
+        *,
+        question: Question,
+        user,
+        outcome: str,
+        selected_option: str = "",
+    ) -> bool:
+        """Record once per user/question and update its aggregate counters."""
+        if outcome not in {
+            cls.OUTCOME_CORRECT,
+            cls.OUTCOME_WRONG,
+            cls.OUTCOME_BLANK,
+        }:
+            raise ValueError("Geçersiz cevap sonucu.")
+        selected_option = selected_option.strip().upper()
+        if selected_option not in {"", "A", "B", "C", "D", "E"}:
+            raise ValueError("Geçersiz şık.")
+        if outcome == cls.OUTCOME_BLANK and selected_option:
+            raise ValueError("Boş cevap için şık gönderilemez.")
+        if outcome != cls.OUTCOME_BLANK and not selected_option:
+            raise ValueError("Cevap sonucu için şık gerekli.")
+
+        with transaction.atomic():
+            locked_question = Question.objects.select_for_update().get(pk=question.pk)
+            try:
+                cls.objects.create(
+                    question=locked_question,
+                    user=user,
+                    outcome=outcome,
+                    selected_option=selected_option,
+                )
+            except IntegrityError:
+                return False
+
+            locked_question.attempt_count += 1
+            if outcome == cls.OUTCOME_CORRECT:
+                locked_question.correct_count += 1
+            elif outcome == cls.OUTCOME_WRONG:
+                locked_question.wrong_count += 1
+            else:
+                locked_question.blank_count += 1
+            if selected_option:
+                option_field = f"option_{selected_option.lower()}_count"
+                setattr(
+                    locked_question,
+                    option_field,
+                    getattr(locked_question, option_field) + 1,
+                )
+
+            if locked_question.difficulty_visible:
+                correct_rate = locked_question.correct_count / locked_question.attempt_count
+                non_correct_rate = (
+                    locked_question.wrong_count + locked_question.blank_count
+                ) / locked_question.attempt_count
+                if correct_rate >= 0.80:
+                    locked_question.difficulty = Question.DIFFICULTY_EASY
+                elif non_correct_rate >= 0.70:
+                    locked_question.difficulty = Question.DIFFICULTY_HARD
+                else:
+                    locked_question.difficulty = Question.DIFFICULTY_MEDIUM
+
+            locked_question.save(
+                update_fields=[
+                    "attempt_count",
+                    "correct_count",
+                    "wrong_count",
+                    "blank_count",
+                    "option_a_count",
+                    "option_b_count",
+                    "option_c_count",
+                    "option_d_count",
+                    "option_e_count",
+                    "difficulty",
+                    "updated_at",
+                ]
+            )
+        return True
 
 
 class TopicTest(models.Model):
@@ -478,6 +674,71 @@ class QuestionRating(models.Model):
 
     def __str__(self) -> str:
         return f"{self.question.public_id} · {self.user} · {self.stars}★"
+
+
+ERROR_REPORT_CATEGORY_CHOICES = [
+    ("wrong_answer", "Cevap anahtarı yanlış"),
+    ("outdated", "Soru güncel değil"),
+    ("typo", "Yazım / ifade hatası"),
+    ("missing_content", "Eksik görsel / şekil"),
+    ("other", "Diğer"),
+]
+
+ERROR_REPORT_STATUS_CHOICES = [
+    ("open", "İncelenecek"),
+    ("reviewed", "İncelendi"),
+    ("resolved", "Çözüldü"),
+    ("dismissed", "Reddedildi"),
+]
+
+
+class QuestionErrorReport(models.Model):
+    """Öğrencinin soru hatası bildirimi — admin inceleme havuzu."""
+
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="error_reports",
+        verbose_name="Soru",
+    )
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="question_error_reports",
+        verbose_name="Öğrenci",
+    )
+    category = models.CharField(
+        max_length=32,
+        choices=ERROR_REPORT_CATEGORY_CHOICES,
+        verbose_name="Bildirim türü",
+    )
+    note = models.TextField(blank=True, verbose_name="Not")
+    status = models.CharField(
+        max_length=16,
+        choices=ERROR_REPORT_STATUS_CHOICES,
+        default="open",
+        verbose_name="Durum",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Bildirildi")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Güncelleme")
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question", "user"],
+                name="unique_question_error_report_per_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="qerr_status_created"),
+            models.Index(fields=["question", "status"], name="qerr_question_status"),
+        ]
+        verbose_name = "Soru hata bildirimi"
+        verbose_name_plural = "Soru hata bildirimleri"
+
+    def __str__(self) -> str:
+        return f"{self.question.public_id} · {self.get_category_display()} · {self.status}"
 
 
 class UserMessage(models.Model):

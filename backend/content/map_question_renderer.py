@@ -252,7 +252,10 @@ def _load_template_image(template: str) -> Image.Image:
 
         raise ValidationError("Desteklenmeyen harita şablonu.")
 
-    asset_path = finders.find(entry["asset"])
+    if entry.get("source") == "media":
+        asset_path = entry.get("path") or entry.get("asset")
+    else:
+        asset_path = finders.find(entry["asset"])
 
     if not asset_path:
 

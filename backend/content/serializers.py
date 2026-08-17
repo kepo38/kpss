@@ -43,6 +43,12 @@ class QuestionSerializer(serializers.ModelSerializer):
     cozumMetni = serializers.CharField(source="solution")
     guncellenmeTarihi = serializers.DateTimeField(source="updated_at")
     osymSordu = serializers.BooleanField(source="osym_sordu")
+    difficulty = serializers.CharField()
+    attemptCount = serializers.IntegerField(source="attempt_count")
+    correctRate = serializers.SerializerMethodField()
+    difficultyVisible = serializers.BooleanField(source="difficulty_visible")
+    qualityScore = serializers.SerializerMethodField()
+    ratingCount = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
@@ -59,6 +65,12 @@ class QuestionSerializer(serializers.ModelSerializer):
             "cozumMetni",
             "guncellenmeTarihi",
             "osymSordu",
+            "difficulty",
+            "attemptCount",
+            "correctRate",
+            "difficultyVisible",
+            "qualityScore",
+            "ratingCount",
         )
 
     def get_siklar(self, obj: Question) -> dict:
@@ -74,6 +86,19 @@ class QuestionSerializer(serializers.ModelSerializer):
         ts = int(obj.updated_at.timestamp()) if obj.updated_at else 0
         sep = "&" if "?" in url else "?"
         return f"{url}{sep}v={ts}"
+
+    def get_correctRate(self, obj: Question) -> float | None:
+        rate = obj.correct_rate
+        return round(rate, 4) if rate is not None else None
+
+    def get_qualityScore(self, obj: Question) -> float | None:
+        from django.db.models import Avg
+
+        value = obj.ratings.aggregate(value=Avg("stars"))["value"]
+        return round(float(value), 2) if value is not None else None
+
+    def get_ratingCount(self, obj: Question) -> int:
+        return obj.ratings.count()
 
 
 class TopicTestSerializer(serializers.ModelSerializer):

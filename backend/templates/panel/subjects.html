@@ -1,18 +1,9 @@
 {% extends "panel/base.html" %}
 {% block content %}
-<div class="crumb">İçerik paneli</div>
-<div class="toolbar" style="margin-bottom:18px;">
-  <div>
-    <h1 style="margin:0;">Dersler</h1>
-    <p class="lead" style="margin:8px 0 0;">Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.</p>
-  </div>
-  <div class="toolbar">
-    <a class="btn btn-ghost" href="{% url 'panel_maps' %}">Haritalar</a>
-    <a class="btn btn-ghost" href="{% url 'panel_quality' %}">Soru kalitesi</a>
-    <a class="btn btn-primary" href="{% url 'panel_manual_question' %}">Manuel soru ekle</a>
-    <a class="btn btn-ghost" href="{% url 'panel_quick_question' %}">Görselden soru ekle</a>
-  </div>
-</div>
+<header class="page-header">
+  <h1>Dersler</h1>
+  <p class="lead">Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.</p>
+</header>
 <div class="grid">
   {% for s in subjects %}
   <a class="card" href="{% url 'panel_subject' s.id %}">

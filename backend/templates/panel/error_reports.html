@@ -1,0 +1,108 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<header class="page-header">
+  <div class="crumb">
+    <a href="{% url 'panel_home' %}">Dersler</a> / İncelenecek sorular
+  </div>
+  <h1>İncelenecek sorular</h1>
+  <p class="lead">Öğrencilerin “Soruda hata bildir” ile gönderdiği bildirimler. Açık: <strong>{{ open_count }}</strong></p>
+</header>
+
+<div class="panel-card quality-card">
+
+  <form method="get" class="quality-filters">
+    <label>Durum
+      <select name="status">
+        <option value="open" {% if selected_status == 'open' %}selected{% endif %}>İncelenecek</option>
+        <option value="all" {% if selected_status == 'all' %}selected{% endif %}>Tümü</option>
+        {% for value, label in status_choices %}
+          {% if value != 'open' %}
+          <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </label>
+    <label>Tür
+      <select name="category">
+        <option value="">Tüm türler</option>
+        {% for value, label in category_choices %}
+        <option value="{{ value }}" {% if selected_category == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Ders
+      <select name="subject">
+        <option value="">Tüm dersler</option>
+        {% for subject in subjects %}
+        <option value="{{ subject.id }}" {% if selected_subject_id == subject.id %}selected{% endif %}>{{ subject.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Konu
+      <select name="topic">
+        <option value="">Tüm konular</option>
+        {% for topic in topics %}
+        <option value="{{ topic.id }}" {% if selected_topic_id == topic.id %}selected{% endif %}>{{ topic.subject.name }} · {{ topic.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">Filtrele</button>
+  </form>
+</div>
+
+<div class="panel-card quality-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Bildirimler</h2>
+      <p class="media-hint">{{ report_count }} kayıt</p>
+    </div>
+  </div>
+  <div class="list">
+    {% for r in reports %}
+    <div class="row">
+      <div class="name">
+        <a href="{% url 'panel_question_edit' r.question.topic_id r.question.id %}">{{ r.question.public_id }}</a>
+        <div class="hint">{{ r.question.topic.subject.name }} · {{ r.question.topic.name }}</div>
+        <div class="hint">{{ r.question.stem|truncatechars:100 }}</div>
+        <div class="hint question-meta">
+          {{ r.get_category_display }} · {{ r.user.display_name|default:r.user.email }}
+          · {{ r.created_at|date:"d.m.Y H:i" }}
+          {% if r.note %} · Not: {{ r.note|truncatechars:80 }}{% endif %}
+        </div>
+      </div>
+      {% if r.status == 'open' %}<span class="badge off">İncelenecek</span>
+      {% elif r.status == 'resolved' %}<span class="badge on">Çözüldü</span>
+      {% else %}<span class="badge">{{ r.get_status_display }}</span>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_question_edit' r.question.topic_id r.question.id %}">Soruyu aç</a>
+      {% if r.status == 'open' %}
+      <form method="post" action="{% url 'panel_error_report_status' r.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="status" value="reviewed">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-ghost" type="submit">İncelendi</button>
+      </form>
+      <form method="post" action="{% url 'panel_error_report_status' r.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="status" value="resolved">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-primary" type="submit">Çözüldü</button>
+      </form>
+      {% endif %}
+    </div>
+    {% empty %}
+    <div class="empty">Bu filtrede bildirim yok.</div>
+    {% endfor %}
+  </div>
+  {% if reports.has_other_pages %}
+  <div class="toolbar" style="margin-top:16px;">
+    {% if reports.has_previous %}
+    <a class="btn btn-ghost" href="?{{ page_query }}&amp;page={{ reports.previous_page_number }}">Önceki</a>
+    {% endif %}
+    <span class="hint">Sayfa {{ reports.number }} / {{ reports.paginator.num_pages }}</span>
+    {% if reports.has_next %}
+    <a class="btn btn-ghost" href="?{{ page_query }}&amp;page={{ reports.next_page_number }}">Sonraki</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

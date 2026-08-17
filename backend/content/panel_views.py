@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Avg, Count, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
@@ -21,14 +22,18 @@ from django.views.decorators.http import require_http_methods, require_POST
 from .models import (
     Announcement,
     AppUser,
+    ERROR_REPORT_CATEGORY_CHOICES,
+    ERROR_REPORT_STATUS_CHOICES,
     ExamType,
+    MapTemplate,
     Question,
+    QuestionErrorReport,
     Subject,
     Topic,
     TopicLesson,
     TopicTest,
 )
-from .map_catalog import MAP_CATALOG, map_template_choices
+from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
 from .svg_sanitize import extract_svg, is_safe_svg
@@ -204,42 +209,129 @@ def panel_home(request: HttpRequest) -> HttpResponse:
 
 def _map_templates_for_editor() -> dict[str, dict[str, str]]:
     result: dict[str, dict[str, str]] = {}
-    for map_id, entry in MAP_CATALOG.items():
-        item = {
-            "kind": entry["kind"],
-            "title": entry["title"],
-            "asset": static(entry["asset"]),
-        }
-        editor_asset = entry.get("editor_asset")
-        if editor_asset:
-            item["editor_asset"] = static(editor_asset)
+    for map_id, entry in iter_map_entries():
+        if entry.get("source") == "media":
+            item = {
+                "kind": entry["kind"],
+                "title": entry["title"],
+                "asset": entry.get("url") or "",
+            }
+            editor_url = entry.get("editor_url") or entry.get("url") or ""
+            if editor_url:
+                item["editor_asset"] = editor_url
+        else:
+            item = {
+                "kind": entry["kind"],
+                "title": entry["title"],
+                "asset": static(entry["asset"]),
+            }
+            editor_asset = entry.get("editor_asset")
+            if editor_asset:
+                item["editor_asset"] = static(editor_asset)
         result[map_id] = item
     return result
 
 
+def _maps_list_context() -> list[dict]:
+    maps: list[dict] = []
+    for map_id, entry in iter_map_entries():
+        builtin = bool(entry.get("builtin"))
+        if entry.get("source") == "media":
+            preview = entry.get("url") or ""
+            preview_is_static = False
+        else:
+            preview = entry["asset"]
+            preview_is_static = True
+        maps.append(
+            {
+                "id": map_id,
+                "title": entry["title"],
+                "kind": entry["kind"],
+                "description": entry.get("description", ""),
+                "preview": preview,
+                "preview_is_static": preview_is_static,
+                "can_delete": not builtin,
+                "builtin": builtin,
+            }
+        )
+    return maps
+
+
 @login_required
 @staff_required
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "POST"])
 def panel_maps(request: HttpRequest) -> HttpResponse:
-    """Kayıtlı harita şablonlarını listele."""
+    """Harita şablonlarını listele; POST ile yeni harita ekle."""
+    if request.method == "POST":
+        title = (request.POST.get("title") or "").strip()
+        kind = (request.POST.get("kind") or MapTemplate.KIND_STATIC).strip()
+        description = (request.POST.get("description") or "").strip()
+        image = request.FILES.get("image")
+        editor_image = request.FILES.get("editor_image")
+
+        if kind not in {MapTemplate.KIND_MARKER, MapTemplate.KIND_STATIC}:
+            messages.error(request, "Geçersiz harita türü.")
+            return redirect("panel_maps")
+        if not title:
+            messages.error(request, "Başlık gerekli.")
+            return redirect("panel_maps")
+        if not image:
+            messages.error(request, "Harita görseli gerekli.")
+            return redirect("panel_maps")
+
+        slug = slugify(title)
+        if not slug:
+            slug = f"harita-{uuid.uuid4().hex[:8]}"
+        if slug in MAP_CATALOG or MapTemplate.objects.filter(slug=slug).exists():
+            messages.error(request, f"“{slug}” kodu zaten kullanılıyor. Başlığı değiştirin.")
+            return redirect("panel_maps")
+        MapTemplate.objects.create(
+            slug=slug,
+            title=title,
+            kind=kind,
+            description=description[:255],
+            image=image,
+            editor_image=editor_image if editor_image else None,
+        )
+        messages.success(request, f"“{title}” haritası eklendi.")
+        return redirect("panel_maps")
+
     return render(
         request,
         "panel/maps.html",
         {
-            "maps": [
-                {
-                    "id": map_id,
-                    "title": entry["title"],
-                    "kind": entry["kind"],
-                    "description": entry.get("description", ""),
-                    "asset": entry["asset"],
-                    "editor_asset": entry.get("editor_asset", ""),
-                }
-                for map_id, entry in MAP_CATALOG.items()
-            ],
+            "maps": _maps_list_context(),
             "page_title": "Haritalar",
+            "kind_choices": MapTemplate.KIND_CHOICES,
         },
     )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_map_delete(request: HttpRequest, slug: str) -> HttpResponse:
+    """Özel harita şablonunu sil (sistem haritaları silinmez)."""
+    if slug in MAP_CATALOG:
+        messages.error(request, "Sistem haritaları silinemez.")
+        return redirect("panel_maps")
+
+    tmpl = get_object_or_404(MapTemplate, slug=slug)
+    in_use = Question.objects.filter(map_template=slug).count()
+    if in_use:
+        messages.error(
+            request,
+            f"“{tmpl.title}” {in_use} soruda kullanılıyor; önce sorulardan kaldırın.",
+        )
+        return redirect("panel_maps")
+
+    title = tmpl.title
+    tmpl.image.delete(save=False)
+    if tmpl.editor_image:
+        tmpl.editor_image.delete(save=False)
+    tmpl.delete()
+    messages.success(request, f"“{title}” silindi.")
+    return redirect("panel_maps")
 
 
 def _quality_number(
@@ -398,6 +490,95 @@ def panel_quality(request: HttpRequest) -> HttpResponse:
             "max_rating": max_rating,
         },
     )
+
+
+@login_required
+@staff_required
+def panel_error_reports(request: HttpRequest) -> HttpResponse:
+    """Öğrenci hata bildirimleri — incelenecek sorular havuzu."""
+    status = (request.GET.get("status") or "open").strip()
+    category = (request.GET.get("category") or "").strip()
+    subject_id = _quality_id(request.GET.get("subject"))
+    topic_id = _quality_id(request.GET.get("topic"))
+
+    qs = QuestionErrorReport.objects.select_related(
+        "question",
+        "question__topic",
+        "question__topic__subject",
+        "user",
+    )
+    if status and status != "all":
+        qs = qs.filter(status=status)
+    if category:
+        qs = qs.filter(category=category)
+    if subject_id is not None:
+        qs = qs.filter(question__topic__subject_id=subject_id)
+    if topic_id is not None:
+        qs = qs.filter(question__topic_id=topic_id)
+
+    qs = qs.order_by("-created_at")
+    paginator = Paginator(qs, 40)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    page_query = request.GET.copy()
+    page_query.pop("page", None)
+
+    topics = Topic.objects.select_related("subject").order_by(
+        "subject__sort_order",
+        "sort_order",
+        "name",
+    )
+    if subject_id is not None:
+        topics = topics.filter(subject_id=subject_id)
+
+    status_counts = {
+        row["status"]: row["count"]
+        for row in QuestionErrorReport.objects.values("status").annotate(
+            count=Count("id")
+        )
+    }
+
+    return render(
+        request,
+        "panel/error_reports.html",
+        {
+            "page_title": "İncelenecek sorular",
+            "reports": page_obj,
+            "report_count": paginator.count,
+            "page_query": page_query.urlencode(),
+            "subjects": Subject.objects.order_by("sort_order", "name"),
+            "topics": topics,
+            "selected_subject_id": subject_id,
+            "selected_topic_id": topic_id,
+            "selected_status": status,
+            "selected_category": category,
+            "status_choices": ERROR_REPORT_STATUS_CHOICES,
+            "category_choices": ERROR_REPORT_CATEGORY_CHOICES,
+            "status_counts": status_counts,
+            "open_count": status_counts.get("open", 0),
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_error_report_status(
+    request: HttpRequest, report_id: int
+) -> HttpResponse:
+    report = get_object_or_404(QuestionErrorReport, pk=report_id)
+    new_status = (request.POST.get("status") or "").strip()
+    valid = {c[0] for c in ERROR_REPORT_STATUS_CHOICES}
+    if new_status not in valid:
+        return HttpResponseBadRequest("Geçersiz durum.")
+    report.status = new_status
+    report.save(update_fields=["status", "updated_at"])
+    messages.success(
+        request,
+        f"{report.question.public_id} bildirimi → "
+        f"{report.get_status_display()}.",
+    )
+    next_url = request.POST.get("next") or reverse("panel_error_reports")
+    return redirect(next_url)
 
 
 @login_required
@@ -693,11 +874,6 @@ def _topic_from_post(
     name = (request.POST.get("name") or "").strip()
     slug_raw = (request.POST.get("slug") or "").strip()
     subtopics = _parse_subtopics(request.POST.get("subtopics", ""))
-    try:
-        questions_per_test = int(request.POST.get("questions_per_test") or 20)
-    except ValueError:
-        questions_per_test = 20
-    questions_per_test = max(1, min(200, questions_per_test))
     is_active = request.POST.get("is_active") == "on"
 
     obj = topic or Topic(subject=subject)
@@ -717,32 +893,36 @@ def _topic_from_post(
             subject, base_slug, exclude_pk=obj.pk if obj.pk else None
         )
     obj.subtopics = subtopics
-    obj.questions_per_test = questions_per_test
+    # Kapasite konu workspace'te ayarlanır; yeni konuda model default (20) kalır.
+    if "questions_per_test" in request.POST:
+        try:
+            questions_per_test = int(request.POST.get("questions_per_test") or 20)
+        except ValueError:
+            questions_per_test = 20
+        obj.questions_per_test = max(1, min(200, questions_per_test))
     obj.is_active = is_active
     if not topic:
-        last = (
-            subject.topics.order_by("-sort_order").values_list("sort_order", flat=True).first()
-        )
-        obj.sort_order = (last or 0) + 10
+        last = subject.topics.order_by("-sort_order").values_list(
+            "sort_order", flat=True
+        ).first()
+        obj.sort_order = (last or 0) + 1
     return obj
 
 
-def _reorder_topic(subject: Subject, topic_id: int, direction: str) -> bool:
+def _reorder_topics(subject: Subject, topic_ids: list[str]) -> bool:
+    """Persist a complete drag-and-drop topic order as contiguous values."""
     topics = list(subject.topics.order_by("sort_order", "name", "id"))
-    idx = next((i for i, t in enumerate(topics) if t.id == topic_id), None)
-    if idx is None:
+    expected_ids = {str(topic.id) for topic in topics}
+    if len(topic_ids) != len(topics) or set(topic_ids) != expected_ids:
         return False
-    if direction == "up" and idx > 0:
-        topics[idx], topics[idx - 1] = topics[idx - 1], topics[idx]
-    elif direction == "down" and idx < len(topics) - 1:
-        topics[idx], topics[idx + 1] = topics[idx + 1], topics[idx]
-    else:
-        return False
-    for i, t in enumerate(topics):
-        order = (i + 1) * 10
-        if t.sort_order != order:
-            t.sort_order = order
-            t.save(update_fields=["sort_order"])
+
+    by_id = {str(topic.id): topic for topic in topics}
+    with transaction.atomic():
+        for sort_order, topic_id in enumerate(topic_ids, start=1):
+            topic = by_id[topic_id]
+            if topic.sort_order != sort_order:
+                topic.sort_order = sort_order
+                topic.save(update_fields=["sort_order"])
     return True
 
 
@@ -781,17 +961,13 @@ def panel_topic_edit(
 @login_required
 @staff_required
 @require_POST
-def panel_topic_reorder(
-    request: HttpRequest, subject_id: int, topic_id: int
-) -> HttpResponse:
+def panel_topic_reorder(request: HttpRequest, subject_id: int) -> HttpResponse:
     subject = get_object_or_404(Subject, pk=subject_id)
-    direction = (request.POST.get("direction") or "").strip().lower()
-    if direction not in {"up", "down"}:
-        return HttpResponseBadRequest("Geçersiz yön.")
-    get_object_or_404(Topic, pk=topic_id, subject=subject)
-    if _reorder_topic(subject, topic_id, direction):
+    topic_ids = request.POST.getlist("topic_ids")
+    if _reorder_topics(subject, topic_ids):
         messages.success(request, "Konu sırası güncellendi.")
-    return redirect("panel_subject", subject_id=subject.id)
+        return HttpResponse(status=204)
+    return HttpResponseBadRequest("Geçersiz konu sırası.")
 
 
 @login_required

@@ -17,6 +17,9 @@ from .models import (
     DailyMiniExamAttempt,
     ExamType,
     Question,
+    QuestionAttempt,
+    QuestionErrorReport,
+    ERROR_REPORT_CATEGORY_CHOICES,
     QuestionRating,
     Subject,
     TopicLesson,
@@ -184,6 +187,135 @@ class TestQuestionsView(APIView):
         )
 
 
+class TestAttemptView(APIView):
+    """Store a logged-in user's first answers for a published topic test."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, test_id: str):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        test = get_object_or_404(
+            TopicTest.objects.prefetch_related("questions"),
+            public_id=test_id,
+            is_published=True,
+            topic__is_active=True,
+        )
+        raw_answers = request.data.get("answers")
+        if not isinstance(raw_answers, dict):
+            return Response({"detail": "answers nesne olmalı."}, status=400)
+
+        questions = {
+            question.public_id: question
+            for question in test.questions.all()
+            if question.is_published and question.topic_id == test.topic_id
+        }
+        accepted = ignored = 0
+        for public_id, question in questions.items():
+            selected = str(raw_answers.get(public_id) or "").strip().upper()[:1]
+            if not selected:
+                outcome = QuestionAttempt.OUTCOME_BLANK
+            elif selected == question.correct_option:
+                outcome = QuestionAttempt.OUTCOME_CORRECT
+            else:
+                outcome = QuestionAttempt.OUTCOME_WRONG
+            if QuestionAttempt.record_first_answer(
+                question=question,
+                user=user,
+                outcome=outcome,
+                selected_option=selected,
+            ):
+                accepted += 1
+            else:
+                ignored += 1
+
+        return Response(
+            {
+                "accepted": accepted,
+                "ignored": ignored,
+                "questionCount": len(questions),
+            }
+        )
+
+
+def _attempt_stats_payload(question: Question) -> dict:
+    option_counts = {
+        "A": question.option_a_count,
+        "B": question.option_b_count,
+        "C": question.option_c_count,
+        "D": question.option_d_count,
+        "E": question.option_e_count,
+    }
+    solved_count = sum(option_counts.values())
+    percentages = None
+    if solved_count >= 100:
+        percentages = {
+            option: round(count / solved_count * 100, 1)
+            for option, count in option_counts.items()
+        }
+    return {
+        "attemptCount": question.attempt_count,
+        "solvedCount": solved_count,
+        "optionPercentages": percentages,
+    }
+
+
+class QuestionAttemptView(APIView):
+    """Kaydedilen ilk şık ve aday istatistikleri için anlık uç nokta."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, public_id: str):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        test_id = str(request.data.get("testId") or "").strip()
+        selected_option = str(request.data.get("selectedOption") or "").strip().upper()
+        if not test_id:
+            return Response({"detail": "testId gerekli."}, status=400)
+        if selected_option not in {"A", "B", "C", "D", "E"}:
+            return Response({"detail": "Geçerli bir şık gerekli."}, status=400)
+
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+            topic__is_active=True,
+        )
+        test = get_object_or_404(
+            TopicTest.objects.filter(
+                public_id=test_id,
+                is_published=True,
+                topic_id=question.topic_id,
+                questions=question,
+            )
+        )
+        outcome = (
+            QuestionAttempt.OUTCOME_CORRECT
+            if selected_option == question.correct_option
+            else QuestionAttempt.OUTCOME_WRONG
+        )
+        accepted = QuestionAttempt.record_first_answer(
+            question=question,
+            user=user,
+            outcome=outcome,
+            selected_option=selected_option,
+        )
+        question.refresh_from_db()
+        return Response(
+            {
+                "accepted": accepted,
+                "testId": test.public_id,
+                **_attempt_stats_payload(question),
+            }
+        )
+
+
 def _rating_payload(question: Question, user) -> dict:
     aggregate = question.ratings.aggregate(
         average=Avg("stars"),
@@ -261,6 +393,121 @@ class QuestionRatingView(APIView):
             defaults={"stars": stars},
         )
         return Response(_rating_payload(question, user))
+
+
+class QuestionErrorReportThrottle(SimpleRateThrottle):
+    scope = "question_error_report"
+
+    def get_cache_key(self, request, view):
+        user = get_user_from_request(request)
+        if user is None:
+            return None
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": user.pk,
+        }
+
+
+def _error_report_payload(
+    report: QuestionErrorReport | None,
+    *,
+    daily_limit_reached: bool,
+) -> dict:
+    return {
+        "reported": report is not None,
+        "category": report.category if report else None,
+        "status": report.status if report else None,
+        "createdAt": report.created_at.isoformat() if report else None,
+        "dailyLimitReached": daily_limit_reached,
+        "canReport": report is None and not daily_limit_reached,
+    }
+
+
+def _user_reported_today(user) -> bool:
+    now = timezone.localtime()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return QuestionErrorReport.objects.filter(
+        user=user,
+        created_at__gte=start,
+    ).exists()
+
+
+class QuestionErrorReportView(APIView):
+    """Öğrencinin soru hata bildirimi (günde en fazla 1)."""
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [QuestionErrorReportThrottle]
+
+    def _user(self, request):
+        return get_user_from_request(request)
+
+    def get(self, request, public_id: str):
+        user = self._user(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+        )
+        report = QuestionErrorReport.objects.filter(
+            question=question, user=user
+        ).first()
+        daily_limit = _user_reported_today(user)
+        return Response(
+            _error_report_payload(report, daily_limit_reached=daily_limit)
+        )
+
+    def post(self, request, public_id: str):
+        user = self._user(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        category = (request.data.get("category") or "").strip()
+        valid = {c[0] for c in ERROR_REPORT_CATEGORY_CHOICES}
+        if category not in valid:
+            return Response(
+                {"detail": "Geçerli bir bildirim türü seçin."},
+                status=400,
+            )
+
+        note = (request.data.get("note") or "").strip()[:2000]
+
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+        )
+        existing = QuestionErrorReport.objects.filter(
+            question=question, user=user
+        ).first()
+        if existing is not None:
+            return Response(
+                _error_report_payload(existing, daily_limit_reached=True)
+            )
+
+        if _user_reported_today(user):
+            return Response(
+                {
+                    "detail": "Günde yalnızca 1 hata bildirimi yapabilirsiniz.",
+                    "dailyLimitReached": True,
+                    "reported": False,
+                    "canReport": False,
+                },
+                status=429,
+            )
+
+        report = QuestionErrorReport.objects.create(
+            question=question,
+            user=user,
+            category=category,
+            note=note,
+            status="open",
+        )
+        payload = _error_report_payload(report, daily_limit_reached=True)
+        payload["created"] = True
+        return Response(payload, status=201)
 
 
 class PublishedTestsView(APIView):

@@ -133,16 +133,17 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "question_rating": "60/min",
+        "question_error_report": "30/min",
     },
 }
 
-# ── KPSS Odak · Unfold (premium admin) ──────────────────────────────
+# ── HEDEF Kamu · Unfold (premium admin) ─────────────────────────────
 UNFOLD = {
-    "SITE_TITLE": "KPSS Odak",
-    "SITE_HEADER": "KPSS Odak",
+    "SITE_TITLE": "HEDEF Kamu",
+    "SITE_HEADER": "HEDEF Kamu",
     "SITE_SUBHEADER": "İçerik yönetim paneli",
     "SITE_URL": "/admin/",
-    "SITE_SYMBOL": "K",
+    "SITE_SYMBOL": "H",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": False,
     "SHOW_BACK_BUTTON": True,

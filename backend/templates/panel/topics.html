@@ -1,42 +1,78 @@
 {% extends "panel/base.html" %}
 
 {% block content %}
-
-<div class="crumb">
-
-  <a href="{% url 'panel_home' %}">Dersler</a> / {{ subject.name }}
-
-</div>
-
-<div class="toolbar" style="margin-bottom:16px;">
-
-  <div>
-
-    <h1 style="margin:0;">{{ subject.name }}</h1>
-
-    <p class="lead" style="margin:8px 0 0;">Konuyu açarak bilgi ve soru girin. Sıra oklarla değişir; aktif/pasif mobil paketi etkiler.</p>
-
+<header class="page-header">
+  <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / {{ subject.name }}</div>
+  <div class="toolbar">
+    <div>
+      <h1>{{ subject.name }}</h1>
+      <p class="lead">Konuyu açarak bilgi ve soru girin. Tutamacından sürükleyerek sırayı değiştirin; aktif/pasif mobil paketi etkiler.</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'panel_topic_new' subject.id %}">Konu ekle</a>
   </div>
+</header>
 
-  <a class="btn btn-primary" href="{% url 'panel_topic_new' subject.id %}">Konu ekle</a>
-
-</div>
-
-
-
-<div class="list">
-
+<div class="list topic-sort-list" id="topic-sort-list" data-reorder-url="{% url 'panel_topic_reorder' subject.id %}">
   {% for topic in topics %}
-
-    {% include "panel/partials/topic_row.html" with is_first=forloop.first is_last=forloop.last %}
-
+    {% include "panel/partials/topic_row.html" %}
   {% empty %}
-
   <div class="empty">Bu derste konu yok. <a href="{% url 'panel_topic_new' subject.id %}">İlk konuyu ekleyin</a>.</div>
-
   {% endfor %}
-
 </div>
 
+<script>
+  (() => {
+    const list = document.getElementById("topic-sort-list");
+    if (!list || !list.querySelector("[data-topic-id]")) return;
+
+    let dragged = null;
+    const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value;
+
+    list.addEventListener("dragstart", (event) => {
+      const row = event.target.closest("[data-topic-id]");
+      if (!row) return;
+      dragged = row;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", row.dataset.topicId);
+      requestAnimationFrame(() => row.classList.add("is-dragging"));
+    });
+
+    list.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      const row = event.target.closest("[data-topic-id]");
+      if (!row || row === dragged) return;
+      const after = event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+      list.insertBefore(dragged, after ? row.nextSibling : row);
+    });
+
+    list.addEventListener("dragend", async () => {
+      if (!dragged) return;
+      dragged.classList.remove("is-dragging");
+      dragged = null;
+
+      const body = new URLSearchParams();
+      list.querySelectorAll("[data-topic-id]").forEach((row) => {
+        body.append("topic_ids", row.dataset.topicId);
+      });
+
+      try {
+        const response = await fetch(list.dataset.reorderUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": csrfToken || "",
+          },
+          body: body.toString(),
+        });
+        if (!response.ok) throw new Error("Konu sırası kaydedilemedi.");
+        list.querySelectorAll("[data-topic-position]").forEach((item, index) => {
+          item.textContent = `sıra ${index + 1}`;
+        });
+      } catch (error) {
+        window.location.reload();
+      }
+    });
+  })();
+</script>
 {% endblock %}
 

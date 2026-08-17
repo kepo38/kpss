@@ -1,21 +1,23 @@
 {% extends "panel/base.html" %}
 {% block content %}
-<div class="crumb">
-  <a href="{% url 'panel_home' %}">Dersler</a> /
-  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
-  {{ topic.name }}
-</div>
-<h1>{{ topic.name }}</h1>
-<p class="lead">
-  {% if topic.is_active %}Aktif konu{% else %}Pasif konu — mobil pakete girmez{% endif %}
-</p>
+<header class="page-header">
+  <div class="crumb">
+    <a href="{% url 'panel_home' %}">Dersler</a> /
+    <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+    {{ topic.name }}
+  </div>
+  <h1>{{ topic.name }}</h1>
+  <p class="lead">
+    {% if topic.is_active %}Aktif konu{% else %}Pasif konu — mobil pakete girmez{% endif %}
+  </p>
+</header>
 
-<form class="form capacity-form" method="post" action="{% url 'panel_topic_capacity' topic.id %}" style="max-width:420px;margin-bottom:20px;">
+<form class="form capacity-form" method="post" action="{% url 'panel_topic_capacity' topic.id %}">
   {% csrf_token %}
   <label>Test başına soru sayısı
     <input type="number" name="questions_per_test" min="1" max="200" value="{{ topic.questions_per_test }}" required>
   </label>
-  <p class="media-hint" style="margin:0;">
+  <p class="media-hint">
     Değişince bu konudaki testler yeniden dengelenir: azaltınca fazlalık yeni teste geçer,
     artırınca sorular önceki testlerde birleşir. Soru kimlikleri aynı kalır (favoriler bozulmaz).
   </p>
@@ -55,10 +57,10 @@
 {% elif tab == 'questions' %}
   <div class="toolbar">
     <strong>Soru bankası</strong>
-    <span class="hint" style="margin-left:8px">
+    <span class="hint topic-q-stats">
       {{ questions_published_count }} yayında / {{ questions|length }} toplam
       {% if questions_published_count < questions|length %}
-        · <span style="color:#fbbf24">Taslak sorular uygulamada görünmez</span>
+        · <span class="warn-inline">Taslak sorular uygulamada görünmez</span>
       {% endif %}
     </span>
     <a class="btn btn-primary" href="{% url 'panel_question_new' topic.id %}">Manuel ekle</a>
@@ -95,6 +97,8 @@
         </div>
         {% if q.image %}<span class="pill-img">Görsel</span>{% endif %}
         {% if q.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+        <span class="badge difficulty-{{ q.difficulty }}">{{ q.get_difficulty_display }}</span>
+        <span class="hint">{{ q.attempt_count }} aday · {% if q.correct_percentage is not None %}%{{ q.correct_percentage|floatformat:1 }} doğru{% else %}veri yok{% endif %}</span>
         <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic.id q.id %}">Düzenle</a>
         <button
           class="btn btn-danger"

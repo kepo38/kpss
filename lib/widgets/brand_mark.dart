@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
 import 'osym_badge.dart';
+
 /// Ortak marka işareti — cream ve koyu quiz yüzeylerinde aynı dil.
 class BrandMark extends StatelessWidget {
   final bool dark;
@@ -87,14 +88,15 @@ class BrandMark extends StatelessWidget {
   }
 }
 
-/// Quiz üst şeridi — süre/soru sayacı ve ÖSYM rozeti çizginin üstünde,
-/// gradient çizgi en altta.
+/// Quiz üst şeridi — süre | ÖSYM rozeti | soru sayacı; altında seviye + aday.
 class QuizHeaderStrip extends StatelessWidget {
   final bool osymSordu;
   final String durationText;
   final bool isCountdown;
   final bool urgent;
   final String questionLabel;
+  final String? difficultyLabel;
+  final String? attemptLabel;
 
   const QuizHeaderStrip({
     super.key,
@@ -103,11 +105,13 @@ class QuizHeaderStrip extends StatelessWidget {
     required this.isCountdown,
     required this.urgent,
     required this.questionLabel,
+    this.difficultyLabel,
+    this.attemptLabel,
   });
 
   static const _lineHeight = 2.5;
 
-  Widget _metaLeft({
+  Widget _timerRow({
     required bool isCountdown,
     required Color iconColor,
     required String durationText,
@@ -135,70 +139,12 @@ class QuizHeaderStrip extends StatelessWidget {
     );
   }
 
-  Widget _metaRight(String questionLabel) {
-    return Text(
-      questionLabel,
-      style: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: Colors.white.withValues(alpha: 0.88),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 360;
-    final badgeHeight = compact ? 52.0 : 60.0;
-
+    final badgeHeight = compact ? 44.0 : 52.0;
     final timeColor = urgent ? Colors.redAccent : Colors.white;
     final iconColor = urgent ? Colors.redAccent : AppTheme.champagne;
-
-    if (osymSordu) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
-            child: SizedBox(
-              height: badgeHeight,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: _metaLeft(
-                          isCountdown: isCountdown,
-                          iconColor: iconColor,
-                          durationText: durationText,
-                          timeColor: timeColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                  OsymBadge(
-                    height: badgeHeight,
-                    variant: OsymBadgeVariant.premium,
-                  ),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: _metaRight(questionLabel),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          const _AccentLine(height: _lineHeight),
-        ],
-      );
-    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -206,23 +152,143 @@ class QuizHeaderStrip extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              _metaLeft(
-                isCountdown: isCountdown,
-                iconColor: iconColor,
-                durationText: durationText,
-                timeColor: timeColor,
+              if (osymSordu)
+                OsymBadge(
+                  height: badgeHeight,
+                  variant: OsymBadgeVariant.premium,
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _timerRow(
+                        isCountdown: isCountdown,
+                        iconColor: iconColor,
+                        durationText: durationText,
+                        timeColor: timeColor,
+                      ),
+                      if (difficultyLabel != null) ...[
+                        const SizedBox(height: 6),
+                        _DifficultyBadge(label: difficultyLabel!),
+                      ],
+                    ],
+                  ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          questionLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.88),
+                          ),
+                        ),
+                        if (attemptLabel != null) ...[
+                          const SizedBox(height: 6),
+                          _AttemptChip(label: attemptLabel!),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(),
-              _metaRight(questionLabel),
             ],
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         const _AccentLine(height: _lineHeight),
       ],
+    );
+  }
+}
+
+class _DifficultyBadge extends StatelessWidget {
+  final String label;
+
+  const _DifficultyBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (label) {
+      'Kolay' => const Color(0xFF34D399),
+      'Zor' => const Color(0xFFF87171),
+      _ => AppTheme.champagne,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        'Seviye: $label',
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.35,
+        ),
+      ),
+    );
+  }
+}
+
+class _AttemptChip extends StatelessWidget {
+  final String label;
+
+  const _AttemptChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 168),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.10),
+            AppTheme.champagne.withValues(alpha: 0.12),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: AppTheme.champagne.withValues(alpha: 0.34),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.15,
+          color: Colors.white.withValues(alpha: 0.92),
+        ),
+      ),
     );
   }
 }

@@ -4,7 +4,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ page_title|default:"Panel" }} · KPSS Odak</title>
+  <title>{{ page_title|default:"Panel" }} · HEDEF Kamu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
@@ -20,33 +23,59 @@
   </script>
 </head>
 <body>
-  <div class="shell">
-    {% csrf_token %}
-    <header class="topbar">
-      <a class="brand" href="{% url 'panel_home' %}">
-        KPSS Odak
+  {% csrf_token %}
+  {% with url_name=request.resolver_match.url_name|default:'' %}
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand brand-sidebar" href="{% url 'panel_home' %}">
+        HEDEF Kamu
         <span>İÇERİK PANELİ</span>
       </a>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <a class="btn btn-primary" href="{% url 'panel_manual_question' %}">Manuel soru</a>
-        <a class="btn btn-ghost" href="{% url 'panel_quick_question' %}">Görselden soru</a>
-        <a class="btn btn-ghost" href="{% url 'panel_maps' %}">Haritalar</a>
-        <a class="btn btn-ghost" href="{% url 'panel_exam_type_list' %}">Sınavlar</a>
-        <a class="btn btn-ghost" href="{% url 'panel_announcement_list' %}">Duyurular</a>
-        <a class="btn btn-ghost" href="{% url 'panel_users' %}">Kullanıcılar</a>
-        <a class="btn btn-ghost" href="/api/v1/pack/" target="_blank" rel="noopener">API paket</a>
-        <a class="btn btn-ghost" href="/admin/">Admin</a>
-        <a class="btn btn-ghost" href="{% url 'admin:logout' %}">Çıkış</a>
+
+      <nav class="sidebar-nav" aria-label="Ana menü">
+        <div class="nav-section">
+          <p class="nav-label">İçerik</p>
+          <a class="nav-link {% if url_name == 'panel_home' or url_name == 'panel_subject' or url_name == 'panel_topic' or url_name == 'panel_topic_home' %}is-active{% endif %}" href="{% url 'panel_home' %}">Dersler</a>
+          <div class="nav-group {% if url_name == 'panel_manual_question' or url_name == 'panel_quick_question' %}is-open{% endif %}">
+            <p class="nav-group-title">Soru ekle</p>
+            <a class="nav-link nav-link-sub {% if url_name == 'panel_manual_question' %}is-active{% endif %}" href="{% url 'panel_manual_question' %}">Manuel soru</a>
+            <a class="nav-link nav-link-sub {% if url_name == 'panel_quick_question' %}is-active{% endif %}" href="{% url 'panel_quick_question' %}">Görselden soru</a>
+          </div>
+          <a class="nav-link {% if url_name == 'panel_maps' or url_name == 'panel_map_delete' %}is-active{% endif %}" href="{% url 'panel_maps' %}">Haritalar</a>
+        </div>
+
+        <div class="nav-section">
+          <p class="nav-label">Kalite</p>
+          <a class="nav-link {% if url_name == 'panel_error_reports' or url_name == 'panel_error_report_status' %}is-active{% endif %}" href="{% url 'panel_error_reports' %}">İncelenecek sorular</a>
+          <a class="nav-link {% if url_name == 'panel_quality' %}is-active{% endif %}" href="{% url 'panel_quality' %}">Soru kalitesi</a>
+        </div>
+
+        <div class="nav-section">
+          <p class="nav-label">Sistem</p>
+          <a class="nav-link {% if url_name == 'panel_exam_type_list' or url_name == 'panel_exam_type_new' or url_name == 'panel_exam_type_edit' %}is-active{% endif %}" href="{% url 'panel_exam_type_list' %}">Sınavlar</a>
+          <a class="nav-link {% if url_name == 'panel_announcement_list' or url_name == 'panel_announcement_new' or url_name == 'panel_announcement_edit' %}is-active{% endif %}" href="{% url 'panel_announcement_list' %}">Duyurular</a>
+          <a class="nav-link {% if url_name == 'panel_users' or url_name == 'panel_user_grant_premium' or url_name == 'panel_user_revoke_premium' %}is-active{% endif %}" href="{% url 'panel_users' %}">Kullanıcılar</a>
+        </div>
+      </nav>
+
+      <div class="sidebar-foot">
+        <a class="nav-link nav-link-muted" href="/api/v1/pack/" target="_blank" rel="noopener">API paket</a>
+        <a class="nav-link nav-link-muted" href="/admin/">Django Admin</a>
+        <a class="nav-link nav-link-muted" href="{% url 'admin:logout' %}">Çıkış</a>
       </div>
-    </header>
-    {% if messages %}
-    <div class="flash-stack">
-      {% for message in messages %}
-      <div class="flash flash-{{ message.tags }}">{{ message }}</div>
-      {% endfor %}
+    </aside>
+
+    <div class="main">
+      {% if messages %}
+      <div class="flash-stack">
+        {% for message in messages %}
+        <div class="flash flash-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% block content %}{% endblock %}
     </div>
-    {% endif %}
-    {% block content %}{% endblock %}
   </div>
+  {% endwith %}
 </body>
 </html>

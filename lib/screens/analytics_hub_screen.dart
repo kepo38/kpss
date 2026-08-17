@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/subject_performance.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
+import '../services/notes_service.dart';
 import '../services/performance_summary_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
@@ -11,6 +12,7 @@ import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/scale_button.dart';
 import 'favorites_screen.dart';
+import 'notes_screen.dart';
 import 'study_hub_screen.dart';
 import 'subject_analytics_detail_screen.dart';
 import 'wrong_questions_screen.dart';
@@ -43,6 +45,7 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
       listenable: Listenable.merge([
         ContentBankService.instance,
         FavoritesService.instance,
+        NotesService.instance,
       ]),
       builder: (context, _) {
         final overall =
@@ -51,6 +54,7 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
             .subjectBreakdown(widget.kpssType);
         final wrongCount = ContentBankService.instance.wrongQuestionCount;
         final favCount = FavoritesService.instance.count;
+        final notesCount = NotesService.instance.count;
 
         return Scaffold(
           backgroundColor: AppTheme.page(context),
@@ -127,6 +131,20 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                _ShortcutCard(
+                  icon: Icons.sticky_note_2_outlined,
+                  title: 'Notlarım',
+                  value: notesCount == 0 ? 'Boş' : '$notesCount not',
+                  accent: AppTheme.champagne,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => NotesScreen(kpssType: widget.kpssType),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 28),
                 Text(

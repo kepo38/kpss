@@ -26,6 +26,7 @@ import 'services/database_service.dart';
 import 'services/favorites_service.dart';
 import 'services/last_study_session_service.dart';
 import 'services/local_database.dart';
+import 'services/notes_service.dart';
 import 'services/exam_catalog_service.dart';
 import 'services/kpss_preference_service.dart';
 import 'services/theme_preference_service.dart';
@@ -61,6 +62,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   final NetworkSecurityService _networkSecurity = NetworkSecurityService();
   bool _isConnectionBlocked = false;
   bool _securityChecked = false;
+
   /// Auth hazır → hemen ana sayfa (ağır servisler arka planda).
   bool _bootReady = false;
 
@@ -239,6 +241,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       // Hafif local servisler paralel
       await Future.wait([
         PracticeExamService.instance.initialize(),
+        NotesService.instance.initialize(),
         FavoritesService.instance.initialize(),
         AdFreeCampaignService.instance.initialize(),
         SmartReviewService.instance.initialize(),
@@ -255,9 +258,12 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
     // Ağ / SDK — ana sayfadan sonra, birbirini bekletmeden
     unawaited(_safeInit(() => AdManager.instance.initialize(), 'ads'));
-    unawaited(_safeInit(() => PlayBillingService.instance.initialize(), 'billing'));
-    unawaited(_safeInit(() => NotificationService.instance.initialize(), 'notif'));
-    unawaited(_safeInit(() => PushNotificationService.instance.initialize(), 'push'));
+    unawaited(
+        _safeInit(() => PlayBillingService.instance.initialize(), 'billing'));
+    unawaited(
+        _safeInit(() => NotificationService.instance.initialize(), 'notif'));
+    unawaited(
+        _safeInit(() => PushNotificationService.instance.initialize(), 'push'));
     unawaited(_syncContentInBackground());
   }
 
@@ -271,8 +277,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
   Future<void> _syncContentInBackground() async {
     try {
-      final ok =
-          await ContentSyncService.instance.syncCatalog(force: true);
+      final ok = await ContentSyncService.instance.syncCatalog(force: true);
       debugPrint(
         ok
             ? 'Content sync on launch OK v${ContentBankService.instance.packVersion}'
@@ -395,8 +400,7 @@ class _SessionRetryScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                message ??
-                    'İnternet bağlantını kontrol edip tekrar dene.',
+                message ?? 'İnternet bağlantını kontrol edip tekrar dene.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Colors.white70,

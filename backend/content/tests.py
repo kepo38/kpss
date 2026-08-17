@@ -504,10 +504,10 @@ class PanelTopicManageTests(TestCase):
 
         self.subject = Subject.objects.create(slug="mat", name="Matematik")
         self.t1 = Topic.objects.create(
-            subject=self.subject, slug="mat_a", name="Konu A", sort_order=10
+            subject=self.subject, slug="mat_a", name="Konu A", sort_order=1
         )
         self.t2 = Topic.objects.create(
-            subject=self.subject, slug="mat_b", name="Konu B", sort_order=20
+            subject=self.subject, slug="mat_b", name="Konu B", sort_order=2
         )
 
     def test_create_topic(self):
@@ -527,16 +527,17 @@ class PanelTopicManageTests(TestCase):
         self.assertTrue(topic.slug.startswith("mat_"))
         self.assertGreater(topic.sort_order, self.t2.sort_order)
 
-    def test_reorder_topic_down(self):
+    def test_reorder_topics_from_drag_order(self):
         self.client.force_login(self.staff)
         res = self.client.post(
-            f"/panel/ders/{self.subject.id}/konu/{self.t1.id}/sirala/",
-            {"direction": "down"},
+            f"/panel/ders/{self.subject.id}/konular/sirala/",
+            {"topic_ids": [str(self.t2.id), str(self.t1.id)]},
         )
-        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.status_code, 204)
         self.t1.refresh_from_db()
         self.t2.refresh_from_db()
-        self.assertGreater(self.t1.sort_order, self.t2.sort_order)
+        self.assertEqual(self.t1.sort_order, 2)
+        self.assertEqual(self.t2.sort_order, 1)
 
 
 class QuestionOsymSorduTests(TestCase):

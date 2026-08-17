@@ -15,10 +15,13 @@ from .models import (
     DailyMiniExamAttempt,
     DeviceToken,
     ExamType,
+    MapTemplate,
     PromoCode,
     PromoCodeRedemption,
     Question,
+    QuestionAttempt,
     QuestionRating,
+    QuestionErrorReport,
     Subject,
     Topic,
     TopicLesson,
@@ -68,6 +71,14 @@ class SubjectAdmin(ModelAdmin):
     list_display_links = ("name",)
     compressed_fields = True
 
+
+@admin.register(MapTemplate)
+class MapTemplateAdmin(ModelAdmin):
+    list_display = ("title", "slug", "kind", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("title", "slug", "description")
+    prepopulated_fields = {"slug": ("title",)}
+    readonly_fields = ("created_at",)
 
 @admin.register(Topic)
 class TopicAdmin(ModelAdmin):
@@ -141,6 +152,8 @@ class QuestionAdmin(ModelAdmin):
         "topic",
         "subtopic",
         "correct_option",
+        "difficulty",
+        "attempt_count",
         "average_rating",
         "rating_count",
         "is_published",
@@ -151,12 +164,20 @@ class QuestionAdmin(ModelAdmin):
         "is_published",
         "topic__subject",
         "topic",
+        "difficulty",
         RatingBandFilter,
         MinimumVotesFilter,
     )
     search_fields = ("public_id", "stem", "subtopic")
     autocomplete_fields = ("topic",)
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = (
+        "attempt_count",
+        "correct_count",
+        "wrong_count",
+        "blank_count",
+        "created_at",
+        "updated_at",
+    )
     list_filter_sheet = False
     compressed_fields = True
     warn_unsaved_form = True
@@ -165,7 +186,14 @@ class QuestionAdmin(ModelAdmin):
             "Kimlik",
             {
                 "classes": ["tab"],
-                "fields": ("public_id", "topic", "subtopic", "is_published", "osym_sordu"),
+                "fields": (
+                    "public_id",
+                    "topic",
+                    "subtopic",
+                    "is_published",
+                    "osym_sordu",
+                    "difficulty",
+                ),
             },
         ),
         (
@@ -194,6 +222,18 @@ class QuestionAdmin(ModelAdmin):
             {
                 "classes": ["tab"],
                 "fields": ("solution",),
+            },
+        ),
+        (
+            "Zorluk istatistikleri",
+            {
+                "classes": ["tab"],
+                "fields": (
+                    "attempt_count",
+                    "correct_count",
+                    "wrong_count",
+                    "blank_count",
+                ),
             },
         ),
         (
@@ -243,6 +283,55 @@ class QuestionRatingAdmin(ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(QuestionAttempt)
+class QuestionAttemptAdmin(ModelAdmin):
+    list_display = ("question", "user", "outcome", "created_at")
+    list_select_related = ("question", "user")
+    list_filter = ("outcome", "question__topic__subject", "question__topic")
+    search_fields = (
+        "question__public_id",
+        "user__email",
+        "user__display_name",
+    )
+    readonly_fields = ("question", "user", "outcome", "created_at")
+    list_filter_sheet = False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(QuestionErrorReport)
+class QuestionErrorReportAdmin(ModelAdmin):
+    list_display = (
+        "question",
+        "category",
+        "status",
+        "user",
+        "created_at",
+        "updated_at",
+    )
+    list_select_related = ("question", "user", "question__topic")
+    list_filter = ("status", "category", "question__topic__subject")
+    search_fields = (
+        "question__public_id",
+        "question__stem",
+        "user__email",
+        "user__display_name",
+        "note",
+    )
+    readonly_fields = ("question", "user", "created_at", "updated_at")
+    list_filter_sheet = False
+
+    def has_add_permission(self, request):
         return False
 
 

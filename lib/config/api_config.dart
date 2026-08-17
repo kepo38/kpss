@@ -30,8 +30,10 @@ class ApiConfig {
   static Uri questionsByIdsUri(Iterable<String> ids) => Uri.parse(
         '$baseUrl$questionsPath',
       ).replace(queryParameters: {'ids': ids.join(',')});
-  static Uri testQuestionsUri(String testId) =>
-      Uri.parse('$baseUrl/api/v1/tests/${Uri.encodeComponent(testId)}/questions/');
+  static Uri testQuestionsUri(String testId) => Uri.parse(
+      '$baseUrl/api/v1/tests/${Uri.encodeComponent(testId)}/questions/');
+  static Uri testAttemptUri(String testId) => Uri.parse(
+      '$baseUrl/api/v1/tests/${Uri.encodeComponent(testId)}/attempt/');
   static Uri healthUri() => Uri.parse('$baseUrl$healthPath');
   static Uri deviceTokensUri() => Uri.parse('$baseUrl$deviceTokensPath');
   static Uri announcementsUri() => Uri.parse('$baseUrl$announcementsPath');
@@ -45,5 +47,11 @@ class ApiConfig {
   static Uri examTypesUri() => Uri.parse('$baseUrl/api/v1/exam-types/');
   static Uri questionRatingUri(String questionId) => Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/rating/',
+      );
+  static Uri questionAttemptUri(String questionId) => Uri.parse(
+        '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/attempt/',
+      );
+  static Uri questionErrorReportUri(String questionId) => Uri.parse(
+        '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/error-report/',
       );
 }

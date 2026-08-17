@@ -20,9 +20,6 @@
   <label>Alt konular
     <textarea name="subtopics" rows="4" placeholder="Her satıra bir alt konu veya virgülle ayırın">{% if topic %}{{ topic.subtopics|join:", " }}{% endif %}</textarea>
   </label>
-  <label>Test başına soru sayısı
-    <input type="number" name="questions_per_test" min="1" max="200" value="{{ topic.questions_per_test|default:20 }}">
-  </label>
   <label class="check">
     <input type="checkbox" name="is_active" {% if topic is None or topic.is_active %}checked{% endif %}>
     Aktif (mobil katalogda görünsün)

@@ -1,35 +1,9 @@
-<div class="row" id="topic-row-{{ topic.id }}">
+<div class="row topic-row" id="topic-row-{{ topic.id }}" data-topic-id="{{ topic.id }}" draggable="true">
 
-  <div class="name" style="flex:1;min-width:0;">
-
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-
-      <form method="post" action="{% url 'panel_topic_reorder' subject.id topic.id %}" style="display:inline;margin:0;">
-
-        {% csrf_token %}
-
-        <input type="hidden" name="direction" value="up">
-
-        <button class="btn btn-ghost" type="submit" title="Yukarı" {% if is_first %}disabled{% endif %} style="padding:4px 8px;min-width:32px;">↑</button>
-
-      </form>
-
-      <form method="post" action="{% url 'panel_topic_reorder' subject.id topic.id %}" style="display:inline;margin:0;">
-
-        {% csrf_token %}
-
-        <input type="hidden" name="direction" value="down">
-
-        <button class="btn btn-ghost" type="submit" title="Aşağı" {% if is_last %}disabled{% endif %} style="padding:4px 8px;min-width:32px;">↓</button>
-
-      </form>
-
-      <a href="{% url 'panel_topic_home' topic.id %}">{{ topic.name }}</a>
-
-    </div>
-
-    <div class="hint">{{ topic.questions.count }} soru · {{ topic.lessons.count }} bilgi · sıra {{ topic.sort_order }}</div>
-
+  <button class="topic-drag-handle" type="button" title="Konuyu sürükleyerek sırala" aria-label="{{ topic.name }} konusunu sürükleyerek sırala">⠿</button>
+  <div class="name">
+    <a href="{% url 'panel_topic_home' topic.id %}">{{ topic.name }}</a>
+    <div class="hint">{{ topic.questions.count }} soru · {{ topic.lessons.count }} bilgi · <span data-topic-position>sıra {{ topic.sort_order }}</span></div>
   </div>
 
   {% if topic.is_active %}

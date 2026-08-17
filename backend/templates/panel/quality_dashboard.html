@@ -1,15 +1,13 @@
 {% extends "panel/base.html" %}
 {% load l10n %}
 {% block content %}
-<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Soru kalitesi</div>
+<header class="page-header">
+  <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Soru kalitesi</div>
+  <h1>Soru kalitesi</h1>
+  <p class="lead">Öğrenci yıldızlarına göre düşük kaliteli soruları ders ve konu bazında inceleyin.</p>
+</header>
 
 <div class="panel-card quality-card">
-  <div class="panel-card-head">
-    <div>
-      <h1>Soru kalitesi</h1>
-      <p class="lead">Öğrenci yıldızlarına göre düşük kaliteli soruları ders ve konu bazında inceleyin.</p>
-    </div>
-  </div>
 
   <form method="get" class="quality-filters">
     <label>Ders
@@ -89,6 +87,8 @@
           <th>Ders · Konu</th>
           <th>Ortalama</th>
           <th>Oy</th>
+          <th>Zorluk</th>
+          <th>Aday</th>
           <th>Son güncelleme</th>
           <th></th>
         </tr>
@@ -103,11 +103,13 @@
           <td>{{ question.topic.subject.name }} · {{ question.topic.name }}</td>
           <td><span class="quality-low">★ {{ question.rating_average|floatformat:2 }}</span></td>
           <td>{{ question.rating_count }}</td>
+          <td><span class="badge difficulty-{{ question.difficulty }}">{{ question.get_difficulty_display }}</span></td>
+          <td>{{ question.attempt_count }} · {% if question.correct_percentage is not None %}%{{ question.correct_percentage|floatformat:1 }}{% else %}—{% endif %}</td>
           <td class="hint">{{ question.updated_at|date:"d.m.Y H:i" }}</td>
           <td><a class="btn btn-ghost" href="{% url 'panel_question_edit' question.topic_id question.id %}">İncele</a></td>
         </tr>
         {% empty %}
-        <tr><td colspan="6"><div class="empty">Bu filtrelere uyan düşük puanlı soru yok.</div></td></tr>
+        <tr><td colspan="8"><div class="empty">Bu filtrelere uyan düşük puanlı soru yok.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

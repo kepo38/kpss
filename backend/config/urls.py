@@ -7,8 +7,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-admin.site.site_header = "KPSS Odak Yönetim"
-admin.site.site_title = "KPSS Odak"
+admin.site.site_header = "HEDEF Kamu Yönetim"
+admin.site.site_title = "HEDEF Kamu"
 admin.site.index_title = "İçerik ve müfredat"
 
 urlpatterns = [

@@ -12,6 +12,10 @@ class QuestionModel {
   final int hataBildirimSayisi;
   final DateTime guncellenmeTarihi;
   final bool osymSordu;
+  final String difficulty;
+  final int attemptCount;
+  final double? correctRate;
+  final bool difficultyVisible;
 
   const QuestionModel({
     required this.id,
@@ -27,6 +31,10 @@ class QuestionModel {
     this.hataBildirimSayisi = 0,
     required this.guncellenmeTarihi,
     this.osymSordu = false,
+    this.difficulty = 'medium',
+    this.attemptCount = 0,
+    this.correctRate,
+    this.difficultyVisible = false,
   });
 
   factory QuestionModel.fromJson(Map<String, dynamic> json) {
@@ -45,6 +53,10 @@ class QuestionModel {
       hataBildirimSayisi: json['hataBildirimSayisi'] as int? ?? 0,
       guncellenmeTarihi: DateTime.parse(json['guncellenmeTarihi'] as String),
       osymSordu: json['osymSordu'] as bool? ?? false,
+      difficulty: json['difficulty'] as String? ?? 'medium',
+      attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
+      correctRate: (json['correctRate'] as num?)?.toDouble(),
+      difficultyVisible: json['difficultyVisible'] as bool? ?? false,
     );
   }
 
@@ -62,6 +74,10 @@ class QuestionModel {
         'hataBildirimSayisi': hataBildirimSayisi,
         'guncellenmeTarihi': guncellenmeTarihi.toIso8601String(),
         'osymSordu': osymSordu,
+        'difficulty': difficulty,
+        'attemptCount': attemptCount,
+        'correctRate': correctRate,
+        'difficultyVisible': difficultyVisible,
       };
 
   QuestionModel copyWith({
@@ -78,6 +94,10 @@ class QuestionModel {
     int? hataBildirimSayisi,
     DateTime? guncellenmeTarihi,
     bool? osymSordu,
+    String? difficulty,
+    int? attemptCount,
+    double? correctRate,
+    bool? difficultyVisible,
   }) {
     return QuestionModel(
       id: id ?? this.id,
@@ -93,6 +113,10 @@ class QuestionModel {
       hataBildirimSayisi: hataBildirimSayisi ?? this.hataBildirimSayisi,
       guncellenmeTarihi: guncellenmeTarihi ?? this.guncellenmeTarihi,
       osymSordu: osymSordu ?? this.osymSordu,
+      difficulty: difficulty ?? this.difficulty,
+      attemptCount: attemptCount ?? this.attemptCount,
+      correctRate: correctRate ?? this.correctRate,
+      difficultyVisible: difficultyVisible ?? this.difficultyVisible,
     );
   }
 }

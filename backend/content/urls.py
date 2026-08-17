@@ -14,10 +14,13 @@ from .views import (
     PublishedQuestionsView,
     PublishedTestsView,
     QuestionRatingView,
+    QuestionErrorReportView,
     DailyMiniExamView,
     ExamTypeListView,
     PromoRedeemView,
     TestQuestionsView,
+    TestAttemptView,
+    QuestionAttemptView,
 )
 
 urlpatterns = [
@@ -32,11 +35,26 @@ urlpatterns = [
         QuestionRatingView.as_view(),
         name="question-rating",
     ),
+    path(
+        "questions/<str:public_id>/attempt/",
+        QuestionAttemptView.as_view(),
+        name="question-attempt",
+    ),
+    path(
+        "questions/<str:public_id>/error-report/",
+        QuestionErrorReportView.as_view(),
+        name="question-error-report",
+    ),
     path("tests/", PublishedTestsView.as_view(), name="tests"),
     path(
         "tests/<str:test_id>/questions/",
         TestQuestionsView.as_view(),
         name="test-questions",
+    ),
+    path(
+        "tests/<str:test_id>/attempt/",
+        TestAttemptView.as_view(),
+        name="test-attempt",
     ),
     path("announcements/", AnnouncementListView.as_view(), name="announcements"),
     path("device-tokens/", DeviceTokenView.as_view(), name="device-tokens"),

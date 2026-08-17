@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/practice_exam_model.dart';
+import '../models/study_note.dart';
 import '../models/wrong_notebook_model.dart';
 import 'storage_constants.dart';
 
@@ -35,6 +36,7 @@ class LocalDatabase {
       path,
       version: StorageConstants.dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
 
     await purgeExpired();
@@ -78,7 +80,26 @@ class LocalDatabase {
     await db.execute(
       'CREATE INDEX idx_notebook_olusturma ON ${StorageConstants.tableWrongNotebook}(olusturma_tarihi)',
     );
+    await _createStudyNotesTable(db);
   }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _createStudyNotesTable(db);
+    }
+  }
+
+  Future<void> _createStudyNotesTable(Database db) => db.execute('''
+    CREATE TABLE ${StorageConstants.tableStudyNotes} (
+      id TEXT PRIMARY KEY,
+      subject_id TEXT NOT NULL,
+      subject_name TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
 
   DateTime get _retentionCutoff => DateTime.now().subtract(
         const Duration(days: StorageConstants.retentionDays),
@@ -90,13 +111,11 @@ class LocalDatabase {
       final cutoff = _retentionCutoff;
       final exams = await _readWebExams();
       final notebook = await _readWebNotebook();
-      final keptExams =
-          exams.where((e) => !e.tarih.isBefore(cutoff)).toList();
-      final keptNotebook = notebook
-          .where((e) => !e.olusturmaTarihi.isBefore(cutoff))
-          .toList();
-      final deleted =
-          (exams.length - keptExams.length) + (notebook.length - keptNotebook.length);
+      final keptExams = exams.where((e) => !e.tarih.isBefore(cutoff)).toList();
+      final keptNotebook =
+          notebook.where((e) => !e.olusturmaTarihi.isBefore(cutoff)).toList();
+      final deleted = (exams.length - keptExams.length) +
+          (notebook.length - keptNotebook.length);
       if (deleted > 0) {
         await _writeWebExams(keptExams);
         await _writeWebNotebook(keptNotebook);
@@ -302,6 +321,51 @@ class LocalDatabase {
     return (count ?? 0) == 0;
   }
 
+  // ── Çalışma notları ───────────────────────────────────────────────
+
+  Future<List<StudyNote>> getAllStudyNotes() async {
+    final db = _db!;
+    final rows = await db.query(
+      StorageConstants.tableStudyNotes,
+      orderBy: 'updated_at DESC',
+    );
+    return rows.map(_studyNoteFromRow).toList();
+  }
+
+  Future<void> upsertStudyNote(StudyNote note) async {
+    await _db!.insert(
+      StorageConstants.tableStudyNotes,
+      _studyNoteToRow(note),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteStudyNote(String id) => _db!.delete(
+        StorageConstants.tableStudyNotes,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+  Map<String, Object?> _studyNoteToRow(StudyNote note) => {
+        'id': note.id,
+        'subject_id': note.subjectId,
+        'subject_name': note.subjectName,
+        'title': note.title,
+        'body': note.body,
+        'created_at': note.createdAt.toIso8601String(),
+        'updated_at': note.updatedAt.toIso8601String(),
+      };
+
+  StudyNote _studyNoteFromRow(Map<String, Object?> row) => StudyNote(
+        id: row['id']! as String,
+        subjectId: row['subject_id']! as String,
+        subjectName: row['subject_name']! as String,
+        title: row['title']! as String,
+        body: row['body']! as String,
+        createdAt: DateTime.parse(row['created_at']! as String),
+        updatedAt: DateTime.parse(row['updated_at']! as String),
+      );
+
   Future<List<PracticeExamModel>> _readWebExams() async {
     final raw = _prefs!.getString(StorageConstants.webExamsKey);
     if (raw == null || raw.isEmpty) return [];
@@ -363,8 +427,7 @@ class LocalDatabase {
       tekrarPeriyodu: RepetitionPeriod.values.byName(
         row['tekrar_periyodu']! as String,
       ),
-      sonrakiTekrarTarihi:
-          DateTime.parse(row['sonraki_tekrar']! as String),
+      sonrakiTekrarTarihi: DateTime.parse(row['sonraki_tekrar']! as String),
       hatirlatmaSaati: row['hatirlatma_saati']! as int,
       hatirlatmaDakikasi: row['hatirlatma_dakikasi']! as int,
       olusturmaTarihi: DateTime.parse(row['olusturma_tarihi']! as String),

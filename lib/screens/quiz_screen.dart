@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -14,15 +15,20 @@ import '../services/favorites_service.dart';
 import '../services/auth_service.dart';
 import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
+import '../services/question_error_report_service.dart';
+import '../services/question_attempt_service.dart';
 import '../services/question_rating_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/solution_preview.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
+import '../widgets/favorite_heart_button.dart';
 import '../widgets/formatted_text.dart';
+import '../widgets/question_error_report_button.dart';
 import '../widgets/question_rating_bar.dart';
 import '../widgets/osym_badge.dart';
 import '../widgets/question_stem_content.dart';
+import '../widgets/quiz_drawing_overlay.dart';
 import '../widgets/shareable_result_card.dart';
 import '../widgets/watermark_widget.dart';
 
@@ -36,8 +42,10 @@ class QuizScreen extends StatefulWidget {
   final Duration initialElapsed;
   final QuizResumeMeta? resumeMeta;
   final bool skipResultDialog;
+
   /// Günün Denemesi gibi tanıtım oturumları — çözüm/banner/bitiş reklamı yok.
   final bool adFreeExperience;
+  final String? statisticsTestId;
   final Future<void> Function({
     required List<String?> answers,
     required int currentIndex,
@@ -55,6 +63,7 @@ class QuizScreen extends StatefulWidget {
     this.resumeMeta,
     this.skipResultDialog = false,
     this.adFreeExperience = false,
+    this.statisticsTestId,
     this.onProgress,
   });
 
@@ -67,11 +76,13 @@ class _QuizScreenState extends State<QuizScreen>
   late int _currentIndex;
   String? _selectedAnswer;
   bool _showingSolution = false;
-  late final DateTime _startedAt;
+  late DateTime _startedAt;
   late final List<String?> _answers;
   late final bool _isCountdown;
   late Duration _displayDuration;
   Timer? _ticker;
+  bool _timerPaused = false;
+  Duration _frozenElapsed = Duration.zero;
   bool _timeUpHandled = false;
   bool _isFinishing = false;
   QuestionRatingSummary? _ratingSummary;
@@ -79,6 +90,12 @@ class _QuizScreenState extends State<QuizScreen>
   bool _ratingLoading = false;
   bool _ratingSaving = false;
   bool _solutionUnlocking = false;
+  bool _errorReported = false;
+  bool _errorReportLoading = false;
+  bool _errorDailyLimitReached = false;
+  final Map<String, QuestionAttemptSummary> _attemptSummaries = {};
+  final Map<String, List<QuizStroke>> _drawings = {};
+  bool _drawingEnabled = false;
 
   late final AnimationController _flashCtrl;
   late final Animation<double> _flashOpacity;
@@ -105,6 +122,7 @@ class _QuizScreenState extends State<QuizScreen>
         ? Duration.zero
         : widget.initialElapsed;
     _startedAt = DateTime.now().subtract(elapsed);
+    _frozenElapsed = elapsed;
     _isCountdown = widget.timeLimitMinutes > 0;
     if (_isCountdown) {
       final limit = Duration(minutes: widget.timeLimitMinutes);
@@ -113,6 +131,8 @@ class _QuizScreenState extends State<QuizScreen>
     } else {
       _displayDuration = elapsed;
     }
+    // Devam edilen oturumda mevcut soru cevaplıysa süre bekletilir.
+    _timerPaused = _selectedAnswer != null;
     _flashCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 520),
@@ -128,6 +148,7 @@ class _QuizScreenState extends State<QuizScreen>
     );
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     if (_selectedAnswer != null) unawaited(_loadRating());
+    unawaited(_loadErrorReportState());
     unawaited(_persistProgress());
   }
 
@@ -139,7 +160,41 @@ class _QuizScreenState extends State<QuizScreen>
     super.dispose();
   }
 
-  Duration get _elapsedNow => DateTime.now().difference(_startedAt);
+  Duration get _elapsedNow => _timerPaused
+      ? _frozenElapsed
+      : DateTime.now().difference(_startedAt);
+
+  void _syncDisplayFromElapsed(Duration elapsed) {
+    if (_isCountdown) {
+      final limit = Duration(minutes: widget.timeLimitMinutes);
+      final left = limit - elapsed;
+      _displayDuration = left.isNegative ? Duration.zero : left;
+    } else {
+      _displayDuration = elapsed;
+    }
+  }
+
+  void _pauseTimer() {
+    if (_timerPaused) return;
+    _frozenElapsed = DateTime.now().difference(_startedAt);
+    _timerPaused = true;
+    _syncDisplayFromElapsed(_frozenElapsed);
+  }
+
+  void _resumeTimer() {
+    if (!_timerPaused) return;
+    _startedAt = DateTime.now().subtract(_frozenElapsed);
+    _timerPaused = false;
+  }
+
+  /// Cevapsız soruda süre akar; cevaplı soruda bekler (açıklama okurken yanmaz).
+  void _syncTimerForCurrentQuestion() {
+    if (_selectedAnswer != null) {
+      _pauseTimer();
+    } else {
+      _resumeTimer();
+    }
+  }
 
   Future<void> _persistProgress() async {
     if (widget.questions.isEmpty || _isFinishing) return;
@@ -169,8 +224,10 @@ class _QuizScreenState extends State<QuizScreen>
     setState(() {
       _selectedAnswer = key;
       _answers[_currentIndex] = key;
+      _pauseTimer();
     });
     unawaited(_loadRating());
+    unawaited(_submitQuestionAttempt(key));
     unawaited(_persistProgress());
     _flashColor = isCorrect ? _correctGreen : _wrongRed;
     _flashCtrl.forward(from: 0);
@@ -181,8 +238,23 @@ class _QuizScreenState extends State<QuizScreen>
     }
   }
 
+  Future<void> _submitQuestionAttempt(String selectedOption) async {
+    final testId = widget.statisticsTestId;
+    if (testId == null || testId.isEmpty) return;
+    final questionId = _currentQuestion.id;
+    final summary = await QuestionAttemptService.instance.submitQuestion(
+      testId: testId,
+      questionId: questionId,
+      selectedOption: selectedOption,
+    );
+    if (!mounted || summary == null || _currentQuestion.id != questionId) {
+      return;
+    }
+    setState(() => _attemptSummaries[questionId] = summary);
+  }
+
   void _tick() {
-    if (!mounted) return;
+    if (!mounted || _timerPaused) return;
     final elapsed = DateTime.now().difference(_startedAt);
     if (_isCountdown) {
       final limit = Duration(minutes: widget.timeLimitMinutes);
@@ -223,6 +295,44 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   QuestionModel get _currentQuestion => widget.questions[_currentIndex];
+
+  String get _resultHeading {
+    final topic = widget.questions.isEmpty
+        ? ''
+        : widget.questions.first.konuAdi.trim();
+    if (topic.isNotEmpty) return topic;
+    return widget.title.trim().isEmpty ? 'Test Sonucu' : widget.title;
+  }
+
+  int get _visibleAttemptCount =>
+      _attemptSummaries[_currentQuestion.id]?.attemptCount ??
+      _currentQuestion.attemptCount;
+
+  Map<String, double>? get _optionPercentages =>
+      _attemptSummaries[_currentQuestion.id]?.optionPercentages;
+
+  /// Gerçek veri yokken debug APK'da şık yüzdelerini önizlemek için.
+  Map<String, double> get _visibleOptionPercentages {
+    final live = _optionPercentages;
+    if (live != null && live.isNotEmpty) return live;
+    if (!kDebugMode) return const {};
+
+    final keys = _currentQuestion.siklar.keys.toList();
+    final correct = _currentQuestion.dogruCevap;
+    final preview = <String, double>{};
+    final distractors = keys.where((key) => key != correct).toList();
+    for (var index = 0; index < distractors.length; index++) {
+      preview[distractors[index]] = switch (index) {
+        0 => 8.0,
+        1 => 5.0,
+        2 => 3.0,
+        _ => 2.0,
+      };
+    }
+    final used = preview.values.fold<double>(0, (sum, value) => sum + value);
+    preview[correct] = double.parse((100 - used).toStringAsFixed(1));
+    return preview;
+  }
 
   String _formatDuration(Duration d) {
     final h = d.inHours;
@@ -369,9 +479,12 @@ class _QuizScreenState extends State<QuizScreen>
       _showingSolution = false;
       _solutionUnlocking = false;
       _resetRatingState();
+      _resetErrorReportState();
+      _syncTimerForCurrentQuestion();
     });
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
+    unawaited(_loadErrorReportState());
   }
 
   Future<void> _toggleFavorite() async {
@@ -384,6 +497,116 @@ class _QuizScreenState extends State<QuizScreen>
     _ratingQuestionId = null;
     _ratingLoading = false;
     _ratingSaving = false;
+  }
+
+  void _resetErrorReportState() {
+    _errorReported = false;
+    _errorReportLoading = false;
+    // Günlük limit oturum boyunca korunur; soru değişince sıfırlanmaz.
+  }
+
+  String _difficultyLabel() {
+    if (_currentQuestion.difficultyVisible) {
+      return switch (_currentQuestion.difficulty) {
+        'easy' => 'Kolay',
+        'hard' => 'Zor',
+        _ => 'Orta',
+      };
+    }
+    // Debug APK'da bu telefonda üç rozet görünümünü incelemek için.
+    return switch (_currentIndex % 3) {
+      0 => 'Kolay',
+      1 => 'Orta',
+      _ => 'Zor',
+    };
+  }
+
+  Future<void> _loadErrorReportState() async {
+    final questionId = _currentQuestion.id;
+    if (!QuestionErrorReportService.canReport(questionId) ||
+        !AuthService.instance.hasBackendSession) {
+      if (mounted) {
+        setState(() {
+          _errorReported = false;
+          _errorReportLoading = false;
+        });
+      }
+      return;
+    }
+    final cached = QuestionErrorReportService.instance.cached(questionId);
+    if (cached != null) {
+      if (mounted) {
+        setState(() {
+          _errorReported = cached.reported;
+          _errorDailyLimitReached = cached.dailyLimitReached ||
+              QuestionErrorReportService.instance.dailyLimitReached;
+          _errorReportLoading = false;
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _errorReportLoading = true);
+    try {
+      final state = await QuestionErrorReportService.instance.load(questionId);
+      if (!mounted || _currentQuestion.id != questionId) return;
+      setState(() {
+        _errorReported = state.reported;
+        _errorDailyLimitReached = state.dailyLimitReached;
+        _errorReportLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || _currentQuestion.id != questionId) return;
+      setState(() => _errorReportLoading = false);
+    }
+  }
+
+  Future<void> _openErrorReport() async {
+    final questionId = _currentQuestion.id;
+    if (!QuestionErrorReportService.canReport(questionId)) return;
+    if (!AuthService.instance.hasBackendSession) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bildirmek için giriş yapın.')),
+      );
+      return;
+    }
+    if (_errorReported) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu soruyu zaten bildirdiniz.')),
+      );
+      return;
+    }
+    if (_errorDailyLimitReached ||
+        QuestionErrorReportService.instance.dailyLimitReached) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Günde yalnızca 1 hata bildirimi yapabilirsiniz.'),
+        ),
+      );
+      return;
+    }
+    await showQuestionErrorReportSheet(
+      context: context,
+      onSubmit: (category, note) async {
+        await QuestionErrorReportService.instance.submit(
+          questionId: questionId,
+          category: category,
+          note: note,
+        );
+        if (!mounted) return;
+        setState(() {
+          _errorReported = true;
+          _errorDailyLimitReached = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Teşekkürler — bildiriminiz incelenecek.'),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadRating() async {
@@ -492,9 +715,12 @@ class _QuizScreenState extends State<QuizScreen>
         _showingSolution = false;
         _solutionUnlocking = false;
         _resetRatingState();
+        _resetErrorReportState();
+        _syncTimerForCurrentQuestion();
       });
       unawaited(_persistProgress());
       if (_selectedAnswer != null) unawaited(_loadRating());
+      unawaited(_loadErrorReportState());
     } else {
       unawaited(_finishTest());
     }
@@ -509,9 +735,12 @@ class _QuizScreenState extends State<QuizScreen>
       _showingSolution = false;
       _solutionUnlocking = false;
       _resetRatingState();
+      _resetErrorReportState();
+      _syncTimerForCurrentQuestion();
     });
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
+    unawaited(_loadErrorReportState());
   }
 
   Future<void> _showResultDialog(QuizResult result) {
@@ -533,14 +762,18 @@ class _QuizScreenState extends State<QuizScreen>
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              title: const Center(
+              title: FittedBox(
+                fit: BoxFit.scaleDown,
                 child: Text(
-                  'Test Sonucu',
+                  _resultHeading,
+                  maxLines: 1,
+                  softWrap: false,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'serif',
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: AppTheme.champagne,
                   ),
                 ),
               ),
@@ -672,20 +905,6 @@ class _QuizScreenState extends State<QuizScreen>
       ),
     );
 
-    final nextStyle = FilledButton.styleFrom(
-      backgroundColor: AppTheme.champagne,
-      disabledBackgroundColor: AppTheme.champagne.withValues(alpha: 0.35),
-      foregroundColor: AppTheme.ink,
-      disabledForegroundColor: AppTheme.ink.withValues(alpha: 0.45),
-      minimumSize: const Size(0, 46),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-      textStyle: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
-      ),
-    );
-
     return SafeArea(
       top: false,
       child: Material(
@@ -727,9 +946,9 @@ class _QuizScreenState extends State<QuizScreen>
                   ),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: FilledButton(
+                    child: OutlinedButton(
                       onPressed: canAdvance ? _nextQuestion : null,
-                      style: nextStyle,
+                      style: navOutlineStyle(enabled: canAdvance),
                       child: Text(
                         isLast ? 'Bitir' : 'Sonraki',
                         textAlign: TextAlign.center,
@@ -772,37 +991,66 @@ class _QuizScreenState extends State<QuizScreen>
         appBar: AppBar(
           backgroundColor: AppTheme.inkSoft,
           foregroundColor: Colors.white,
-          centerTitle: true,
+          centerTitle: false,
+          titleSpacing: 8,
           leading: AppBackButton(onPressed: () async {
             final shouldPop = await _onWillPop();
             if (shouldPop && mounted) {
               _popWithResult(completed: false);
             }
           }),
-          title: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              widget.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'serif',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                height: 1.15,
+          title: Row(
+            children: [
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.champagne,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          toolbarHeight: 56,
+          actionsPadding: const EdgeInsets.only(right: 2),
+          actions: [
+            SizedBox(
+              width: 40,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                tooltip: _drawingEnabled ? 'Çizimi kapat' : 'Çizim modu',
+                onPressed: () =>
+                    setState(() => _drawingEnabled = !_drawingEnabled),
+                icon: Icon(
+                  _drawingEnabled
+                      ? Icons.edit_off_outlined
+                      : Icons.edit_rounded,
+                  color: _drawingEnabled ? AppTheme.champagne : Colors.white,
+                ),
               ),
             ),
-          ),
-          toolbarHeight: 60,
-          actions: [
-            IconButton(
-              tooltip: isFav ? 'Favorilerden çıkar' : 'Favorilere ekle',
-              onPressed: _toggleFavorite,
-              icon: Icon(
-                isFav ? Icons.favorite : Icons.favorite_border,
-                color: isFav ? AppTheme.champagne : Colors.white70,
+            if (QuestionErrorReportService.canReport(_currentQuestion.id))
+              SizedBox(
+                width: 40,
+                child: QuestionErrorReportAction(
+                  onTap: _openErrorReport,
+                  reported: _errorReported,
+                  loading: _errorReportLoading,
+                ),
+              ),
+            SizedBox(
+              width: 40,
+              child: FavoriteHeartButton(
+                isFavorite: isFav,
+                onToggle: _toggleFavorite,
               ),
             ),
           ],
@@ -819,6 +1067,11 @@ class _QuizScreenState extends State<QuizScreen>
                   urgent: urgent,
                   questionLabel:
                       'Soru ${_currentIndex + 1} / ${widget.questions.length}',
+                  difficultyLabel:
+                      _currentQuestion.difficultyVisible || kDebugMode
+                          ? _difficultyLabel()
+                          : null,
+                  attemptLabel: '$_visibleAttemptCount kişi cevapladı',
                 ),
                 SizedBox(
                   height: 40,
@@ -937,6 +1190,9 @@ class _QuizScreenState extends State<QuizScreen>
                                 text: entry.value,
                                 isSelected: selected,
                                 tone: tone,
+                                percentage: revealed
+                                    ? _visibleOptionPercentages[entry.key]
+                                    : null,
                                 onTap: () => _selectAnswer(entry.key),
                               );
                             },
@@ -988,6 +1244,18 @@ class _QuizScreenState extends State<QuizScreen>
                 },
               ),
             ),
+            if (_drawingEnabled)
+              QuizDrawingOverlay(
+                strokes: _drawings[_currentQuestion.id] ?? const [],
+                onStrokeComplete: (stroke) => setState(
+                  () => _drawings
+                      .putIfAbsent(_currentQuestion.id, () => [])
+                      .add(stroke),
+                ),
+                onClear: () => setState(
+                  () => _drawings.remove(_currentQuestion.id),
+                ),
+              ),
           ],
         ),
         bottomNavigationBar: _buildBottomActions(),
@@ -1042,8 +1310,7 @@ class _SolutionPanel extends StatelessWidget {
         ? (question.siklar[selectedAnswer!] ?? selectedAnswer!)
         : null;
     final parts = splitSolutionPreview(question.cozumMetni);
-    final showLockedTeaser =
-        !showFullSolution && parts.hasLockedRemainder;
+    final showLockedTeaser = !showFullSolution && parts.hasLockedRemainder;
 
     return Container(
       width: double.infinity,
@@ -1260,6 +1527,7 @@ class _OptionTile extends StatelessWidget {
   final String text;
   final bool isSelected;
   final _OptionTone? tone;
+  final double? percentage;
   final VoidCallback onTap;
 
   const _OptionTile({
@@ -1268,6 +1536,7 @@ class _OptionTile extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.tone,
+    this.percentage,
   });
 
   static const _correct = Color(0xFF34D399);
@@ -1368,6 +1637,17 @@ class _OptionTile extends StatelessWidget {
                   const Icon(Icons.check_rounded, color: _correct, size: 20)
                 else if (tone == _OptionTone.wrong)
                   const Icon(Icons.close_rounded, color: _wrong, size: 20),
+                if (percentage != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '%${percentage!.toStringAsFixed(1)}',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
