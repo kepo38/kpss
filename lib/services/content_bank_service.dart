@@ -30,6 +30,14 @@ class ContentBankService extends ChangeNotifier {
   static const _kDailyAdBonuses = 'content_daily_ad_test_bonuses';
   static const _kCatalogSubjects = 'content_catalog_subjects';
 
+  /// Yerel demo seed — production/misafir yanlış defterine sızmamalı.
+  static const _sampleSeedQuestionIds = {
+    'q_tr_1',
+    'q_tr_2',
+    'q_mat_1',
+  };
+  static const _sampleSeedTestId = 'test_seed_tr_anlam';
+
   /// Ders başına günde en fazla kaç kez reklamla ek test hakkı kazanılır.
   static const dailyAdBonusPerSubject = 1;
 
@@ -146,17 +154,28 @@ class ContentBankService extends ChangeNotifier {
         );
     }
 
-    if (_questions.isEmpty) {
+    if (_questions.isEmpty && kDebugMode) {
       _seedSampleQuestions();
+      _fullQuestionBankPersisted = false;
+    } else if (_questions.isEmpty) {
       _fullQuestionBankPersisted = false;
     } else {
       _fullQuestionBankPersisted = true;
     }
-    if (_tests.isEmpty) {
+    if (_tests.isEmpty && kDebugMode) {
       _seedSampleTests();
     }
-    if (_lessons.isEmpty) {
+    if (_lessons.isEmpty && kDebugMode) {
       _seedSampleLessons();
+    }
+
+    // Eski demo seed kalıntılarını yanlış/çözülen listelerinden temizle.
+    final prunedSeed = _pruneSampleSeedProgress();
+    if (!kDebugMode) {
+      _tests.removeWhere(
+        (t) => t.id == _sampleSeedTestId || t.id.startsWith('test_seed_'),
+      );
+      _questions.removeWhere((q) => _sampleSeedQuestionIds.contains(q.id));
     }
 
     KpssCurriculum.loadCatalogFromJsonString(
@@ -164,8 +183,8 @@ class ContentBankService extends ChangeNotifier {
     );
 
     _loaded = true;
-    if (_questions.isEmpty) {
-      unawaited(_persistAll());
+    if (prunedSeed || (_questions.isEmpty && kDebugMode)) {
+      unawaited(_persistAll(skipQuestions: !_fullQuestionBankPersisted));
     }
   }
 
@@ -331,10 +350,12 @@ class ContentBankService extends ChangeNotifier {
 
   List<QuestionModel> questionsForTest(TopicTestModel test) {
     final byId = {for (final q in _questions) q.id: q};
-    return test.questionIds
-        .map((id) => byId[id])
-        .whereType<QuestionModel>()
-        .toList();
+    return QuestionModel.keepGroupsContiguous(
+      test.questionIds
+          .map((id) => byId[id])
+          .whereType<QuestionModel>()
+          .toList(),
+    );
   }
 
   /// Paketteki meta sayı yerine gerçekten yüklenebilir soru adedi.
@@ -614,14 +635,35 @@ class ContentBankService extends ChangeNotifier {
     return _attempts.where((a) => a.kpssType == type).toList();
   }
 
-  Set<String> get wrongQuestionIds => Set.unmodifiable(_wrongQuestionIds);
+  Set<String> get wrongQuestionIds => Set.unmodifiable(_visibleWrongQuestionIds);
 
-  int get wrongQuestionCount => _wrongQuestionIds.length;
+  int get wrongQuestionCount => _visibleWrongQuestionIds.length;
+
+  Set<String> get _visibleWrongQuestionIds {
+    final catalog = catalogQuestionIds.toSet();
+    final local = {for (final q in _questions) q.id};
+    return _wrongQuestionIds.where((id) {
+      if (_sampleSeedQuestionIds.contains(id)) return false;
+      if (local.contains(id)) return true;
+      if (catalog.contains(id)) return true;
+      // Katalog/banka yokken yetim demo id'leri sayma.
+      return false;
+    }).toSet();
+  }
+
+  bool _pruneSampleSeedProgress() {
+    final beforeWrong = _wrongQuestionIds.length;
+    final beforeSolved = _solvedQuestionIds.length;
+    _wrongQuestionIds.removeAll(_sampleSeedQuestionIds);
+    _solvedQuestionIds.removeAll(_sampleSeedQuestionIds);
+    return beforeWrong != _wrongQuestionIds.length ||
+        beforeSolved != _solvedQuestionIds.length;
+  }
 
   /// En çok yanlış yapılan konular (ders · konu, adet).
   List<(String topicLabel, int count)> wrongTopicsSummary({int limit = 3}) {
     final counts = <String, int>{};
-    for (final id in _wrongQuestionIds) {
+    for (final id in _visibleWrongQuestionIds) {
       final q = questionById(id);
       if (q == null) continue;
       final label = '${q.dersAdi} · ${q.konuAdi}';

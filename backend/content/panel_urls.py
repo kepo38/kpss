@@ -62,6 +62,11 @@ urlpatterns = [
         name="panel_topic_edit",
     ),
     path(
+        "ders/<int:subject_id>/konu/<int:topic_id>/sil/",
+        panel_views.panel_topic_delete,
+        name="panel_topic_delete",
+    ),
+    path(
         "ders/<int:subject_id>/konular/sirala/",
         panel_views.panel_topic_reorder,
         name="panel_topic_reorder",
@@ -107,9 +112,29 @@ urlpatterns = [
         name="panel_question_delete",
     ),
     path(
+        "soru/<int:question_id>/kopyala/",
+        panel_views.panel_question_copy,
+        name="panel_question_copy",
+    ),
+    path(
         "konu/<int:topic_id>/soru/toplu-sil/",
         panel_views.panel_question_bulk_delete,
         name="panel_question_bulk_delete",
+    ),
+    path(
+        "konu/<int:topic_id>/grup/yeni/",
+        panel_views.panel_scenario_edit,
+        name="panel_scenario_new",
+    ),
+    path(
+        "konu/<int:topic_id>/grup/<int:scenario_id>/",
+        panel_views.panel_scenario_edit,
+        name="panel_scenario_edit",
+    ),
+    path(
+        "grup/<int:scenario_id>/sil/",
+        panel_views.panel_scenario_delete,
+        name="panel_scenario_delete",
     ),
     path(
         "konu/<int:topic_id>/test/yeni/",

@@ -946,16 +946,44 @@ class _QuizScreenState extends State<QuizScreen>
                   ),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: canAdvance ? _nextQuestion : null,
-                      style: navOutlineStyle(enabled: canAdvance),
-                      child: Text(
-                        isLast ? 'Bitir' : 'Sonraki',
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    child: isLast
+                        ? FilledButton(
+                            onPressed: canAdvance ? _nextQuestion : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.champagne,
+                              foregroundColor: AppTheme.ink,
+                              disabledBackgroundColor:
+                                  AppTheme.champagne.withValues(alpha: 0.35),
+                              disabledForegroundColor:
+                                  AppTheme.ink.withValues(alpha: 0.45),
+                              minimumSize: const Size(0, 46),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 12,
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            child: const Text(
+                              'Bitir',
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )
+                        : OutlinedButton(
+                            onPressed: canAdvance ? _nextQuestion : null,
+                            style: navOutlineStyle(enabled: canAdvance),
+                            child: const Text(
+                              'Sonraki',
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -1145,6 +1173,10 @@ class _QuizScreenState extends State<QuizScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_currentQuestion.hasScenarioPassage) ...[
+                          _ScenarioPassageCard(question: _currentQuestion),
+                          const SizedBox(height: 16),
+                        ],
                         QuestionStemPanel(
                           child: WatermarkWidget(
                             opacity: 0.48,
@@ -1281,6 +1313,52 @@ class _QuizScreenState extends State<QuizScreen>
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ScenarioPassageCard extends StatelessWidget {
+  final QuestionModel question;
+
+  const _ScenarioPassageCard({required this.question});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = question.scenarioTitle?.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppTheme.borderRadius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title == null || title.isEmpty ? 'Olay' : title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+              color: AppTheme.champagne,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FormattedText(
+            question.scenarioStem!,
+            paragraphLayout: true,
+            textAlign: TextAlign.start,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.5,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

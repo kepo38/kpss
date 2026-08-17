@@ -190,6 +190,15 @@ a:hover { color: #fff; }
 .page-header h1 {
   margin: 0 0 8px;
 }
+.page-header h1 .h1-meta {
+  margin-left: 10px;
+  font-family: Outfit, system-ui, sans-serif;
+  font-size: 0.48em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  color: var(--muted);
+}
 .page-header .lead {
   margin: 0;
   max-width: 52ch;

@@ -15,6 +15,7 @@ from .ocr import (
     OPTION_KEYS,
     OcrQuestionResult,
     _likely_geometry_question,
+    _peel_embedded_options,
     _strip_watermarks,
     normalize_turkish_text,
     parse_question_text,
@@ -50,6 +51,8 @@ Kurallar:
   $f(1) = 9$ olduğuna göre $f(9)$ değeri kaçtır?
 - Şıklarda kalın/italik/altı çizili yok. Beş şık da dolu olsun. Sayı ve formül düz metin veya $...$ olsun.
   Örnek: {"A": "1", "B": "8", "C": "15", "D": "18", "E": "21"}
+- Romen rakamlı şıklar (I ve II, III ve V vb.) olduğu gibi ayrı ayrı yazılsın; şık harfi (A–E) ile Romen rakamı karıştırılmasın.
+  Örnek: {"A": "I ve II", "B": "I ve IV", "C": "II ve III", "D": "III ve V", "E": "IV ve V"}
 - Watermark (ÖSYM vb.) metne dahil etme.
 
 dogru_cevap:
@@ -490,7 +493,7 @@ def ocr_question_image_gemini(
         )
 
     stem = normalize_turkish_text(_payload_stem(data))
-    options = _payload_options(data)
+    options = _peel_embedded_options(_payload_options(data))
     figure_svg = _payload_figure(data)
     correct_option = _payload_answer(data)
     solution = _payload_solution(data)

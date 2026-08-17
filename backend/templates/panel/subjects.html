@@ -8,7 +8,7 @@
   {% for s in subjects %}
   <a class="card" href="{% url 'panel_subject' s.id %}">
     <strong>{{ s.name }}</strong>
-    <div class="meta">{{ s.topics.count }} konu</div>
+    <div class="meta">{{ s.topic_count }} konu · {{ s.question_count }} soru</div>
   </a>
   {% empty %}
   <div class="empty">Henüz ders yok. Önce <code>seed_curriculum</code> çalıştırın.</div>

@@ -16,6 +16,10 @@ class QuestionModel {
   final int attemptCount;
   final double? correctRate;
   final bool difficultyVisible;
+  final String? scenarioId;
+  final String? scenarioTitle;
+  final String? scenarioStem;
+  final int scenarioOrder;
 
   const QuestionModel({
     required this.id,
@@ -35,6 +39,10 @@ class QuestionModel {
     this.attemptCount = 0,
     this.correctRate,
     this.difficultyVisible = false,
+    this.scenarioId,
+    this.scenarioTitle,
+    this.scenarioStem,
+    this.scenarioOrder = 0,
   });
 
   factory QuestionModel.fromJson(Map<String, dynamic> json) {
@@ -57,6 +65,10 @@ class QuestionModel {
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
       correctRate: (json['correctRate'] as num?)?.toDouble(),
       difficultyVisible: json['difficultyVisible'] as bool? ?? false,
+      scenarioId: json['scenarioId'] as String?,
+      scenarioTitle: json['scenarioTitle'] as String?,
+      scenarioStem: json['scenarioStem'] as String?,
+      scenarioOrder: (json['scenarioOrder'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -78,6 +90,10 @@ class QuestionModel {
         'attemptCount': attemptCount,
         'correctRate': correctRate,
         'difficultyVisible': difficultyVisible,
+        'scenarioId': scenarioId,
+        'scenarioTitle': scenarioTitle,
+        'scenarioStem': scenarioStem,
+        'scenarioOrder': scenarioOrder,
       };
 
   QuestionModel copyWith({
@@ -98,6 +114,10 @@ class QuestionModel {
     int? attemptCount,
     double? correctRate,
     bool? difficultyVisible,
+    String? scenarioId,
+    String? scenarioTitle,
+    String? scenarioStem,
+    int? scenarioOrder,
   }) {
     return QuestionModel(
       id: id ?? this.id,
@@ -117,6 +137,42 @@ class QuestionModel {
       attemptCount: attemptCount ?? this.attemptCount,
       correctRate: correctRate ?? this.correctRate,
       difficultyVisible: difficultyVisible ?? this.difficultyVisible,
+      scenarioId: scenarioId ?? this.scenarioId,
+      scenarioTitle: scenarioTitle ?? this.scenarioTitle,
+      scenarioStem: scenarioStem ?? this.scenarioStem,
+      scenarioOrder: scenarioOrder ?? this.scenarioOrder,
     );
+  }
+
+  bool get hasScenarioPassage =>
+      scenarioStem != null && scenarioStem!.trim().isNotEmpty;
+
+  static List<QuestionModel> keepGroupsContiguous(List<QuestionModel> questions) {
+    if (questions.length < 2) return questions;
+    final members = <String, List<QuestionModel>>{};
+    for (final q in questions) {
+      final id = q.scenarioId;
+      if (id == null || id.isEmpty) continue;
+      members.putIfAbsent(id, () => []).add(q);
+    }
+    if (members.isEmpty) return questions;
+    for (final group in members.values) {
+      group.sort((a, b) {
+        final byOrder = a.scenarioOrder.compareTo(b.scenarioOrder);
+        return byOrder != 0 ? byOrder : a.id.compareTo(b.id);
+      });
+    }
+    final emitted = <String>{};
+    final out = <QuestionModel>[];
+    for (final q in questions) {
+      final sid = q.scenarioId;
+      if (sid == null || sid.isEmpty) {
+        out.add(q);
+        continue;
+      }
+      if (!emitted.add(sid)) continue;
+      out.addAll(members[sid]!);
+    }
+    return out;
   }
 }

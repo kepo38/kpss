@@ -5,7 +5,7 @@
   <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / {{ subject.name }}</div>
   <div class="toolbar">
     <div>
-      <h1>{{ subject.name }}</h1>
+      <h1>{{ subject.name }} <span class="h1-meta">{{ question_count }} soru</span></h1>
       <p class="lead">Konuyu açarak bilgi ve soru girin. Tutamacından sürükleyerek sırayı değiştirin; aktif/pasif mobil paketi etkiler.</p>
     </div>
     <a class="btn btn-primary" href="{% url 'panel_topic_new' subject.id %}">Konu ekle</a>

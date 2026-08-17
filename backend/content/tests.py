@@ -110,6 +110,38 @@ E) unutmayı
         self.assertNotIn("Adaleti", stem)
         self.assertEqual(opts["A"], "Adaleti güçlendirmeyi istemeyi")
 
+    def test_passage_after_question_stays_in_stem(self):
+        """Soru üstte, olay+maddeler ortada, şıklar altta — pasaj A'ya kaçmasın."""
+        raw = """
+Buna göre I. Fidan, II. Gamze, III. Işıl adlı çocuklardan
+hangileri tahterevallide oynamış olabilir?
+Bir grup çocuk parkta oynamaktadır. Tahterevalli, kaydırak
+ve salıncak bulunmaktadır. Aşağıdakiler bilinmektedir:
+• Fidan kaydırakta oynamıştır.
+• Gamze tahterevallide oynamamıştır.
+• Işıl salıncakta oynamıştır.
+• Tahterevallide oynayan en az iki çocuktur.
+• Kaydırakta oynayan çocuk salıncakta da oynamıştır.
+• Salıncakta oynayan çocuk tahterevallide oynamamıştır.
+A) Yalnız I
+B) Yalnız II
+C) Yalnız III
+D) I ve II
+E) I ve III
+""".strip()
+        stem, opts = parse_question_text(raw)
+        self.assertIn("tahterevallide oynamış olabilir?", stem)
+        self.assertIn("Bir grup çocuk parkta", stem)
+        self.assertIn("Fidan kaydırakta", stem)
+        self.assertIn("Salıncakta oynayan", stem)
+        self.assertEqual(opts["A"], "Yalnız I")
+        self.assertEqual(opts["B"], "Yalnız II")
+        self.assertEqual(opts["C"], "Yalnız III")
+        self.assertEqual(opts["D"], "I ve II")
+        self.assertEqual(opts["E"], "I ve III")
+        self.assertNotIn("parkta", opts["A"])
+        self.assertNotIn("Fidan", opts["A"])
+
     def test_marker_lines_merged_without_auto_format(self):
         """Madde işareti satırları gömülür (düz metin OCR örneği)."""
         raw = """
@@ -222,6 +254,154 @@ E) 5
         self.assertEqual(opts["B"], "2")
         self.assertEqual(opts["E"], "5")
         self.assertIn("kaçtır", stem)
+
+    @staticmethod
+    def _marker_row(line: str, marks: dict[str, str]) -> str:
+        """Verilen sözcüklerin altına hizalanmış madde işareti satırı üretir."""
+        row = [" "] * (len(line) + 8)
+        for word, marker in marks.items():
+            start = line.index(word)
+            col = start + max(0, (len(word) - len(marker)) // 2)
+            for offset, ch in enumerate(marker):
+                row[col + offset] = ch
+        return "".join(row).rstrip()
+
+    def test_marker_row_under_underlined_words(self):
+        """Altı çizili sözcüklerin altındaki Romen rakamları kolon hizasıyla gömülür."""
+        line1 = "Üreticilerle yüz yüze olduğunuzda tüketilen besinlerin"
+        line2 = "doğal olup olmadığını, nasıl yetiştirildiğini ve tohumdan"
+        raw = "\n".join(
+            [
+                line1,
+                self._marker_row(line1, {"Üreticilerle": "I", "besinlerin": "II"}),
+                line2,
+                self._marker_row(line2, {"tohumdan": "III"}),
+                "hasada uzanan öyküsünü öğrenmek zor değil.",
+                "Bu parçada numaralanmış sözcüklerden hangisi yapım eki",
+                "almamıştır?",
+                "A) I",
+                "B) II",
+                "C) III",
+                "D) IV",
+                "E) V",
+            ]
+        )
+        stem, opts = parse_question_text(raw)
+        self.assertIn("Üreticilerle (I)", stem)
+        self.assertIn("besinlerin (II)", stem)
+        self.assertIn("tohumdan (III)", stem)
+        self.assertNotIn(" | ", stem)
+        self.assertEqual(opts["C"], "III")
+
+    def test_marker_row_with_ocr_pipe_characters(self):
+        line1 = "Üreticilerle yüz yüze olduğunuzda tüketilen besinlerin"
+        raw = "\n".join(
+            [
+                line1,
+                self._marker_row(line1, {"Üreticilerle": "|", "besinlerin": "II"}),
+                "Hangisi yapım eki almamıştır?",
+                "A) I",
+                "B) II",
+                "C) lii",
+                "D) IV",
+                "E) V",
+            ]
+        )
+        stem, opts = parse_question_text(raw)
+        self.assertIn("Üreticilerle (I)", stem)
+        self.assertIn("besinlerin (II)", stem)
+        self.assertEqual(opts["C"], "III")
+
+    def test_marker_row_keeps_sentence_punctuation(self):
+        line1 = "süreçlerini öğrenmek de bir o kadar güçleşiyor."
+        raw = "\n".join(
+            [
+                line1,
+                self._marker_row(line1, {"süreçlerini": "IV", "güçleşiyor": "V"}),
+                "Hangisi doğrudur?",
+                "A) I",
+                "B) II",
+                "C) III",
+                "D) IV",
+                "E) V",
+            ]
+        )
+        stem, _ = parse_question_text(raw)
+        self.assertIn("süreçlerini (IV)", stem)
+        self.assertIn("güçleşiyor (V).", stem)
+
+    def test_single_indented_marker_attaches_to_word_above(self):
+        """Girintili tek rakam, satır başına değil üstündeki sözcüğe bağlanır."""
+        line1 = "doğal olup olmadığını, nasıl yetiştirildiğini ve tohumdan"
+        raw = "\n".join(
+            [
+                line1,
+                self._marker_row(line1, {"tohumdan": "III"}),
+                "Hangisi doğrudur?",
+                "A) I",
+                "B) II",
+                "C) III",
+                "D) IV",
+                "E) V",
+            ]
+        )
+        stem, _ = parse_question_text(raw)
+        self.assertIn("tohumdan (III)", stem)
+        self.assertNotIn("olup (III)", stem)
+
+    def test_roman_pair_options_clean(self):
+        """Noktalama sorusu: şıklar 'I ve II' gibi Romen çiftleri."""
+        raw = """
+Bu parçadaki numaralanmış yerlerin hangilerine noktalama
+işareti getirilmelidir?
+A) I ve II
+B) I ve IV
+C) II ve III
+D) III ve V
+E) IV ve V
+""".strip()
+        _, opts = parse_question_text(raw)
+        self.assertEqual(
+            opts,
+            {
+                "A": "I ve II",
+                "B": "I ve IV",
+                "C": "II ve III",
+                "D": "III ve V",
+                "E": "IV ve V",
+            },
+        )
+
+    def test_roman_options_garbled_c_merged_into_b(self):
+        """OCR: C) → cCc) ve B satırına yapışır; C boş kalmamalı."""
+        raw = """
+Bu parçadaki numaralanmış yerlerin hangilerine noktalama
+işareti getirilmelidir?
+A) I ve II
+B) I ve IV cCc) II ve III
+D) III ve V
+E) IV ve V
+""".strip()
+        _, opts = parse_question_text(raw)
+        self.assertEqual(opts["A"], "I ve II")
+        self.assertEqual(opts["B"], "I ve IV")
+        self.assertEqual(opts["C"], "II ve III")
+        self.assertEqual(opts["D"], "III ve V")
+        self.assertEqual(opts["E"], "IV ve V")
+
+    def test_roman_options_garbled_c_on_own_line(self):
+        raw = """
+Hangisi doğrudur?
+A) I ve II
+B) I ve IV
+cCc) II ve III
+D) III ve V
+E) IV ve V
+""".strip()
+        _, opts = parse_question_text(raw)
+        self.assertEqual(opts["B"], "I ve IV")
+        self.assertEqual(opts["C"], "II ve III")
+        self.assertEqual(opts["D"], "III ve V")
 
     def test_option_emphasis_markup_is_stripped(self):
         self.assertEqual(
@@ -491,7 +671,8 @@ class QuestionFingerprintTests(TestCase):
         self.assertEqual(Question.objects.count(), before)
         edit = self.client.get(res.url)
         self.assertEqual(edit.status_code, 200)
-        self.assertContains(edit, "Yeni soru")
+        self.assertContains(edit, "Görselden soru")
+        self.assertContains(edit, "Henüz kaydedilmedi")
 
 
 class PanelTopicManageTests(TestCase):
@@ -538,6 +719,103 @@ class PanelTopicManageTests(TestCase):
         self.t2.refresh_from_db()
         self.assertEqual(self.t1.sort_order, 2)
         self.assertEqual(self.t2.sort_order, 1)
+
+    def test_delete_topic_removes_questions(self):
+        from content.models import Question, Topic
+
+        Question.objects.create(
+            topic=self.t1,
+            public_id="q_del_topic_1",
+            stem="Silinecek konu sorusu",
+            option_a="a",
+            option_b="b",
+            option_c="c",
+            option_d="d",
+            option_e="e",
+            correct_option="A",
+            is_published=True,
+        )
+        self.client.force_login(self.staff)
+        res = self.client.post(
+            f"/panel/ders/{self.subject.id}/konu/{self.t1.id}/sil/"
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.url, f"/panel/ders/{self.subject.id}/")
+        self.assertFalse(Topic.objects.filter(pk=self.t1.id).exists())
+        self.assertFalse(Question.objects.filter(public_id="q_del_topic_1").exists())
+        self.assertTrue(Topic.objects.filter(pk=self.t2.id).exists())
+
+    def test_delete_topic_requires_staff(self):
+        User = get_user_model()
+        user = User.objects.create_user(username="topic_user", password="x")
+        self.client.force_login(user)
+        res = self.client.post(
+            f"/panel/ders/{self.subject.id}/konu/{self.t1.id}/sil/"
+        )
+        self.assertIn(res.status_code, (302, 403))
+        from content.models import Topic
+
+        self.assertTrue(Topic.objects.filter(pk=self.t1.id).exists())
+
+
+class QuestionCopyTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.staff = User.objects.create_user(
+            username="copy_staff", password="x", is_staff=True
+        )
+        from content.models import Subject, Topic
+
+        self.subject = Subject.objects.create(slug="tr_copy", name="Türkçe")
+        self.topic = Topic.objects.create(
+            subject=self.subject, slug="tr_copy_k", name="Anlam"
+        )
+        self.source = Question.objects.create(
+            topic=self.topic,
+            public_id="q_copy_src",
+            stem="Aynı metinden türetilecek örnek soru.",
+            option_a="I ve II",
+            option_b="I ve IV",
+            option_c="II ve III",
+            option_d="III ve V",
+            option_e="IV ve V",
+            correct_option="B",
+            solution="Açıklama metni",
+            is_published=True,
+            osym_sordu=True,
+            attempt_count=12,
+            correct_count=5,
+            option_a_count=2,
+        )
+
+    def test_copy_creates_new_public_id_and_resets_stats(self):
+        self.client.force_login(self.staff)
+        before = Question.objects.count()
+        res = self.client.post(f"/panel/soru/{self.source.id}/kopyala/")
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(Question.objects.count(), before + 1)
+
+        copy = Question.objects.exclude(pk=self.source.id).get(topic=self.topic)
+        self.assertNotEqual(copy.public_id, self.source.public_id)
+        self.assertNotEqual(copy.pk, self.source.pk)
+        self.assertEqual(copy.stem, self.source.stem)
+        self.assertEqual(copy.option_b, "I ve IV")
+        self.assertEqual(copy.correct_option, "B")
+        self.assertEqual(copy.solution, "Açıklama metni")
+        self.assertTrue(copy.is_published)
+        self.assertTrue(copy.osym_sordu)
+        self.assertEqual(copy.attempt_count, 0)
+        self.assertEqual(copy.correct_count, 0)
+        self.assertEqual(copy.option_a_count, 0)
+        self.assertEqual(res.url, f"/panel/konu/{self.topic.id}/soru/{copy.id}/")
+
+    def test_copy_requires_staff(self):
+        User = get_user_model()
+        user = User.objects.create_user(username="copy_user", password="x")
+        self.client.force_login(user)
+        res = self.client.post(f"/panel/soru/{self.source.id}/kopyala/")
+        self.assertIn(res.status_code, (302, 403))
+        self.assertEqual(Question.objects.filter(topic=self.topic).count(), 1)
 
 
 class QuestionOsymSorduTests(TestCase):

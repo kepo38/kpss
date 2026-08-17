@@ -115,7 +115,7 @@ class QuestionFetchService {
       results.addAll(fetched);
     }
 
-    return _orderByIds(results, ids);
+    return QuestionModel.keepGroupsContiguous(_orderByIds(results, ids));
   }
 
   List<QuestionModel> _parseQuestions(Object? raw) {
@@ -139,9 +139,14 @@ class QuestionFetchService {
     TopicTestModel test,
   ) {
     if (questions.isEmpty) return const [];
-    if (test.questionIds.isEmpty) return questions;
+    if (test.questionIds.isEmpty) {
+      return QuestionModel.keepGroupsContiguous(questions);
+    }
     final ordered = _orderByIds(questions, test.questionIds);
-    return ordered.isNotEmpty ? ordered : questions;
+    final contiguous = QuestionModel.keepGroupsContiguous(
+      ordered.isNotEmpty ? ordered : questions,
+    );
+    return contiguous.isNotEmpty ? contiguous : questions;
   }
 
   Future<List<QuestionModel>> _fetchIdsFromApi(List<String> ids) async {

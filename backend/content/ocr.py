@@ -31,6 +31,18 @@ _OPTION_START = re.compile(
 _OPTION_STRICT = re.compile(
     r"^\s*([A-Ea-e680OQG])\s*[\)\]\.\:\-\–\—]\s*(.*)$"
 )
+# OCR: "cCc)" / "Cc)" / "CC)" gibi bozulmuş şık başı (özellikle C)
+_OPTION_GARBLED = re.compile(
+    r"^\s*([A-Ea-e]{2,4}|[680OQG])\s*[\)\]\.\:\-\–\—]\s*(.*)$"
+)
+# Satır/gövde içine yapışmış sonraki şık: "… IV cCc) II ve III"
+# Ayırıcı yalnızca parantez/köşeli: "e-devlet", "a." gibi metinleri bölmemek için.
+_EMBEDDED_OPTION_MARK = re.compile(
+    r"(?x)"
+    r"(?<=\S)\s+"
+    r"(?P<key>[A-E]|[A-Ea-e]{2,4}|[680OQG])"
+    r"\s*[\)\]]\s*"
+)
 # Satır başı yetim ")" (önceki şıkın devamı)
 _ORPHAN_PAREN = re.compile(r"^\s*\)\s*(.*\S.*)$")
 
@@ -84,6 +96,18 @@ _ROMAN_TOKEN_MAP = {
     "viii": "VIII",
     "ix": "IX",
     "x": "X",
+}
+_ROMAN_CHAR_FOLD = {
+    "|": "I",
+    "l": "I",
+    "ı": "I",
+    "i": "I",
+    "İ": "I",
+    "I": "I",
+    "v": "V",
+    "V": "V",
+    "x": "X",
+    "X": "X",
 }
 _ROMAN_CANON = {
     "I",
@@ -143,10 +167,44 @@ def _split_question_tail(ln: str) -> tuple[str, str]:
     before, after = s.rsplit("?", 1)
     after = after.strip(" \t-–—:")
     before = (before + "?").strip()
-    # Kısa ek / şık parçası; soru köküne yapışık olmasın
-    if after and not _OPTION_STRICT.match(after) and not _OPTION_START.match(after):
+    # Kısa ek / şık parçası; uzun pasaj stem'de kalsın
+    if (
+        after
+        and len(after) <= 100
+        and not _OPTION_STRICT.match(after)
+        and not _OPTION_START.match(after)
+    ):
         return before, after
     return s, ""
+
+
+_BULLET_LINE = re.compile(
+    r"^[\s]*(?:[•·●○▪▸►\*]|[-–—]\s|\d+[\)\.]|\([a-eçğıöşü]\)|[a-eçğıöşü]\))"
+)
+
+
+def _looks_like_option_a_prefix(gap_lines: list[str], a_body: str) -> bool:
+    """
+    Stem sonu ile A) arasındaki satırlar A şıkkı kırığı mı, yoksa olay metni mi?
+
+    Kısa ek + 'artırmayı' → A'ya; uzun pasaj / maddeler → stem'de kalır.
+    """
+    gap = [ln.strip() for ln in gap_lines if (ln or "").strip()]
+    if not gap:
+        return False
+    text = " ".join(gap)
+    if any(_BULLET_LINE.match(ln) for ln in gap):
+        return False
+    if len(gap) >= 3 or len(text) > 100:
+        return False
+    if sum(1 for ln in gap if len(ln) > 45) >= 2:
+        return False
+    a = (a_body or "").strip()
+    if a and _OPTION_CONTINUATION.match(a):
+        return True
+    if len(gap) <= 2 and len(text) <= 100:
+        return True
+    return False
 
 _OCR_LETTER_FIX = {
     "A": "A",
@@ -187,7 +245,14 @@ def _normalize_option_key(raw_key: str) -> str | None:
     upper = key.upper()
     if upper in OPTION_KEYS:
         return upper
-    return _OCR_LETTER_FIX.get(key) or _OCR_LETTER_FIX.get(upper)
+    fixed = _OCR_LETTER_FIX.get(key) or _OCR_LETTER_FIX.get(upper)
+    if fixed:
+        return fixed
+    # "cCc" / "Cc" / "BB" → tek harf A–E
+    letters = [c.upper() for c in key if c.upper() in OPTION_KEYS]
+    if letters and len(set(letters)) == 1:
+        return letters[0]
+    return None
 
 
 def normalize_turkish_text(text: str) -> str:
@@ -211,6 +276,17 @@ def normalize_turkish_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _fold_roman_chars(s: str) -> str | None:
+    """'lii' / '|v' gibi OCR karakterlerini Romen harflerine indir."""
+    out: list[str] = []
+    for ch in s:
+        mapped = _ROMAN_CHAR_FOLD.get(ch)
+        if mapped is None:
+            return None
+        out.append(mapped)
+    return "".join(out)
+
+
 def _normalize_roman_token(raw: str) -> str | None:
     """OCR bozulmuş Romen (|, ll, NI…) → I–X. Arap rakamı dokunulmaz."""
     s = (raw or "").strip().strip(".")
@@ -220,7 +296,13 @@ def _normalize_roman_token(raw: str) -> str | None:
     upper = folded.upper()
     if upper in _ROMAN_CANON:
         return upper
-    return _ROMAN_TOKEN_MAP.get(folded.lower()) or _ROMAN_TOKEN_MAP.get(s)
+    mapped = _ROMAN_TOKEN_MAP.get(folded.lower()) or _ROMAN_TOKEN_MAP.get(s)
+    if mapped:
+        return mapped
+    char_folded = _fold_roman_chars(s)
+    if char_folded and char_folded in _ROMAN_CANON:
+        return char_folded
+    return None
 
 
 def _normalize_marker_token(raw: str) -> str | None:
@@ -266,6 +348,81 @@ def _attach_marker_after_phrase(text: str, marker: str) -> str | None:
     return None
 
 
+_WORD_TOKEN = re.compile(r"\S+")
+_TRAILING_PUNCT = ",.;:!?)»”\"'"
+
+
+def _marker_row_tokens(ln: str) -> list[tuple[int, int, str]] | None:
+    """
+    Satır yalnızca yan yana madde işaretlerinden mi oluşuyor?
+    Örnek: '    I                        II' → [(4, 5, 'I'), (29, 31, 'II')]
+    """
+    if not (ln or "").strip():
+        return None
+    tokens = list(_WORD_TOKEN.finditer(ln))
+    if len(tokens) < 2:
+        return None
+    out: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for token in tokens:
+        marker = _normalize_marker_token(token.group(0))
+        if not marker or marker in seen:
+            return None
+        seen.add(marker)
+        out.append((token.start(), token.end(), marker))
+    return out
+
+
+def _attach_markers_by_columns(
+    text: str, tokens: list[tuple[int, int, str]], tolerance: float = 8
+) -> str | None:
+    """
+    Altı çizili sözcüklerin altındaki Romen rakamlarını kolon hizasına göre göm.
+    '… tüketilen besinlerin' + '  I            II' → '… tüketilen (I) besinlerin (II)'
+    """
+    words = list(_WORD_TOKEN.finditer(text))
+    if not words:
+        return None
+
+    used: set[int] = set()
+    plan: list[tuple[int, str]] = []
+    for start, end, marker in tokens:
+        if _already_has_marker(text, marker):
+            continue
+        center = (start + end - 1) / 2
+        best: int | None = None
+        best_score: tuple[float, float] | None = None
+        for idx, word in enumerate(words):
+            if idx in used:
+                continue
+            if word.start() <= center <= word.end():
+                distance = 0.0
+            else:
+                distance = min(
+                    abs(center - word.start()), abs(center - (word.end() - 1))
+                )
+            word_center = (word.start() + word.end() - 1) / 2
+            score = (distance, abs(center - word_center))
+            if best_score is None or score < best_score:
+                best_score = score
+                best = idx
+        # Hizası çok uzaksa tahmin yürütme
+        if best is None or best_score is None or best_score[0] > tolerance:
+            continue
+        used.add(best)
+        word = words[best]
+        insert_at = word.end()
+        while insert_at > word.start() and text[insert_at - 1] in _TRAILING_PUNCT:
+            insert_at -= 1
+        plan.append((insert_at, marker))
+
+    if not plan:
+        return None
+    for insert_at, marker in sorted(plan, reverse=True):
+        text = text[:insert_at] + f" ({marker})" + text[insert_at:]
+    return text
+
+
 def _attach_marker_leading(text: str, marker: str) -> str:
     """Satır başındaki kısa ifadeden sonra (I) ekle."""
     if _already_has_marker(text, marker):
@@ -290,12 +447,41 @@ def _repair_marker_lines(lines: list[str]) -> list[str]:
     while i < len(lines):
         marker = _is_marker_line(lines[i])
         if not marker:
+            # Yan yana Romen rakamı satırı: üstteki sözcüklere kolon hizasıyla bağla
+            row = _marker_row_tokens(lines[i])
+            if row and out:
+                prev_i = len(out) - 1
+                while prev_i >= 0 and not out[prev_i].strip():
+                    prev_i -= 1
+                if prev_i >= 0:
+                    repaired = _attach_markers_by_columns(out[prev_i], row)
+                    if repaired is not None:
+                        out[prev_i] = repaired
+                        i += 1
+                        continue
             out.append(lines[i])
             i += 1
             continue
 
         attached = False
-        if out:
+
+        # Girintili tek rakam: doğrudan üstündeki sözcüğe bağla
+        tokens = list(_WORD_TOKEN.finditer(lines[i]))
+        if out and len(tokens) == 1 and tokens[0].start() >= 4:
+            prev_i = len(out) - 1
+            while prev_i >= 0 and not out[prev_i].strip():
+                prev_i -= 1
+            if prev_i >= 0:
+                repaired = _attach_markers_by_columns(
+                    out[prev_i],
+                    [(tokens[0].start(), tokens[0].end(), marker)],
+                    tolerance=3,
+                )
+                if repaired is not None:
+                    out[prev_i] = repaired
+                    attached = True
+
+        if not attached and out:
             prev_i = len(out) - 1
             while prev_i >= 0 and not out[prev_i].strip():
                 prev_i -= 1
@@ -1066,7 +1252,8 @@ def _looks_like_option_line(ln: str, expect: str | None) -> tuple[str | None, st
     """
     strict = _OPTION_STRICT.match(ln)
     loose = _OPTION_START.match(ln)
-    m = strict or loose
+    garbled = _OPTION_GARBLED.match(ln) if not strict else None
+    m = strict or garbled or loose
     if not m:
         return None, ""
 
@@ -1075,7 +1262,7 @@ def _looks_like_option_line(ln: str, expect: str | None) -> tuple[str | None, st
     key = _normalize_option_key(raw_key)
 
     # Ayırıcısız uzun satır (ör. "A sorun...") — yalnızca beklenen harfse ve kısa gövde/şık gibiyse
-    if loose and not strict:
+    if loose and not strict and not garbled:
         # "D   Yaşam..." gibi gerçek şık: harf + ≥2 boşluk
         if not re.match(r"^\s*[A-Ea-e680OQG]\s{2,}", ln):
             # Tek boşluklu "A kelime..." gövde cümlesi riski
@@ -1106,6 +1293,49 @@ _OPTION_CONTINUATION = re.compile(r"^[a-zçğıöşü]")
 _OPTION_TAIL_BOUNDARY = re.compile(
     r"[.!?]\s+(?=(?:[IVXİ]{1,4}\.|\d+\.|[A-ZÇĞİÖŞÜ]))"
 )
+
+
+def _peel_embedded_options(options: dict[str, str]) -> dict[str, str]:
+    """
+    Bir şık gövdesine yapışmış sonraki şıkları ayır.
+
+    Örnek (Romen şıklı OCR): B = "I ve IV cCc) II ve III" → B="I ve IV", C="II ve III"
+    """
+    out = {k: (options.get(k) or "").strip() for k in OPTION_KEYS}
+    for _ in range(len(OPTION_KEYS)):
+        moved = False
+        for i, key in enumerate(OPTION_KEYS[:-1]):
+            body = out[key]
+            if not body:
+                continue
+            later = set(OPTION_KEYS[i + 1 :])
+            match = None
+            found_key = None
+            for m in _EMBEDDED_OPTION_MARK.finditer(body):
+                nk = _normalize_option_key(m.group("key"))
+                if nk in later:
+                    match = m
+                    found_key = nk
+                    break
+            if match is None or found_key is None:
+                continue
+            head = body[: match.start()].strip()
+            tail = body[match.end() :].strip()
+            if not head or not tail:
+                continue
+            out[key] = _clean_option_body(head)
+            if not out[found_key]:
+                out[found_key] = _clean_option_body(tail)
+            else:
+                for k2 in OPTION_KEYS[i + 1 :]:
+                    if not out[k2]:
+                        out[k2] = _clean_option_body(tail)
+                        break
+            moved = True
+            break
+        if not moved:
+            break
+    return out
 
 
 def _rebalance_wrapped_option(prev: str, new_body: str) -> tuple[str, str]:
@@ -1170,15 +1400,18 @@ def parse_question_text(raw: str) -> tuple[str, dict[str, str]]:
     if first_a_idx is None:
         return raw, options
 
-    # Stem sonu (? / söylenemez) ile A) arasındaki satırlar A şıkkının başı
-    # (OCR sıkça "Toplumun...\nA) artırmayı" üretir)
+    # Stem sonu (? / söylenemez) ile A) arasındaki kısa kırıklar A şıkkı başı
+    # olabilir; uzun olay metni / maddeler stem'de kalır (sözel mantık).
     pre_a = list(lines[:first_a_idx])
     a_prefix: list[str] = []
+    a_line_body = ""
+    if first_a_idx is not None:
+        _, a_line_body = _looks_like_option_line(lines[first_a_idx], "A")
 
     # Aynı satırda '? ...' sonrası şık parçası
     if pre_a:
         head, tail = _split_question_tail(pre_a[-1])
-        if tail:
+        if tail and _looks_like_option_a_prefix([tail], a_line_body):
             pre_a[-1] = head
             a_prefix.append(tail)
 
@@ -1189,8 +1422,10 @@ def parse_question_text(raw: str) -> tuple[str, dict[str, str]]:
             break
 
     if last_stem_end is not None and last_stem_end < len(pre_a) - 1:
-        a_prefix = pre_a[last_stem_end + 1 :] + a_prefix
-        pre_a = pre_a[: last_stem_end + 1]
+        gap = pre_a[last_stem_end + 1 :]
+        if _looks_like_option_a_prefix(gap, a_line_body):
+            a_prefix = gap + a_prefix
+            pre_a = pre_a[: last_stem_end + 1]
 
     stem = _clean_stem_body("\n".join(pre_a))
 
@@ -1250,6 +1485,7 @@ def parse_question_text(raw: str) -> tuple[str, dict[str, str]]:
         i += 1
 
     flush()
+    options = _peel_embedded_options(options)
 
     # 3) Eksik şık kaldıysa: satır içi A) B) C) tarama (yedek)
     if sum(1 for v in options.values() if v) < 3:
@@ -1257,6 +1493,7 @@ def parse_question_text(raw: str) -> tuple[str, dict[str, str]]:
         for k in OPTION_KEYS:
             if not options[k] and inline.get(k):
                 options[k] = inline[k]
+        options = _peel_embedded_options(options)
         if not stem:
             m = re.search(r"(?:^|\n)\s*A\s*[\)\]\.\:\-]", raw)
             if m:
@@ -1269,7 +1506,7 @@ def _parse_inline_options(raw: str) -> dict[str, str]:
     """Tek blokta A) … B) … yan yana şıklar."""
     options: dict[str, str] = {k: "" for k in OPTION_KEYS}
     pattern = re.compile(
-        r"(?:^|[\s\n])([A-Ea-e680])\s*[\)\]\.\:\-\–\—]\s*",
+        r"(?:^|[\s\n])([A-Ea-e680]|[A-Ea-e]{2,4})\s*[\)\]\.\:\-\–\—]\s*",
     )
     matches = list(pattern.finditer(raw))
     keyed: list[tuple[int, int, str]] = []

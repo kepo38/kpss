@@ -28,6 +28,7 @@ from .models import (
     MapTemplate,
     Question,
     QuestionErrorReport,
+    QuestionScenario,
     Subject,
     Topic,
     TopicLesson,
@@ -194,8 +195,12 @@ def _sanitize_figure_svg(raw: str) -> str:
 @login_required
 @staff_required
 def panel_home(request: HttpRequest) -> HttpResponse:
-    subjects = Subject.objects.prefetch_related("topics").order_by(
-        "sort_order", "name"
+    subjects = (
+        Subject.objects.annotate(
+            topic_count=Count("topics", distinct=True),
+            question_count=Count("topics__questions", distinct=True),
+        )
+        .order_by("sort_order", "name")
     )
     return render(
         request,
@@ -829,12 +834,14 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
 def panel_subject(request: HttpRequest, subject_id: int) -> HttpResponse:
     subject = get_object_or_404(Subject, pk=subject_id)
     topics = subject.topics.order_by("sort_order", "name", "id")
+    question_count = Question.objects.filter(topic__subject=subject).count()
     return render(
         request,
         "panel/topics.html",
         {
             "subject": subject,
             "topics": topics,
+            "question_count": question_count,
             "page_title": subject.name,
         },
     )
@@ -973,6 +980,26 @@ def panel_topic_reorder(request: HttpRequest, subject_id: int) -> HttpResponse:
 @login_required
 @staff_required
 @require_POST
+def panel_topic_delete(
+    request: HttpRequest, subject_id: int, topic_id: int
+) -> HttpResponse:
+    """Konuyu ve bağlı soru/bilgi/test/grupları sil."""
+    subject = get_object_or_404(Subject, pk=subject_id)
+    topic = get_object_or_404(Topic, pk=topic_id, subject=subject)
+    name = topic.name
+    q_count = topic.questions.count()
+    topic.delete()
+    messages.success(
+        request,
+        f"“{name}” silindi"
+        + (f" ({q_count} soru dahil)." if q_count else "."),
+    )
+    return redirect("panel_subject", subject_id=subject.id)
+
+
+@login_required
+@staff_required
+@require_POST
 def panel_topic_toggle(request: HttpRequest, topic_id: int) -> HttpResponse:
     topic = get_object_or_404(Topic, pk=topic_id)
     topic.is_active = not topic.is_active
@@ -1028,12 +1055,15 @@ def panel_topic(
     topic = get_object_or_404(
         Topic.objects.select_related("subject"), pk=topic_id
     )
-    if tab not in {"lessons", "questions", "tests"}:
+    if tab not in {"lessons", "questions", "tests", "scenarios"}:
         tab = "lessons"
 
     lessons = topic.lessons.order_by("sort_order", "id")
-    questions = topic.questions.order_by("-updated_at")
+    questions = topic.questions.select_related("scenario").order_by("-updated_at")
     tests = topic.tests.prefetch_related("questions").order_by("-created_at")
+    scenarios = topic.question_scenarios.annotate(
+        question_count=Count("questions")
+    ).order_by("sort_order", "id")
     questions_published_count = questions.filter(is_published=True).count()
 
     return render(
@@ -1047,6 +1077,7 @@ def panel_topic(
             "questions": questions,
             "questions_published_count": questions_published_count,
             "tests": tests,
+            "scenarios": scenarios,
             "page_title": topic.name,
         },
     )
@@ -1104,6 +1135,82 @@ def panel_lesson_delete(request: HttpRequest, lesson_id: int) -> HttpResponse:
     topic_id = lesson.topic_id
     lesson.delete()
     return redirect("panel_topic", topic_id=topic_id, tab="lessons")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_scenario_edit(
+    request: HttpRequest, topic_id: int, scenario_id: int | None = None
+) -> HttpResponse:
+    topic = get_object_or_404(Topic, pk=topic_id)
+    scenario = (
+        get_object_or_404(QuestionScenario, pk=scenario_id, topic=topic)
+        if scenario_id
+        else None
+    )
+
+    if request.method == "POST":
+        title = request.POST.get("title", "").strip()
+        stem = request.POST.get("stem", "").strip()
+        try:
+            sort_order = int(request.POST.get("sort_order") or 0)
+        except (TypeError, ValueError):
+            sort_order = 0
+        is_published = request.POST.get("is_published") == "on"
+        if not title or not stem:
+            return HttpResponseBadRequest("Başlık ve ortak olay metni zorunlu.")
+
+        if scenario is None:
+            scenario = QuestionScenario(topic=topic)
+        scenario.title = title
+        scenario.stem = stem
+        scenario.sort_order = max(0, sort_order)
+        scenario.is_published = is_published
+        scenario.save()
+        messages.success(request, "Olay grubu kaydedildi.")
+        return redirect("panel_topic", topic_id=topic.id, tab="scenarios")
+
+    return render(
+        request,
+        "panel/scenario_form.html",
+        {
+            "topic": topic,
+            "subject": topic.subject,
+            "scenario": scenario,
+            "page_title": "Olay grubu" if scenario else "Yeni olay grubu",
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_scenario_delete(
+    request: HttpRequest, scenario_id: int
+) -> HttpResponse:
+    scenario = get_object_or_404(QuestionScenario, pk=scenario_id)
+    topic_id = scenario.topic_id
+    scenario.delete()
+    messages.success(request, "Olay grubu silindi. Bağlı sorular bağımsız kaldı.")
+    return redirect("panel_topic", topic_id=topic_id, tab="scenarios")
+
+
+def _apply_question_scenario(
+    question: Question, topic: Topic, post
+) -> None:
+    raw = (post.get("scenario_id") or "").strip()
+    if raw.isdigit():
+        scenario = QuestionScenario.objects.filter(
+            pk=int(raw), topic=topic
+        ).first()
+        question.scenario = scenario
+    else:
+        question.scenario = None
+    try:
+        question.scenario_order = max(0, int(post.get("scenario_order") or 0))
+    except (TypeError, ValueError):
+        question.scenario_order = 0
 
 
 @login_required
@@ -1243,6 +1350,7 @@ def panel_question_edit(
             # OCR kaynağı (ÖSYM tarama) uygulamaya gitmez; şekil SVG'dedir.
             _discard_question_image(question)
 
+        _apply_question_scenario(question, target_topic, request.POST)
         question.save()
 
         assignment = request.POST.get("test_assignment", "auto")
@@ -1292,6 +1400,7 @@ def panel_question_edit(
         topic,
         selected_test_id=current_test.id if current_test else None,
     )
+    scenarios = topic.question_scenarios.order_by("sort_order", "id")
 
     topic_subtopics = {
         str(t.pk): list(t.subtopics or [])
@@ -1308,6 +1417,7 @@ def panel_question_edit(
             "subject": topic.subject,
             "question": question,
             "test_dd": test_dd,
+            "scenarios": scenarios,
             "current_test": current_test,
             "topic_subtopics_json": topic_subtopics,
             "map_markers_json": list(question.map_markers or [])
@@ -1335,6 +1445,77 @@ def panel_question_delete(
     question.delete()
     messages.success(request, "Soru silindi.")
     return redirect("panel_topic", topic_id=topic_id, tab="questions")
+
+
+def _copy_question_image(source: Question, dest: Question) -> None:
+    """Kaynak sorunun görselini yeni kayda dosya olarak kopyala."""
+    if not source.image:
+        return
+    try:
+        source.image.open("rb")
+        data = source.image.read()
+    except Exception:  # noqa: BLE001
+        return
+    finally:
+        try:
+            source.image.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if not data:
+        return
+    name = source.image.name.rsplit("/", 1)[-1]
+    dest.image.save(
+        f"copy_{dest.public_id}_{name}",
+        ContentFile(data),
+        save=False,
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_question_copy(
+    request: HttpRequest, question_id: int
+) -> HttpResponse:
+    """Mevcut soruyu yeni public_id ile çoğalt — istatistikler sıfırlanır."""
+    source = get_object_or_404(Question, pk=question_id)
+    copy = Question(
+        public_id=_pid("q"),
+        topic=source.topic,
+        subtopic=source.subtopic,
+        stem=source.stem,
+        figure_svg=source.figure_svg,
+        map_template=source.map_template,
+        map_markers=list(source.map_markers or []),
+        option_a=source.option_a,
+        option_b=source.option_b,
+        option_c=source.option_c,
+        option_d=source.option_d,
+        option_e=source.option_e,
+        correct_option=source.correct_option,
+        solution=source.solution,
+        is_published=source.is_published,
+        difficulty=Question.DIFFICULTY_MEDIUM,
+        osym_sordu=source.osym_sordu,
+        content_hash=source.content_hash,
+        stem_hash=source.stem_hash,
+        source_image_hash=source.source_image_hash,
+        scenario=source.scenario,
+        scenario_order=(source.scenario_order + 1) if source.scenario_id else 0,
+    )
+    _copy_question_image(source, copy)
+    copy.save()
+    test = assign_question_to_test(copy, source.topic, "auto")
+    messages.success(
+        request,
+        f"Soru kopyalandı → {copy.public_id} ({test.title}). "
+        "İstediğiniz alanları düzenleyip kaydedin.",
+    )
+    return redirect(
+        "panel_question_edit",
+        topic_id=source.topic_id,
+        question_id=copy.id,
+    )
 
 
 @login_required

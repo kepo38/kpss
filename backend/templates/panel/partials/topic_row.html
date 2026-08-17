@@ -1,42 +1,32 @@
 <div class="row topic-row" id="topic-row-{{ topic.id }}" data-topic-id="{{ topic.id }}" draggable="true">
-
   <button class="topic-drag-handle" type="button" title="Konuyu sürükleyerek sırala" aria-label="{{ topic.name }} konusunu sürükleyerek sırala">⠿</button>
   <div class="name">
     <a href="{% url 'panel_topic_home' topic.id %}">{{ topic.name }}</a>
     <div class="hint">{{ topic.questions.count }} soru · {{ topic.lessons.count }} bilgi · <span data-topic-position>sıra {{ topic.sort_order }}</span></div>
   </div>
-
   {% if topic.is_active %}
-
   <span class="badge on">Aktif</span>
-
   {% else %}
-
   <span class="badge off">Pasif</span>
-
   {% endif %}
-
   <a class="btn btn-ghost" href="{% url 'panel_topic_edit' subject.id topic.id %}">Düzenle</a>
-
   <button
-
     class="btn btn-ghost"
-
     type="button"
-
     hx-post="{% url 'panel_topic_toggle' topic.id %}"
-
     hx-target="#topic-row-{{ topic.id }}"
-
     hx-swap="outerHTML"
-
   >
-
     {% if topic.is_active %}Pasifleştir{% else %}Aktifleştir{% endif %}
-
   </button>
-
+  <form
+    method="post"
+    action="{% url 'panel_topic_delete' subject.id topic.id %}"
+    style="display:inline;"
+    onsubmit="return confirm('“{{ topic.name|escapejs }}” konusu silinsin mi?\n\nBağlı tüm sorular, bilgi kartları, testler ve olay grupları da silinir. Bu işlem geri alınamaz.');"
+  >
+    {% csrf_token %}
+    <button class="btn btn-danger" type="submit">Sil</button>
+  </form>
   <a class="btn btn-primary" href="{% url 'panel_topic_home' topic.id %}">Aç</a>
-
 </div>
-

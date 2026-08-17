@@ -9,6 +9,68 @@ from django.db.models import Count
 
 from .models import Question, Topic, TopicTest
 
+
+def order_questions_keeping_scenarios(
+    questions: list[Question],
+) -> list[Question]:
+    """Grupları bitişik tut: ortak olay sırası, sonra grup içi sıra, sonra id."""
+    items = list(questions)
+    if not items:
+        return []
+
+    def _sort_key(q: Question) -> tuple:
+        scenario = getattr(q, "scenario", None)
+        if q.scenario_id and scenario is not None:
+            return (
+                0,
+                scenario.sort_order,
+                scenario.id,
+                q.scenario_order,
+                q.id,
+            )
+        if q.scenario_id:
+            return (0, 10**9, q.scenario_id, q.scenario_order, q.id)
+        return (1, q.id, 0, 0, q.id)
+
+    return sorted(items, key=_sort_key)
+
+
+def chunk_questions_keeping_scenarios(
+    ordered: list[Question], capacity: int
+) -> list[list[Question]]:
+    """Kapasiteye bölerken aynı olay grubunu ayırma."""
+    cap = max(1, int(capacity))
+    blocks: list[list[Question]] = []
+    index = 0
+    while index < len(ordered):
+        current = ordered[index]
+        if not current.scenario_id:
+            blocks.append([current])
+            index += 1
+            continue
+        end = index + 1
+        while (
+            end < len(ordered)
+            and ordered[end].scenario_id == current.scenario_id
+        ):
+            end += 1
+        blocks.append(ordered[index:end])
+        index = end
+
+    chunks: list[list[Question]] = []
+    bucket: list[Question] = []
+    for block in blocks:
+        if bucket and len(bucket) + len(block) > cap:
+            chunks.append(bucket)
+            bucket = []
+        if not bucket and len(block) > cap:
+            chunks.append(list(block))
+            continue
+        bucket.extend(block)
+    if bucket:
+        chunks.append(bucket)
+    return chunks
+
 _TEST_NUM = re.compile(r"^\s*Test\s+(\d+)\s*$", re.IGNORECASE)
 
 
@@ -88,7 +150,19 @@ def assign_question_to_test(
     if question.topic_id != topic.id:
         question.topic = topic
         question.save(update_fields=["topic", "updated_at"])
-    test, _ = resolve_target_test(topic, assignment)
+    raw = (assignment or "auto").strip().lower()
+    if question.scenario_id and raw in ("", "auto"):
+        sibling = (
+            topic.tests.filter(questions__scenario_id=question.scenario_id)
+            .order_by("created_at", "id")
+            .first()
+        )
+        if sibling is not None:
+            test = sibling
+        else:
+            test, _ = resolve_target_test(topic, assignment)
+    else:
+        test, _ = resolve_target_test(topic, assignment)
     # Başka konuya ait soruları testten temizle (eski hatalı kayıtlar)
     for other in topic.tests.prefetch_related("questions").all():
         for foreign in [
@@ -162,18 +236,22 @@ def rebalance_topic_tests(topic: Topic) -> dict:
     tests_ordered = list(topic.tests.order_by("created_at", "id"))
 
     seen: set[int] = set()
-    ordered: list[Question] = []
+    collected: list[Question] = []
     for t in tests_ordered:
-        for q in t.questions.order_by("id"):
+        for q in t.questions.select_related("scenario").order_by("id"):
             if q.pk not in seen:
                 seen.add(q.pk)
-                ordered.append(q)
+                collected.append(q)
 
     # Testte olmayan yayınlı sorular da dahil
-    for q in topic.questions.filter(is_published=True).order_by("id"):
+    for q in topic.questions.filter(is_published=True).select_related(
+        "scenario"
+    ).order_by("id"):
         if q.pk not in seen:
             seen.add(q.pk)
-            ordered.append(q)
+            collected.append(q)
+
+    ordered = order_questions_keeping_scenarios(collected)
 
     for t in tests_ordered:
         t.questions.clear()
@@ -188,9 +266,7 @@ def rebalance_topic_tests(topic: Topic) -> dict:
             "removed": len(tests_ordered),
         }
 
-    chunks: list[list[Question]] = [
-        ordered[i : i + capacity] for i in range(0, len(ordered), capacity)
-    ]
+    chunks = chunk_questions_keeping_scenarios(ordered, capacity)
 
     kept: list[TopicTest] = []
     created = 0

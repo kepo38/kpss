@@ -87,6 +87,28 @@ class MapTemplate(models.Model):
         return self.title
 
 
+class QuestionScenario(models.Model):
+    """Sözel mantıkta birden çok sorunun paylaştığı ortak olay metni."""
+
+    topic = models.ForeignKey(
+        Topic, on_delete=models.CASCADE, related_name="question_scenarios"
+    )
+    title = models.CharField(max_length=200, verbose_name="Grup başlığı")
+    stem = models.TextField(verbose_name="Ortak olay metni")
+    sort_order = models.PositiveIntegerField(default=0)
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "Sözel mantık grubu"
+        verbose_name_plural = "Sözel mantık grupları"
+
+    def __str__(self) -> str:
+        return f"{self.topic.name} · {self.title}"
+
+
 class Question(models.Model):
     """Soru bankası kaydı — metin, şıklar, görsel."""
 
@@ -107,6 +129,18 @@ class Question(models.Model):
     )
     topic = models.ForeignKey(
         Topic, on_delete=models.CASCADE, related_name="questions"
+    )
+    scenario = models.ForeignKey(
+        QuestionScenario,
+        on_delete=models.SET_NULL,
+        related_name="questions",
+        blank=True,
+        null=True,
+        help_text="Sözel mantıkta ortak olay metnini paylaşan soru grubu.",
+    )
+    scenario_order = models.PositiveIntegerField(
+        default=0,
+        help_text="Bağlı sorunun grup içindeki sabit sırası.",
     )
     subtopic = models.CharField(max_length=160, blank=True)
     stem = models.TextField(verbose_name="Soru metni")
@@ -193,6 +227,10 @@ class Question(models.Model):
             models.Index(
                 fields=["topic", "difficulty", "is_published"],
                 name="question_topic_difficulty_idx",
+            ),
+            models.Index(
+                fields=["scenario", "scenario_order"],
+                name="question_scenario_order_idx",
             ),
         ]
         verbose_name = "Soru"

@@ -56,23 +56,9 @@
       .replace(/>/g, "&gt;");
   }
 
-  function mdInline(text) {
-    if (!text) return "";
-    var src = String(text);
-    var colorRe = /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g;
-    if (colorRe.test(src)) {
-      colorRe.lastIndex = 0;
-      return src.replace(colorRe, function (_, color, inner) {
-        return (
-          '<span class="rich-' +
-          color +
-          '">' +
-          mdInline(inner) +
-          "</span>"
-        );
-      });
-    }
-    return escapeHtml(src)
+  /** Renk etiketleri olmadan kalın / italik / altı çizili. */
+  function mdMarks(text) {
+    return escapeHtml(text)
       .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong><em>$1</em></strong></u>")
       .replace(/\*\*__(.+?)__\*\*/g, "<strong><u>$1</u></strong>")
       .replace(/__\*\*(.+?)\*\*__/g, "<u><strong>$1</strong></u>")
@@ -80,6 +66,38 @@
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/__(.+?)__/g, "<u>$1</u>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>");
+  }
+
+  /**
+   * Renk + markdown.
+   * Renkli kelime, çevresindeki kalın/altı çiziliyi bozmaz:
+   * __cümle {green}kelime{/green} devam__ → tümü altı çizili, kelime yeşil.
+   */
+  function mdInline(text) {
+    if (!text) return "";
+    var src = String(text);
+    var holders = [];
+    // Önce renk bölgelerini yer tutucuya al; markdown tüm cümlede çalışsın.
+    var protectedSrc = src.replace(
+      /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g,
+      function (_, color, inner) {
+        var idx = holders.length;
+        holders.push({
+          color: color,
+          html: mdInline(inner),
+        });
+        return "§§C" + idx + "§§";
+      }
+    );
+    var html = mdMarks(protectedSrc);
+    if (!holders.length) return html;
+    return html.replace(/§§C(\d+)§§/g, function (_, idx) {
+      var item = holders[Number(idx)];
+      if (!item) return "";
+      return (
+        '<span class="rich-' + item.color + '">' + item.html + "</span>"
+      );
+    });
   }
 
   function renderMath(tex, displayMode) {

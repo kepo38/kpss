@@ -26,6 +26,7 @@ from .models import (
     TopicTest,
 )
 from .revision import get_content_version
+from .test_grouping import order_questions_keeping_scenarios
 from .serializers import (
     AnnouncementSerializer,
     ContentCatalogSerializer,
@@ -58,7 +59,7 @@ class ContentPackView(APIView):
         )
         questions = (
             Question.objects.filter(is_published=True, topic__is_active=True)
-            .select_related("topic", "topic__subject")
+            .select_related("topic", "topic__subject", "scenario")
             .order_by("public_id")
         )
         tests = (
@@ -144,7 +145,7 @@ class PublishedQuestionsView(APIView):
         qs = Question.objects.filter(
             is_published=True,
             topic__is_active=True,
-        ).select_related("topic", "topic__subject")
+        ).select_related("topic", "topic__subject", "scenario")
         ids_raw = (request.query_params.get("ids") or "").strip()
         if ids_raw:
             ids = [part.strip() for part in ids_raw.split(",") if part.strip()]
@@ -168,11 +169,13 @@ class TestQuestionsView(APIView):
             is_published=True,
             topic__is_active=True,
         )
-        questions = [
-            q
-            for q in test.questions.all()
-            if q.is_published and q.topic_id == test.topic_id
-        ]
+        questions = order_questions_keeping_scenarios(
+            [
+                q
+                for q in test.questions.select_related("scenario").all()
+                if q.is_published and q.topic_id == test.topic_id
+            ]
+        )
         return Response(
             {
                 "testId": test.public_id,

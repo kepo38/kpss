@@ -27,6 +27,7 @@
 <nav class="tabs">
   <a href="{% url 'panel_topic' topic.id 'lessons' %}" class="{% if tab == 'lessons' %}active{% endif %}">Bilgi</a>
   <a href="{% url 'panel_topic' topic.id 'questions' %}" class="{% if tab == 'questions' %}active{% endif %}">Sorular</a>
+  <a href="{% url 'panel_topic' topic.id 'scenarios' %}" class="{% if tab == 'scenarios' %}active{% endif %}">Olay grupları</a>
   <a href="{% url 'panel_topic' topic.id 'tests' %}" class="{% if tab == 'tests' %}active{% endif %}">Testler</a>
 </nav>
 
@@ -91,6 +92,9 @@
         <div class="name">
           <a href="{% url 'panel_question_edit' topic.id q.id %}">{{ q.public_id }}</a>
           <div class="hint">{{ q.stem|truncatechars:90 }}</div>
+          {% if q.scenario %}
+          <div class="hint">Grup: {{ q.scenario.title }} · sıra {{ q.scenario_order }}</div>
+          {% endif %}
           <div class="hint question-meta">
             Eklendi {{ q.created_at|date:"d.m.Y H:i" }} · Güncellendi {{ q.updated_at|date:"d.m.Y H:i" }}
           </div>
@@ -100,6 +104,12 @@
         <span class="badge difficulty-{{ q.difficulty }}">{{ q.get_difficulty_display }}</span>
         <span class="hint">{{ q.attempt_count }} aday · {% if q.correct_percentage is not None %}%{{ q.correct_percentage|floatformat:1 }} doğru{% else %}veri yok{% endif %}</span>
         <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic.id q.id %}">Düzenle</a>
+        <button
+          class="btn btn-ghost"
+          type="submit"
+          form="q-copy-{{ q.id }}"
+          title="Bu sorunun bağımsız bir kopyasını oluşturur"
+        >Kopyala</button>
         <button
           class="btn btn-danger"
           type="submit"
@@ -112,6 +122,9 @@
   </form>
   {% for q in questions %}
   <form id="q-del-{{ q.id }}" method="post" action="{% url 'panel_question_delete' q.id %}" hidden>
+    {% csrf_token %}
+  </form>
+  <form id="q-copy-{{ q.id }}" method="post" action="{% url 'panel_question_copy' q.id %}" hidden>
     {% csrf_token %}
   </form>
   {% endfor %}
@@ -158,7 +171,31 @@
   </div>
   {% endif %}
 
-{% else %}
+{% elif tab == 'scenarios' %}
+  <div class="toolbar">
+    <strong>Olay grupları</strong>
+    <a class="btn btn-primary" href="{% url 'panel_scenario_new' topic.id %}">Yeni grup</a>
+  </div>
+  <div class="list">
+    {% for scenario in scenarios %}
+    <div class="row">
+      <div class="name">
+        <a href="{% url 'panel_scenario_edit' topic.id scenario.id %}">{{ scenario.title }}</a>
+        <div class="hint">Sıra {{ scenario.sort_order }} · {{ scenario.question_count }} soru · {{ scenario.stem|truncatechars:80 }}</div>
+      </div>
+      {% if scenario.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_scenario_edit' topic.id scenario.id %}">Düzenle</a>
+      <form method="post" action="{% url 'panel_scenario_delete' scenario.id %}" onsubmit="return confirm('Grup silinsin mi? Bağlı sorular bağımsız kalır.');">
+        {% csrf_token %}
+        <button class="btn btn-danger" type="submit">Sil</button>
+      </form>
+    </div>
+    {% empty %}
+    <div class="empty">Henüz olay grubu yok. Sözel mantıkta ortak metni paylaşan sorular için grup ekleyin.</div>
+    {% endfor %}
+  </div>
+
+{% elif tab == 'tests' %}
   <div class="toolbar">
     <strong>Konu testleri</strong>
     <a class="btn btn-primary" href="{% url 'panel_test_new' topic.id %}">Yeni test</a>

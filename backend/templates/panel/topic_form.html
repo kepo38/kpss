@@ -29,4 +29,16 @@
     <a class="btn btn-ghost" href="{% url 'panel_subject' subject.id %}">İptal</a>
   </div>
 </form>
+{% if topic and topic.pk %}
+<form
+  class="form"
+  method="post"
+  action="{% url 'panel_topic_delete' subject.id topic.id %}"
+  style="max-width:640px;margin-top:24px;"
+  onsubmit="return confirm('“{{ topic.name|escapejs }}” konusu silinsin mi?\n\nBağlı tüm sorular, bilgi kartları, testler ve olay grupları da silinir. Bu işlem geri alınamaz.');"
+>
+  {% csrf_token %}
+  <button class="btn btn-danger" type="submit">Konuyu sil</button>
+</form>
+{% endif %}
 {% endblock %}

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicTest, UserMessage
+from .test_grouping import order_questions_keeping_scenarios
 
 
 class TopicSerializer(serializers.ModelSerializer):
@@ -49,6 +50,10 @@ class QuestionSerializer(serializers.ModelSerializer):
     difficultyVisible = serializers.BooleanField(source="difficulty_visible")
     qualityScore = serializers.SerializerMethodField()
     ratingCount = serializers.SerializerMethodField()
+    scenarioId = serializers.SerializerMethodField()
+    scenarioTitle = serializers.SerializerMethodField()
+    scenarioStem = serializers.SerializerMethodField()
+    scenarioOrder = serializers.IntegerField(source="scenario_order")
 
     class Meta:
         model = Question
@@ -71,6 +76,10 @@ class QuestionSerializer(serializers.ModelSerializer):
             "difficultyVisible",
             "qualityScore",
             "ratingCount",
+            "scenarioId",
+            "scenarioTitle",
+            "scenarioStem",
+            "scenarioOrder",
         )
 
     def get_siklar(self, obj: Question) -> dict:
@@ -100,6 +109,24 @@ class QuestionSerializer(serializers.ModelSerializer):
     def get_ratingCount(self, obj: Question) -> int:
         return obj.ratings.count()
 
+    def _published_scenario(self, obj: Question):
+        scenario = getattr(obj, "scenario", None)
+        if scenario is None or not scenario.is_published:
+            return None
+        return scenario
+
+    def get_scenarioId(self, obj: Question) -> str | None:
+        scenario = self._published_scenario(obj)
+        return str(scenario.id) if scenario is not None else None
+
+    def get_scenarioTitle(self, obj: Question) -> str | None:
+        scenario = self._published_scenario(obj)
+        return scenario.title if scenario is not None else None
+
+    def get_scenarioStem(self, obj: Question) -> str | None:
+        scenario = self._published_scenario(obj)
+        return scenario.stem if scenario is not None else None
+
 
 class TopicTestSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source="public_id")
@@ -126,11 +153,12 @@ class TopicTestSerializer(serializers.ModelSerializer):
 
     def _published_questions(self, obj: TopicTest):
         # Prefetch cache kullan (filter() yeni sorgu açar)
-        return [
+        published = [
             q
             for q in obj.questions.all()
             if q.is_published and q.topic_id == obj.topic_id
         ]
+        return order_questions_keeping_scenarios(published)
 
     def get_questionIds(self, obj: TopicTest) -> list[str]:
         return [q.public_id for q in self._published_questions(obj)]

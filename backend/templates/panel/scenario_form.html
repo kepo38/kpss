@@ -1,0 +1,34 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  <a href="{% url 'panel_topic' topic.id 'scenarios' %}">{{ topic.name }}</a> /
+  Olay grubu
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Aynı olay metnini paylaşan 3–4 sözel mantık sorusunu bu grupta tutun. Metin her soruda tekrar gösterilir.</p>
+
+<form class="form" method="post" accept-charset="UTF-8">
+  {% csrf_token %}
+  <label>Grup başlığı
+    <input type="text" name="title" required value="{{ scenario.title|default:'' }}">
+  </label>
+  <label>Ortak olay metni
+    <textarea class="js-rich" name="stem" required>{{ scenario.stem|default:'' }}</textarea>
+  </label>
+  <label>Sıra
+    <input type="number" name="sort_order" min="0" value="{{ scenario.sort_order|default:0 }}">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="is_published" {% if not scenario or scenario.is_published %}checked{% endif %}>
+    Yayında
+  </label>
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'scenarios' %}">İptal</a>
+  </div>
+</form>
+<script src="{% static 'panel/rich-format.js' %}"></script>
+{% endblock %}
