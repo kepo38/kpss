@@ -120,6 +120,8 @@ DEFAULT_CHARSET = "utf-8"
 # Gemini Vision — matematik OCR fallback (ücretsiz kota: AI Studio)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_OCR_MODEL = os.environ.get("GEMINI_OCR_MODEL", "gemini-flash-latest")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 
 CORS_ALLOW_ALL_ORIGINS = True
 

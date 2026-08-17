@@ -1,0 +1,29 @@
+# Derleme / onbellek -- Cursor tarama ve token
+.dart_tool/
+build/
+.pub-cache/
+.pub/
+.idea/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Native derleme artiklari (kaynak kod android/ ios/ durur)
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+android/local.properties
+ios/Flutter/ephemeral/
+ios/Pods/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# Django
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/media/
+backend/staticfiles/
+backend/db.sqlite3
+*.pyc

@@ -1237,7 +1237,7 @@ class _QuizScreenState extends State<QuizScreen>
                         ],
                         QuestionStemPanel(
                           child: WatermarkWidget(
-                            opacity: 0.48,
+                            opacity: 0.36,
                             child: QuestionStemContent(
                               stem: _currentQuestion.soruMetni,
                               imageUrl: _currentQuestion.imageUrl,

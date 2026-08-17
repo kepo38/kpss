@@ -12,6 +12,7 @@ from .auth import (
     upsert_firebase_user,
     user_to_dict,
 )
+from .embeddings import similar_questions
 from .models import (
     Announcement,
     DailyMiniExamAttempt,
@@ -153,6 +154,39 @@ class PublishedQuestionsView(APIView):
                 qs = qs.filter(public_id__in=ids)
         return Response(
             QuestionSerializer(qs, many=True, context={"request": request}).data
+        )
+
+
+class SimilarQuestionsView(APIView):
+    """Yanlış soruya anlamsal olarak yakın yayınlı sorular."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, public_id: str):
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+            topic__is_active=True,
+        )
+        try:
+            limit = int(request.query_params.get("limit") or 5)
+        except (TypeError, ValueError):
+            limit = 5
+        scored = similar_questions(question, limit=limit)
+        payload = []
+        for score, candidate in scored:
+            item = QuestionSerializer(
+                candidate, context={"request": request}
+            ).data
+            item["similarity"] = round(float(score), 4)
+            payload.append(item)
+        return Response(
+            {
+                "sourceId": question.public_id,
+                "questions": payload,
+            }
         )
 
 

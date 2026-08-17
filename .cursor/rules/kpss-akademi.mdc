@@ -1,0 +1,53 @@
+---
+description: KPSS Akademi proje mimarisi, klasörler ve token tasarrufu
+alwaysApply: true
+---
+
+# KPSS Akademi
+
+Flutter mobil + Django API (`backend/`). Package: `kpss_akademi`.
+
+## Klasörler (sadık kal)
+
+- `lib/screens/` — sayfalar
+- `lib/services/` — API, sqflite, Firebase, ChangeNotifier servisler
+- `lib/models/` — veri modelleri
+- `lib/widgets/` — ortak widget'lar
+- `lib/config/` — API/ayar sabitleri
+- `lib/theme/` — renk/font
+- `backend/content/` — Django modeller, views, panel, embeddings
+
+Yeni dosyayı bu ağaca koy; rastgele kök klasör açma.
+
+## Stack (uydurma)
+
+- State: **Provider/Riverpod/Bloc yok** — singleton `ChangeNotifier` + `ListenableBuilder`
+- Lokal: SharedPreferences + sqflite
+- Auth/push: Firebase; içerik: Django REST (`ApiConfig`)
+- Sunucu DB: SQLite; embedding: OpenAI veya yerel hash (Gemini embedding kullanma)
+
+## UI modülleri (tek dosyaya yığma)
+
+Ana sayfa / hub ekranlarını şişirme; parçalar `lib/widgets/` altında:
+
+- Sayaç → `countdown_widget.dart` (`CountdownWidget`)
+- Günün Denemesi → `daily_mini_exam_card.dart` (`DailyMiniExamCard`)
+- Bugünkü Ödev → `daily_mission_center.dart` (`DailyMissionCenter`)
+
+Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine gömme.
+
+## Davranış
+
+- Tüm dosyayı yeniden yazma; sadece değişen blok
+- Kısa cevap; uzun teori yok
+- Model/API değişmeden önce `lib/models/` ve mevcut serializer/servisleri kontrol et
+- Yeni paket önerme; mevcut servisleri reuse et
+- Büyük soru listelerinde async + sayfalama / gereksiz full-bank yükleme yok
+- `const` mümkün olduğunca; DRY → `lib/widgets/`
+
+## Soru / test veri yönetimi
+
+- **Hardcoded banka yasak:** soru metni, şık, çözüm `lib/` içine statik liste olarak gömülmez (`DatabaseService._mockQuestions` / `_seedSampleQuestions` genişletilmez).
+- **Kaynak:** Django (`backend/content/`); mobil çekim `QuestionFetchService` (test/id/similar). Katalog hafif; gövde test başında.
+- **Reuse:** `ContentBankService.questionsForTest` / `questionsByIds` / `fetchByIds` — yeni fetch katmanı yazma.
+- **Bellek:** quiz’e tüm havuzu verme; yalnızca o testin soruları. 1000+ soruluk listeyi senkron yükleme.

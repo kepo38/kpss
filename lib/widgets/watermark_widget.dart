@@ -15,7 +15,7 @@ class WatermarkWidget extends StatelessWidget {
   const WatermarkWidget({
     super.key,
     required this.child,
-    this.opacity = 0.52,
+    this.opacity = 0.38,
   });
 
   @override
@@ -68,31 +68,16 @@ class _AdaptiveWatermarkLayer extends StatelessWidget {
     required this.opacity,
   });
 
-  static const sizeScale = 1.5;
+  /// Tek marka — çoklu kopya eğik metinde üst üste biniyor.
+  static const sizeScale = 1.15;
 
   static double logoSizeFor({
     required double width,
     required double height,
   }) {
-    final widthBased = width * 0.72 * sizeScale;
-    final heightBased = height * 0.82 * sizeScale;
-    return math.min(widthBased, heightBased).clamp(156.0, 390.0);
-  }
-
-  static int logoCountFor({required double width, required double height}) {
-    if (height < width * 1.1) return 1;
-    if (height < width * 2.0) return 2;
-    return 3;
-  }
-
-  static double logoCenterY({
-    required int index,
-    required int count,
-    required double height,
-  }) {
-    if (count <= 1) return height * 0.48;
-    final step = height / (count + 1);
-    return step * (index + 1);
+    final widthBased = width * 0.68 * sizeScale;
+    final heightBased = height * 0.55 * sizeScale;
+    return math.min(widthBased, heightBased).clamp(140.0, 280.0);
   }
 
   @override
@@ -100,24 +85,15 @@ class _AdaptiveWatermarkLayer extends StatelessWidget {
     if (width <= 0 || height <= 0) return const SizedBox.shrink();
 
     final logoSize = logoSizeFor(width: width, height: height);
-    final count = logoCountFor(width: width, height: height);
 
     return ClipRect(
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          for (var i = 0; i < count; i++)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: logoCenterY(index: i, count: count, height: height) -
-                  logoSize / 2,
-              height: logoSize,
-              child: Center(
-                child: _LogoMark(size: logoSize, opacity: opacity),
-              ),
-            ),
-        ],
+      child: Align(
+        alignment: const Alignment(0, -0.08),
+        child: SizedBox(
+          width: logoSize,
+          height: logoSize,
+          child: _LogoMark(size: logoSize, opacity: opacity),
+        ),
       ),
     );
   }

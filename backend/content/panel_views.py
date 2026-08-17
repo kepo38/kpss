@@ -46,6 +46,7 @@ from .question_fingerprint import (
     image_fingerprint,
     stem_fingerprint,
 )
+from .embeddings import refresh_question_embedding
 from .test_grouping import (
     assign_question_to_test,
     rebalance_topic_tests,
@@ -1363,6 +1364,7 @@ def panel_question_edit(
 
         _apply_question_scenario(question, target_topic, request.POST)
         question.save()
+        refresh_question_embedding(question)
 
         assignment = request.POST.get("test_assignment", "auto")
         test = assign_question_to_test(question, target_topic, assignment)
@@ -1516,6 +1518,7 @@ def panel_question_copy(
     )
     _copy_question_image(source, copy)
     copy.save()
+    refresh_question_embedding(copy)
     test = assign_question_to_test(copy, source.topic, "auto")
     messages.success(
         request,

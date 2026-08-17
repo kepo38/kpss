@@ -21,8 +21,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Soru metni'), findsOneWidget);
-    expect(find.text('HEDEF'), findsWidgets);
-    expect(find.text('KAMU'), findsWidgets);
+    expect(find.text('HEDEF'), findsOneWidget);
+    expect(find.text('KAMU'), findsOneWidget);
     expect(find.byType(WatermarkWidget), findsOneWidget);
   });
 }

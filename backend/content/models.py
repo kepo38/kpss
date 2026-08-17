@@ -218,6 +218,19 @@ class Question(models.Model):
         db_index=True,
         help_text="OCR kaynağı görsel SHA256 (görsel saklanmasa da)",
     )
+    embedding = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Soru metninin vektör gömülmesi (anlamsal benzerlik).",
+    )
+    embedding_model = models.CharField(max_length=80, blank=True, default="")
+    embedding_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Gömme üretildiğindeki metin parmak izi.",
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Son güncelleme")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Eklenme")
 

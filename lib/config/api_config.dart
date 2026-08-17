@@ -54,4 +54,8 @@ class ApiConfig {
   static Uri questionErrorReportUri(String questionId) => Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/error-report/',
       );
+  static Uri similarQuestionsUri(String questionId, {int limit = 5}) =>
+      Uri.parse(
+        '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/similar/',
+      ).replace(queryParameters: {'limit': '$limit'});
 }

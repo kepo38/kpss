@@ -97,6 +97,44 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openSimilar(
+    BuildContext context,
+    QuestionModel question,
+  ) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.champagne),
+      ),
+    );
+    final similar = await QuestionFetchService.instance.fetchSimilar(
+      question.id,
+    );
+    if (!mounted) return;
+    navigator.pop();
+    if (similar.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Benzer soru bulunamadı.')),
+      );
+      return;
+    }
+
+    AdManager.instance.skipNextPageTransition();
+    final result = await navigator.push<QuizResult>(
+      MaterialPageRoute<QuizResult>(
+        builder: (_) => QuizScreen(
+          title: 'Benzer sorular',
+          questions: similar,
+        ),
+      ),
+    );
+    await _afterQuiz(result);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _practiceAll(List<QuestionModel> questions) async {
     if (questions.isEmpty) return;
     AdManager.instance.skipNextPageTransition();
@@ -332,6 +370,10 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                         ),
                                         onToggleFavorite: () =>
                                             _toggleFavorite(entry.value[i].id),
+                                        onSimilar: () => _openSimilar(
+                                          context,
+                                          entry.value[i],
+                                        ),
                                         onTap: () => _openQuestion(
                                           context,
                                           entry.value[i].id,
@@ -356,12 +398,14 @@ class _WrongQuestionTile extends StatelessWidget {
   final QuestionModel question;
   final bool isFavorite;
   final VoidCallback onToggleFavorite;
+  final VoidCallback onSimilar;
   final VoidCallback onTap;
 
   const _WrongQuestionTile({
     required this.question,
     required this.isFavorite,
     required this.onToggleFavorite,
+    required this.onSimilar,
     required this.onTap,
   });
 
@@ -385,16 +429,31 @@ class _WrongQuestionTile extends StatelessWidget {
           fontSize: 12,
         ),
       ),
-      trailing: IconButton(
-        tooltip: isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
-        onPressed: onToggleFavorite,
-        icon: Icon(
-          isFavorite ? Icons.favorite : Icons.favorite_border,
-          color: isFavorite
-              ? AppTheme.champagne
-              : AppTheme.slate.withValues(alpha: 0.45),
-          size: 22,
-        ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton(
+            onPressed: onSimilar,
+            child: const Text(
+              'Benzer',
+              style: TextStyle(
+                color: AppTheme.neonEdge,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
+            onPressed: onToggleFavorite,
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite
+                  ? AppTheme.champagne
+                  : AppTheme.slate.withValues(alpha: 0.45),
+              size: 22,
+            ),
+          ),
+        ],
       ),
       onTap: onTap,
     );

@@ -118,6 +118,29 @@ class QuestionFetchService {
     return QuestionModel.keepGroupsContiguous(_orderByIds(results, ids));
   }
 
+  Future<List<QuestionModel>> fetchSimilar(
+    String questionId, {
+    int limit = 5,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            ApiConfig.similarQuestionsUri(questionId, limit: limit),
+            headers: {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return const [];
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      if (body is! Map) return const [];
+      final parsed = _parseQuestions(body['questions']);
+      _rememberSession(parsed);
+      return parsed;
+    } catch (e) {
+      debugPrint('Similar questions fetch ($questionId): $e');
+      return const [];
+    }
+  }
+
   List<QuestionModel> _parseQuestions(Object? raw) {
     if (raw is! List) return const [];
     final parsed = <QuestionModel>[];

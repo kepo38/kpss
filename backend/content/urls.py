@@ -15,6 +15,7 @@ from .views import (
     PublishedTestsView,
     QuestionRatingView,
     QuestionErrorReportView,
+    SimilarQuestionsView,
     DailyMiniExamView,
     ExamTypeListView,
     PromoRedeemView,
@@ -30,6 +31,11 @@ urlpatterns = [
     path("catalog/", ContentCatalogView.as_view(), name="content-catalog"),
     path("curriculum/", CurriculumView.as_view(), name="curriculum"),
     path("questions/", PublishedQuestionsView.as_view(), name="questions"),
+    path(
+        "questions/<str:public_id>/similar/",
+        SimilarQuestionsView.as_view(),
+        name="question-similar",
+    ),
     path(
         "questions/<str:public_id>/rating/",
         QuestionRatingView.as_view(),

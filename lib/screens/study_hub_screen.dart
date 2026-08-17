@@ -123,6 +123,22 @@ class StudyHubScreen extends StatelessWidget {
                     ),
                   if (showSubjects) ...[
                     SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: _SubjectsHeader(
+                          totalQuestions: subjects.fold<int>(
+                            0,
+                            (sum, s) =>
+                                sum +
+                                bank.catalogQuestionCountForSubject(
+                                  kpssType,
+                                  s.id,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
                       padding: EdgeInsets.fromLTRB(
                         16,
                         embedded ? 8 : 12,
@@ -155,7 +171,8 @@ class StudyHubScreen extends StatelessWidget {
                               subjectId: subject.id,
                               name: subject.name,
                               icon: subjectIcon(subject.id),
-                              subtitle: '$questionCount soru',
+                              subtitle:
+                                  '${subject.topics.length} konu · $questionCount soru',
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute<void>(
@@ -262,6 +279,59 @@ class SubjectTopicsScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _SubjectsHeader extends StatelessWidget {
+  final int totalQuestions;
+
+  const _SubjectsHeader({required this.totalQuestions});
+
+  @override
+  Widget build(BuildContext context) {
+    final countLabel =
+        totalQuestions == 0 ? 'Henüz soru yok' : '$totalQuestions soru';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              'Dersler',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.onPage(context),
+                height: 1.1,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                countLabel,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.champagne.withValues(alpha: 0.95),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.',
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.35,
+            color: AppTheme.mutedOnPage(context),
+          ),
+        ),
+      ],
     );
   }
 }
