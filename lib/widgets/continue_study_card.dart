@@ -8,6 +8,7 @@ import '../screens/topic_detail_screen.dart';
 import '../screens/wrong_questions_screen.dart';
 import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
+import '../services/gamification_service.dart';
 import '../services/last_study_session_service.dart';
 import '../theme/app_theme.dart';
 import 'scale_button.dart';
@@ -111,6 +112,11 @@ class ContinueStudyCard extends StatelessWidget {
         ...result.wrongQuestionIds,
       ],
       wrongQuestionIds: result.wrongQuestionIds,
+    );
+    await GamificationService.instance.recordTestCompleted(
+      correct: result.correct,
+      wrong: result.wrong,
+      duration: result.duration,
     );
   }
 

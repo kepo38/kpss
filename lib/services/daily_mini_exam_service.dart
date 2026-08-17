@@ -16,6 +16,7 @@ import '../utils/daily_mini_exam_logic.dart';
 import '../widgets/countdown_widget.dart';
 import 'auth_service.dart';
 import 'content_bank_service.dart';
+import 'gamification_service.dart';
 import 'premium_service.dart';
 import 'question_fetch_service.dart';
 
@@ -267,6 +268,12 @@ class DailyMiniExamService extends ChangeNotifier {
         ...result.wrongQuestionIds,
       ],
       wrongQuestionIds: result.wrongQuestionIds,
+    );
+
+    await GamificationService.instance.recordTestCompleted(
+      correct: result.correct,
+      wrong: result.wrong,
+      duration: result.duration,
     );
 
     await _persist();

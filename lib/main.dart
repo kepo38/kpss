@@ -24,6 +24,7 @@ import 'services/content_sync_service.dart';
 import 'services/database_bootstrap.dart';
 import 'services/database_service.dart';
 import 'services/favorites_service.dart';
+import 'services/gamification_service.dart';
 import 'services/last_study_session_service.dart';
 import 'services/local_database.dart';
 import 'services/notes_service.dart';
@@ -252,6 +253,10 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       await UserSavingsInsightService.instance.initialize();
       // Content bank _boot() içinde erken başlatıldı
       await LastStudySessionService.instance.initialize();
+      await GamificationService.instance.initialize();
+      await GamificationService.instance.onPracticeExamAdded(
+        totalExams: PracticeExamService.instance.allExams.length,
+      );
     } catch (e, st) {
       debugPrint('Local service init error: $e\n$st');
     }

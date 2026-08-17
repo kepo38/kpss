@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'local_database.dart';
 import '../models/practice_exam_model.dart';
+import 'gamification_service.dart';
 
 class PracticeExamService {
   PracticeExamService._();
@@ -42,6 +45,11 @@ class PracticeExamService {
   void addExam(PracticeExamModel exam) {
     _exams.insert(0, exam);
     LocalDatabase.instance.insertExam(exam);
+    unawaited(
+      GamificationService.instance.onPracticeExamAdded(
+        totalExams: _exams.length,
+      ),
+    );
   }
 
   void deleteExam(String id) {

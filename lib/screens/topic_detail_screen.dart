@@ -13,6 +13,7 @@ import '../services/question_fetch_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
+import '../services/gamification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
@@ -469,6 +470,13 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           ...result.wrongQuestionIds,
         ],
         wrongQuestionIds: result.wrongQuestionIds,
+      );
+      unawaited(
+        GamificationService.instance.recordTestCompleted(
+          correct: result.correct,
+          wrong: result.wrong,
+          duration: result.duration,
+        ),
       );
       if (!mounted) return;
       setState(() {});

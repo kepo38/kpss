@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:intl/intl.dart';
@@ -50,8 +51,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _messages.addListener(_onChanged);
     _auth.addListener(_onChanged);
     KpssPreferenceService.instance.addListener(_onChanged);
+    GamificationService.instance.addListener(_onChanged);
     _announcements.refresh();
     _messages.refresh();
+    unawaited(GamificationService.instance.initialize());
   }
 
   @override
@@ -60,6 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _messages.removeListener(_onChanged);
     _auth.removeListener(_onChanged);
     KpssPreferenceService.instance.removeListener(_onChanged);
+    GamificationService.instance.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -328,7 +332,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             neon: _violet,
                             icon: Icons.military_tech_outlined,
                             title: 'Rozetler',
-                            subtitle: 'Lv.${stats.seviye} · ${stats.xp} XP',
+                            subtitle:
+                                'Lv.${stats.seviye} · ${stats.xp}/${stats.sonrakiSeviyeXp} XP',
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => const BadgesScreen(),

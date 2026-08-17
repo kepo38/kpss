@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -15,6 +17,23 @@ class BadgesScreen extends StatefulWidget {
 
 class _BadgesScreenState extends State<BadgesScreen> {
   final _service = GamificationService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.addListener(_onChanged);
+    unawaited(_service.initialize());
+  }
+
+  @override
+  void dispose() {
+    _service.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
