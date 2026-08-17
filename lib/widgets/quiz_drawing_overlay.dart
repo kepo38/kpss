@@ -91,102 +91,98 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
             ),
           ),
         ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              child: Material(
-                color: Colors.transparent,
-                elevation: 10,
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF132A5C).withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppTheme.champagne.withValues(alpha: 0.28),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      for (final color in _colors)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: _ToolButton(
-                            selected: !_eraser && _color == color,
-                            onTap: () => setState(() {
-                              _color = color;
-                              _eraser = false;
-                            }),
-                            child: Container(
-                              width: 18,
-                              height: 18,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                  width: 1.4,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      _ToolbarDivider(),
-                      for (final width in _widths)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: _ToolButton(
-                            selected: !_eraser && _width == width,
-                            onTap: () => setState(() {
-                              _width = width;
-                              _eraser = false;
-                            }),
-                            child: Icon(
-                              Icons.circle,
-                              size: width + 4,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      _ToolbarDivider(),
-                      _ToolButton(
-                        selected: _eraser,
-                        tooltip: 'Silgi',
-                        onTap: () => setState(() => _eraser = true),
-                        child: Icon(
-                          Icons.auto_fix_high_rounded,
-                          size: 18,
-                          color: _eraser
-                              ? AppTheme.champagneLight
-                              : Colors.white.withValues(alpha: 0.9),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      _ToolButton(
-                        selected: false,
-                        tooltip: 'Tüm çizimi temizle',
-                        onTap: widget.onClear,
-                        child: Icon(
-                          Icons.delete_forever_rounded,
-                          size: 19,
-                          color: const Color(0xFFF87171).withValues(alpha: 0.95),
-                        ),
-                      ),
-                    ],
-                  ),
+        Positioned(
+          left: 12,
+          right: 12,
+          // Alt aksiyon çubuğunun üstünde kalsın; 18px taşmayı önler.
+          bottom: 80,
+          child: Material(
+            color: Colors.transparent,
+            elevation: 10,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF132A5C).withValues(alpha: 0.96),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppTheme.champagne.withValues(alpha: 0.28),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  for (final color in _colors)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: _ToolButton(
+                        selected: !_eraser && _color == color,
+                        onTap: () => setState(() {
+                          _color = color;
+                          _eraser = false;
+                        }),
+                        child: Container(
+                          width: 15,
+                          height: 15,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              width: 1.2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  _ToolbarDivider(),
+                  for (final width in _widths)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 2),
+                      child: _ToolButton(
+                        selected: !_eraser && _width == width,
+                        onTap: () => setState(() {
+                          _width = width;
+                          _eraser = false;
+                        }),
+                        child: Icon(
+                          Icons.circle,
+                          size: width + 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  _ToolbarDivider(),
+                  _ToolButton(
+                    selected: _eraser,
+                    tooltip: 'Silgi',
+                    onTap: () => setState(() => _eraser = true),
+                    child: Icon(
+                      Icons.auto_fix_high_rounded,
+                      size: 16,
+                      color: _eraser
+                          ? AppTheme.champagneLight
+                          : Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  _ToolButton(
+                    selected: false,
+                    tooltip: 'Tüm çizimi temizle',
+                    onTap: widget.onClear,
+                    child: Icon(
+                      Icons.delete_forever_rounded,
+                      size: 17,
+                      color: const Color(0xFFF87171).withValues(alpha: 0.95),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -201,8 +197,8 @@ class _ToolbarDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 1,
-      height: 22,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
+      height: 18,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
       color: Colors.white.withValues(alpha: 0.18),
     );
   }
@@ -232,8 +228,8 @@ class _ToolButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: SizedBox(
-          width: 34,
-          height: 34,
+          width: 28,
+          height: 28,
           child: Center(child: child),
         ),
       ),

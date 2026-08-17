@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · {{ app_name }}</title>
+  <meta name="description" content="{{ app_name }} mobil uygulaması gizlilik politikası ve KVKK bilgilendirmesi.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #0c1424;
+      --slate: #5a6578;
+      --cream: #f3f0ea;
+      --champagne: #c9a86c;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Outfit, system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse 80% 50% at 100% -10%, rgba(201,168,108,.18), transparent),
+        linear-gradient(180deg, #f9f5ee 0%, var(--cream) 45%, #eee8df 100%);
+      line-height: 1.65;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 72px;
+    }
+    .brand {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 6px;
+    }
+    .brand span { color: var(--champagne); }
+    .meta {
+      color: var(--slate);
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    article {
+      background: var(--card);
+      border: 1px solid rgba(12,20,36,.08);
+      border-radius: 16px;
+      padding: 28px 24px;
+      box-shadow: 0 12px 40px rgba(12,20,36,.06);
+    }
+    h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 30px;
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 20px;
+      margin: 28px 0 10px;
+    }
+    p, li { color: #243044; font-size: 15.5px; }
+    ul { padding-left: 1.2em; }
+    li { margin: 6px 0; }
+    a { color: #8a6b32; }
+    .note {
+      margin-top: 28px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: rgba(201,168,108,.12);
+      border: 1px solid rgba(201,168,108,.35);
+      font-size: 14px;
+      color: var(--slate);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="brand">HEDEF <span>Kamu</span></p>
+    <p class="meta">Son güncelleme: {{ updated_at|date:"d.m.Y" }}</p>
+
+    <article>
+      <h1>Gizlilik Politikası</h1>
+      <p>
+        Bu Gizlilik Politikası, <strong>{{ app_name }}</strong> mobil uygulaması
+        (“Uygulama”) kapsamında kişisel verilerinizin nasıl toplandığını,
+        kullanıldığını, saklandığını ve korunduğunu açıklar. Uygulamayı
+        indirerek veya kullanarak bu politikayı okuduğunuzu kabul etmiş
+        sayılırsınız.
+      </p>
+
+      <h2>1. Veri Sorumlusu</h2>
+      <p>
+        {{ app_name }} uygulaması kapsamında işlenen kişisel verilerin
+        sorumlusu uygulama işletmecisidir. Gizlilik ve KVKK talepleriniz için:
+        <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+      </p>
+
+      <h2>2. Topladığımız Veriler</h2>
+      <p>Uygulama aşağıdaki kategorilerde veri işleyebilir:</p>
+      <ul>
+        <li>
+          <strong>Hesap bilgileri:</strong> Google ile giriş yaptığınızda
+          ad, e-posta adresi ve profil tanımlayıcısı (Firebase Authentication
+          / Google Sign-In aracılığıyla).
+        </li>
+        <li>
+          <strong>Kullanım ve çalışma verileri:</strong> çözülen testler,
+          cevaplar, yanlış defteri, favoriler, ilerleme, deneme netleri,
+          günlük görevler ve benzeri öğrenme istatistikleri.
+        </li>
+        <li>
+          <strong>Cihaz ve bildirim verileri:</strong> push bildirimleri için
+          cihaz token’ı, işletim sistemi/platform bilgisi ve uygulama sürümü.
+        </li>
+        <li>
+          <strong>Satın alma bilgileri:</strong> Google Play / App Store
+          abonelik durumu (ödeme kartı bilgilerinizi biz saklamayız; işlem
+          mağaza altyapısında gerçekleşir).
+        </li>
+        <li>
+          <strong>Destek içerikleri:</strong> hata bildirimi veya iletişim
+          sırasında paylaştığınız metinler.
+        </li>
+        <li>
+          <strong>Teknik günlükler:</strong> çökme/hata ayıklama için sınırlı
+          teknik kayıtlar.
+        </li>
+      </ul>
+
+      <h2>3. Verileri Nasıl Kullanırız?</h2>
+      <ul>
+        <li>Hesap oluşturma, oturum yönetimi ve kimlik doğrulama</li>
+        <li>KPSS içeriklerinin sunulması, kişiselleştirilmiş çalışma deneyimi</li>
+        <li>İlerleme, istatistik, yanlış defteri ve bildirim hizmetleri</li>
+        <li>Premium abonelik haklarının doğrulanması</li>
+        <li>Reklam gösterimi (premium veya kampanya ile kapatılabilir)</li>
+        <li>Güvenlik, dolandırıcılık önleme ve hizmet kalitesinin iyileştirilmesi</li>
+        <li>Yasal yükümlülüklerin yerine getirilmesi</li>
+      </ul>
+
+      <h2>4. Üçüncü Taraf Hizmetler</h2>
+      <p>
+        Hizmeti sunmak için aşağıdaki üçüncü taraf altyapıları kullanılabilir.
+        Bu sağlayıcıların kendi gizlilik politikaları geçerlidir:
+      </p>
+      <ul>
+        <li>Google Firebase (kimlik doğrulama, mesajlaşma)</li>
+        <li>Google Sign-In</li>
+        <li>Google Mobile Ads / AdMob (reklam)</li>
+        <li>Google Play Billing / Apple In-App Purchase (abonelik)</li>
+        <li>İçerik API sunucumuz (Django tabanlı backend)</li>
+      </ul>
+
+      <h2>5. Reklamlar</h2>
+      <p>
+        Ücretsiz kullanımda reklam gösterilebilir. Reklam ağları cihaz
+        tanımlayıcıları ve yaklaşık konum gibi teknik verileri kendi
+        politikalarına göre işleyebilir. Premium üyelik veya uygulama içi
+        reklamsız kampanyalar ile reklamlar kapatılabilir.
+      </p>
+
+      <h2>6. Çerezler ve Benzer Teknolojiler</h2>
+      <p>
+        Mobil uygulamada klasik tarayıcı çerezleri kullanılmaz. Tercihler,
+        oturum ve ilerleme verileri cihazınızda (ör. yerel depolama /
+        SharedPreferences / SQLite) ve/veya sunucuda tutulabilir.
+      </p>
+
+      <h2>7. Saklama Süresi</h2>
+      <p>
+        Veriler, hesabınız aktif olduğu sürece ve hizmetin sunulması için
+        gerekli olduğu müddetçe saklanır. Hesap silme veya yasal sürelerin
+        dolması halinde veriler silinir veya anonimleştirilir. Yasal
+        saklama zorunlulukları saklıdır.
+      </p>
+
+      <h2>8. Veri Güvenliği</h2>
+      <p>
+        Verilerinizi yetkisiz erişim, kayıp veya değiştirilmeye karşı makul
+        teknik ve idari tedbirlerle korumaya çalışırız. İnternet üzerinden
+        hiçbir iletim yönteminin %100 güvenli olmadığını hatırlatırız.
+      </p>
+
+      <h2>9. Çocukların Gizliliği</h2>
+      <p>
+        Uygulama genel kamu personeli sınavına hazırlık amaçlıdır; 13 yaşın
+        altındaki çocuklardan bilerek kişisel veri toplamayız. Böyle bir
+        durum fark edilirse ilgili veriler silinir.
+      </p>
+
+      <h2>10. Haklarınız (KVKK)</h2>
+      <p>
+        6698 sayılı Kişisel Verilerin Korunması Kanunu kapsamında; verilerinizin
+        işlenip işlenmediğini öğrenme, düzeltme, silme/yok etme talep etme,
+        işlemenin kısıtlanmasını isteme ve kanunda sayılan diğer haklara
+        sahipsiniz. Taleplerinizi
+        <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+        adresine iletebilirsiniz.
+      </p>
+
+      <h2>11. Uluslararası Aktarım</h2>
+      <p>
+        Kullandığımız bulut hizmetleri verileri Türkiye dışında sunucularda
+        işleyebilir. Bu durumda ilgili hizmet sağlayıcıların güvenlik ve
+        gizlilik taahhütleri çerçevesinde aktarım yapılır.
+      </p>
+
+      <h2>12. Politika Değişiklikleri</h2>
+      <p>
+        Bu metni güncelleyebiliriz. Önemli değişikliklerde uygulama içinde
+        veya bu sayfada yeni sürüm yayımlanır. “Son güncelleme” tarihi
+        güncellenir.
+      </p>
+
+      <h2>13. İletişim</h2>
+      <p>
+        Gizlilik ile ilgili sorularınız için:
+        <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+      </p>
+
+      <div class="note">
+        Bu sayfa Google Play ve App Store mağaza kayıtları için herkese açık
+        gizlilik politikası URL’si olarak kullanılabilir:
+        <strong>/gizlilik-politikasi/</strong>
+      </div>
+    </article>
+  </div>
+</body>
+</html>
