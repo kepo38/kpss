@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
 
-/// Soru kökünün arkasında, metin alanını kaplayan 45° filigran (şıklar hariç).
+/// Soru kökünün arkasında tek 45° filigran (şıklar hariç).
+///
+/// Tam ortalanmaz: metin sola hizalı olduğu için kısa satırların sağındaki
+/// boşluğa düşmesin diye marka metin tarafına (sola) yaslanır.
 class WatermarkWidget extends StatelessWidget {
   static const logoAsset = BrandConstants.watermarkAsset;
 
@@ -15,7 +18,7 @@ class WatermarkWidget extends StatelessWidget {
   const WatermarkWidget({
     super.key,
     required this.child,
-    this.opacity = 0.28,
+    this.opacity = 0.26,
   });
 
   @override
@@ -33,10 +36,17 @@ class WatermarkWidget extends StatelessWidget {
                     box.maxHeight <= 0) {
                   return const SizedBox.shrink();
                 }
-                return _CoveringWatermarkLayer(
-                  width: box.maxWidth,
-                  height: box.maxHeight,
-                  opacity: opacity,
+                final size = math
+                    .min(
+                      148.0,
+                      math.min(box.maxWidth * 0.48, box.maxHeight * 0.62),
+                    )
+                    .clamp(96.0, 148.0);
+                // LTR soru metni: sola yakın, dikeyde hafif yukarı — boş sağ
+                // alan ve alt boşluktan uzak.
+                return Align(
+                  alignment: const Alignment(-0.78, -0.22),
+                  child: _LogoMark(size: size, opacity: opacity),
                 );
               },
             ),
@@ -44,63 +54,6 @@ class WatermarkWidget extends StatelessWidget {
         ),
         child,
       ],
-    );
-  }
-}
-
-/// Metin gövdesinin tamamını aralıklı markalarla örter (tek boş nokta bırakmaz).
-class _CoveringWatermarkLayer extends StatelessWidget {
-  static const markSize = 148.0;
-  static const stepX = 168.0;
-  static const stepY = 132.0;
-
-  final double width;
-  final double height;
-  final double opacity;
-
-  const _CoveringWatermarkLayer({
-    required this.width,
-    required this.height,
-    required this.opacity,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final size = math
-        .min(markSize, math.min(width * 0.55, height * 0.7))
-        .clamp(112.0, markSize);
-
-    // Kısa gövdede tek merkezî marka yeterli.
-    if (height < size * 1.35) {
-      return Center(
-        child: _LogoMark(size: size, opacity: opacity),
-      );
-    }
-
-    final cols = math.max(1, (width / stepX).ceil());
-    final rows = math.max(1, (height / stepY).ceil());
-    final children = <Widget>[];
-
-    for (var row = 0; row < rows; row++) {
-      for (var col = 0; col < cols; col++) {
-        final stagger = row.isOdd ? stepX * 0.45 : 0.0;
-        final left = col * stepX + stagger - size * 0.15;
-        final top = row * stepY - size * 0.1;
-        if (left > width || top > height) continue;
-        children.add(
-          Positioned(
-            left: left,
-            top: top,
-            width: size,
-            height: size,
-            child: _LogoMark(size: size, opacity: opacity),
-          ),
-        );
-      }
-    }
-
-    return ClipRect(
-      child: Stack(clipBehavior: Clip.hardEdge, children: children),
     );
   }
 }

@@ -44,6 +44,7 @@ from .question_fingerprint import (
     duplicate_payload,
     find_duplicate_question,
     image_fingerprint,
+    image_phash,
     stem_fingerprint,
 )
 from .embeddings import refresh_question_embedding
@@ -70,6 +71,7 @@ def _store_ocr_draft(
     solution: str = "",
     correct_option: str = "A",
     source_image_hash: str = "",
+    source_image_phash: str = "",
     test_assignment: str = "auto",
 ) -> None:
     request.session["ocr_draft"] = {
@@ -84,6 +86,7 @@ def _store_ocr_draft(
         "solution": solution,
         "correct_option": correct_option,
         "source_image_hash": source_image_hash,
+        "source_image_phash": source_image_phash,
         "test_assignment": test_assignment,
     }
     request.session.modified = True
@@ -173,6 +176,7 @@ def _question_from_draft(draft: dict) -> types.SimpleNamespace:
         solution=draft.get("solution", ""),
         figure_svg=draft.get("figure_svg", ""),
         source_image_hash=draft.get("source_image_hash", ""),
+        source_image_phash=draft.get("source_image_phash", ""),
         is_published=True,
         osym_sordu=False,
         map_template="",
@@ -653,6 +657,9 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                 img_hash = image_fingerprint(image)
                 if hasattr(image, "seek"):
                     image.seek(0)
+                img_phash = image_phash(image)
+                if hasattr(image, "seek"):
+                    image.seek(0)
                 ocr = ocr_question_image(image)
             except Exception:  # noqa: BLE001
                 messages.error(
@@ -720,6 +727,7 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                         content_hash=c_hash,
                         stem_hash=s_hash,
                         image_hash=img_hash,
+                        image_phash_hex=img_phash,
                         require_options=bool(
                             option_a and option_b and option_c
                         ),
@@ -750,6 +758,7 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                             solution=solution,
                             correct_option=correct_option,
                             source_image_hash=img_hash,
+                            source_image_phash=img_phash,
                             test_assignment=request.POST.get(
                                 "test_assignment", "auto"
                             ),
@@ -843,6 +852,9 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         img_hash = image_fingerprint(image)
         if hasattr(image, "seek"):
             image.seek(0)
+        img_phash = image_phash(image)
+        if hasattr(image, "seek"):
+            image.seek(0)
         result = ocr_question_image(image)
     except Exception:  # noqa: BLE001
         messages.error(
@@ -894,6 +906,7 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         content_hash=c_hash,
         stem_hash=s_hash,
         image_hash=img_hash,
+        image_phash_hex=img_phash,
         exclude_pk=exclude_pk,
         require_options=bool(
             (opts.get("A") or "").strip()
@@ -917,6 +930,7 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         "error": result.error,
         "engine": getattr(result, "engine", "tesseract"),
         "image_hash": img_hash,
+        "image_phash": img_phash,
         "content_hash": c_hash,
         "duplicate": duplicate_payload(dup, match) if dup else None,
     }
@@ -1372,21 +1386,11 @@ def panel_question_edit(
 
         question.subtopic = request.POST.get("subtopic", "").strip()
         question.stem = stem
-        question.option_a = strip_option_emphasis(
-            request.POST.get("option_a", "").strip()
-        )
-        question.option_b = strip_option_emphasis(
-            request.POST.get("option_b", "").strip()
-        )
-        question.option_c = strip_option_emphasis(
-            request.POST.get("option_c", "").strip()
-        )
-        question.option_d = strip_option_emphasis(
-            request.POST.get("option_d", "").strip()
-        )
-        question.option_e = strip_option_emphasis(
-            request.POST.get("option_e", "").strip()
-        )
+        question.option_a = request.POST.get("option_a", "").strip()
+        question.option_b = request.POST.get("option_b", "").strip()
+        question.option_c = request.POST.get("option_c", "").strip()
+        question.option_d = request.POST.get("option_d", "").strip()
+        question.option_e = request.POST.get("option_e", "").strip()
         if not all(
             [
                 question.option_a,
@@ -1409,10 +1413,15 @@ def panel_question_edit(
         question.figure_svg = figure_svg
 
         image_hash = (request.POST.get("source_image_hash") or "").strip()
+        image_phash_val = (request.POST.get("source_image_phash") or "").strip()
         if map_template:
             question.source_image_hash = ""
-        elif image_hash:
-            question.source_image_hash = image_hash
+            question.source_image_phash = ""
+        else:
+            if image_hash:
+                question.source_image_hash = image_hash
+            if image_phash_val:
+                question.source_image_phash = image_phash_val
 
         c_hash = content_fingerprint(
             question.stem,
@@ -1456,8 +1465,16 @@ def panel_question_edit(
                 save=False,
             )
         else:
-            # OCR kaynağı (ÖSYM tarama) uygulamaya gitmez; şekil SVG'dedir.
-            _discard_question_image(question)
+            stem_image = request.FILES.get("stem_image")
+            if stem_image:
+                _discard_question_image(question)
+                question.image.save(
+                    f"stem_{question.public_id}_{stem_image.name}",
+                    stem_image,
+                    save=False,
+                )
+            elif not request.POST.get("keep_image"):
+                _discard_question_image(question)
 
         _apply_question_scenario(question, target_topic, request.POST)
         question.save()

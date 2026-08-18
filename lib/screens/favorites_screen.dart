@@ -200,6 +200,7 @@ class _FavoriteTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final test = bank.testContainingQuestion(question.id);
     final testLabel = test?.title ?? 'Testte değil';
+    final isFromWrong = bank.wrongQuestionIds.contains(question.id);
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -213,12 +214,40 @@ class _FavoriteTile extends StatelessWidget {
           fontWeight: FontWeight.w500,
         ),
       ),
-      subtitle: Text(
-        '${question.konuAdi} · $testLabel',
-        style: TextStyle(
-          color: AppTheme.slate.withValues(alpha: 0.75),
-          fontSize: 12,
-        ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${question.konuAdi} · $testLabel',
+            style: TextStyle(
+              color: AppTheme.slate.withValues(alpha: 0.75),
+              fontSize: 12,
+            ),
+          ),
+          if (isFromWrong) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.menu_book_rounded,
+                  size: 12,
+                  color: const Color(0xFFF87171).withValues(alpha: 0.85),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Yanlış Defterinden eklendi',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    fontStyle: FontStyle.italic,
+                    color: const Color(0xFFF87171).withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
       trailing: IconButton(
         icon: const Icon(

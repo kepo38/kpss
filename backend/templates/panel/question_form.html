@@ -32,6 +32,7 @@
   <form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
     {% csrf_token %}
     <input type="hidden" name="source_image_hash" id="source-image-hash" value="{{ question.source_image_hash|default:'' }}">
+    <input type="hidden" name="source_image_phash" id="source-image-phash" value="{{ question.source_image_phash|default:'' }}">
     <input type="hidden" name="force_duplicate" id="force-duplicate" value="">
     <div id="duplicate-banner" class="empty" hidden
          style="border-color:rgba(248,113,113,0.45);color:#f87171;margin-bottom:16px;"></div>
@@ -66,6 +67,22 @@
       <textarea class="js-rich" name="stem" id="question-stem" placeholder="Metin ve/veya görsel kullanın. Haritayı cümleler arasına koymak için [HARITA] yazın veya aşağıdaki düğmeyi kullanın.">{{ question.stem|default:'' }}</textarea>
       <span class="hint">Kalın/altı çizili için metni seçip K / A düğmelerine basın. Kayıtta <code>**kalın**</code> veya <code>__altı__</code> görünmeli; yoksa uygulamada biçim olmaz.</span>
     </label>
+
+    <div class="stem-image-section">
+      <label>Soru görseli (uygulamada görünür)
+        <input type="file" name="stem_image" id="stem-image-input" accept="image/png,image/jpeg,image/webp,image/gif">
+        <span class="hint">Soru metninin yanında/altında gösterilecek görsel. Tablo, paragraf veya harita görseli olabilir.</span>
+      </label>
+      {% if question and question.image and not question.map_template %}
+      <div class="stem-image-preview">
+        <img src="{{ question.image.url }}" alt="Mevcut soru görseli" style="max-width:240px;border-radius:6px;margin-top:6px;">
+        <label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;">
+          <input type="checkbox" name="keep_image" value="1" checked>
+          Mevcut görseli koru
+        </label>
+      </div>
+      {% endif %}
+    </div>
 
     <details class="ocr-panel" id="ocr-panel" {% if entry_mode == 'ocr' %}open{% endif %}>
       <summary class="media-title" style="cursor:pointer;margin-bottom:8px;">Görselden oku (OCR) — isteğe bağlı</summary>
@@ -148,19 +165,19 @@
     </section>
 
     <label>A
-      <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}">
+      <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}" class="js-rich">
     </label>
     <label>B
-      <input type="text" name="option_b" required value="{{ question.option_b|default:'' }}">
+      <input type="text" name="option_b" required value="{{ question.option_b|default:'' }}" class="js-rich">
     </label>
     <label>C
-      <input type="text" name="option_c" required value="{{ question.option_c|default:'' }}">
+      <input type="text" name="option_c" required value="{{ question.option_c|default:'' }}" class="js-rich">
     </label>
     <label>D
-      <input type="text" name="option_d" required value="{{ question.option_d|default:'' }}">
+      <input type="text" name="option_d" required value="{{ question.option_d|default:'' }}" class="js-rich">
     </label>
     <label>E
-      <input type="text" name="option_e" required value="{{ question.option_e|default:'' }}">
+      <input type="text" name="option_e" required value="{{ question.option_e|default:'' }}" class="js-rich">
     </label>
     <label>Doğru cevap
       <select name="correct_option">
@@ -444,6 +461,10 @@
     }
     if (hashField && data.image_hash) {
       hashField.value = data.image_hash;
+    }
+    var phashField = document.getElementById('source-image-phash');
+    if (phashField && data.image_phash) {
+      phashField.value = data.image_phash;
     }
     if (rawBox && rawWrap) {
       if (data.raw_text) {

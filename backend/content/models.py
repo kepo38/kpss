@@ -218,6 +218,13 @@ class Question(models.Model):
         db_index=True,
         help_text="OCR kaynağı görsel SHA256 (görsel saklanmasa da)",
     )
+    source_image_phash = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Perceptual hash (16 hex) — düzenlenmiş görselleri de yakalar",
+    )
     embedding = models.JSONField(
         default=list,
         blank=True,

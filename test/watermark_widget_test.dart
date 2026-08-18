@@ -4,7 +4,7 @@ import 'package:kpss_akademi/constants/brand_constants.dart';
 import 'package:kpss_akademi/widgets/watermark_widget.dart';
 
 void main() {
-  testWidgets('WatermarkWidget covers tall stem area with brand marks',
+  testWidgets('WatermarkWidget shows a single brand mark near text',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -24,8 +24,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Soru metni'), findsOneWidget);
-    expect(find.text(BrandConstants.brandLine1), findsWidgets);
-    expect(find.text(BrandConstants.brandLine2), findsWidgets);
+    expect(find.text(BrandConstants.brandLine1), findsOneWidget);
+    expect(find.text(BrandConstants.brandLine2), findsOneWidget);
     expect(find.byType(WatermarkWidget), findsOneWidget);
   });
 }

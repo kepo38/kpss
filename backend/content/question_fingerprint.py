@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import logging
 import re
 import unicodedata
 from typing import BinaryIO
@@ -10,6 +12,10 @@ from typing import BinaryIO
 from django.urls import reverse
 
 from .models import Question
+
+logger = logging.getLogger(__name__)
+
+_PHASH_BITS = 64  # 8×8 DCT-based perceptual hash → 16-char hex
 
 
 def normalize_question_text(value: str) -> str:
@@ -84,6 +90,57 @@ def image_fingerprint(source: BinaryIO | bytes) -> str:
     return digest.hexdigest()
 
 
+def image_phash(source: BinaryIO | bytes) -> str:
+    """Perceptual hash (average hash) — 16 hex karakter. Küçük düzenlemelere dayanıklı."""
+    try:
+        from PIL import Image
+    except ImportError:
+        logger.warning("Pillow yüklü değil; phash atlanıyor.")
+        return ""
+
+    try:
+        if isinstance(source, (bytes, bytearray)):
+            img = Image.open(io.BytesIO(source))
+        else:
+            if hasattr(source, "seek"):
+                try:
+                    source.seek(0)
+                except Exception:
+                    pass
+            img = Image.open(source)
+            if hasattr(source, "seek"):
+                try:
+                    source.seek(0)
+                except Exception:
+                    pass
+
+        img = img.convert("L").resize((8, 8), Image.LANCZOS)
+        pixels = list(img.getdata())
+        avg = sum(pixels) / len(pixels)
+
+        hash_int = 0
+        for p in pixels:
+            hash_int = (hash_int << 1) | (1 if p > avg else 0)
+        return f"{hash_int:016x}"
+    except Exception:
+        logger.exception("phash hesaplanamadı")
+        return ""
+
+
+def phash_hamming(h1: str, h2: str) -> int:
+    """İki 16-hex phash arası Hamming mesafesi (0 = aynı, 64 = tamamen farklı)."""
+    if not h1 or not h2 or len(h1) != 16 or len(h2) != 16:
+        return _PHASH_BITS
+    try:
+        xor = int(h1, 16) ^ int(h2, 16)
+        return bin(xor).count("1")
+    except ValueError:
+        return _PHASH_BITS
+
+
+PHASH_THRESHOLD = 10  # ≤10 bit fark = muhtemelen aynı görsel
+
+
 def fingerprints_for_question(question: Question) -> tuple[str, str]:
     content = content_fingerprint(
         question.stem,
@@ -102,23 +159,35 @@ def find_duplicate_question(
     content_hash: str = "",
     stem_hash: str = "",
     image_hash: str = "",
+    image_phash_hex: str = "",
     exclude_pk: int | None = None,
     require_options: bool = False,
 ) -> tuple[Question | None, str]:
     """
     Dönüş: (soru, eşleşme türü)
-    eşleşme: image | content | stem | ""
+    eşleşme: image | image_similar | content | stem | ""
     """
     qs = Question.objects.select_related("topic", "topic__subject")
     if exclude_pk:
         qs = qs.exclude(pk=exclude_pk)
 
+    # Tam görsel hash eşleşmesi
     if image_hash:
         hit = qs.filter(source_image_hash=image_hash).exclude(
             source_image_hash=""
         ).first()
         if hit:
             return hit, "image"
+
+    # Perceptual hash — düzenlenmiş görselleri yakalar
+    if image_phash_hex and len(image_phash_hex) == 16:
+        candidates = qs.exclude(source_image_phash="").values_list(
+            "pk", "source_image_phash", named=True
+        )
+        for row in candidates.iterator(chunk_size=500):
+            if phash_hamming(image_phash_hex, row.source_image_phash) <= PHASH_THRESHOLD:
+                hit = qs.get(pk=row.pk)
+                return hit, "image_similar"
 
     if content_hash:
         hit = qs.filter(content_hash=content_hash).exclude(content_hash="").first()
@@ -142,6 +211,7 @@ def duplicate_payload(question: Question, match: str) -> dict:
     )
     labels = {
         "image": "aynı görsel",
+        "image_similar": "çok benzer görsel (düzenlenmiş olabilir)",
         "content": "aynı soru metni ve şıklar",
         "stem": "aynı soru metni",
     }
@@ -165,9 +235,12 @@ def apply_fingerprints(
     question: Question,
     *,
     image_hash: str | None = None,
+    image_phash_hex: str | None = None,
 ) -> None:
     content, stem = fingerprints_for_question(question)
     question.content_hash = content
     question.stem_hash = stem
     if image_hash is not None:
         question.source_image_hash = image_hash or ""
+    if image_phash_hex is not None:
+        question.source_image_phash = image_phash_hex or ""

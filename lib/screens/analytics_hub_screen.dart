@@ -11,6 +11,7 @@ import '../services/question_fetch_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/account_link_card.dart';
+import '../widgets/analytics_study_vault.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/scale_button.dart';
@@ -110,48 +111,25 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   margin: EdgeInsets.only(top: 12),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ShortcutCard(
-                        icon: Icons.menu_book_outlined,
-                        title: 'Yanlış defteri',
-                        value: wrongCount == 0 ? 'Boş' : '$wrongCount soru',
-                        accent: const Color(0xFFDC2626),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const WrongQuestionsScreen(),
-                            ),
-                          );
-                        },
+                AnalyticsStudyVault(
+                  wrongCount: wrongCount,
+                  favoriteCount: favCount,
+                  notesCount: notesCount,
+                  onWrongTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const WrongQuestionsScreen(),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _ShortcutCard(
-                        icon: Icons.favorite_border_rounded,
-                        title: 'Favoriler',
-                        value: favCount == 0 ? 'Boş' : '$favCount soru',
-                        accent: AppTheme.champagne,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const FavoritesScreen(),
-                            ),
-                          );
-                        },
+                    );
+                  },
+                  onFavoritesTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const FavoritesScreen(),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _ShortcutCard(
-                  icon: Icons.sticky_note_2_outlined,
-                  title: 'Notlarım',
-                  value: notesCount == 0 ? 'Boş' : '$notesCount not',
-                  accent: AppTheme.champagne,
-                  onTap: () {
+                    );
+                  },
+                  onNotesTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => NotesScreen(kpssType: widget.kpssType),
@@ -385,60 +363,6 @@ class _HeroSummary extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ShortcutCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String value;
-  final Color accent;
-  final VoidCallback onTap;
-
-  const _ShortcutCard({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.accent,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleButton(
-      onPressed: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          color: AppTheme.surfaceCard(context),
-          border: Border.all(color: AppTheme.hairline(context)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 18, color: accent),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.onPage(context),
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.mutedOnPage(context),
-              ),
-            ),
-          ],
         ),
       ),
     );

@@ -322,15 +322,6 @@ class _SubjectsHeader extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.',
-          style: TextStyle(
-            fontSize: 13,
-            height: 1.35,
-            color: AppTheme.mutedOnPage(context),
-          ),
-        ),
       ],
     );
   }

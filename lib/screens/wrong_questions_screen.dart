@@ -101,10 +101,117 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     BuildContext context,
     QuestionModel question,
   ) async {
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    showDialog<void>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Material(
+              color: AppTheme.inkSoft,
+              borderRadius: BorderRadius.circular(18),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.champagne.withValues(alpha: 0.16),
+                            border: Border.all(
+                              color: AppTheme.champagne.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 18,
+                            color: AppTheme.champagneLight,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Benzer sorular',
+                            style: TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Bu yanlış sorunun metnine en yakın yayınlanmış '
+                      'sorular vektör benzerliği ile sıralanır. Yanlış '
+                      'sorusunun kendisi açılmaz; pratik için ayrı bir set gelir.',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.4,
+                        color: Colors.white.withValues(alpha: 0.62),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.of(sheetContext).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.2),
+                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text('Vazgeç'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () =>
+                                Navigator.of(sheetContext).pop(true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.champagne,
+                              foregroundColor: AppTheme.ink,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text(
+                              'Getir',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    final navigator = Navigator.of(this.context);
+    final messenger = ScaffoldMessenger.of(this.context);
+    showDialog<void>(
+      context: this.context,
       barrierDismissible: false,
       builder: (_) => const Center(
         child: CircularProgressIndicator(color: AppTheme.champagne),
@@ -411,51 +518,124 @@ class _WrongQuestionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        QuestionStemContent.previewText(question.soruMetni),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: AppTheme.ink,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      subtitle: Text(
-        question.konuAdi,
-        style: TextStyle(
-          color: AppTheme.slate.withValues(alpha: 0.65),
-          fontSize: 12,
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+    final on = AppTheme.onPage(context);
+    final muted = AppTheme.mutedOnPage(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextButton(
-            onPressed: onSimilar,
-            child: const Text(
-              'Benzer',
-              style: TextStyle(
-                color: AppTheme.neonEdge,
-                fontWeight: FontWeight.w600,
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 4, 8, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        QuestionStemContent.previewText(question.soruMetni),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: on,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                          fontSize: 14.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        question.konuAdi,
+                        style: TextStyle(
+                          color: muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Dokun → bu soruyu çöz',
+                        style: TextStyle(
+                          color: muted.withValues(alpha: 0.75),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-          IconButton(
-            tooltip: isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
-            onPressed: onToggleFavorite,
-            icon: Icon(
-              isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: isFavorite
-                  ? AppTheme.champagne
-                  : AppTheme.slate.withValues(alpha: 0.45),
-              size: 22,
-            ),
+          const SizedBox(width: 8),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SimilarInfoChip(onTap: onSimilar),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: onToggleFavorite,
+                child: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: isFavorite
+                      ? AppTheme.champagne
+                      : muted.withValues(alpha: 0.45),
+                  size: 18,
+                ),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Yanlış satırından ayrı; yanlış çözümü açmaz, bilgilendirici BENZER kutusu.
+class _SimilarInfoChip extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SimilarInfoChip({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
       onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFF1A2740),
+          border: Border.all(
+            color: AppTheme.champagne.withValues(alpha: 0.35),
+            width: 0.5,
+          ),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              size: 11,
+              color: AppTheme.champagneLight,
+            ),
+            SizedBox(width: 4),
+            Text(
+              'BENZER',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: AppTheme.champagneLight,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
