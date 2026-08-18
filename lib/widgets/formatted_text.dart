@@ -612,17 +612,31 @@ class FormattedText extends StatelessWidget {
       );
     }
 
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: _parse(
-          laidOut,
-          base,
-          forceDisplayMath: forceDisplayMath,
+    return _OverflowSafeLine(
+      alignment: _overflowAlignment(textAlign),
+      child: Text.rich(
+        TextSpan(
+          style: base,
+          children: _parse(
+            laidOut,
+            base,
+            forceDisplayMath: forceDisplayMath,
+          ),
         ),
+        textAlign: textAlign,
+        softWrap: false,
       ),
-      textAlign: textAlign,
     );
+  }
+
+  static Alignment _overflowAlignment(TextAlign? align) {
+    return switch (align) {
+      TextAlign.center => Alignment.center,
+      TextAlign.right => Alignment.centerRight,
+      TextAlign.end => Alignment.centerRight,
+      TextAlign.justify => Alignment.centerLeft,
+      _ => Alignment.centerLeft,
+    };
   }
 
   static List<InlineSpan> _parse(
@@ -851,7 +865,8 @@ class _ParagraphText extends StatelessWidget {
       final tex = FormattedText.prepareTex(displayOnly.group(1)!.trim());
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Center(
+        child: _OverflowSafeLine(
+          alignment: Alignment.center,
           child: FormattedText.buildMathWidget(
             tex,
             base: base,
@@ -871,7 +886,8 @@ class _ParagraphText extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Center(
+              child: _OverflowSafeLine(
+                alignment: Alignment.center,
                 child: FormattedText.buildMathWidget(
                   tex,
                   base: base,
@@ -882,16 +898,20 @@ class _ParagraphText extends StatelessWidget {
             if (rest.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text.rich(
-                  TextSpan(
-                    style: base,
-                    children: FormattedText._parse(
-                      rest,
-                      base,
-                      forceDisplayMath: forceDisplayMath,
+                child: _OverflowSafeLine(
+                  alignment: FormattedText._overflowAlignment(textAlign),
+                  child: Text.rich(
+                    TextSpan(
+                      style: base,
+                      children: FormattedText._parse(
+                        rest,
+                        base,
+                        forceDisplayMath: forceDisplayMath,
+                      ),
                     ),
+                    textAlign: textAlign,
+                    softWrap: false,
                   ),
-                  textAlign: textAlign,
                 ),
               ),
           ],
@@ -899,16 +919,54 @@ class _ParagraphText extends StatelessWidget {
       }
     }
 
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: FormattedText._parse(
-          paragraph,
-          base,
-          forceDisplayMath: forceDisplayMath,
+    return _OverflowSafeLine(
+      alignment: FormattedText._overflowAlignment(textAlign),
+      child: Text.rich(
+        TextSpan(
+          style: base,
+          children: FormattedText._parse(
+            paragraph,
+            base,
+            forceDisplayMath: forceDisplayMath,
+          ),
         ),
+        textAlign: textAlign,
+        softWrap: false,
       ),
-      textAlign: textAlign,
+    );
+  }
+}
+
+/// Uzun formül satırlarını ekrana sığdırır (taşma şeridi önlenir).
+class _OverflowSafeLine extends StatelessWidget {
+  final Widget child;
+  final Alignment alignment;
+
+  const _OverflowSafeLine({
+    required this.child,
+    this.alignment = Alignment.centerLeft,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var maxW = constraints.maxWidth;
+        if (!maxW.isFinite || maxW <= 0) {
+          maxW = MediaQuery.sizeOf(context).width - 40;
+        }
+        return Align(
+          alignment: alignment,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxW),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: alignment,
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -943,7 +1001,8 @@ class _DocumentText extends StatelessWidget {
         children.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Center(
+            child: _OverflowSafeLine(
+              alignment: Alignment.center,
               child: FormattedText.buildMathWidget(
                 tex,
                 base: base,
@@ -963,7 +1022,8 @@ class _DocumentText extends StatelessWidget {
           children.add(
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Center(
+              child: _OverflowSafeLine(
+                alignment: Alignment.center,
                 child: FormattedText.buildMathWidget(
                   tex,
                   base: base,
@@ -1003,16 +1063,20 @@ class _DocumentText extends StatelessWidget {
         children.add(
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 6),
-            child: Text.rich(
-              TextSpan(
-                style: base.copyWith(
-                  fontSize: (base.fontSize ?? 14) + 1.5,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
+            child: _OverflowSafeLine(
+              alignment: FormattedText._overflowAlignment(textAlign),
+              child: Text.rich(
+                TextSpan(
+                  style: base.copyWith(
+                    fontSize: (base.fontSize ?? 14) + 1.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                  children: FormattedText._parse(headingText, base),
                 ),
-                children: FormattedText._parse(headingText, base),
+                textAlign: textAlign,
+                softWrap: false,
               ),
-              textAlign: textAlign,
             ),
           ),
         );
@@ -1030,12 +1094,16 @@ class _DocumentText extends StatelessWidget {
               children: [
                 Text(nested ? '◦ ' : '• ', style: base),
                 Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      style: base,
-                      children: FormattedText._parse(bullet.group(2)!, base),
+                  child: _OverflowSafeLine(
+                    alignment: FormattedText._overflowAlignment(textAlign),
+                    child: Text.rich(
+                      TextSpan(
+                        style: base,
+                        children: FormattedText._parse(bullet.group(2)!, base),
+                      ),
+                      textAlign: textAlign,
+                      softWrap: false,
                     ),
-                    textAlign: textAlign,
                   ),
                 ),
               ],
@@ -1048,17 +1116,27 @@ class _DocumentText extends StatelessWidget {
       children.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text.rich(
-            TextSpan(style: base, children: FormattedText._parse(trimmed, base)),
-            textAlign: textAlign,
+          child: _OverflowSafeLine(
+            alignment: FormattedText._overflowAlignment(textAlign),
+            child: Text.rich(
+              TextSpan(
+                style: base,
+                children: FormattedText._parse(trimmed, base),
+              ),
+              textAlign: textAlign,
+              softWrap: false,
+            ),
           ),
         ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
     );
   }
 }

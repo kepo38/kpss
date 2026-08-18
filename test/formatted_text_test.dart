@@ -207,7 +207,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(Center), findsOneWidget);
+    expect(find.byType(FittedBox), findsWidgets);
   });
 
   testWidgets('normalizes html bold tags', (tester) async {
