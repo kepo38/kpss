@@ -3,6 +3,7 @@ class PublisherConstants {
   PublisherConstants._();
 
   static const List<String> yayinEvleri = [
+    'Hedef Kamu',
     'İndeks Akademi',
     'Benim Hocam',
     'Yargı',

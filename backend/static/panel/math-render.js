@@ -293,7 +293,9 @@
   }
 
   /** Çözüm / ders metni — satır ve madde yapısını korur. */
-  function documentHtml(text) {
+  function documentHtml(text, options) {
+    options = options || {};
+    var examMode = !!options.examMode;
     var src = restoreCollapsedBreaks(
       normalizeLatex(String(text || ""))
         .replace(/\r\n/g, "\n")
@@ -368,15 +370,21 @@
 
       var heading = trimmed.match(/^#{1,3}\s+(.+)/);
       if (heading) {
-        html.push(
-          '<p class="preview-heading">' + richInline(heading[1]) + "</p>"
-        );
+        if (examMode) {
+          var title = heading[1].replace(/^\*\*|\*\*$/g, "").trim();
+          html.push("<p>" + richInline("**" + title + "**") + "</p>");
+        } else {
+          html.push(
+            '<p class="preview-heading">' + richInline(heading[1]) + "</p>"
+          );
+        }
         return;
       }
       var questionLike =
         /\?\s*\**$/.test(trimmed) ||
         /\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b/i.test(trimmed);
       if (
+        !examMode &&
         !questionLike &&
         /^\*\*[^*][\s\S]*\*\*$/.test(trimmed) &&
         trimmed.indexOf("**", 2) === trimmed.length - 2
@@ -404,6 +412,10 @@
       .join("");
   }
 
+  function examDocumentHtml(text) {
+    return documentHtml(text, { examMode: true });
+  }
+
   global.KpssMathRender = {
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
@@ -414,5 +426,6 @@
     plainInline: plainInline,
     paragraphHtml: paragraphHtml,
     documentHtml: documentHtml,
+    examDocumentHtml: examDocumentHtml,
   };
 })(window);

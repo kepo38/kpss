@@ -31,11 +31,11 @@ abstract final class ExamTypography {
     );
   }
 
-  static TextStyle solution({required Color color, double fontSize = 15}) {
+  static TextStyle solution({required Color color, double fontSize = 12}) {
     return body(
       color: color,
       fontSize: fontSize,
-      height: 1.55,
+      height: 1.5,
     );
   }
 

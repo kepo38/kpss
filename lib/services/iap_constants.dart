@@ -25,4 +25,5 @@ class IapConstants {
   static const String premiumPrefsKey = 'is_premium_active';
   static const String premiumProductPrefsKey = 'premium_product_id';
   static const String premiumExpiryPrefsKey = 'premium_expiry_iso';
+  static const String ownedPackProductsPrefsKey = 'owned_exam_pack_product_ids';
 }

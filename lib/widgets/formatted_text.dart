@@ -13,6 +13,15 @@ class FormattedText extends StatelessWidget {
   final bool paragraphLayout;
   final bool forceDisplayMath;
 
+  /// ÖSYM sınav düzeni: tüm satırlar aynı punto, kalın yalnızca **…** ile.
+  final bool examLayout;
+
+  /// false → metin/formül sabit punto; taşan satır yatay kayar (çözüm metni).
+  final bool examScaleDown;
+
+  /// true → metin satırları softWrap (panel gibi); FittedBox yok.
+  final bool examWrap;
+
   const FormattedText(
     this.data, {
     super.key,
@@ -21,6 +30,9 @@ class FormattedText extends StatelessWidget {
     this.preserveLineBreaks = false,
     this.paragraphLayout = false,
     this.forceDisplayMath = false,
+    this.examLayout = false,
+    this.examScaleDown = true,
+    this.examWrap = false,
   });
 
   static bool _isStructuralLine(String line) {
@@ -567,19 +579,12 @@ class FormattedText extends StatelessWidget {
   }) {
     final color = textColor ?? base.color ?? Colors.white;
     // Bazı Android ROM'larda font weight farkı görünmez; gölge ile kalınlık zorlanır.
-    final fakeBold = bold
-        ? <Shadow>[
-            Shadow(color: color.withValues(alpha: 0.85), offset: const Offset(0.55, 0)),
-            Shadow(color: color.withValues(alpha: 0.55), offset: const Offset(0.25, 0)),
-          ]
-        : null;
-
     return base.copyWith(
       color: color,
-      fontWeight: bold ? FontWeight.w900 : base.fontWeight,
+      fontWeight: bold ? FontWeight.w700 : base.fontWeight,
       fontStyle: italic ? FontStyle.italic : base.fontStyle,
-      letterSpacing: bold ? (base.letterSpacing ?? 0) + 0.15 : base.letterSpacing,
-      shadows: fakeBold ?? base.shadows,
+      letterSpacing: base.letterSpacing,
+      shadows: base.shadows,
       decoration: underline
           ? TextDecoration.underline
           : base.decoration,
@@ -587,6 +592,43 @@ class FormattedText extends StatelessWidget {
       decorationThickness: underline ? 2.4 : base.decorationThickness,
       decorationStyle: underline ? TextDecorationStyle.solid : base.decorationStyle,
     );
+  }
+
+  static List<InlineSpan> parseSpans(
+    String input,
+    TextStyle base, {
+    bool forceDisplayMath = false,
+  }) =>
+      _parse(input, base, forceDisplayMath: forceDisplayMath);
+
+  /// Tek satırı metin + formül parçalarına böler (Row/FittedBox için).
+  static List<Widget> lineToRowChildren(String input, TextStyle base) {
+    final spans = _parse(input, base);
+    final widgets = <Widget>[];
+    for (final span in spans) {
+      if (span is WidgetSpan) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 1),
+            child: span.child ?? const SizedBox.shrink(),
+          ),
+        );
+      } else if (span is TextSpan) {
+        if (span.children != null && span.children!.isNotEmpty) {
+          widgets.add(
+            Text.rich(
+              TextSpan(style: span.style ?? base, children: span.children),
+              softWrap: false,
+            ),
+          );
+        } else if (span.text != null && span.text!.isNotEmpty) {
+          widgets.add(
+            Text(span.text!, style: span.style ?? base, softWrap: false),
+          );
+        }
+      }
+    }
+    return widgets;
   }
 
   @override
@@ -597,12 +639,16 @@ class FormattedText extends StatelessWidget {
       preserveLineBreaks ? markup : examFormat(markup),
     );
     final laidOut = restoreCollapsedBreaks(normalized);
+    final useExamLayout = examLayout || preserveLineBreaks;
 
-    if (preserveLineBreaks || laidOut.contains('\n')) {
+    if (preserveLineBreaks || laidOut.contains('\n') || examWrap) {
       return _DocumentText(
         text: laidOut,
         base: base,
         textAlign: textAlign,
+        examLayout: useExamLayout,
+        examScaleDown: examScaleDown,
+        examWrap: examWrap,
       );
     }
 
@@ -612,6 +658,17 @@ class FormattedText extends StatelessWidget {
         base: base,
         textAlign: textAlign,
         forceDisplayMath: forceDisplayMath,
+        examLayout: useExamLayout,
+        examScaleDown: examScaleDown,
+      );
+    }
+
+    if (useExamLayout) {
+      return _ExamLine(
+        line: laidOut,
+        base: base,
+        textAlign: textAlign,
+        scaleDown: examScaleDown,
       );
     }
 
@@ -831,12 +888,16 @@ class _ParagraphText extends StatelessWidget {
   final TextStyle base;
   final TextAlign? textAlign;
   final bool forceDisplayMath;
+  final bool examLayout;
+  final bool examScaleDown;
 
   const _ParagraphText({
     required this.text,
     required this.base,
     this.textAlign,
     this.forceDisplayMath = false,
+    this.examLayout = false,
+    this.examScaleDown = true,
   });
 
   @override
@@ -870,6 +931,7 @@ class _ParagraphText extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: _OverflowSafeLine(
           alignment: Alignment.center,
+          scaleDown: examScaleDown,
           child: FormattedText.buildMathWidget(
             tex,
             base: base,
@@ -891,6 +953,7 @@ class _ParagraphText extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: _OverflowSafeLine(
                 alignment: Alignment.center,
+                scaleDown: examScaleDown,
                 child: FormattedText.buildMathWidget(
                   tex,
                   base: base,
@@ -901,25 +964,41 @@ class _ParagraphText extends StatelessWidget {
             if (rest.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: _OverflowSafeLine(
-                  alignment: FormattedText._overflowAlignment(textAlign),
-                  child: Text.rich(
-                    TextSpan(
-                      style: base,
-                      children: FormattedText._parse(
-                        rest,
-                        base,
-                        forceDisplayMath: forceDisplayMath,
+                child: examLayout
+                    ? _ExamLine(
+                        line: rest,
+                        base: base,
+                        textAlign: textAlign,
+                        scaleDown: examScaleDown,
+                      )
+                    : _OverflowSafeLine(
+                        alignment: FormattedText._overflowAlignment(textAlign),
+                        child: Text.rich(
+                          TextSpan(
+                            style: base,
+                            children: FormattedText._parse(
+                              rest,
+                              base,
+                              forceDisplayMath: forceDisplayMath,
+                            ),
+                          ),
+                          textAlign: textAlign,
+                          softWrap: false,
+                        ),
                       ),
-                    ),
-                    textAlign: textAlign,
-                    softWrap: false,
-                  ),
-                ),
               ),
           ],
         );
       }
+    }
+
+    if (examLayout) {
+      return _ExamLine(
+        line: paragraph,
+        base: base,
+        textAlign: textAlign,
+        scaleDown: examScaleDown,
+      );
     }
 
     return _OverflowSafeLine(
@@ -940,14 +1019,16 @@ class _ParagraphText extends StatelessWidget {
   }
 }
 
-/// Uzun formül satırlarını ekrana sığdırır (taşma şeridi önlenir).
+/// Uzun formül satırlarını ekrana sığdırır veya yatay kaydırır.
 class _OverflowSafeLine extends StatelessWidget {
   final Widget child;
   final Alignment alignment;
+  final bool scaleDown;
 
   const _OverflowSafeLine({
     required this.child,
     this.alignment = Alignment.centerLeft,
+    this.scaleDown = true,
   });
 
   @override
@@ -958,10 +1039,18 @@ class _OverflowSafeLine extends StatelessWidget {
         if (!maxW.isFinite || maxW <= 0) {
           maxW = MediaQuery.sizeOf(context).width - 40;
         }
-        return Align(
-          alignment: alignment,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxW),
+        if (!scaleDown) {
+          return SizedBox(
+            width: maxW,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: child,
+            ),
+          );
+        }
+        return SizedBox(
+          width: maxW,
+          child: ClipRect(
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: alignment,
@@ -974,16 +1063,168 @@ class _OverflowSafeLine extends StatelessWidget {
   }
 }
 
+/// Metin satırı — panel gibi softWrap, punto sabit.
+class _WrappedExamLine extends StatelessWidget {
+  final String line;
+  final TextStyle base;
+  final TextAlign? textAlign;
+
+  const _WrappedExamLine({
+    required this.line,
+    required this.base,
+    this.textAlign,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
+    return Text.rich(
+      TextSpan(
+        style: base,
+        children: FormattedText.parseSpans(trimmed, base),
+      ),
+      textAlign: textAlign ?? TextAlign.start,
+      softWrap: true,
+    );
+  }
+}
+
+/// Tek satır: parçalı Row + FittedBox ile yatay taşmayı önler.
+class _ExamLine extends StatelessWidget {
+  final String line;
+  final TextStyle base;
+  final TextAlign? textAlign;
+  final bool scaleDown;
+
+  const _ExamLine({
+    required this.line,
+    required this.base,
+    this.textAlign,
+    this.scaleDown = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var maxW = constraints.maxWidth;
+        if (!maxW.isFinite || maxW <= 0) {
+          maxW = MediaQuery.sizeOf(context).width - 48;
+        }
+
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return const SizedBox.shrink();
+
+        final children = FormattedText.lineToRowChildren(trimmed, base);
+        if (children.isEmpty) return const SizedBox.shrink();
+
+        final row = Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: children,
+        );
+
+        if (!scaleDown) {
+          return SizedBox(
+            width: maxW,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: row,
+            ),
+          );
+        }
+
+        return SizedBox(
+          width: maxW,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: FormattedText._overflowAlignment(textAlign),
+            child: row,
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _DocumentText extends StatelessWidget {
   final String text;
   final TextStyle base;
   final TextAlign? textAlign;
+  final bool examLayout;
+  final bool examScaleDown;
+  final bool examWrap;
 
   const _DocumentText({
     required this.text,
     required this.base,
     this.textAlign,
+    this.examLayout = false,
+    this.examScaleDown = true,
+    this.examWrap = false,
   });
+
+  Widget _lineWidget(String content) {
+    if (examWrap) {
+      return _WrappedExamLine(
+        line: content,
+        base: base,
+        textAlign: textAlign,
+      );
+    }
+    if (examLayout) {
+      return _ExamLine(
+        line: content,
+        base: base,
+        textAlign: textAlign,
+        scaleDown: examScaleDown,
+      );
+    }
+    return _OverflowSafeLine(
+      alignment: FormattedText._overflowAlignment(textAlign),
+      child: Text.rich(
+        TextSpan(
+          style: base,
+          children: FormattedText.parseSpans(content, base),
+        ),
+        textAlign: textAlign,
+        softWrap: false,
+      ),
+    );
+  }
+
+  Widget _displayMathBlock(String tex) {
+    final widget = FormattedText.buildMathWidget(
+      tex,
+      base: base,
+      display: true,
+    );
+    if (examWrap) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          var maxW = constraints.maxWidth;
+          if (!maxW.isFinite || maxW <= 0) {
+            maxW = MediaQuery.sizeOf(context).width - 48;
+          }
+          return SizedBox(
+            width: maxW,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: widget,
+            ),
+          );
+        },
+      );
+    }
+    return _OverflowSafeLine(
+      alignment: Alignment.center,
+      scaleDown: examScaleDown,
+      child: widget,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -999,18 +1240,11 @@ class _DocumentText extends StatelessWidget {
       }
 
       if (RegExp(r'^\$\$[\s\S]+\$\$$').hasMatch(trimmed)) {
-        final tex =
-            FormattedText.prepareTex(trimmed.substring(2, trimmed.length - 2));
         children.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
-            child: _OverflowSafeLine(
-              alignment: Alignment.center,
-              child: FormattedText.buildMathWidget(
-                tex,
-                base: base,
-                display: true,
-              ),
+            child: _displayMathBlock(
+              FormattedText.prepareTex(trimmed.substring(2, trimmed.length - 2)),
             ),
           ),
         );
@@ -1025,14 +1259,7 @@ class _DocumentText extends StatelessWidget {
           children.add(
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _OverflowSafeLine(
-                alignment: Alignment.center,
-                child: FormattedText.buildMathWidget(
-                  tex,
-                  base: base,
-                  display: true,
-                ),
-              ),
+              child: _displayMathBlock(tex),
             ),
           );
           continue;
@@ -1052,38 +1279,54 @@ class _DocumentText extends StatelessWidget {
         continue;
       }
 
-      final headingMd = RegExp(r'^#{1,3}\s+(.+)').firstMatch(trimmed);
-      final questionLike = RegExp(r'\?\s*\**$').hasMatch(trimmed) ||
-          RegExp(
-            r'\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b',
-            caseSensitive: false,
-          ).hasMatch(trimmed);
-      final wholeBold = !questionLike &&
-          RegExp(r'^\*\*[^*][\s\S]*\*\*$').hasMatch(trimmed) &&
-          trimmed.indexOf('**', 2) == trimmed.length - 2;
-      final headingText = headingMd?.group(1) ?? (wholeBold ? trimmed : null);
-      if (headingText != null) {
-        children.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 10, bottom: 6),
-            child: _OverflowSafeLine(
-              alignment: FormattedText._overflowAlignment(textAlign),
-              child: Text.rich(
-                TextSpan(
-                  style: base.copyWith(
-                    fontSize: (base.fontSize ?? 14) + 1.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
+      if (!examLayout) {
+        final headingMd = RegExp(r'^#{1,3}\s+(.+)').firstMatch(trimmed);
+        final questionLike = RegExp(r'\?\s*\**$').hasMatch(trimmed) ||
+            RegExp(
+              r'\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b',
+              caseSensitive: false,
+            ).hasMatch(trimmed);
+        final wholeBold = !questionLike &&
+            RegExp(r'^\*\*[^*][\s\S]*\*\*$').hasMatch(trimmed) &&
+            trimmed.indexOf('**', 2) == trimmed.length - 2;
+        final headingText =
+            headingMd?.group(1) ?? (wholeBold ? trimmed : null);
+        if (headingText != null) {
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 6),
+              child: _OverflowSafeLine(
+                alignment: FormattedText._overflowAlignment(textAlign),
+                child: Text.rich(
+                  TextSpan(
+                    style: base.copyWith(
+                      fontSize: (base.fontSize ?? 14) + 1.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                    children: FormattedText._parse(headingText, base),
                   ),
-                  children: FormattedText._parse(headingText, base),
+                  textAlign: textAlign,
+                  softWrap: false,
                 ),
-                textAlign: textAlign,
-                softWrap: false,
               ),
             ),
-          ),
-        );
-        continue;
+          );
+          continue;
+        }
+      } else {
+        final headingMd = RegExp(r'^#{1,3}\s+(.+)').firstMatch(trimmed);
+        if (headingMd != null) {
+          var title = headingMd.group(1)!.trim();
+          if (!title.startsWith('**')) title = '**$title**';
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _lineWidget(title),
+            ),
+          );
+          continue;
+        }
       }
 
       final bullet = RegExp(r'^(\s*)[-•*◦○–—]\s+(.+)').firstMatch(line);
@@ -1096,19 +1339,7 @@ class _DocumentText extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(nested ? '◦ ' : '• ', style: base),
-                Expanded(
-                  child: _OverflowSafeLine(
-                    alignment: FormattedText._overflowAlignment(textAlign),
-                    child: Text.rich(
-                      TextSpan(
-                        style: base,
-                        children: FormattedText._parse(bullet.group(2)!, base),
-                      ),
-                      textAlign: textAlign,
-                      softWrap: false,
-                    ),
-                  ),
-                ),
+                Expanded(child: _lineWidget(bullet.group(2)!)),
               ],
             ),
           ),
@@ -1119,17 +1350,7 @@ class _DocumentText extends StatelessWidget {
       children.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: _OverflowSafeLine(
-            alignment: FormattedText._overflowAlignment(textAlign),
-            child: Text.rich(
-              TextSpan(
-                style: base,
-                children: FormattedText._parse(trimmed, base),
-              ),
-              textAlign: textAlign,
-              softWrap: false,
-            ),
-          ),
+          child: _lineWidget(trimmed),
         ),
       );
     }

@@ -141,6 +141,8 @@ class QuestionFetchService {
     }
   }
 
+  List<QuestionModel> parseQuestionsList(Object? raw) => _parseQuestions(raw);
+
   List<QuestionModel> _parseQuestions(Object? raw) {
     if (raw is! List) return const [];
     final parsed = <QuestionModel>[];

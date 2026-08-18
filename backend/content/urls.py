@@ -17,6 +17,9 @@ from .views import (
     QuestionErrorReportView,
     SimilarQuestionsView,
     DailyMiniExamView,
+    ExamPackDetailView,
+    ExamPackExamQuestionsView,
+    ExamPackListView,
     ExamTypeListView,
     PromoRedeemView,
     TestQuestionsView,
@@ -70,4 +73,15 @@ urlpatterns = [
     path("daily-mini-exam/", DailyMiniExamView.as_view(), name="daily-mini-exam"),
     path("promo/redeem/", PromoRedeemView.as_view(), name="promo-redeem"),
     path("exam-types/", ExamTypeListView.as_view(), name="exam-types"),
+    path("exam-packs/", ExamPackListView.as_view(), name="exam-packs"),
+    path(
+        "exam-packs/<str:pack_id>/",
+        ExamPackDetailView.as_view(),
+        name="exam-pack-detail",
+    ),
+    path(
+        "exam-packs/<str:pack_id>/exams/<int:exam_index>/questions/",
+        ExamPackExamQuestionsView.as_view(),
+        name="exam-pack-exam-questions",
+    ),
 ]

@@ -6,6 +6,8 @@ class PracticeExamModel {
   final DateTime tarih;
   final Map<String, DersSonuc> dersSonuclari;
   final String? notlar;
+  final String? sourcePackId;
+  final bool isInAppGenerated;
 
   const PracticeExamModel({
     required this.id,
@@ -14,6 +16,8 @@ class PracticeExamModel {
     required this.tarih,
     required this.dersSonuclari,
     this.notlar,
+    this.sourcePackId,
+    this.isInAppGenerated = false,
   });
 
   static const genelYetenekDersleri = ['Türkçe', 'Matematik'];
@@ -67,6 +71,8 @@ class PracticeExamModel {
       tarih: DateTime.parse(json['tarih'] as String),
       dersSonuclari: dersMap,
       notlar: json['notlar'] as String?,
+      sourcePackId: json['sourcePackId'] as String?,
+      isInAppGenerated: json['isInAppGenerated'] as bool? ?? false,
     );
   }
 
@@ -78,6 +84,8 @@ class PracticeExamModel {
         'dersSonuclari':
             dersSonuclari.map((k, v) => MapEntry(k, v.toJson())),
         'notlar': notlar,
+        'sourcePackId': sourcePackId,
+        'isInAppGenerated': isInAppGenerated,
       };
 }
 

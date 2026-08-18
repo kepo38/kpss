@@ -25,6 +25,8 @@ import '../utils/solution_preview.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/favorite_heart_button.dart';
+import '../widgets/exam_text/exam_option_view.dart';
+import '../widgets/exam_text/exam_solution_view.dart';
 import '../widgets/formatted_text.dart';
 import '../widgets/question_error_report_button.dart';
 import '../widgets/question_rating_bar.dart';
@@ -1245,12 +1247,6 @@ class _QuizScreenState extends State<QuizScreen>
                               stem: _currentQuestion.soruMetni,
                               imageUrl: _currentQuestion.imageUrl,
                               sekilKodu: _currentQuestion.sekilKodu,
-                              style: ExamTypography.body(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                                height: 1.5,
-                              ),
                             ),
                           ),
                         ),
@@ -1501,21 +1497,9 @@ class _SolutionPanel extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           if (showFullSolution || !parts.hasLockedRemainder)
-            FormattedText(
-              question.cozumMetni,
-              preserveLineBreaks: true,
-              style: ExamTypography.solution(
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
-            )
+            ExamSolutionView(text: question.cozumMetni)
           else ...[
-            FormattedText(
-              parts.preview,
-              preserveLineBreaks: true,
-              style: ExamTypography.solution(
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
-            ),
+            ExamSolutionView(text: parts.preview),
             const SizedBox(height: 14),
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -1525,13 +1509,7 @@ class _SolutionPanel extends StatelessWidget {
                     imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: Opacity(
                       opacity: 0.55,
-                      child: FormattedText(
-                        parts.remainder,
-                        preserveLineBreaks: true,
-                        style: ExamTypography.solution(
-                          color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                      ),
+                      child: ExamSolutionView(text: parts.remainder),
                     ),
                   ),
                   Positioned.fill(
@@ -1641,14 +1619,7 @@ class _AnswerChip extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          FormattedText(
-            FormattedText.wrapBareLatex(FormattedText.stripMarkup(value)),
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-          ),
+          ExamOptionView(text: FormattedText.stripMarkup(value)),
         ],
       ),
     );
@@ -1760,12 +1731,7 @@ class _OptionTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FormattedText(
-                    FormattedText.wrapBareLatex(
-                      FormattedText.stripMarkup(text),
-                    ),
-                    style: ExamTypography.option(color: Colors.white),
-                  ),
+                  child: ExamOptionView(text: text),
                 ),
                 if (tone == _OptionTone.correct)
                   const Icon(Icons.check_rounded, color: _correct, size: 20)

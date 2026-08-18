@@ -16,7 +16,7 @@
 
   function stemToHtml(text) {
     if (window.KpssMathRender) {
-      return window.KpssMathRender.documentHtml(text);
+      return window.KpssMathRender.examDocumentHtml(text);
     }
     if (!text) return "";
     return "<p>" + richHtml(text) + "</p>";
@@ -158,7 +158,7 @@
     if (solWrap && solBody) {
       if (sol) {
         solBody.innerHTML = window.KpssMathRender
-          ? window.KpssMathRender.documentHtml(sol)
+          ? window.KpssMathRender.examDocumentHtml(sol)
           : stemToHtml(sol);
         solWrap.classList.add("is-on");
       } else {

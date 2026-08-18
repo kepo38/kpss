@@ -196,6 +196,46 @@ urlpatterns = [
         panel_views.panel_exam_type_delete,
         name="panel_exam_type_delete",
     ),
+    path(
+        "deneme-sablon/",
+        panel_views.panel_exam_distribution_list,
+        name="panel_exam_distribution_list",
+    ),
+    path(
+        "deneme-sablon/yeni/",
+        panel_views.panel_exam_distribution_edit,
+        name="panel_exam_distribution_new",
+    ),
+    path(
+        "deneme-sablon/<int:template_id>/",
+        panel_views.panel_exam_distribution_edit,
+        name="panel_exam_distribution_edit",
+    ),
+    path(
+        "deneme-sablon/<int:template_id>/sil/",
+        panel_views.panel_exam_distribution_delete,
+        name="panel_exam_distribution_delete",
+    ),
+    path(
+        "deneme-paket/",
+        panel_views.panel_exam_pack_list,
+        name="panel_exam_pack_list",
+    ),
+    path(
+        "deneme-paket/yeni/",
+        panel_views.panel_exam_pack_edit,
+        name="panel_exam_pack_new",
+    ),
+    path(
+        "deneme-paket/<int:pack_id>/",
+        panel_views.panel_exam_pack_edit,
+        name="panel_exam_pack_edit",
+    ),
+    path(
+        "deneme-paket/<int:pack_id>/sil/",
+        panel_views.panel_exam_pack_delete,
+        name="panel_exam_pack_delete",
+    ),
     path("kullanicilar/", panel_views.panel_users, name="panel_users"),
     path(
         "kullanici/<int:user_id>/premium/",

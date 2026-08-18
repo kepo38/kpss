@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicTest, UserMessage
+from .models import ExamPack, ExamPackExam
 from .test_grouping import order_questions_keeping_scenarios
 
 
@@ -271,3 +272,77 @@ class DeviceTokenSerializer(serializers.Serializer):
             defaults=defaults,
         )
         return obj
+
+
+class ExamPackExamSummarySerializer(serializers.ModelSerializer):
+    index = serializers.IntegerField()
+    title = serializers.CharField()
+    questionCount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamPackExam
+        fields = ("index", "title", "questionCount")
+
+    def get_questionCount(self, obj: ExamPackExam) -> int:
+        return obj.question_count
+
+
+class ExamPackSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="public_id")
+    examTypeId = serializers.CharField(source="exam_type.slug")
+    packKind = serializers.CharField(source="pack_kind")
+    subjectId = serializers.SerializerMethodField()
+    subjectName = serializers.SerializerMethodField()
+    examCount = serializers.IntegerField(source="exam_count")
+    timeLimitMinutes = serializers.IntegerField(source="time_limit_minutes")
+    priceDisplay = serializers.CharField(source="price_display")
+    playProductId = serializers.CharField(source="play_product_id")
+    published = serializers.BooleanField(source="is_published")
+    sortOrder = serializers.IntegerField(source="sort_order")
+    questionsPerExam = serializers.SerializerMethodField()
+    exams = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamPack
+        fields = (
+            "id",
+            "examTypeId",
+            "packKind",
+            "subjectId",
+            "subjectName",
+            "title",
+            "description",
+            "examCount",
+            "timeLimitMinutes",
+            "priceDisplay",
+            "playProductId",
+            "published",
+            "sortOrder",
+            "questionsPerExam",
+            "exams",
+        )
+
+    def get_subjectId(self, obj: ExamPack) -> str | None:
+        return obj.subject.slug if obj.subject_id else None
+
+    def get_subjectName(self, obj: ExamPack) -> str | None:
+        return obj.subject.name if obj.subject_id else None
+
+    def get_questionsPerExam(self, obj: ExamPack) -> int:
+        return obj.questions_per_exam
+
+    def get_exams(self, obj: ExamPack) -> list:
+        include_exams = self.context.get("include_exams", False)
+        if not include_exams:
+            return []
+        qs = obj.exams.all().order_by("index")
+        return ExamPackExamSummarySerializer(qs, many=True).data
+
+
+class ExamPackListSerializer(ExamPackSerializer):
+    class Meta(ExamPackSerializer.Meta):
+        fields = tuple(
+            f
+            for f in ExamPackSerializer.Meta.fields
+            if f != "exams"
+        )

@@ -26,6 +26,8 @@ from .models import (
     ERROR_REPORT_CATEGORY_CHOICES,
     ERROR_REPORT_STATUS_CHOICES,
     ExamType,
+    ExamDistributionTemplate,
+    ExamPack,
     MapTemplate,
     OcrIngestLog,
     Question,
@@ -2204,3 +2206,200 @@ def panel_exam_type_delete(request: HttpRequest, exam_id: int) -> HttpResponse:
     item.delete()
     messages.success(request, f"{label} silindi.")
     return redirect("panel_exam_type_list")
+
+
+@login_required
+@staff_required
+def panel_exam_distribution_list(request: HttpRequest) -> HttpResponse:
+    exam_type_id = request.GET.get("exam_type")
+    items = ExamDistributionTemplate.objects.select_related(
+        "exam_type", "subject", "topic"
+    )
+    if exam_type_id:
+        items = items.filter(exam_type_id=exam_type_id)
+    return render(
+        request,
+        "panel/exam_distribution_templates.html",
+        {
+            "page_title": "Deneme dağılım şablonu",
+            "templates": items,
+            "exam_types": ExamType.objects.filter(is_active=True),
+            "selected_exam_type_id": int(exam_type_id) if exam_type_id else None,
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_exam_distribution_edit(
+    request: HttpRequest, template_id: int | None = None
+) -> HttpResponse:
+    item = (
+        get_object_or_404(ExamDistributionTemplate, pk=template_id)
+        if template_id
+        else None
+    )
+    if request.method == "POST":
+        try:
+            exam_type_id = int(request.POST.get("exam_type") or 0)
+            subject_id = int(request.POST.get("subject") or 0)
+            topic_raw = (request.POST.get("topic") or "").strip()
+            topic_id = int(topic_raw) if topic_raw else None
+            question_count = int(request.POST.get("question_count") or 0)
+        except ValueError:
+            messages.error(request, "Geçersiz form alanı.")
+        else:
+            obj = item or ExamDistributionTemplate()
+            obj.exam_type_id = exam_type_id
+            obj.subject_id = subject_id
+            obj.topic_id = topic_id
+            obj.question_count = max(1, question_count)
+            try:
+                obj.full_clean()
+                obj.save()
+                messages.success(request, "Şablon kaydedildi.")
+                return redirect("panel_exam_distribution_list")
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+
+    return render(
+        request,
+        "panel/exam_distribution_template_form.html",
+        {
+            "page_title": "Dağılım şablonu",
+            "template": item,
+            "exam_types": ExamType.objects.filter(is_active=True),
+            "subjects": Subject.objects.filter(is_active=True),
+            "topics": Topic.objects.filter(is_active=True).select_related("subject"),
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_exam_distribution_delete(
+    request: HttpRequest, template_id: int
+) -> HttpResponse:
+    item = get_object_or_404(ExamDistributionTemplate, pk=template_id)
+    item.delete()
+    messages.success(request, "Şablon silindi.")
+    return redirect("panel_exam_distribution_list")
+
+
+@login_required
+@staff_required
+def panel_exam_pack_list(request: HttpRequest) -> HttpResponse:
+    items = ExamPack.objects.select_related("exam_type", "subject").prefetch_related(
+        "exams"
+    )
+    return render(
+        request,
+        "panel/exam_packs.html",
+        {
+            "page_title": "Deneme paketleri",
+            "packs": items,
+        },
+    )
+
+
+def _exam_pack_from_post(request: HttpRequest, item: ExamPack | None) -> ExamPack:
+    from .exam_pack_generator import new_pack_public_id
+
+    obj = item or ExamPack()
+    if not item:
+        obj.public_id = new_pack_public_id(request.POST.get("title") or "pack")
+
+    obj.title = (request.POST.get("title") or "").strip()
+    obj.description = (request.POST.get("description") or "").strip()
+    obj.pack_kind = (request.POST.get("pack_kind") or ExamPack.PACK_KIND_BRANCH).strip()
+    try:
+        obj.exam_type_id = int(request.POST.get("exam_type") or 0)
+    except ValueError:
+        obj.exam_type_id = None
+    subject_raw = (request.POST.get("subject") or "").strip()
+    obj.subject_id = int(subject_raw) if subject_raw else None
+    try:
+        obj.exam_count = max(1, int(request.POST.get("exam_count") or 1))
+    except ValueError:
+        obj.exam_count = 1
+    try:
+        obj.time_limit_minutes = max(1, int(request.POST.get("time_limit_minutes") or 130))
+    except ValueError:
+        obj.time_limit_minutes = 130
+    obj.price_display = (request.POST.get("price_display") or "").strip()
+    obj.play_product_id = (request.POST.get("play_product_id") or "").strip()
+    try:
+        obj.sort_order = int(request.POST.get("sort_order") or 0)
+    except ValueError:
+        obj.sort_order = 0
+    obj.is_published = request.POST.get("is_published") == "on"
+
+    if obj.pack_kind == ExamPack.PACK_KIND_FULL:
+        obj.subject_id = None
+
+    return obj
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_exam_pack_edit(
+    request: HttpRequest, pack_id: int | None = None
+) -> HttpResponse:
+    item = get_object_or_404(ExamPack, pk=pack_id) if pack_id else None
+    if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
+        if action == "generate":
+            pack = get_object_or_404(ExamPack, pk=pack_id)
+            from .exam_pack_generator import ExamPackGeneratorError, generate_pack_exams
+
+            replace = request.POST.get("replace_existing") == "on"
+            try:
+                created = generate_pack_exams(pack, replace=replace)
+                messages.success(
+                    request,
+                    f"{len(created)} deneme üretildi.",
+                )
+            except ExamPackGeneratorError as exc:
+                messages.error(request, str(exc))
+            return redirect("panel_exam_pack_edit", pack_id=pack.id)
+
+        obj = _exam_pack_from_post(request, item)
+        if not obj.title:
+            messages.error(request, "Paket başlığı gerekli.")
+        elif not obj.exam_type_id:
+            messages.error(request, "Sınav tipi seçin.")
+        else:
+            try:
+                obj.full_clean()
+                obj.save()
+                messages.success(request, "Paket kaydedildi.")
+                return redirect("panel_exam_pack_edit", pack_id=obj.id)
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+        item = obj
+
+    return render(
+        request,
+        "panel/exam_pack_form.html",
+        {
+            "page_title": "Deneme paketi",
+            "pack": item,
+            "exam_types": ExamType.objects.filter(is_active=True),
+            "subjects": Subject.objects.filter(is_active=True),
+            "exams": item.exams.order_by("index") if item else [],
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_exam_pack_delete(request: HttpRequest, pack_id: int) -> HttpResponse:
+    item = get_object_or_404(ExamPack, pk=pack_id)
+    label = item.title
+    item.delete()
+    messages.success(request, f"{label} silindi.")
+    return redirect("panel_exam_pack_list")

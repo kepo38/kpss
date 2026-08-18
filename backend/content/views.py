@@ -16,6 +16,8 @@ from .embeddings import similar_questions
 from .models import (
     Announcement,
     DailyMiniExamAttempt,
+    ExamPack,
+    ExamPackExam,
     ExamType,
     Question,
     QuestionAttempt,
@@ -33,6 +35,8 @@ from .serializers import (
     ContentCatalogSerializer,
     ContentPackSerializer,
     DeviceTokenSerializer,
+    ExamPackListSerializer,
+    ExamPackSerializer,
     QuestionSerializer,
     SubjectSerializer,
     TopicTestSerializer,
@@ -963,3 +967,111 @@ class ExamTypeListView(APIView):
     def get(self, request):
         items = ExamType.objects.filter(is_active=True)
         return Response({"examTypes": [item.to_api() for item in items]})
+
+
+class ExamPackListView(APIView):
+    """Yayınlanmış deneme paketleri — Dersler vitrini."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        exam_type = (request.query_params.get("exam_type") or "").strip()
+        qs = ExamPack.objects.filter(is_published=True).select_related(
+            "exam_type", "subject"
+        )
+        if exam_type:
+            qs = qs.filter(exam_type__slug=exam_type)
+        qs = qs.order_by("sort_order", "title")
+        return Response(
+            {
+                "packs": ExamPackListSerializer(
+                    qs,
+                    many=True,
+                    context={"request": request},
+                ).data
+            }
+        )
+
+
+class ExamPackDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, pack_id: str):
+        pack = get_object_or_404(
+            ExamPack.objects.select_related("exam_type", "subject").prefetch_related(
+                "exams"
+            ),
+            public_id=pack_id,
+            is_published=True,
+        )
+        return Response(
+            ExamPackSerializer(
+                pack,
+                context={"request": request, "include_exams": True},
+            ).data
+        )
+
+
+class ExamPackExamQuestionsView(APIView):
+    """Paket içi tekil denemenin soruları — Google hesabı zorunlu."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, pack_id: str, exam_index: int):
+        user = get_user_from_request(request)
+        if user is None or user.is_anonymous:
+            return Response(
+                {
+                    "detail": "Deneme paketleri için Google ile giriş yapmalısınız.",
+                    "googleRequired": True,
+                },
+                status=401,
+            )
+
+        pack = get_object_or_404(
+            ExamPack,
+            public_id=pack_id,
+            is_published=True,
+        )
+        exam = get_object_or_404(
+            ExamPackExam.objects.prefetch_related(
+                "question_links__question__scenario",
+                "question_links__question__topic",
+            ),
+            pack=pack,
+            index=exam_index,
+        )
+        links = exam.question_links.select_related(
+            "question__scenario", "question__topic"
+        ).order_by("sort_order", "id")
+        assigned = [
+            link.question
+            for link in links
+            if link.question.is_published
+        ]
+        from .exam_pack_generator import ExamPackGeneratorError
+        from .exam_pack_personalize import personalize_exam_questions
+
+        try:
+            questions = personalize_exam_questions(assigned, user)
+        except ExamPackGeneratorError as exc:
+            return Response({"detail": str(exc)}, status=409)
+
+        questions = order_questions_keeping_scenarios(questions)
+        return Response(
+            {
+                "packId": pack.public_id,
+                "examIndex": exam.index,
+                "title": exam.title,
+                "timeLimitMinutes": pack.time_limit_minutes,
+                "questionCount": len(questions),
+                "questions": QuestionSerializer(
+                    questions,
+                    many=True,
+                    context={"request": request},
+                ).data,
+            }
+        )

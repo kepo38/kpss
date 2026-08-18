@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_theme.dart';
-import '../theme/exam_typography.dart';
+import 'exam_text/exam_stem_view.dart';
 import 'cached_remote_image.dart';
 import 'formatted_text.dart';
 
@@ -43,14 +43,6 @@ class QuestionStemContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = style ??
-        ExamTypography.body(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.w500,
-          height: 1.5,
-        );
-
     final parts = stem.split(inlineImagePlaceholder);
     final inline = _hasImage && parts.length > 1;
 
@@ -58,12 +50,7 @@ class QuestionStemContent extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FormattedText(
-            stem,
-            preserveLineBreaks: true,
-            textAlign: TextAlign.start,
-            style: baseStyle,
-          ),
+          ExamStemView(text: stem),
           if (_hasSvg) ...[
             const SizedBox(height: 16),
             _QuestionSvgFigure(svg: sekilKodu!),
@@ -82,14 +69,7 @@ class QuestionStemContent extends StatelessWidget {
         if (children.isNotEmpty) {
           children.add(const SizedBox(height: 12));
         }
-        children.add(
-          FormattedText(
-            chunk,
-            preserveLineBreaks: true,
-            textAlign: TextAlign.start,
-            style: baseStyle,
-          ),
-        );
+        children.add(ExamStemView(text: chunk));
       }
       if (i < parts.length - 1) {
         if (children.isNotEmpty) {

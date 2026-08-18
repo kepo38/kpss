@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/kpss_curriculum.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
+import '../services/kpss_preference_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/app_back_button.dart';
@@ -12,6 +13,7 @@ import '../widgets/countdown_widget.dart';
 import '../widgets/daily_mission_center.dart';
 import '../widgets/daily_mini_exam_card.dart';
 import '../widgets/exam_focus_panel.dart';
+import '../widgets/exam_pack_showcase.dart';
 import '../widgets/premium_header_button.dart';
 import '../widgets/savings_insight_banner.dart';
 import 'topic_detail_screen.dart';
@@ -189,6 +191,11 @@ class StudyHubScreen extends StatelessWidget {
                           },
                           childCount: subjects.length,
                         ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: ExamPackShowcase(
+                        examTypeId: KpssPreferenceService.instance.examTrackId,
                       ),
                     ),
                   ],

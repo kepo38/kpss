@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'constants/brand_constants.dart';
 import 'config/api_config.dart';
@@ -177,6 +178,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   }
 
   Future<void> _finishFullBoot() async {
+    await initializeDateFormatting('tr', null);
     unawaited(_finishAuthBoot());
     unawaited(_initializeHeavyInBackground());
     unawaited(_initFirebaseInBackground());

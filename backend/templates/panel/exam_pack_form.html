@@ -1,0 +1,88 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_exam_pack_list' %}">Deneme paketleri</a> / {% if pack %}Düzenle{% else %}Yeni{% endif %}</div>
+<h1>{% if pack %}{{ pack.title }}{% else %}Yeni deneme paketi{% endif %}</h1>
+
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="save">
+  {% if pack %}<p class="hint">Kimlik: <code>{{ pack.public_id }}</code></p>{% endif %}
+  <label>Başlık
+    <input type="text" name="title" maxlength="200" value="{{ pack.title|default:'' }}" required>
+  </label>
+  <label>Açıklama
+    <textarea name="description" rows="3">{{ pack.description|default:'' }}</textarea>
+  </label>
+  <label>Sınav tipi
+    <select name="exam_type" required>
+      {% for e in exam_types %}
+      <option value="{{ e.id }}" {% if pack and pack.exam_type_id == e.id %}selected{% endif %}>{{ e.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Paket türü
+    <select name="pack_kind">
+      <option value="branch" {% if not pack or pack.pack_kind == 'branch' %}selected{% endif %}>Branş paketi</option>
+      <option value="full" {% if pack and pack.pack_kind == 'full' %}selected{% endif %}>Tam deneme</option>
+    </select>
+  </label>
+  <label>Branş dersi (branş paketi)
+    <select name="subject">
+      <option value="">—</option>
+      {% for s in subjects %}
+      <option value="{{ s.id }}" {% if pack and pack.subject_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Deneme sayısı
+    <input type="number" name="exam_count" min="1" max="50" value="{{ pack.exam_count|default:10 }}">
+  </label>
+  <label>Süre (dk)
+    <input type="number" name="time_limit_minutes" min="1" value="{{ pack.time_limit_minutes|default:130 }}">
+  </label>
+  <label>Vitrin fiyatı
+    <input type="text" name="price_display" placeholder="149,99 ₺" value="{{ pack.price_display|default:'' }}">
+  </label>
+  <label>Play Store SKU
+    <input type="text" name="play_product_id" value="{{ pack.play_product_id|default:'' }}">
+  </label>
+  <label>Sıra
+    <input type="number" name="sort_order" value="{{ pack.sort_order|default:0 }}">
+  </label>
+  <label class="checkbox">
+    <input type="checkbox" name="is_published" {% if pack.is_published %}checked{% endif %}> Yayında
+  </label>
+  <div class="toolbar">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_exam_pack_list' %}">Listeye dön</a>
+  </div>
+</form>
+
+{% if pack %}
+<hr>
+<h2>Şablondan üret</h2>
+<p class="lead">Dağılım şablonuna göre {{ pack.exam_count }} deneme oluşturur. Havuz: 1000+ cevap, orta zorluk.</p>
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="generate">
+  <label class="checkbox">
+    <input type="checkbox" name="replace_existing"> Mevcut denemeleri sil ve yeniden üret
+  </label>
+  <button class="btn btn-primary" type="submit">Şablondan üret</button>
+</form>
+
+{% if exams %}
+<h2>Üretilmiş denemeler</h2>
+<div class="list">
+  {% for ex in exams %}
+  <div class="row">
+    <div class="name">
+      <strong>{{ ex.index }}. {{ ex.title }}</strong>
+      <div class="hint">{{ ex.question_count }} soru</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

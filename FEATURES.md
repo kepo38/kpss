@@ -75,6 +75,9 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Günlük test kotası (ücretsiz):** Her derste günde **1 test** (`ContentBankService.dailyFreeTestsPerSubject = 1`). Reklam izleyerek derse özel **+1 bonus test** (`AdRewardKind.dailyTestBonus`). Premium’da sınırsız.
 
+| **Deneme paketleri vitrini** | Dersler sekmesi altında yatay paket kartları; Play SKU ile kilit/açma; **Google girişi zorunlu** | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart` | IAP + Google |
+| **Deneme paketi detayı** | Alt deneme listesi → quiz; sorular 1000+ cevaplı orta zorluk; oturumda daha önce çözülen en fazla **%20**; bitince HEDEF KAMU kaydı | `lib/screens/exam_pack_detail_screen.dart`, `lib/services/exam_pack_analytics_bridge.dart`, `backend/content/exam_pack_personalize.py` | IAP + Google |
+
 ---
 
 ### Quiz ve soru deneyimi
@@ -105,7 +108,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
 | Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
 
-Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`).
+Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Tek satırlı şıklarda `examWrap: true` ile paneldeki gibi satır kırılımı korunur; punto küçültme (`FittedBox`) devre dışı kalır (`lib/widgets/exam_text/`).
 
 ---
 
@@ -196,7 +199,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
-| **Profil ekranı** | Avatar, ad, XP, modül ızgarası | `lib/screens/profile_screen.dart` |
+| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; avatar altında Rozetler; Mesajlar/Duyurular ızgarası; modül listesi | `lib/screens/profile_screen.dart` |
+| **Premium üyelik bilgisi** | Hero’daki PREMIUM chip köşesindeki bilgi ikonu → veriliş/bitiş tarihi bottom sheet | `profile_screen.dart` |
 | **Google hesap bağlama** | Anonim → kalıcı Google hesabı | `lib/widgets/account_link_card.dart`, `lib/services/auth_service.dart` |
 | **Görünen ad düzenleme** | Bağlı hesap gerekir | `profile_screen.dart` |
 | **Tema** | Açık / koyu / sistem | `lib/widgets/theme_preference_picker.dart`, `lib/services/theme_preference_service.dart` |
@@ -204,6 +208,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Bildirim ayarları** | Sabah/akşam/haftalık aç-kapa (duyuru ve tasarruf sabit açık) | `lib/widgets/notification_settings_section.dart`, `lib/services/notification_preference_service.dart` |
 | **Duyurular** | Admin yayınları, okundu durumu | `lib/screens/announcements_screen.dart`, `lib/services/announcement_service.dart` |
 | **Mesajlarım** | Doğrudan admin mesajları | `lib/screens/user_messages_screen.dart`, `lib/services/user_message_service.dart` |
+| **Destek ve İletişim** | Deneme paketi talepleri; e-posta ile destek (`hedefkamu@gmail.com`) | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
 | **Çıkış** | Oturumu kapat (misafir değilse) | `profile_screen.dart` |
 
 ---
@@ -322,6 +327,8 @@ Staff-only Django görünümleri: `backend/content/panel_views.py`, `backend/con
 | Premium ver / kaldır | `/panel/kullanici/<id>/premium/` |
 | Duyuru CRUD + push gönder | `/panel/duyuru/...` |
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
+| Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
+| Deneme paketi CRUD + şablondan üret | `/panel/deneme-paket/...` |
 
 ### Embedding ve test gruplama
 
@@ -395,6 +402,9 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET/POST /daily-mini-exam/` | Mini deneme + gönderim | Opsiyonel/Bearer | `DailyMiniExamService` |
 | `POST /promo/redeem/` | Promosyon kodu | Bearer | `PromoCodeService` |
 | `GET /exam-types/` | Sınav geri sayım kataloğu | Hayır | `ExamCatalogService` |
+| `GET /exam-packs/?exam_type=` | Yayınlanmış deneme paketleri | Hayır | `ExamPackService` |
+| `GET /exam-packs/<id>/` | Paket detayı + deneme listesi | Hayır | `ExamPackService` |
+| `GET /exam-packs/<id>/exams/<n>/questions/` | Paket denemesi soruları (Google zorunlu; max %20 daha önce çözülmüş) | Bearer (Google) | `ExamPackService` |
 
 **Yasal:** `GET /gizlilik-politikasi/` — `backend/content/legal_views.py`
 
@@ -419,6 +429,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | Favoriler ve notlar | ✓ | | | |
 | Gelişim merkezi | ✓ | | | |
 | Deneme analizi | ✓ (sekme)¹ / Premium (ana menü) | | Pazarlama: ✓ | ✓ |
+| Deneme paketleri (IAP) | Google hesabı + satın alma | | Google hesabı + satın alma | Google hesabı + satın alma |
 | Konu takibi, görevler, pomodoro | | | ✓ | ✓ |
 | Bulut senkron UI | | | ✓ (mock) | ✓ |
 | Sıralama | | | ✓ (demo) | ✓ |
@@ -438,6 +449,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 - **Etkileşim:** `QuestionRating`, `QuestionAttempt`, `QuestionErrorReport`
 - **Mini deneme:** `DailyMiniExam`, `DailyMiniExamAttempt`
 - **Operasyon:** `Announcement`, `ExamType`, `PromoCode`, `PromoCodeRedemption`, `OcrIngestLog`, `ContentRevision`
+- **Deneme paketleri:** `ExamDistributionTemplate`, `ExamPack`, `ExamPackExam`, `ExamPackExamQuestion`
 - **Embedding:** `Question.embedding` (JSON)
 
 Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/question_model.dart` (ör. `stem` → `soruMetni`).

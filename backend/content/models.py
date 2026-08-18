@@ -1055,6 +1055,214 @@ class ExamType(models.Model):
         }
 
 
+class ExamDistributionTemplate(models.Model):
+    """Sınav tipine göre ders/konu soru dağılım şablonu — deneme paketi üretiminde kullanılır."""
+
+    exam_type = models.ForeignKey(
+        ExamType,
+        on_delete=models.CASCADE,
+        related_name="distribution_templates",
+        verbose_name="Sınav tipi",
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name="distribution_templates",
+        verbose_name="Ders",
+    )
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.CASCADE,
+        related_name="distribution_templates",
+        blank=True,
+        null=True,
+        verbose_name="Konu",
+        help_text="Boş bırakılırsa ders toplamı satırıdır.",
+    )
+    question_count = models.PositiveIntegerField(
+        verbose_name="Soru sayısı",
+        validators=[MinValueValidator(1), MaxValueValidator(200)],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["exam_type__sort_order", "subject__sort_order", "topic__sort_order"]
+        verbose_name = "Deneme dağılım şablonu"
+        verbose_name_plural = "Deneme dağılım şablonları"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exam_type", "subject", "topic"],
+                name="unique_exam_distribution_template",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        topic_label = self.topic.name if self.topic_id else "Toplam"
+        return f"{self.exam_type.name} · {self.subject.name} · {topic_label} ({self.question_count})"
+
+    def clean(self) -> None:
+        from django.core.exceptions import ValidationError
+
+        if self.topic_id and self.topic.subject_id != self.subject_id:
+            raise ValidationError({"topic": "Konu seçilen derse ait olmalı."})
+
+
+class ExamPack(models.Model):
+    """Satılabilir deneme paketi — Dersler vitrininde listelenir."""
+
+    PACK_KIND_FULL = "full"
+    PACK_KIND_BRANCH = "branch"
+    PACK_KIND_CHOICES = [
+        (PACK_KIND_FULL, "Tam deneme"),
+        (PACK_KIND_BRANCH, "Branş paketi"),
+    ]
+
+    public_id = models.CharField(max_length=64, unique=True)
+    exam_type = models.ForeignKey(
+        ExamType,
+        on_delete=models.CASCADE,
+        related_name="exam_packs",
+        verbose_name="Sınav tipi",
+    )
+    pack_kind = models.CharField(
+        max_length=16,
+        choices=PACK_KIND_CHOICES,
+        default=PACK_KIND_BRANCH,
+        verbose_name="Paket türü",
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name="exam_packs",
+        blank=True,
+        null=True,
+        verbose_name="Branş dersi",
+        help_text="Branş paketlerinde zorunlu; tam denemede boş.",
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    exam_count = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Deneme sayısı",
+        validators=[MinValueValidator(1), MaxValueValidator(50)],
+    )
+    time_limit_minutes = models.PositiveIntegerField(
+        default=130,
+        verbose_name="Süre (dk)",
+    )
+    price_display = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="Vitrin fiyatı",
+        help_text="Örn. 149,99 ₺",
+    )
+    play_product_id = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="Play Store SKU",
+    )
+    is_published = models.BooleanField(default=False, verbose_name="Yayında")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="Sıra")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "title"]
+        verbose_name = "Deneme paketi"
+        verbose_name_plural = "Deneme paketleri"
+
+    def __str__(self) -> str:
+        return self.title
+
+    def clean(self) -> None:
+        from django.core.exceptions import ValidationError
+
+        if self.pack_kind == self.PACK_KIND_BRANCH and not self.subject_id:
+            raise ValidationError({"subject": "Branş paketinde ders seçilmeli."})
+        if self.pack_kind == self.PACK_KIND_FULL and self.subject_id:
+            raise ValidationError({"subject": "Tam denemede branş dersi boş olmalı."})
+
+    @property
+    def questions_per_exam(self) -> int:
+        first = self.exams.order_by("index").first()
+        if first is None:
+            return 0
+        return first.question_count
+
+
+class ExamPackExam(models.Model):
+    """Paket içindeki tekil deneme oturumu."""
+
+    pack = models.ForeignKey(
+        ExamPack,
+        on_delete=models.CASCADE,
+        related_name="exams",
+        verbose_name="Paket",
+    )
+    index = models.PositiveIntegerField(
+        verbose_name="Sıra",
+        validators=[MinValueValidator(1), MaxValueValidator(50)],
+    )
+    title = models.CharField(max_length=200)
+    questions = models.ManyToManyField(
+        Question,
+        through="ExamPackExamQuestion",
+        related_name="exam_pack_exams",
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["index"]
+        verbose_name = "Paket denemesi"
+        verbose_name_plural = "Paket denemeleri"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pack", "index"],
+                name="unique_exam_pack_exam_index",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.pack.title} · {self.title}"
+
+    @property
+    def question_count(self) -> int:
+        return self.question_links.filter(question__is_published=True).count()
+
+
+class ExamPackExamQuestion(models.Model):
+    """Paket denemesindeki sıralı soru ataması."""
+
+    exam = models.ForeignKey(
+        ExamPackExam,
+        on_delete=models.CASCADE,
+        related_name="question_links",
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="exam_pack_links",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "Paket soru sırası"
+        verbose_name_plural = "Paket soru sıraları"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exam", "question"],
+                name="unique_exam_pack_exam_question",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.exam.title} · #{self.sort_order} · {self.question.public_id}"
+
+
 class PromoCode(models.Model):
     """Admin tanımlı promosyon kodu — premium süresi ve kota."""
 

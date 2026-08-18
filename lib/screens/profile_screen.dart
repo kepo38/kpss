@@ -22,6 +22,7 @@ import '../widgets/theme_preference_picker.dart';
 import 'announcements_screen.dart';
 import 'premium/badges_screen.dart';
 import 'premium/premium_paywall_screen.dart';
+import 'support_contact_screen.dart';
 import 'user_messages_screen.dart';
 
 /// Öğrenci profili — ana sayfa ile aynı neon modül dili.
@@ -41,8 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   static const _cyan = AppTheme.neonEdge;
   static const _gold = AppTheme.neonGold;
-  static const _violet = Color(0xFFA78BFA);
-  static const _rose = Color(0xFFFB7185);
 
   @override
   void initState() {
@@ -267,6 +266,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ),
+                  actions: [
+                    if (user.isPremium)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: _ProfileRateAction(
+                          onTap: StoreRatingService.openStoreListing,
+                        ),
+                      ),
+                  ],
                 ),
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(16, 4, 16, 32),
@@ -279,6 +287,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         level: stats.seviye,
                         xp: stats.xp,
                         streak: stats.streak,
+                        sonrakiSeviyeXp: stats.sonrakiSeviyeXp,
                         onEditName: _auth.busy ? null : _editName,
                         onPremiumTap: user.isPremium
                             ? null
@@ -287,21 +296,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     builder: (_) => const PremiumPaywallScreen(),
                                   ),
                                 ),
+                        onBadgesTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const BadgesScreen(),
+                          ),
+                        ),
                       ),
                       if (_auth.isAnonymous) ...[
                         const SizedBox(height: 12),
                         const AccountLinkCard(margin: EdgeInsets.zero),
                       ],
-                      const SizedBox(height: 22),
-                      _SectionTitle(context, 'Hızlı erişim'),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       GridView.count(
                         crossAxisCount: 2,
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
-                        childAspectRatio: 1.18,
+                        childAspectRatio: 1.35,
                         children: [
                           _NeonTile(
                             neon: _cyan,
@@ -327,35 +339,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 builder: (_) => const AnnouncementsScreen(),
                               ),
                             ),
-                          ),
-                          _NeonTile(
-                            neon: _violet,
-                            icon: Icons.military_tech_outlined,
-                            title: 'Rozetler',
-                            subtitle:
-                                'Lv.${stats.seviye} · ${stats.xp}/${stats.sonrakiSeviyeXp} XP',
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const BadgesScreen(),
-                              ),
-                            ),
-                          ),
-                          _NeonTile(
-                            neon: user.isPremium ? _rose : AppTheme.champagne,
-                            icon: user.isPremium
-                                ? Icons.star_rounded
-                                : Icons.auto_awesome_outlined,
-                            title: user.isPremium ? 'Değerlendir' : 'Premium',
-                            subtitle: user.isPremium
-                                ? '★★★★★ · Play Store'
-                                : 'Reklamsız & offline',
-                            onTap: user.isPremium
-                                ? () => StoreRatingService.openStoreListing()
-                                : () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const PremiumPaywallScreen(),
-                                      ),
-                                    ),
                           ),
                         ],
                       ),
@@ -389,22 +372,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         subtitle: 'Hatırlatmalar ve çalışma uyarıları',
                         onTap: _openNotificationSheet,
                       ),
-                      if (user.isPremium &&
-                          (user.premiumBitisTarihi != null ||
-                              user.premiumVerilisTarihi != null ||
-                              (user.premiumGrantNote?.trim().isNotEmpty ??
-                                  false))) ...[
-                        const SizedBox(height: 10),
-                        _ProfileModuleRow(
-                          neon: AppTheme.champagne,
-                          icon: Icons.verified_outlined,
-                          title: 'Premium bilgisi',
-                          subtitle: _premiumSubtitle(user),
-                          expanded: true,
-                          child: _PremiumMetaBody(user: user),
+                      const SizedBox(height: 10),
+                      _ProfileModuleRow(
+                        neon: const Color(0xFF34D399),
+                        icon: Icons.support_agent_outlined,
+                        title: 'Destek ve İletişim',
+                        subtitle: '',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SupportContactScreen(),
+                          ),
                         ),
-                      ],
-                      const SizedBox(height: 28),
+                      ),
+                      const SizedBox(height: 10),
                       _SignOutButton(
                         label: _auth.isAnonymous
                             ? 'Misafir oturumu kapat'
@@ -438,11 +418,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  static String _premiumSubtitle(UserModel user) {
-    if (user.premiumBitisTarihi != null) {
-      return 'Bitiş: ${DateFormat('d MMM yyyy').format(user.premiumBitisTarihi!.toLocal())}';
-    }
-    return 'Aktif premium üyelik';
+}
+
+class _ProfileRateAction extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ProfileRateAction({required this.onTap});
+
+  static const _rose = Color(0xFFFB7185);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          splashColor: _rose.withValues(alpha: 0.2),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _rose.withValues(alpha: 0.28),
+                  AppTheme.champagne.withValues(alpha: 0.18),
+                ],
+              ),
+              border: Border.all(
+                color: _rose.withValues(alpha: 0.55),
+              ),
+              boxShadow: SubjectNeonPalette.glow(_rose, blur: 10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.star_rounded,
+                    size: 17,
+                    color: _rose.withValues(alpha: 0.98),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Değerlendir',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.15,
+                      color: AppTheme.onPage(context).withValues(alpha: 0.92),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -650,14 +686,16 @@ class _ProfileModuleRowState extends State<_ProfileModuleRow> {
                                   color: Colors.white,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                widget.subtitle,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: widget.neon.withValues(alpha: 0.88),
+                              if (widget.subtitle.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  widget.subtitle,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: widget.neon.withValues(alpha: 0.88),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
@@ -872,8 +910,10 @@ class _ProfileHero extends StatelessWidget {
   final int level;
   final int xp;
   final int streak;
+  final int sonrakiSeviyeXp;
   final VoidCallback? onEditName;
   final VoidCallback? onPremiumTap;
+  final VoidCallback? onBadgesTap;
 
   const _ProfileHero({
     required this.user,
@@ -882,9 +922,13 @@ class _ProfileHero extends StatelessWidget {
     required this.level,
     required this.xp,
     required this.streak,
+    required this.sonrakiSeviyeXp,
     this.onEditName,
     this.onPremiumTap,
+    this.onBadgesTap,
   });
+
+  static const _violet = Color(0xFFA78BFA);
 
   @override
   Widget build(BuildContext context) {
@@ -934,10 +978,24 @@ class _ProfileHero extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _AvatarRing(
-                      user: user,
-                      displayName: displayName,
-                      neon: neon,
+                    Column(
+                      children: [
+                        _AvatarRing(
+                          user: user,
+                          displayName: displayName,
+                          neon: neon,
+                        ),
+                        if (onBadgesTap != null) ...[
+                          const SizedBox(height: 10),
+                          _HeroBadgesButton(
+                            neon: _violet,
+                            level: level,
+                            xp: xp,
+                            sonrakiSeviyeXp: sonrakiSeviyeXp,
+                            onTap: onBadgesTap!,
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -1000,11 +1058,7 @@ class _ProfileHero extends StatelessWidget {
                                 label: '$streak gün',
                               ),
                               if (user.isPremium)
-                                const _StatChip(
-                                  neon: AppTheme.champagne,
-                                  label: 'PREMIUM',
-                                  filled: true,
-                                )
+                                _PremiumStatChip(user: user)
                               else
                                 _StatChip(
                                   neon: AppTheme.champagne,
@@ -1022,6 +1076,77 @@ class _ProfileHero extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeroBadgesButton extends StatelessWidget {
+  final Color neon;
+  final int level;
+  final int xp;
+  final int sonrakiSeviyeXp;
+  final VoidCallback onTap;
+
+  const _HeroBadgesButton({
+    required this.neon,
+    required this.level,
+    required this.xp,
+    required this.sonrakiSeviyeXp,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        splashColor: neon.withValues(alpha: 0.18),
+        child: Ink(
+          width: 82,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                neon.withValues(alpha: 0.22),
+                AppTheme.champagne.withValues(alpha: 0.08),
+              ],
+            ),
+            border: Border.all(color: neon.withValues(alpha: 0.55), width: 1.1),
+            boxShadow: SubjectNeonPalette.glow(neon, blur: 10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.military_tech_rounded, color: neon, size: 22),
+              const SizedBox(height: 4),
+              const Text(
+                'Rozetler',
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Lv.$level',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: neon.withValues(alpha: 0.92),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1115,6 +1240,110 @@ class _InitialsAvatar extends StatelessWidget {
           .toUpperCase();
     }
     return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
+  }
+}
+
+void _showPremiumInfoSheet(BuildContext context, UserModel user) {
+  final hasMeta = user.premiumBitisTarihi != null ||
+      user.premiumVerilisTarihi != null ||
+      (user.premiumGrantNote?.trim().isNotEmpty ?? false);
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppTheme.inkSoft,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.verified_outlined,
+                  color: AppTheme.champagne,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Premium üyelik',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (hasMeta)
+              _PremiumMetaBody(user: user)
+            else
+              Text(
+                'Aktif premium üyelik',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _PremiumStatChip extends StatelessWidget {
+  final UserModel user;
+
+  const _PremiumStatChip({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const _StatChip(
+          neon: AppTheme.champagne,
+          label: 'PREMIUM',
+          filled: true,
+        ),
+        Positioned(
+          top: -5,
+          right: -5,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showPremiumInfoSheet(context, user),
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.inkSoft,
+                  border: Border.all(
+                    color: AppTheme.champagne.withValues(alpha: 0.9),
+                    width: 1.2,
+                  ),
+                  boxShadow: SubjectNeonPalette.glow(AppTheme.champagne, blur: 6),
+                ),
+                child: const Icon(
+                  Icons.info_outline,
+                  size: 11,
+                  color: AppTheme.champagne,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

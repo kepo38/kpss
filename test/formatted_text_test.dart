@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kpss_akademi/theme/exam_typography.dart';
 import 'package:kpss_akademi/widgets/formatted_text.dart';
 
 void main() {
@@ -346,5 +347,96 @@ void main() {
     );
     expect(FormattedText.usesDisplayMath(r'\tfrac{x}{y}'), isTrue);
     expect(FormattedText.usesDisplayMath(r'{x \over y}'), isTrue);
+  });
+
+  testWidgets('exam layout keeps bold lines at body font size', (tester) async {
+    const stem =
+        'a bir gerçel sayı olmak üzere\n'
+        r'$g(x) = 2x + a$'
+        '\n**eşitlikleri veriliyor.**\n'
+        '**f(1) = 9 olduğuna göre f(9) değeri kaçtır?**';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: FormattedText(
+              stem,
+              preserveLineBreaks: true,
+              style: ExamTypography.body(
+                color: Colors.white,
+                fontSize: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final richTexts = tester.widgetList<RichText>(find.byType(RichText));
+    final fontSizes = <double>{};
+    for (final rich in richTexts) {
+      void walk(InlineSpan span) {
+        if (span is TextSpan) {
+          if (span.style?.fontSize != null) {
+            fontSizes.add(span.style!.fontSize!);
+          }
+          span.children?.forEach(walk);
+        }
+      }
+      walk(rich.text as InlineSpan);
+    }
+    expect(fontSizes.every((s) => (s - 18).abs() < 0.01), isTrue);
+  });
+
+  testWidgets('long math line scales down without overflow', (tester) async {
+    const stem = r'$|4a - 2b| + |2a + 3b| = |6a + b|$';
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: FormattedText(
+              stem,
+              preserveLineBreaks: true,
+              style: const TextStyle(fontSize: 18, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FittedBox), findsWidgets);
+  });
+
+  testWidgets('solution mode keeps fixed font size without fitted shrink', (tester) async {
+    const stem =
+        r'**2. Adım:** $8 - C = 3$ ve $C + A = 7$ denklem sistemini çözelim.';
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 300,
+            child: FormattedText(
+              stem,
+              preserveLineBreaks: true,
+              examScaleDown: false,
+              style: ExamTypography.solution(color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(FittedBox), findsNothing);
+    expect(find.byType(SingleChildScrollView), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }

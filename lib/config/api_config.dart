@@ -58,4 +58,19 @@ class ApiConfig {
       Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/similar/',
       ).replace(queryParameters: {'limit': '$limit'});
+
+  static Uri examPacksUri({String? examTypeId}) {
+    final base = Uri.parse('$baseUrl/api/v1/exam-packs/');
+    if (examTypeId == null || examTypeId.isEmpty) return base;
+    return base.replace(queryParameters: {'exam_type': examTypeId});
+  }
+
+  static Uri examPackDetailUri(String packId) => Uri.parse(
+        '$baseUrl/api/v1/exam-packs/${Uri.encodeComponent(packId)}/',
+      );
+
+  static Uri examPackExamQuestionsUri(String packId, int examIndex) =>
+      Uri.parse(
+        '$baseUrl/api/v1/exam-packs/${Uri.encodeComponent(packId)}/exams/$examIndex/questions/',
+      );
 }

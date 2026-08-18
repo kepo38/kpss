@@ -15,6 +15,10 @@ from .models import (
     DailyMiniExamAttempt,
     DeviceToken,
     ExamType,
+    ExamDistributionTemplate,
+    ExamPack,
+    ExamPackExam,
+    ExamPackExamQuestion,
     MapTemplate,
     PromoCode,
     PromoCodeRedemption,
@@ -818,6 +822,62 @@ class ExamTypeAdmin(ModelAdmin):
         if obj:
             return {}
         return self.prepopulated_fields
+
+
+class ExamPackExamQuestionInline(TabularInline):
+    model = ExamPackExamQuestion
+    extra = 0
+    autocomplete_fields = ("question",)
+    ordering = ("sort_order",)
+
+
+class ExamPackExamInline(TabularInline):
+    model = ExamPackExam
+    extra = 0
+    show_change_link = True
+    ordering = ("index",)
+
+
+@admin.register(ExamDistributionTemplate)
+class ExamDistributionTemplateAdmin(ModelAdmin):
+    list_display = (
+        "exam_type",
+        "subject",
+        "topic",
+        "question_count",
+        "updated_at",
+    )
+    list_filter = ("exam_type", "subject")
+    search_fields = ("exam_type__name", "subject__name", "topic__name")
+    autocomplete_fields = ("exam_type", "subject", "topic")
+
+
+@admin.register(ExamPack)
+class ExamPackAdmin(ModelAdmin):
+    list_display = (
+        "title",
+        "public_id",
+        "exam_type",
+        "pack_kind",
+        "subject",
+        "exam_count",
+        "is_published",
+        "sort_order",
+    )
+    list_editable = ("is_published", "sort_order")
+    list_filter = ("pack_kind", "is_published", "exam_type")
+    search_fields = ("title", "public_id", "play_product_id")
+    inlines = (ExamPackExamInline,)
+    autocomplete_fields = ("exam_type", "subject")
+
+
+@admin.register(ExamPackExam)
+class ExamPackExamAdmin(ModelAdmin):
+    list_display = ("pack", "index", "title", "question_count")
+    list_filter = ("pack__exam_type",)
+    search_fields = ("title", "pack__title")
+    inlines = (ExamPackExamQuestionInline,)
+    autocomplete_fields = ("pack",)
 
 
 class PromoCodeRedemptionInline(TabularInline):
