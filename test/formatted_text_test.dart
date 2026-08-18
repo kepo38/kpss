@@ -39,6 +39,24 @@ void main() {
     );
   });
 
+  testWidgets('color tags wrapping math are not shown as literal braces', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: FormattedText(
+            r'{red}$x \cdot y = 48$ durumu için:{/red}',
+            preserveLineBreaks: true,
+            style: TextStyle(fontSize: 16, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('{red}'), findsNothing);
+    expect(find.textContaining('{/red}'), findsNothing);
+    expect(find.textContaining('durumu için:'), findsOneWidget);
+  });
+
   testWidgets('renders bold italic underline markdown', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -223,5 +241,61 @@ void main() {
       isTrue,
     );
     expect(FormattedText.usesDisplayMath('x+1'), isFalse);
+  });
+
+  test('restoreCollapsedBreaks splits glued sentences after latex', () {
+    const glued =
+        r'...aynıdır ($a^b \equiv a$).Verilen ana bilgi:$a+b$Bu durumu';
+    final out = FormattedText.restoreCollapsedBreaks(glued);
+    expect(out, contains('.\nVerilen'));
+    expect(out, contains(r'$'));
+    expect(
+      FormattedText.restoreCollapsedBreaks(
+        '15 ile bölünür.1. Adım: En büyük sayıyı bulma',
+      ),
+      contains('.\n1. Adım'),
+    );
+  });
+
+  test('wrapBareLatex restores missing backslash and dollar delimiters', () {
+    expect(
+      FormattedText.wrapBareLatex(r'-\frac{1}{2}'),
+      r'$-\frac{1}{2}$',
+    );
+    expect(
+      FormattedText.wrapBareLatex(r'-frac{1}{2}'),
+      r'$-\frac{1}{2}$',
+    );
+    expect(
+      FormattedText.wrapBareLatex(r'$-\frac{1}{2}$'),
+      r'$-\frac{1}{2}$',
+    );
+    expect(FormattedText.wrapBareLatex('-1'), r'$-1$');
+    expect(FormattedText.wrapBareLatex('-2'), r'$-2$');
+  });
+
+  test('forceDisplaySizeAll upgrades tfrac and over to displaystyle frac', () {
+    expect(
+      FormattedText.forceDisplaySizeAll(r'\tfrac{x}{y}'),
+      r'\displaystyle \frac{x}{y}',
+    );
+    expect(
+      FormattedText.forceDisplaySizeAll(r'{x \over y}'),
+      r'\displaystyle \frac{x}{y}',
+    );
+    expect(
+      FormattedText.forceDisplaySizeAll(r'\frac{x}{y}'),
+      r'\displaystyle \frac{x}{y}',
+    );
+    expect(
+      FormattedText.forceDisplaySizeAll(r'\displaystyle \frac{x}{y}'),
+      r'\displaystyle \frac{x}{y}',
+    );
+    expect(
+      FormattedText.prepareTex(r'\tfrac{x}{y}'),
+      contains(r'\displaystyle'),
+    );
+    expect(FormattedText.usesDisplayMath(r'\tfrac{x}{y}'), isTrue);
+    expect(FormattedText.usesDisplayMath(r'{x \over y}'), isTrue);
   });
 }

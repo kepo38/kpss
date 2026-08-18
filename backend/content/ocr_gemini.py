@@ -48,10 +48,19 @@ Kurallar:
   Örnek kök: $\\sqrt{x} - \\sqrt{y} = 2\\sqrt{2}$, $\\sqrt{4xy}$
   Örnek oran: $\\frac{x}{y}$
 - Üslü / kök / kesirleri LaTeX ile yaz; düz metinde Vx, 2V2 gibi OCR hatası üretme.
-- Her denklemi ayrı satırda tek $...$ içine yaz ($$ kullanma). Eşitlik işaretini LaTeX içinde tut; tire veya uzun çizgi (—) kullanma.
+- Basit denklemleri ayrı satırda tek $...$ içine yaz. Eşitlik yerine uzun çizgi (—) yazma.
   Örnek bileşim: $g(x) = 2x + a$
   $(f \\circ g)(x) = 3x - a$
   $f(1) = 9$ olduğuna göre $f(9)$ değeri kaçtır?
+- Dikey / sütun işlemi (alt alta toplama, çıkarma, çarpma):
+  İşlem işaretini görselden birebir oku. Solda veya sayının önünde eksi varsa ASLA artıya çevirme.
+  Düz satıra yığma (`AB8 + 16C = CA3` YANLIŞ). LaTeX array kullan:
+  $$\\begin{array}{r} AB8 \\\\ -16C \\\\ \\hline CA3 \\end{array}$$
+  Soru cümlesi array'in altında kalsın:
+  "A, B ve C rakamları için
+  $$\\begin{array}{r} AB8 \\\\ -16C \\\\ \\hline CA3 \\end{array}$$
+  olduğuna göre $A + B + C$ toplamı kaçtır?"
+  Çözümü de aynı işleme göre yaz (çıkarma ise çıkarma; 738 − 165 = 573 gibi).
 - Şıklarda kalın/italik/altı çizili yok. Beş şık da dolu olsun. Sayı ve formül düz metin veya $...$ olsun.
   Örnek: {"A": "1", "B": "8", "C": "15", "D": "18", "E": "21"}
 - Romen rakamlı şıklar (I ve II, III ve V vb.) olduğu gibi ayrı ayrı yazılsın; şık harfi (A–E) ile Romen rakamı karıştırılmasın.
@@ -81,7 +90,8 @@ Geometri sorusu ise:
   Yukarıdaki verilere göre x kaç birimdir?"
 - siklar: Yalnızca cevap seçenekleri (tek sayı veya kısa ifade).
   Soru cümlesini, verilenleri veya şekil etiketlerini şıklara koyma.
-  Örnek: {"A": "10", "B": "12", "C": "14", "D": "16", "E": "18"}
+  Kesir/üs varsa $...$ içinde LaTeX yaz: "$-\\frac{1}{2}$"
+  Örnek: {"A": "$-1$", "B": "$-2$", "C": "$-\\frac{1}{2}$", "D": "$-\\frac{3}{2}$", "E": "$-\\frac{1}{4}$"}
 
 Çıktı formatı kesinlikle şu JSON şablonunda olmalıdır (başka metin yok):
 {
@@ -339,6 +349,8 @@ _LATEX_JSON_CMDS = (
     "neq",
     "begin",
     "end",
+    "array",
+    "hline",
     "rho",
     "nu",
     "nabla",

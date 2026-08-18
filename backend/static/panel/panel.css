@@ -618,6 +618,7 @@ h2 {
   overflow: hidden;
   background: var(--ink);
   min-height: 640px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
@@ -645,6 +646,7 @@ h2 {
 }
 .quiz-mock-body {
   flex: 1;
+  min-width: 0;
   padding: 16px 16px 20px;
   overflow: auto;
   max-height: 600px;
@@ -822,6 +824,8 @@ h2 {
   border-radius: 12px;
   border: 1px solid rgba(201,168,108,0.3);
   background: rgba(201,168,108,0.12);
+  min-width: 0;
+  max-width: 100%;
 }
 .quiz-mock-solution.is-on {
   display: block;
@@ -836,12 +840,40 @@ h2 {
   font-size: 13px;
   line-height: 1.45;
   color: rgba(255,255,255,0.85);
-  white-space: normal;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 100%;
 }
-.quiz-mock-solution .body strong { font-weight: 700; color: #fff; }
+.quiz-mock-solution .body p {
+  margin: 0 0 0.8em;
+  white-space: pre-wrap;
+}
+.quiz-mock-solution .body p:last-child {
+  margin-bottom: 0;
+}
+.cozum-metni-alani {
+  white-space: pre-wrap;
+}
+.quiz-mock-solution .body strong,
+.quiz-mock-solution .body .preview-bold,
+.quiz-mock-stem strong,
+.quiz-mock-stem .preview-bold {
+  font-weight: 700;
+}
+.preview-bold {
+  color: #E0E0E0;
+  font-weight: 700;
+}
+.text-danger-vurgu {
+  color: #FF6B6B;
+  font-weight: 600;
+}
+.text-success-vurgu {
+  color: #1DD1A1;
+  font-weight: 600;
+}
 .quiz-mock-solution .body em { font-style: italic; }
-.quiz-mock-stem strong { font-weight: 700; }
 .quiz-mock-stem em { font-style: italic; }
 .quiz-mock-stem u,
 .quiz-mock-solution .body u {
@@ -852,17 +884,39 @@ h2 {
 .quiz-mock-solution .body .rich-green { color: #4ade80; }
 .quiz-mock-stem .rich-red,
 .quiz-mock-solution .body .rich-red { color: #f87171; }
-.quiz-mock-stem .rich-blue,
-.quiz-mock-solution .body .rich-blue { color: #60a5fa; }
+.quiz-mock-stem .rich-red .katex,
+.quiz-mock-solution .body .rich-red .katex,
+.quiz-mock-stem .rich-green .katex,
+.quiz-mock-solution .body .rich-green .katex,
+.quiz-mock-stem .rich-blue .katex,
+.quiz-mock-solution .body .rich-blue .katex {
+  color: inherit;
+}
+.quiz-mock-stem p,
+.quiz-mock-solution .body p,
+.quiz-mock-solution .body li {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
 .quiz-mock-stem .katex,
 .quiz-mock-opt-text .katex,
 .quiz-mock-solution .body .katex {
-  font-size: 1.05em;
+  font-size: 1.21em;
+  max-width: 100%;
 }
-.quiz-mock-stem .katex-display {
+.quiz-mock-opt-text .katex-display {
+  margin: 0;
+  display: inline-block;
+  text-align: left;
+}
+.quiz-mock-stem .katex-display,
+.quiz-mock-solution .body .katex-display {
   margin: 0.35em 0;
   overflow-x: auto;
   overflow-y: hidden;
+  max-width: 100%;
 }
 
 .quiz-mock-solution .body .math-block {

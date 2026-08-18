@@ -32,6 +32,15 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertIn("\\frac", fixed)
         self.assertNotIn("$rac{", fixed)
 
+    def test_json_begin_array_not_eaten_as_backspace(self):
+        # Gemini tek \begin / \end yazarsa JSON \b kaçışı bozar
+        raw = '{"soru_metni": "$$\\begin{array}{r}AB8\\\\-16C\\\\ \\hline CA3\\end{array}$$"}'
+        data = _extract_json(raw)
+        self.assertIn("soru_metni", data)
+        self.assertIn("\\begin{array}", data["soru_metni"])
+        self.assertIn("\\end{array}", data["soru_metni"])
+        self.assertNotIn("\x08", data["soru_metni"])
+
     def test_fence_json(self):
         raw = '```json\n{"stem": "test", "options": {"A": "1"}}\n```'
         data = _extract_json(raw)

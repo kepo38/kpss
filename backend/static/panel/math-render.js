@@ -15,7 +15,7 @@
 
   /** JSON/OCR: \\frac → form-feed+rac; önizlemede geri yamala. */
   function repairLatexEscapes(text) {
-    return String(text || "")
+    var src = String(text || "")
       .replace(/\x0crac/g, "\\frac")
       .replace(/\x08eta/g, "\\beta")
       .replace(/\x08egin/g, "\\begin")
@@ -27,12 +27,48 @@
       .replace(/\x0aeq/g, "\\neq")
       .replace(/\$rac\{/g, "$\\frac{")
       .replace(/\$sqrt\{/g, "$\\sqrt{");
+    if (src.indexOf("frac") !== -1 && src.indexOf("\\frac") === -1) {
+      src = src.replace(/(^|[^\\A-Za-z])frac\{/g, "$1\\frac{");
+    }
+    return src;
+  }
+
+  /** Şıkta $ yoksa tüm metni $...$ içine al (düz sayı dahil). */
+  function wrapBareLatex(text) {
+    var src = repairLatexEscapes(String(text || "")).trim();
+    if (!src) return src;
+    if (/\$|\\\(|\\\[/.test(src)) return src;
+    return "$" + src + "$";
   }
 
   function hasLatex(text) {
-    return /\$\$|\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sqrt|\\circ|\\cdot|\\left|\\right/.test(
+    return /\$\$|\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sqrt|\\circ|\\cdot|\\left|\\right|\\begin\{|\\hline/.test(
       String(text || "")
     );
+  }
+
+  /**
+   * Sohbet kopyasında yutulan Enter'ları geri koy:
+   * "...aynıdır ($a^b \\equiv a$).Verilen" → satır kırılır.
+   */
+  function restoreCollapsedBreaks(text) {
+    var src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (!src) return src;
+    var holders = [];
+    src = src.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, function (m) {
+      holders.push(m);
+      return "§§M" + (holders.length - 1) + "§§";
+    });
+    src = src.replace(/([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
+    src = src.replace(/:(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, ":\n");
+    src = src.replace(/([.!?])(?!\n)(?=\d+\.\s)/g, "$1\n");
+    src = src.replace(/:(?!\n)(?=\d+\.\s)/g, ":\n");
+    src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
+    src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
+      return holders[Number(idx)] || "";
+    });
+    src = src.replace(/(\$)(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])/g, "$1\n");
+    return src.replace(/\n{3,}/g, "\n\n");
   }
 
   function collapseSoftLines(chunk) {
@@ -75,14 +111,21 @@
 
   /** Renk etiketleri olmadan kalın / italik / altı çizili. */
   function mdMarks(text) {
-    return escapeHtml(text)
-      .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong><em>$1</em></strong></u>")
-      .replace(/\*\*__(.+?)__\*\*/g, "<strong><u>$1</u></strong>")
-      .replace(/__\*\*(.+?)\*\*__/g, "<u><strong>$1</strong></u>")
-      .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    var html = escapeHtml(text)
+      .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong class=\"preview-bold\"><em>$1</em></strong></u>")
+      .replace(/\*\*__(.+?)__\*\*/g, "<strong class=\"preview-bold\"><u>$1</u></strong>")
+      .replace(/__\*\*(.+?)\*\*__/g, "<u><strong class=\"preview-bold\">$1</strong></u>")
+      .replace(/\*\*\*(.+?)\*\*\*/g, "<strong class=\"preview-bold\"><em>$1</em></strong>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong class=\"preview-bold\">$1</strong>")
       .replace(/__(.+?)__/g, "<u>$1</u>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>");
+    return emphasizeSignWords(html);
+  }
+
+  function emphasizeSignWords(html) {
+    return String(html || "")
+      .replace(/\bnegatif\b/gi, '<span class="text-danger-vurgu">$&</span>')
+      .replace(/\bpozitif\b/gi, '<span class="text-success-vurgu">$&</span>');
   }
 
   /**
@@ -117,8 +160,21 @@
     });
   }
 
+  function forceDisplaySizeAll(tex) {
+    var t = String(tex || "").trim();
+    if (!t) return t;
+    t = t.replace(/\\dfrac/g, "\\frac").replace(/\\tfrac/g, "\\frac");
+    t = t.replace(/\{([^{}]+)\\over\s*([^{}]+)\}/g, function (_, a, b) {
+      return "\\frac{" + a.trim() + "}{" + b.trim() + "}";
+    });
+    if (!/\\displaystyle\b/.test(t)) {
+      t = "\\displaystyle " + t;
+    }
+    return t;
+  }
+
   function renderMath(tex, displayMode) {
-    var body = String(tex || "").trim();
+    var body = forceDisplaySizeAll(tex);
     if (!body) return "";
     if (typeof global.katex === "undefined") {
       return escapeHtml(displayMode ? "$$" + body + "$$" : "$" + body + "$");
@@ -138,6 +194,26 @@
   function richInline(text) {
     if (!text) return "";
     var src = normalizeLatex(String(text));
+    var holders = [];
+    src = src.replace(
+      /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g,
+      function (_, color, inner) {
+        var idx = holders.length;
+        holders.push({
+          html:
+            '<span class="rich-' + color + '">' + richInline(inner) + "</span>",
+        });
+        return "§§C" + idx + "§§";
+      }
+    );
+    src = src.replace(/\*\*([\s\S]+?)\*\*/g, function (_, inner) {
+      var idx = holders.length;
+      holders.push({
+        html:
+          '<strong class="preview-bold">' + richInline(inner) + "</strong>",
+      });
+      return "§§C" + idx + "§§";
+    });
     var out = "";
     var re =
       /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
@@ -150,13 +226,17 @@
       last = m.index + m[0].length;
     }
     out += mdInline(src.slice(last));
-    return out;
+    if (!holders.length) return out;
+    return out.replace(/§§C(\d+)§§/g, function (_, idx) {
+      var item = holders[Number(idx)];
+      return item ? item.html : "";
+    });
   }
 
   /** Şık metni — kalın/italik/altı çizili yok, yalnızca matematik. */
   function plainInline(text) {
     if (!text) return "";
-    var src = normalizeLatex(String(text));
+    var src = wrapBareLatex(normalizeLatex(String(text)));
     var out = "";
     var re =
       /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
@@ -165,7 +245,7 @@
     while ((m = re.exec(src)) !== null) {
       out += escapeHtml(src.slice(last, m.index));
       var tex = m[1] || m[2] || m[3] || m[4] || "";
-      out += renderMath(tex, !!(m[1] || m[3]));
+      out += renderMath(tex, true);
       last = m.index + m[0].length;
     }
     out += escapeHtml(src.slice(last));
@@ -174,9 +254,11 @@
 
   /** Çözüm / ders metni — satır ve madde yapısını korur. */
   function documentHtml(text) {
-    var src = normalizeLatex(String(text || ""))
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n");
+    var src = restoreCollapsedBreaks(
+      normalizeLatex(String(text || ""))
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+    );
     if (!src.trim()) return "";
 
     var lines = src.split("\n");
@@ -239,7 +321,9 @@
   global.KpssMathRender = {
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
-    hasLatex: hasLatex,
+    restoreCollapsedBreaks: restoreCollapsedBreaks,
+    wrapBareLatex: wrapBareLatex,
+    forceDisplaySizeAll: forceDisplaySizeAll,
     richInline: richInline,
     plainInline: plainInline,
     paragraphHtml: paragraphHtml,

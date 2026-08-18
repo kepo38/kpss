@@ -549,7 +549,27 @@ def strip_option_emphasis(text: str) -> str:
         protected = re.sub(pattern, r"\1", protected, flags=re.DOTALL)
     for i, chunk in enumerate(holders):
         protected = protected.replace(f"\x00MATH{i}\x00", chunk)
-    return protected.strip()
+    return wrap_option_latex(protected.strip())
+
+
+_BARE_LATEX_CMD = re.compile(
+    r"\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|"
+    r"underline|begin|infty)\b"
+)
+
+
+def wrap_option_latex(text: str) -> str:
+    """Kayıtta çıplak \\frac varsa $...$ içine al; frac{ → \\frac{."""
+    src = (text or "").strip()
+    if not src:
+        return src
+    if "$" in src or "\\(" in src or "\\[" in src:
+        return src
+    if "frac" in src and "\\frac" not in src:
+        src = re.sub(r"(?<![\\A-Za-z])frac\{", r"\\frac{", src)
+    if _BARE_LATEX_CMD.search(src):
+        return f"${src}$"
+    return src
 
 
 def _clean_option_body(text: str) -> str:

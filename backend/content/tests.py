@@ -412,6 +412,15 @@ E) IV ve V
             strip_option_emphasis("__altı__ $x^2$"),
             "altı $x^2$",
         )
+        self.assertEqual(
+            strip_option_emphasis(r"-\frac{1}{2}"),
+            r"$-\frac{1}{2}$",
+        )
+        self.assertEqual(
+            strip_option_emphasis("-frac{1}{2}"),
+            r"$-\frac{1}{2}$",
+        )
+        self.assertEqual(strip_option_emphasis("-1"), "-1")
         raw = """
 Hangisi doğrudur?
 A) **Türkiye**

@@ -9,6 +9,7 @@ class FormattedText extends StatelessWidget {
   final TextAlign? textAlign;
   final bool preserveLineBreaks;
   final bool paragraphLayout;
+  final bool forceDisplayMath;
 
   const FormattedText(
     this.data, {
@@ -17,6 +18,7 @@ class FormattedText extends StatelessWidget {
     this.textAlign,
     this.preserveLineBreaks = false,
     this.paragraphLayout = false,
+    this.forceDisplayMath = false,
   });
 
   static String examFormat(String input) {
@@ -60,10 +62,15 @@ class FormattedText extends StatelessWidget {
     final t = tex;
     return t.contains(r'\frac') ||
         t.contains(r'\dfrac') ||
+        t.contains(r'\tfrac') ||
+        t.contains(r'\displaystyle') ||
+        RegExp(r'\\over(?![a-zA-Z])').hasMatch(t) ||
         t.contains(r'\sqrt') ||
         t.contains(r'\left') ||
         t.contains(r'\sum') ||
-        t.contains(r'\int');
+        t.contains(r'\int') ||
+        t.contains(r'\begin{') ||
+        t.contains(r'\hline');
   }
 
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
@@ -77,10 +84,11 @@ class FormattedText extends StatelessWidget {
     required TextStyle base,
     required bool display,
   }) {
+    final sized = forceDisplaySizeAll(tex);
     return Math.tex(
-      tex,
-      textStyle: mathTextStyle(base, display: display),
-      mathStyle: display ? MathStyle.display : MathStyle.text,
+      sized,
+      textStyle: mathTextStyle(base, display: true),
+      mathStyle: MathStyle.display,
       onErrorFallback: (err) => Text(
         display ? '\$\$$tex\$\$' : '\$$tex\$',
         style: base,
@@ -306,7 +314,7 @@ class FormattedText extends StatelessWidget {
 
   static String _repairLatexEscapes(String text) {
     if (text.isEmpty) return text;
-    return text
+    var out = text
         .replaceAll('\x0crac', r'\frac')
         .replaceAll('\x08eta', r'\beta')
         .replaceAll('\x08egin', r'\begin')
@@ -318,20 +326,52 @@ class FormattedText extends StatelessWidget {
         .replaceAll('\x0aeq', r'\neq')
         .replaceAll(r'$rac{', r'$\frac{')
         .replaceAll(r'$sqrt{', r'$\sqrt{');
+    if (out.contains('frac') && !out.contains(r'\frac')) {
+      out = out.replaceAllMapped(
+        RegExp(r'(^|[^\\A-Za-z])frac\{'),
+        (m) => '${m.group(1)}\\frac{',
+      );
+    }
+    return out;
+  }
+
+  static String wrapBareLatex(String input) {
+    var src = _repairLatexEscapes(input.trim());
+    if (src.isEmpty) return src;
+    if (src.contains(r'$') || src.contains(r'\(') || src.contains(r'\[')) {
+      return src;
+    }
+    return '\$${src}\$';
+  }
+
+  /// ÖSYM kitapçığı: \tfrac / \over → \frac, tüm formüle \displaystyle.
+  /// Dolar işaretine replaceAll uygulanmaz; kapanış $ bozulur.
+  static String forceDisplaySizeAll(String tex) {
+    var t = tex.trim();
+    if (t.isEmpty) return t;
+    t = t.replaceAll(r'\tfrac', r'\frac');
+    t = t.replaceAll(r'\dfrac', r'\frac');
+    t = t.replaceAll(r'\ttfrac', r'\frac');
+    t = t.replaceAll(r'\ddfrac', r'\frac');
+    t = t.replaceAllMapped(
+      RegExp(r'\{([^{}]+)\\over\s*([^{}]+)\}'),
+      (m) => '\\frac{${m.group(1)!.trim()}}{${m.group(2)!.trim()}}',
+    );
+    if (!RegExp(r'\\displaystyle\b').hasMatch(t)) {
+      t = r'\displaystyle ' + t;
+    }
+    return t;
   }
 
   static String prepareTex(String tex) {
     var t = _repairLatexEscapes(tex.trim());
     t = t.replaceAllMapped(
       RegExp(
-        r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan)',
+        r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan|begin|end|array|hline|matrix|displaystyle)',
       ),
       (m) => '\\${m.group(1)}',
     );
-    // \frac → \dfrac for larger fractions in inline mode
-    t = t.replaceAll(r'\frac', r'\dfrac');
-    t = t.replaceAll(r'\ddfrac', r'\dfrac');
-    return t;
+    return forceDisplaySizeAll(t);
   }
 
   static String normalizeLatex(String input) {
@@ -346,6 +386,52 @@ class FormattedText extends StatelessWidget {
           (m) => r'$' + m.group(1)!.trim() + r'$',
         );
     return text;
+  }
+
+  static String restoreCollapsedBreaks(String input) {
+    if (input.isEmpty) return input;
+    var src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final holders = <String>[];
+    src = src.replaceAllMapped(
+      RegExp(r'\$\$[\s\S]+?\$\$|\$[^$\n]+\$'),
+      (m) {
+        holders.add(m.group(0)!);
+        return '§§M${holders.length - 1}§§';
+      },
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r':(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
+      (m) => ':\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([.!?])(?!\n)(?=\d+\.\s)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r':(?!\n)(?=\d+\.\s)'),
+      (m) => ':\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\n)(\d+\.\s+Adım)'),
+      (m) => '\n${m.group(1)}',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'§§M(\d+)§§'),
+      (m) {
+        final i = int.tryParse(m.group(1)!) ?? -1;
+        if (i < 0 || i >= holders.length) return m.group(0)!;
+        return holders[i];
+      },
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\$)(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])'),
+      (m) => '${m.group(1)}\n',
+    );
+    return src.replaceAll(RegExp(r'\n{3,}'), '\n\n');
   }
 
   static TextStyle _emphasis(
@@ -386,10 +472,12 @@ class FormattedText extends StatelessWidget {
     final normalized = normalizeLatex(
       preserveLineBreaks ? markup : examFormat(markup),
     );
+    final laidOut =
+        preserveLineBreaks ? restoreCollapsedBreaks(normalized) : normalized;
 
     if (preserveLineBreaks) {
       return _DocumentText(
-        text: normalized,
+        text: laidOut,
         base: base,
         textAlign: textAlign,
       );
@@ -400,16 +488,79 @@ class FormattedText extends StatelessWidget {
         text: normalized,
         base: base,
         textAlign: textAlign,
+        forceDisplayMath: forceDisplayMath,
       );
     }
 
     return Text.rich(
-      TextSpan(style: base, children: _parse(normalized, base)),
+      TextSpan(
+        style: base,
+        children: _parse(
+          normalized,
+          base,
+          forceDisplayMath: forceDisplayMath,
+        ),
+      ),
       textAlign: textAlign,
     );
   }
 
-  static List<InlineSpan> _parse(String input, TextStyle base) {
+  static List<InlineSpan> _parse(
+    String input,
+    TextStyle base, {
+    bool forceDisplayMath = false,
+  }) {
+    if (input.isEmpty) return [TextSpan(text: '', style: base)];
+
+    final colorRe = RegExp(r'\{(green|red|blue)\}([\s\S]+?)\{\/\1\}');
+    if (colorRe.hasMatch(input)) {
+      final spans = <InlineSpan>[];
+      var i = 0;
+      for (final m in colorRe.allMatches(input)) {
+        if (m.start > i) {
+          spans.addAll(
+            _parseMath(
+              input.substring(i, m.start),
+              base,
+              forceDisplayMath: forceDisplayMath,
+            ),
+          );
+        }
+        final color = switch (m.group(1)) {
+          'green' => _greenText,
+          'red' => _redText,
+          'blue' => _blueText,
+          _ => base.color,
+        };
+        spans.addAll(
+          _parse(
+            m.group(2)!,
+            _emphasis(base, textColor: color),
+            forceDisplayMath: forceDisplayMath,
+          ),
+        );
+        i = m.end;
+      }
+      if (i < input.length) {
+        spans.addAll(
+          _parseMath(
+            input.substring(i),
+            base,
+            forceDisplayMath: forceDisplayMath,
+          ),
+        );
+      }
+      return spans.isEmpty ? [TextSpan(text: '', style: base)] : spans;
+    }
+
+    return _parseMath(input, base, forceDisplayMath: forceDisplayMath);
+  }
+
+  static List<InlineSpan> _parseMath(
+    String input,
+    TextStyle base, {
+    bool forceDisplayMath = false,
+  }) {
     if (input.isEmpty) return [TextSpan(text: '', style: base)];
 
     final spans = <InlineSpan>[];
@@ -421,7 +572,8 @@ class FormattedText extends StatelessWidget {
       }
       final tex = prepareTex((m.group(1) ?? m.group(2) ?? '').trim());
       if (tex.isNotEmpty) {
-        final display = m.group(1) != null || usesDisplayMath(tex);
+        final display =
+            forceDisplayMath || m.group(1) != null || usesDisplayMath(tex);
         spans.add(
           WidgetSpan(
             alignment: display
@@ -540,11 +692,13 @@ class _ParagraphText extends StatelessWidget {
   final String text;
   final TextStyle base;
   final TextAlign? textAlign;
+  final bool forceDisplayMath;
 
   const _ParagraphText({
     required this.text,
     required this.base,
     this.textAlign,
+    this.forceDisplayMath = false,
   });
 
   @override
@@ -589,7 +743,7 @@ class _ParagraphText extends StatelessWidget {
     final leadingInline = RegExp(r'^\$([^$\n]+)\$\s*(.*)$').firstMatch(paragraph);
     if (leadingInline != null) {
       final tex = FormattedText.prepareTex(leadingInline.group(1)!.trim());
-      if (FormattedText.usesDisplayMath(tex)) {
+      if (forceDisplayMath || FormattedText.usesDisplayMath(tex)) {
         final rest = (leadingInline.group(2) ?? '').trim();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -610,7 +764,11 @@ class _ParagraphText extends StatelessWidget {
                 child: Text.rich(
                   TextSpan(
                     style: base,
-                    children: FormattedText._parse(rest, base),
+                    children: FormattedText._parse(
+                      rest,
+                      base,
+                      forceDisplayMath: forceDisplayMath,
+                    ),
                   ),
                   textAlign: textAlign,
                 ),
@@ -623,7 +781,11 @@ class _ParagraphText extends StatelessWidget {
     return Text.rich(
       TextSpan(
         style: base,
-        children: FormattedText._parse(paragraph, base),
+        children: FormattedText._parse(
+          paragraph,
+          base,
+          forceDisplayMath: forceDisplayMath,
+        ),
       ),
       textAlign: textAlign,
     );

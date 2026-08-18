@@ -319,18 +319,21 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
           appBar: AppBar(
             backgroundColor: AppTheme.page(context),
             foregroundColor: AppTheme.onPage(context),
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            toolbarHeight: 64,
+            centerTitle: false,
+            titleSpacing: 0,
             leading: const AppBackButton(),
-            title: const Text(
-              'Yanlış Defteri',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontWeight: FontWeight.w600,
-              ),
+            title: _WrongBookHeaderTitle(
+              questionCount: allQuestions.length,
+              subjectCount: subjects.length,
             ),
             actions: [
               if (allQuestions.isNotEmpty)
-                TextButton(
-                  onPressed: () {
+                _HeaderPill(
+                  label: 'Akıllı',
+                  onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const SmartReviewScreen(
@@ -339,25 +342,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                       ),
                     );
                   },
-                  child: const Text(
-                    'Akıllı',
-                    style: TextStyle(
-                      color: AppTheme.neonEdge,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
                 ),
-              if (questions.isNotEmpty)
-                TextButton(
-                  onPressed: () => _practiceAll(questions),
-                  child: const Text(
-                    'Çöz',
-                    style: TextStyle(
-                      color: AppTheme.champagne,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+              if (questions.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                _HeaderPill(
+                  label: 'Çöz',
+                  filled: true,
+                  onTap: () => _practiceAll(questions),
                 ),
+              ],
+              const SizedBox(width: 12),
             ],
           ),
           body: DecoratedBox(
@@ -394,17 +388,6 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                        child: Text(
-                          '${allQuestions.length} soru · '
-                          '${subjects.length} ders',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppTheme.slate.withValues(alpha: 0.75),
-                          ),
-                        ),
-                      ),
                       if (subjects.length > 1) ...[
                         const SizedBox(height: 10),
                         SingleChildScrollView(
@@ -592,18 +575,10 @@ class _WrongQuestionTile extends StatelessWidget {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _SimilarInfoChip(
-                    loading: similarLoading,
-                    onTap: similarLoading ? null : onSimilar,
-                  ),
-                  if (showProBadge) ...[
-                    const SizedBox(width: 4),
-                    ProCrownBadge(onTap: onSimilar),
-                  ],
-                ],
+              _SimilarInfoChip(
+                loading: similarLoading,
+                locked: showProBadge,
+                onTap: similarLoading ? null : onSimilar,
               ),
               const SizedBox(height: 4),
               GestureDetector(
@@ -624,12 +599,17 @@ class _WrongQuestionTile extends StatelessWidget {
   }
 }
 
-/// Yanlış satırından ayrı; yanlış çözümü açmaz, bilgilendirici BENZER kutusu.
+/// Tek kapsül: benzer soru özelliği; kilitliyse PRO kapısı aynı düğmede.
 class _SimilarInfoChip extends StatelessWidget {
   final VoidCallback? onTap;
   final bool loading;
+  final bool locked;
 
-  const _SimilarInfoChip({required this.onTap, this.loading = false});
+  const _SimilarInfoChip({
+    required this.onTap,
+    this.loading = false,
+    this.locked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -639,44 +619,205 @@ class _SimilarInfoChip extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         opacity: loading ? 0.85 : 1,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(9),
             color: const Color(0xFF1A2740),
             border: Border.all(
-              color: AppTheme.champagne.withValues(alpha: 0.35),
-              width: 0.5,
+              color: locked
+                  ? const Color(0xFFD4AF6A)
+                  : AppTheme.champagne.withValues(alpha: 0.35),
+              width: locked ? 1 : 0.5,
             ),
+            boxShadow: locked
+                ? [
+                    BoxShadow(
+                      color: AppTheme.champagne.withValues(alpha: 0.28),
+                      blurRadius: 8,
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (loading)
-                const SizedBox(
-                  width: 11,
-                  height: 11,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: AppTheme.champagneLight,
-                  ),
-                )
-              else
-                const Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 11,
-                  color: AppTheme.champagneLight,
-                ),
-              const SizedBox(width: 4),
-              const Text(
-                'BENZER',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                  color: AppTheme.champagneLight,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (loading)
+                      const SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: AppTheme.champagneLight,
+                        ),
+                      )
+                    else
+                      Icon(
+                        locked
+                            ? Icons.lock_rounded
+                            : Icons.auto_awesome_rounded,
+                        size: 11,
+                        color: AppTheme.champagneLight,
+                      ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'BENZER',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: AppTheme.champagneLight,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              if (locked)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(6, 5, 7, 5),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFFFF6E4),
+                        Color(0xFFE8CF98),
+                        Color(0xFFC9A86C),
+                      ],
+                    ),
+                  ),
+                  child: const Text(
+                    'PRO',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                      color: Color(0xFF3A2A10),
+                    ),
+                  ),
+                ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WrongBookHeaderTitle extends StatelessWidget {
+  final int questionCount;
+  final int subjectCount;
+
+  const _WrongBookHeaderTitle({
+    required this.questionCount,
+    required this.subjectCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final on = AppTheme.onPage(context);
+    final muted = AppTheme.mutedOnPage(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Yanlış Defteri',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'serif',
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            height: 1.05,
+            letterSpacing: -0.4,
+            color: on,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            Container(
+              width: 16,
+              height: 1.5,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(99),
+                gradient: const LinearGradient(
+                  colors: [AppTheme.champagneLight, AppTheme.champagne],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                questionCount == 0
+                    ? 'Hatalar burada toplanır'
+                    : '$questionCount soru · $subjectCount ders',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _HeaderPill extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool filled;
+
+  const _HeaderPill({
+    required this.label,
+    required this.onTap,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final on = AppTheme.onPage(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: filled ? null : AppTheme.champagne.withValues(alpha: 0.08),
+          gradient: filled
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFF8E7C0),
+                    Color(0xFFE2C998),
+                    Color(0xFFC9A86C),
+                  ],
+                )
+              : null,
+          border: Border.all(
+            color: filled
+                ? const Color(0xFFD4AF6A)
+                : AppTheme.champagne.withValues(alpha: 0.45),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+            color: filled ? AppTheme.ink : on,
           ),
         ),
       ),

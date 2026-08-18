@@ -62,7 +62,18 @@
     if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
     var tag = (node.nodeName || "").toUpperCase();
     if (tag === "BR") return "\n";
-    if (tag === "P" || tag === "DIV" || tag === "H1" || tag === "H2" || tag === "H3") {
+    if (tag === "HR") return "\n\n";
+    if (tag === "H1" || tag === "H2" || tag === "H3" || tag === "H4") {
+      var heading = Array.prototype.map
+        .call(node.childNodes, nodeText)
+        .join("")
+        .replace(/\n+/g, " ")
+        .trim();
+      if (!heading) return "";
+      if (!/^\*\*/.test(heading)) heading = "**" + heading + "**";
+      return heading + "\n\n";
+    }
+    if (tag === "P" || tag === "DIV" || tag === "SECTION" || tag === "BLOCKQUOTE") {
       var inner = Array.prototype.map
         .call(node.childNodes, nodeText)
         .join("")
@@ -85,13 +96,21 @@
 
     var child = Array.prototype.map.call(node.childNodes, nodeText).join("");
     var style = styleOf(node).toLowerCase();
+    var cls = ((node.getAttribute && node.getAttribute("class")) || "").toLowerCase();
     var bold =
       tag === "STRONG" ||
       tag === "B" ||
-      /font-weight\s*:\s*(bold|[7-9]00)/.test(style);
-    var italic = tag === "EM" || tag === "I" || /font-style\s*:\s*italic/.test(style);
+      /font-weight\s*:\s*(bold|[6-9]00)/.test(style) ||
+      /\b(bold|font-bold|font-semibold|fw-bold|fw-semibold)\b/.test(cls);
+    var italic =
+      tag === "EM" ||
+      tag === "I" ||
+      /font-style\s*:\s*italic/.test(style) ||
+      /\b(italic|font-italic)\b/.test(cls);
     var underline =
-      tag === "U" || /text-decoration\s*:[^;]*underline/.test(style);
+      tag === "U" ||
+      /text-decoration\s*:[^;]*underline/.test(style) ||
+      /\b(underline|font-underline)\b/.test(cls);
     var color = parseTextColor(style);
 
     var inner = child;
@@ -161,9 +180,22 @@
     }
   }
 
+  function structureScore(text) {
+    var src = String(text || "");
+    var bolds = (src.match(/\*\*/g) || []).length;
+    var breaks = (src.match(/\n/g) || []).length;
+    var bullets = (src.match(/^\s*[-•]/gm) || []).length;
+    return bolds * 3 + breaks + bullets * 2;
+  }
+
   function choosePasteText(plain, html) {
     var fromPlain = normalizePasteText(plain || "");
     var fromHtml = html ? htmlClipboardToText(html) : "";
+    if (!fromHtml) return fromPlain;
+    if (!fromPlain) return fromHtml;
+    if (structureScore(fromHtml) > structureScore(fromPlain)) {
+      return fromHtml;
+    }
     var plainHas =
       window.KpssMathRender && window.KpssMathRender.hasLatex
         ? window.KpssMathRender.hasLatex(fromPlain)
@@ -198,8 +230,10 @@
       var html = clip.getData("text/html");
       var plain = clip.getData("text/plain") || "";
       var converted = choosePasteText(plain, html);
+      converted = window.KpssMathRender && window.KpssMathRender.restoreCollapsedBreaks
+        ? window.KpssMathRender.restoreCollapsedBreaks(converted)
+        : converted;
       if (!converted) return;
-      if (!html && converted === plain) return;
       e.preventDefault();
       insertAtCursor(el, converted);
     });
