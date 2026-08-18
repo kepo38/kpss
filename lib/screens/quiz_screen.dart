@@ -1648,7 +1648,6 @@ class _AnswerChip extends StatelessWidget {
           const SizedBox(height: 4),
           FormattedText(
             FormattedText.wrapBareLatex(FormattedText.stripMarkup(value)),
-            forceDisplayMath: true,
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
@@ -1770,9 +1769,13 @@ class _OptionTile extends StatelessWidget {
                     FormattedText.wrapBareLatex(
                       FormattedText.stripMarkup(text),
                     ),
-                    paragraphLayout: true,
-                    forceDisplayMath: true,
-                    style: const TextStyle(fontSize: 14, color: Colors.white),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                      fontStyle: FontStyle.normal,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 if (tone == _OptionTone.correct)

@@ -255,6 +255,31 @@ void main() {
       ),
       contains('.\n1. Adım'),
     );
+    final roman = FormattedText.restoreCollapsedBreaks(
+      r'**Buna göre** I. $a \cdot (b + c)$ II. $a + b + c$',
+    );
+    expect(roman, contains('göre**'));
+    expect(roman, contains('\nI.'));
+    expect(roman, contains('\nII.'));
+    final gluedQuestion = FormattedText.restoreCollapsedBreaks(
+      r'I. $a \cdot (b + c)$ II. $a + b + c$ III. $a \cdot b + c$ **ifadelerinden hangileri __her zaman__ çift sayıdır?**',
+    );
+    expect(gluedQuestion.startsWith('I.'), isTrue);
+    expect(gluedQuestion, contains('\nII.'));
+    expect(gluedQuestion, contains('\nIII.'));
+    expect(gluedQuestion, contains('\n**ifadelerinden'));
+    expect(
+      FormattedText.restoreCollapsedBreaks(
+        r'{red}$x \cdot y = 48$ durumu için:{/red}',
+      ),
+      isNot(contains('\ndurumu')),
+    );
+    expect(
+      FormattedText.examFormat(
+        'I. \$a\$\nII. \$b\$\nIII. \$c\$\n**ifadelerinden hangileri**',
+      ),
+      contains('\n\nII.'),
+    );
   });
 
   test('wrapBareLatex restores missing backslash and dollar delimiters', () {
@@ -270,8 +295,10 @@ void main() {
       FormattedText.wrapBareLatex(r'$-\frac{1}{2}$'),
       r'$-\frac{1}{2}$',
     );
-    expect(FormattedText.wrapBareLatex('-1'), r'$-1$');
-    expect(FormattedText.wrapBareLatex('-2'), r'$-2$');
+    expect(FormattedText.wrapBareLatex('-1'), '-1');
+    expect(FormattedText.wrapBareLatex('-2'), '-2');
+    expect(FormattedText.wrapBareLatex(r'$Yalnız I$'), 'Yalnız I');
+    expect(FormattedText.wrapBareLatex('I ve II'), 'I ve II');
   });
 
   test('forceDisplaySizeAll upgrades tfrac and over to displaystyle frac', () {

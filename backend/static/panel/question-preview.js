@@ -16,7 +16,7 @@
 
   function stemToHtml(text) {
     if (window.KpssMathRender) {
-      return window.KpssMathRender.paragraphHtml(text);
+      return window.KpssMathRender.documentHtml(text);
     }
     if (!text) return "";
     return "<p>" + richHtml(text) + "</p>";

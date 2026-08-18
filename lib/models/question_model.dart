@@ -45,6 +45,21 @@ class QuestionModel {
     this.scenarioOrder = 0,
   });
 
+  static bool _keepDisplayMathDelimiters(String inner) {
+    final t = inner.trim();
+    if (t.isEmpty) return false;
+    return t.contains(r'\begin{') ||
+        t.contains(r'\hline') ||
+        t.contains(r'\frac') ||
+        t.contains(r'\dfrac') ||
+        t.contains(r'\tfrac') ||
+        t.contains(r'\sqrt') ||
+        t.contains(r'\displaystyle') ||
+        t.contains(r'\sum') ||
+        t.contains(r'\int') ||
+        RegExp(r'\\over(?![a-zA-Z])').hasMatch(t);
+  }
+
   static String _normalizeLatexDelimiters(String input) {
     var text = input.trim();
     if (text.isEmpty) return text;
@@ -57,10 +72,16 @@ class QuestionModel {
       RegExp(r'\\\[([\s\S]+?)\\\]'),
       (m) => '\$\$${m.group(1)!.trim()}\$\$',
     );
-    // Gemini bazen kısa ifadeleri $$...$$ döndürebiliyor; satır-içiye indir.
+    // Gemini bazen kısa ifadeleri $$...$$ döndürebiliyor; display blokları koru.
     text = text.replaceAllMapped(
       RegExp(r'\$\$([^\n$]+?)\$\$'),
-      (m) => '\$${m.group(1)!.trim()}\$',
+      (m) {
+        final inner = m.group(1)!.trim();
+        if (_keepDisplayMathDelimiters(inner)) {
+          return '\$\$${inner}\$\$';
+        }
+        return '\$${inner}\$';
+      },
     );
     return text;
   }

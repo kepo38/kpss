@@ -72,6 +72,7 @@ Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine g�
 - Yeni paket önerme; mevcut servisleri reuse et
 - Büyük soru listelerinde async + sayfalama / gereksiz full-bank yükleme yok
 - `const` mümkün olduğunca; DRY → `lib/widgets/`
+- **Yeni özellik veya davranış değişikliğinde `FEATURES.md` güncelle** (aynı commit/PR)
 
 ## Soru / test veri yönetimi
 

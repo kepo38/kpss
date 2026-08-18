@@ -57,44 +57,52 @@
     return "";
   }
 
-  function nodeText(node) {
+  function childrenText(node, listDepth) {
+    return Array.prototype.map
+      .call(node.childNodes || [], function (child) {
+        return nodeText(child, listDepth);
+      })
+      .join("");
+  }
+
+  function nodeText(node, listDepth) {
     if (!node) return "";
     if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    var depth = listDepth || 0;
     var tag = (node.nodeName || "").toUpperCase();
+    if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") return "";
     if (tag === "BR") return "\n";
-    if (tag === "HR") return "\n\n";
+    if (tag === "HR") return "\n\n---\n\n";
     if (tag === "H1" || tag === "H2" || tag === "H3" || tag === "H4") {
-      var heading = Array.prototype.map
-        .call(node.childNodes, nodeText)
-        .join("")
-        .replace(/\n+/g, " ")
-        .trim();
+      var heading = childrenText(node, depth).replace(/\n+/g, " ").trim();
       if (!heading) return "";
       if (!/^\*\*/.test(heading)) heading = "**" + heading + "**";
-      return heading + "\n\n";
+      return "## " + heading + "\n\n";
     }
     if (tag === "P" || tag === "DIV" || tag === "SECTION" || tag === "BLOCKQUOTE") {
-      var inner = Array.prototype.map
-        .call(node.childNodes, nodeText)
-        .join("")
-        .replace(/\n+$/g, "");
+      var inner = childrenText(node, depth).replace(/\n+$/g, "");
+      if (!inner.trim()) return "";
       return inner + "\n\n";
     }
     if (tag === "LI") {
-      return (
-        "- " +
-        Array.prototype.map
-          .call(node.childNodes, nodeText)
-          .join("")
-          .trim() +
-        "\n"
-      );
+      var head = "";
+      var nested = "";
+      Array.prototype.forEach.call(node.childNodes || [], function (child) {
+        var childTag = (child.nodeName || "").toUpperCase();
+        if (childTag === "UL" || childTag === "OL") {
+          nested += nodeText(child, depth + 1);
+        } else {
+          head += nodeText(child, depth);
+        }
+      });
+      head = head.replace(/\n+/g, " ").trim();
+      return "  ".repeat(depth) + "- " + head + "\n" + nested;
     }
     if (tag === "UL" || tag === "OL") {
-      return Array.prototype.map.call(node.childNodes, nodeText).join("");
+      return childrenText(node, depth);
     }
 
-    var child = Array.prototype.map.call(node.childNodes, nodeText).join("");
+    var child = childrenText(node, depth);
     var style = styleOf(node).toLowerCase();
     var cls = ((node.getAttribute && node.getAttribute("class")) || "").toLowerCase();
     var bold =
@@ -113,14 +121,14 @@
       /\b(underline|font-underline)\b/.test(cls);
     var color = parseTextColor(style);
 
-    var inner = child;
+    var marked = child;
     if (bold || italic || underline) {
-      inner = wrapMarkdown(child, bold, italic, underline);
+      marked = wrapMarkdown(child, bold, italic, underline);
     }
     if (color) {
-      return wrapColor(inner, color);
+      return wrapColor(marked, color);
     }
-    return inner;
+    return marked;
   }
 
   function wrapTex(tex, display) {
@@ -185,7 +193,8 @@
     var bolds = (src.match(/\*\*/g) || []).length;
     var breaks = (src.match(/\n/g) || []).length;
     var bullets = (src.match(/^\s*[-•]/gm) || []).length;
-    return bolds * 3 + breaks + bullets * 2;
+    var heads = (src.match(/^## /gm) || []).length;
+    return bolds * 3 + breaks + bullets * 2 + heads * 4;
   }
 
   function choosePasteText(plain, html) {
@@ -193,7 +202,7 @@
     var fromHtml = html ? htmlClipboardToText(html) : "";
     if (!fromHtml) return fromPlain;
     if (!fromPlain) return fromHtml;
-    if (structureScore(fromHtml) > structureScore(fromPlain)) {
+    if (structureScore(fromHtml) >= structureScore(fromPlain)) {
       return fromHtml;
     }
     var plainHas =

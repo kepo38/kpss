@@ -852,6 +852,21 @@ h2 {
 .quiz-mock-solution .body p:last-child {
   margin-bottom: 0;
 }
+.quiz-mock-solution .body .preview-heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f2f2f2;
+  line-height: 1.35;
+  margin: 0.9em 0 0.4em;
+}
+.quiz-mock-solution .body .preview-heading:first-child {
+  margin-top: 0;
+}
+.quiz-mock-solution .body hr.preview-rule {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin: 0.95em 0;
+}
 .cozum-metni-alani {
   white-space: pre-wrap;
 }
@@ -901,14 +916,20 @@ h2 {
   -webkit-overflow-scrolling: touch;
 }
 .quiz-mock-stem .katex,
-.quiz-mock-opt-text .katex,
 .quiz-mock-solution .body .katex {
   font-size: 1.21em;
   max-width: 100%;
 }
+.quiz-mock-opt-text {
+  font-family: inherit;
+  font-style: normal;
+}
+.quiz-mock-opt-text .katex,
 .quiz-mock-opt-text .katex-display {
+  font-size: 1em;
+  font-style: normal;
   margin: 0;
-  display: inline-block;
+  display: inline;
   text-align: left;
 }
 .quiz-mock-stem .katex-display,
@@ -933,6 +954,10 @@ h2 {
 .quiz-mock-solution .body ul.rich-list li,
 .quiz-mock-stem ul.rich-list li {
   margin: 0.2em 0;
+}
+.quiz-mock-solution .body ul.rich-list.nested {
+  list-style: circle;
+  margin: 0.15em 0 0.35em 1.05em;
 }
 
 @media (max-width: 960px) {

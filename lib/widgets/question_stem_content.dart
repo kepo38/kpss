@@ -59,7 +59,7 @@ class QuestionStemContent extends StatelessWidget {
         children: [
           FormattedText(
             stem,
-            paragraphLayout: true,
+            preserveLineBreaks: true,
             textAlign: TextAlign.start,
             style: baseStyle,
           ),
@@ -84,7 +84,7 @@ class QuestionStemContent extends StatelessWidget {
         children.add(
           FormattedText(
             chunk,
-            paragraphLayout: true,
+            preserveLineBreaks: true,
             textAlign: TextAlign.start,
             style: baseStyle,
           ),

@@ -21,6 +21,14 @@ class FormattedText extends StatelessWidget {
     this.forceDisplayMath = false,
   });
 
+  static bool _isStructuralLine(String line) {
+    final t = line.trim();
+    if (t.isEmpty) return false;
+    return RegExp(
+          r'^(?:#{1,3}\s+|[-•*◦○–—]\s+|(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+|\*\*|---|\*\*\*|___)',
+        ).hasMatch(t);
+  }
+
   static String examFormat(String input) {
     if (input.isEmpty) return input;
 
@@ -30,20 +38,38 @@ class FormattedText extends StatelessWidget {
 
     void appendFormattedText(String chunk) {
       if (chunk.trim().isEmpty) return;
-      final paras = chunk
+      final blocks = chunk
           .replaceAll('\r\n', '\n')
           .replaceAll('\r', '\n')
-          .split(RegExp(r'\n\s*\n+'))
-          .map(
-            (p) => p
-                .replaceAll(RegExp(r'[ \t]*\n[ \t]*'), ' ')
-                .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
-                .trim(),
-          )
-          .where((p) => p.isNotEmpty);
-      for (final p in paras) {
-        if (buffer.isNotEmpty) buffer.write('\n\n');
-        buffer.write(p);
+          .split(RegExp(r'\n\s*\n+'));
+      for (final block in blocks) {
+        final kept = <String>[];
+        final buf = StringBuffer();
+        void flushSoft() {
+          final t = buf
+              .toString()
+              .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+              .trim();
+          if (t.isNotEmpty) kept.add(t);
+          buf.clear();
+        }
+
+        for (final raw in block.split('\n')) {
+          final line = raw.trim();
+          if (line.isEmpty) continue;
+          if (_isStructuralLine(line)) {
+            flushSoft();
+            kept.add(line);
+          } else {
+            if (buf.isNotEmpty) buf.write(' ');
+            buf.write(line);
+          }
+        }
+        flushSoft();
+        for (final p in kept) {
+          if (buffer.isNotEmpty) buffer.write('\n\n');
+          buffer.write(p);
+        }
       }
     }
 
@@ -292,8 +318,35 @@ class FormattedText extends StatelessWidget {
     // Dönüştürülemeyen HTML etiketlerini kaldır (metni düz bırakma)
     text = text.replaceAll(RegExp(r'</?[a-zA-Z][^>]*>'), '');
     text = _tightenMarkdownMarkers(text);
+    text = emphasizeSignWords(text);
 
     return text;
+  }
+
+  static String emphasizeSignWords(String input) {
+    if (input.isEmpty) return input;
+    var src = input;
+    final holders = <String>[];
+    src = src.replaceAllMapped(
+      RegExp(r'\{(green|red|blue)\}([\s\S]+?)\{\/\1\}'),
+      (m) {
+        holders.add(m.group(0)!);
+        return '§§C${holders.length - 1}§§';
+      },
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'\bnegatif\b', caseSensitive: false),
+      (m) => '{red}${m.group(0)}{/red}',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'\bpozitif\b', caseSensitive: false),
+      (m) => '{green}${m.group(0)}{/green}',
+    );
+    return src.replaceAllMapped(RegExp(r'§§C(\d+)§§'), (m) {
+      final i = int.tryParse(m.group(1)!) ?? -1;
+      if (i < 0 || i >= holders.length) return m.group(0)!;
+      return holders[i];
+    });
   }
 
   static String stripMarkup(String input) {
@@ -335,13 +388,37 @@ class FormattedText extends StatelessWidget {
     return out;
   }
 
+  static bool looksLikeMath(String input) {
+    final t = input.trim();
+    if (t.isEmpty) return false;
+    return RegExp(
+          r'\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|'
+          r'underline|begin|infty|pm|neq|leq|geq)\b',
+        ).hasMatch(t) ||
+        t.contains(r'^') ||
+        t.contains(r'_') ||
+        t.contains('{') ||
+        RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t);
+  }
+
   static String wrapBareLatex(String input) {
     var src = _repairLatexEscapes(input.trim());
     if (src.isEmpty) return src;
+    final display = RegExp(r'^\$\$([\s\S]+)\$\$$').firstMatch(src);
+    if (display != null) {
+      final inner = display.group(1)!.trim();
+      return looksLikeMath(inner) ? src : inner;
+    }
+    final wrapped = RegExp(r'^\$([^$]+)\$').firstMatch(src);
+    if (wrapped != null) {
+      final inner = wrapped.group(1)!.trim();
+      return looksLikeMath(inner) ? src : inner;
+    }
     if (src.contains(r'$') || src.contains(r'\(') || src.contains(r'\[')) {
       return src;
     }
-    return '\$${src}\$';
+    if (looksLikeMath(src)) return '\$${src}\$';
+    return src;
   }
 
   /// ÖSYM kitapçığı: \tfrac / \over → \frac, tüm formüle \displaystyle.
@@ -420,6 +497,24 @@ class FormattedText extends StatelessWidget {
       (m) => '\n${m.group(1)}',
     );
     src = src.replaceAllMapped(
+      RegExp(r'(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)'),
+      (m) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(§§M\d+§§)\s*(?=\*\*[a-zçğıöşüâîû])'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(§§M\d+§§)\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))',
+      ),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
       RegExp(r'§§M(\d+)§§'),
       (m) {
         final i = int.tryParse(m.group(1)!) ?? -1;
@@ -431,7 +526,11 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(\$)(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])'),
       (m) => '${m.group(1)}\n',
     );
-    return src.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    src = src.replaceAllMapped(
+      RegExp(r'(\$)\s*(?=\*\*[a-zçğıöşüâîû])'),
+      (m) => '${m.group(1)}\n',
+    );
+    return src.replaceAll(RegExp(r'\n{3,}'), '\n\n').replaceFirst(RegExp(r'^\n+'), '');
   }
 
   static TextStyle _emphasis(
@@ -472,10 +571,9 @@ class FormattedText extends StatelessWidget {
     final normalized = normalizeLatex(
       preserveLineBreaks ? markup : examFormat(markup),
     );
-    final laidOut =
-        preserveLineBreaks ? restoreCollapsedBreaks(normalized) : normalized;
+    final laidOut = restoreCollapsedBreaks(normalized);
 
-    if (preserveLineBreaks) {
+    if (preserveLineBreaks || laidOut.contains('\n')) {
       return _DocumentText(
         text: laidOut,
         base: base,
@@ -485,7 +583,7 @@ class FormattedText extends StatelessWidget {
 
     if (paragraphLayout) {
       return _ParagraphText(
-        text: normalized,
+        text: laidOut,
         base: base,
         textAlign: textAlign,
         forceDisplayMath: forceDisplayMath,
@@ -496,7 +594,7 @@ class FormattedText extends StatelessWidget {
       TextSpan(
         style: base,
         children: _parse(
-          normalized,
+          laidOut,
           base,
           forceDisplayMath: forceDisplayMath,
         ),
@@ -834,20 +932,85 @@ class _DocumentText extends StatelessWidget {
         continue;
       }
 
-      final bullet = RegExp(r'^[-•*–—]\s+(.+)').firstMatch(trimmed);
-      if (bullet != null) {
+      final displayInline =
+          RegExp(r'^\$([^$\n]+)\$$').firstMatch(trimmed);
+      if (displayInline != null) {
+        final tex = FormattedText.prepareTex(displayInline.group(1)!.trim());
+        if (FormattedText.usesDisplayMath(tex)) {
+          children.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Center(
+                child: FormattedText.buildMathWidget(
+                  tex,
+                  base: base,
+                  display: true,
+                ),
+              ),
+            ),
+          );
+          continue;
+        }
+      }
+
+      if (RegExp(r'^(---|\*\*\*|___)$').hasMatch(trimmed)) {
         children.add(
           Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Divider(
+              height: 1,
+              color: (base.color ?? Colors.white).withValues(alpha: 0.22),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      final headingMd = RegExp(r'^#{1,3}\s+(.+)').firstMatch(trimmed);
+      final questionLike = RegExp(r'\?\s*\**$').hasMatch(trimmed) ||
+          RegExp(
+            r'\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b',
+            caseSensitive: false,
+          ).hasMatch(trimmed);
+      final wholeBold = !questionLike &&
+          RegExp(r'^\*\*[^*][\s\S]*\*\*$').hasMatch(trimmed) &&
+          trimmed.indexOf('**', 2) == trimmed.length - 2;
+      final headingText = headingMd?.group(1) ?? (wholeBold ? trimmed : null);
+      if (headingText != null) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 6),
+            child: Text.rich(
+              TextSpan(
+                style: base.copyWith(
+                  fontSize: (base.fontSize ?? 14) + 1.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+                children: FormattedText._parse(headingText, base),
+              ),
+              textAlign: textAlign,
+            ),
+          ),
+        );
+        continue;
+      }
+
+      final bullet = RegExp(r'^(\s*)[-•*◦○–—]\s+(.+)').firstMatch(line);
+      if (bullet != null) {
+        final nested = bullet.group(1)!.replaceAll('\t', '  ').length >= 2;
+        children.add(
+          Padding(
+            padding: EdgeInsets.only(left: nested ? 16 : 0, bottom: 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('• ', style: base),
+                Text(nested ? '◦ ' : '• ', style: base),
                 Expanded(
                   child: Text.rich(
                     TextSpan(
                       style: base,
-                      children: FormattedText._parse(bullet.group(1)!, base),
+                      children: FormattedText._parse(bullet.group(2)!, base),
                     ),
                     textAlign: textAlign,
                   ),

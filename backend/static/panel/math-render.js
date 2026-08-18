@@ -33,12 +33,31 @@
     return src;
   }
 
-  /** Şıkta $ yoksa tüm metni $...$ içine al (düz sayı dahil). */
+  function looksLikeMath(text) {
+    var t = String(text || "").trim();
+    if (!t) return false;
+    return /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq)\b/.test(
+      t
+    ) || /[\^_{}]/.test(t) || /(^|[^\\A-Za-z])frac\{/.test(t);
+  }
+
+  /** Şıkta yalnızca gerçek LaTeX varsa $...$ sarmala; "Yalnız I" düz metin kalsın. */
   function wrapBareLatex(text) {
     var src = repairLatexEscapes(String(text || "")).trim();
     if (!src) return src;
+    var display = src.match(/^\$\$([\s\S]+)\$\$$/);
+    if (display) {
+      var inner = display[1].trim();
+      return looksLikeMath(inner) ? src : inner;
+    }
+    var wrapped = src.match(/^\$([^$]+)\$$/);
+    if (wrapped) {
+      var inner = wrapped[1].trim();
+      return looksLikeMath(inner) ? src : inner;
+    }
     if (/\$|\\\(|\\\[/.test(src)) return src;
-    return "$" + src + "$";
+    if (looksLikeMath(src)) return "$" + src + "$";
+    return src;
   }
 
   function hasLatex(text) {
@@ -64,11 +83,16 @@
     src = src.replace(/([.!?])(?!\n)(?=\d+\.\s)/g, "$1\n");
     src = src.replace(/:(?!\n)(?=\d+\.\s)/g, ":\n");
     src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
+    src = src.replace(/(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)/g, "$1\n");
+    src = src.replace(/(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)/g, "\n");
+    src = src.replace(/§§M(\d+)§§\s*(?=\*\*[a-zçğıöşüâîû])/g, "§§M$1§§\n");
+    src = src.replace(/§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
       return holders[Number(idx)] || "";
     });
     src = src.replace(/(\$)(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])/g, "$1\n");
-    return src.replace(/\n{3,}/g, "\n\n");
+    src = src.replace(/(\$)\s*(?=\*\*[a-zçğıöşüâîû])/g, "$1\n");
+    return src.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
   }
 
   function collapseSoftLines(chunk) {
@@ -245,7 +269,7 @@
     while ((m = re.exec(src)) !== null) {
       out += escapeHtml(src.slice(last, m.index));
       var tex = m[1] || m[2] || m[3] || m[4] || "";
-      out += renderMath(tex, true);
+      out += renderMath(tex, false);
       last = m.index + m[0].length;
     }
     out += escapeHtml(src.slice(last));
@@ -272,14 +296,25 @@
       }
     }
 
+    var nested = false;
+
+    function closeNested() {
+      if (nested) {
+        html.push("</ul>");
+        nested = false;
+      }
+    }
+
     lines.forEach(function (line) {
       var trimmed = line.trim();
       if (!trimmed) {
+        closeNested();
         closeList();
         return;
       }
 
       if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) {
+        closeNested();
         closeList();
         html.push(
           '<div class="math-block">' +
@@ -289,19 +324,54 @@
         return;
       }
 
-      var bullet = trimmed.match(/^[-•*–—]\s+(.+)/);
+      if (/^(---|\*\*\*|___)$/.test(trimmed)) {
+        closeNested();
+        closeList();
+        html.push('<hr class="preview-rule">');
+        return;
+      }
+
+      var bullet = line.match(/^(\s*)[-•*◦○–—]\s+(.+)/);
       if (bullet) {
+        var deep = bullet[1].replace(/\t/g, "  ").length >= 2;
         if (!inList) {
           html.push('<ul class="rich-list">');
           inList = true;
         }
-        html.push("<li>" + richInline(bullet[1]) + "</li>");
+        if (deep && !nested) {
+          html.push('<ul class="rich-list nested">');
+          nested = true;
+        }
+        if (!deep) closeNested();
+        html.push("<li>" + richInline(bullet[2]) + "</li>");
         return;
       }
 
+      closeNested();
       closeList();
+
+      var heading = trimmed.match(/^#{1,3}\s+(.+)/);
+      if (heading) {
+        html.push(
+          '<p class="preview-heading">' + richInline(heading[1]) + "</p>"
+        );
+        return;
+      }
+      var questionLike =
+        /\?\s*\**$/.test(trimmed) ||
+        /\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b/i.test(trimmed);
+      if (
+        !questionLike &&
+        /^\*\*[^*][\s\S]*\*\*$/.test(trimmed) &&
+        trimmed.indexOf("**", 2) === trimmed.length - 2
+      ) {
+        html.push('<p class="preview-heading">' + richInline(trimmed) + "</p>");
+        return;
+      }
+
       html.push("<p>" + richInline(trimmed) + "</p>");
     });
+    closeNested();
     closeList();
     return html.join("");
   }
