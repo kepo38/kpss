@@ -101,8 +101,25 @@ class FormattedText extends StatelessWidget {
 
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
     final size = base.fontSize ?? 16;
-    final scale = display ? 1.55 : 1.48;
-    return base.copyWith(fontSize: size * scale);
+    return base.copyWith(
+      fontSize: size,
+      color: base.color,
+    );
+  }
+
+  /// flutter_math_fork \\hline siyah çizer; \\rule metin rengini kullanır.
+  static String replaceHlineWithColoredRule(String tex) {
+    if (!tex.contains(r'\hline')) return tex;
+    var t = tex;
+    t = t.replaceAllMapped(
+      RegExp(r'\\\\\s*\\hline\s*'),
+      (_) => r'\\ \rule{5em}{0.05em} \\ ',
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'(?<!\\begin\{[^}]*\})\s*\\hline\s*(?=\\\\|\\end)'),
+      (_) => r'\rule{5em}{0.05em} \\ ',
+    );
+    return t;
   }
 
   static Widget buildMathWidget(
@@ -110,11 +127,11 @@ class FormattedText extends StatelessWidget {
     required TextStyle base,
     required bool display,
   }) {
-    final sized = forceDisplaySizeAll(tex);
+    final sized = prepareTex(tex, forceDisplayStyle: display);
     return Math.tex(
       sized,
-      textStyle: mathTextStyle(base, display: true),
-      mathStyle: MathStyle.display,
+      textStyle: mathTextStyle(base, display: display),
+      mathStyle: display ? MathStyle.display : MathStyle.text,
       onErrorFallback: (err) => Text(
         display ? '\$\$$tex\$\$' : '\$$tex\$',
         style: base,
@@ -421,9 +438,8 @@ class FormattedText extends StatelessWidget {
     return src;
   }
 
-  /// ÖSYM kitapçığı: \tfrac / \over → \frac, tüm formüle \displaystyle.
-  /// Dolar işaretine replaceAll uygulanmaz; kapanış $ bozulur.
-  static String forceDisplaySizeAll(String tex) {
+  /// ÖSYM kitapçığı: \\tfrac / \\over → \\frac; displaystyle yalnızca kesir vb. için.
+  static String forceDisplaySizeAll(String tex, {bool forceDisplayStyle = true}) {
     var t = tex.trim();
     if (t.isEmpty) return t;
     t = t.replaceAll(r'\tfrac', r'\frac');
@@ -434,21 +450,27 @@ class FormattedText extends StatelessWidget {
       RegExp(r'\{([^{}]+)\\over\s*([^{}]+)\}'),
       (m) => '\\frac{${m.group(1)!.trim()}}{${m.group(2)!.trim()}}',
     );
-    if (!RegExp(r'\\displaystyle\b').hasMatch(t)) {
+    final isTabular = t.contains(r'\begin{array}') ||
+        t.contains(r'\begin{matrix}') ||
+        t.contains(r'\begin{pmatrix}');
+    if (forceDisplayStyle &&
+        !isTabular &&
+        !RegExp(r'\\displaystyle\b').hasMatch(t)) {
       t = r'\displaystyle ' + t;
     }
     return t;
   }
 
-  static String prepareTex(String tex) {
+  static String prepareTex(String tex, {bool forceDisplayStyle = true}) {
     var t = _repairLatexEscapes(tex.trim());
     t = t.replaceAllMapped(
       RegExp(
-        r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan|begin|end|array|hline|matrix|displaystyle)',
+        r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan|begin|end|array|hline|matrix|displaystyle|rule)',
       ),
       (m) => '\\${m.group(1)}',
     );
-    return forceDisplaySizeAll(t);
+    t = replaceHlineWithColoredRule(t);
+    return forceDisplaySizeAll(t, forceDisplayStyle: forceDisplayStyle);
   }
 
   static String normalizeLatex(String input) {
@@ -670,11 +692,12 @@ class FormattedText extends StatelessWidget {
       }
       final tex = prepareTex((m.group(1) ?? m.group(2) ?? '').trim());
       if (tex.isNotEmpty) {
+        final isBlock = m.group(1) != null;
         final display =
-            forceDisplayMath || m.group(1) != null || usesDisplayMath(tex);
+            forceDisplayMath || usesDisplayMath(tex);
         spans.add(
           WidgetSpan(
-            alignment: display
+            alignment: isBlock && display
                 ? PlaceholderAlignment.middle
                 : PlaceholderAlignment.baseline,
             baseline: TextBaseline.alphabetic,

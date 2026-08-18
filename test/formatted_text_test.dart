@@ -301,6 +301,28 @@ void main() {
     expect(FormattedText.wrapBareLatex('I ve II'), 'I ve II');
   });
 
+  test('replaceHlineWithColoredRule converts hline to colored rule row', () {
+    const array =
+        r'\begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}';
+    final out = FormattedText.replaceHlineWithColoredRule(array);
+    expect(out, isNot(contains(r'\hline')));
+    expect(out, contains(r'\rule{5em}{0.05em}'));
+    expect(out, contains('CA3'));
+  });
+
+  test('forceDisplaySizeAll skips displaystyle for array environments', () {
+    expect(
+      FormattedText.forceDisplaySizeAll(
+        r'\begin{array}{r} AB8 \\ -16C \end{array}',
+      ),
+      isNot(contains(r'\displaystyle')),
+    );
+    expect(
+      FormattedText.forceDisplaySizeAll(r'\frac{x}{y}'),
+      contains(r'\displaystyle'),
+    );
+  });
+
   test('forceDisplaySizeAll upgrades tfrac and over to displaystyle frac', () {
     expect(
       FormattedText.forceDisplaySizeAll(r'\tfrac{x}{y}'),

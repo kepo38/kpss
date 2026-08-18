@@ -184,6 +184,14 @@
     });
   }
 
+  function replaceHlineWithColoredRule(tex) {
+    var t = String(tex || "");
+    if (t.indexOf("\\hline") === -1) return t;
+    t = t.replace(/\\\\\s*\\hline\s*/g, "\\\\ \\rule{5em}{0.05em} \\\\ ");
+    t = t.replace(/\\hline\s*(?=\\\\|\\end)/g, "\\rule{5em}{0.05em} \\\\ ");
+    return t;
+  }
+
   function forceDisplaySizeAll(tex) {
     var t = String(tex || "").trim();
     if (!t) return t;
@@ -191,14 +199,22 @@
     t = t.replace(/\{([^{}]+)\\over\s*([^{}]+)\}/g, function (_, a, b) {
       return "\\frac{" + a.trim() + "}{" + b.trim() + "}";
     });
-    if (!/\\displaystyle\b/.test(t)) {
+    var isTabular =
+      /\\begin\{array\}/.test(t) ||
+      /\\begin\{matrix\}/.test(t) ||
+      /\\begin\{pmatrix\}/.test(t);
+    if (!isTabular && !/\\displaystyle\b/.test(t)) {
       t = "\\displaystyle " + t;
     }
     return t;
   }
 
+  function prepareTex(tex) {
+    return forceDisplaySizeAll(replaceHlineWithColoredRule(String(tex || "")));
+  }
+
   function renderMath(tex, displayMode) {
-    var body = forceDisplaySizeAll(tex);
+    var body = prepareTex(tex);
     if (!body) return "";
     if (typeof global.katex === "undefined") {
       return escapeHtml(displayMode ? "$$" + body + "$$" : "$" + body + "$");

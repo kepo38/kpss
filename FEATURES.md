@@ -95,7 +95,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium / kampanya bypass |
 | **Reklamsız mini deneme oturumu** | Günün mini denemesinde reklam yok | `QuizScreen.adFreeExperience` | Ücretsiz |
 
-**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları ve display math (`\begin{array}`, `\frac` vb.) korunur.
+**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto (`fontSize`) kullanır.
 
 ---
 
