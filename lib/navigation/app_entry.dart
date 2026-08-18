@@ -14,15 +14,20 @@ class AppEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!KpssPreferenceService.instance.hasChosenExam) {
-      final user = AuthService.instance.user ?? UserModel.placeholderGuest();
-      return ExamTrackOnboardingScreen(user: user);
-    }
+    return ListenableBuilder(
+      listenable: AuthService.instance,
+      builder: (context, _) {
+        if (!KpssPreferenceService.instance.hasChosenExam) {
+          final user = AuthService.instance.user ?? UserModel.placeholderGuest();
+          return ExamTrackOnboardingScreen(user: user);
+        }
 
-    final user = AuthService.instance.user;
-    if (user == null) {
-      return const BootSplashScreen();
-    }
-    return MainShell(user: user);
+        final user = AuthService.instance.user;
+        if (user == null) {
+          return const BootSplashScreen();
+        }
+        return MainShell(user: user);
+      },
+    );
   }
 }

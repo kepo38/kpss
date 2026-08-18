@@ -9,6 +9,7 @@ from .views import (
     DeviceTokenView,
     GoogleAuthView,
     HealthView,
+    MobileUiConfigView,
     MeMessagesView,
     MeView,
     PublishedQuestionsView,
@@ -29,6 +30,7 @@ from .views import (
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
+    path("mobile-ui/", MobileUiConfigView.as_view(), name="mobile-ui"),
     path("pack/", ContentPackView.as_view(), name="content-pack"),
     path("pack/version/", ContentPackVersionView.as_view(), name="content-pack-version"),
     path("catalog/", ContentCatalogView.as_view(), name="content-catalog"),

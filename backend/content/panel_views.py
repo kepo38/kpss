@@ -37,6 +37,7 @@ from .models import (
     Topic,
     TopicLesson,
     TopicTest,
+    get_mobile_ui_config,
 )
 from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
@@ -2403,3 +2404,29 @@ def panel_exam_pack_delete(request: HttpRequest, pack_id: int) -> HttpResponse:
     item.delete()
     messages.success(request, f"{label} silindi.")
     return redirect("panel_exam_pack_list")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
+    cfg = get_mobile_ui_config()
+    if request.method == "POST":
+        cfg.wrong_notebook_bubble_enabled = (
+            request.POST.get("wrong_notebook_bubble_enabled") == "on"
+        )
+        label = request.POST.get("wrong_notebook_bubble_label", "").strip()
+        if label:
+            cfg.wrong_notebook_bubble_label = label[:48]
+        cfg.save()
+        messages.success(request, "Mobil arayüz ayarları kaydedildi.")
+        return redirect("panel_mobile_ui")
+
+    return render(
+        request,
+        "panel/mobile_ui.html",
+        {
+            "config": cfg,
+            "page_title": "Mobil arayüz",
+        },
+    )

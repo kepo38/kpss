@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -7,6 +8,7 @@ import '../constants/daily_mini_exam_constants.dart';
 import '../models/daily_mini_exam_models.dart';
 import '../models/quiz_result.dart';
 import '../screens/daily_mini_exam_result_screen.dart';
+import '../screens/profile_screen.dart';
 import '../screens/quiz_screen.dart';
 import '../services/ad_manager.dart';
 import '../services/auth_service.dart';
@@ -14,6 +16,7 @@ import '../services/daily_mini_exam_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/daily_mini_exam_logic.dart';
 import '../widgets/countdown_widget.dart';
+import 'mini_confetti_burst.dart';
 import 'scale_button.dart';
 
 /// Ana sayfa kahraman kartı — günün 20 soruluk ücretsiz mini denemesi.
@@ -46,7 +49,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
     });
     _rankPoll = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
-      if (DailyMiniExamService.instance.completed) {
+      if (DailyMiniExamService.instance.hasSubmittedRanking) {
         unawaited(DailyMiniExamService.instance.refresh());
       }
     });
@@ -60,7 +63,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
-        DailyMiniExamService.instance.completed) {
+        DailyMiniExamService.instance.hasSubmittedRanking) {
       unawaited(DailyMiniExamService.instance.refresh());
     }
   }
@@ -98,6 +101,24 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
     );
   }
 
+  Future<void> _openProfileForLogin() async {
+    final user = AuthService.instance.user;
+    if (user == null) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Misafir yalnızca ilk gün katılabilir. Profil’den Google ile giriş yapın.',
+        ),
+      ),
+    );
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileScreen(user: user),
+      ),
+    );
+  }
+
   Future<void> _openResult() async {
     final service = DailyMiniExamService.instance;
     final attempt = service.attempt;
@@ -111,6 +132,10 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
 
   Future<void> _startOrResume() async {
     final service = DailyMiniExamService.instance;
+    if (service.guestMustSignIn) {
+      await _openProfileForLogin();
+      return;
+    }
     if (!_window.isOpen) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -140,11 +165,14 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
           title: DailyMiniExamConstants.title,
           questions: questions,
           timeLimitMinutes: remainingMinutes,
-          initialIndex: service.hasInProgress ? service.currentIndex : 0,
-          initialAnswers: service.hasInProgress ? service.answers : null,
-          initialElapsed: Duration(seconds: service.elapsedSeconds),
+          initialIndex: service.canResumeQuiz ? service.currentIndex : 0,
+          initialAnswers: service.canResumeQuiz ? service.answers : null,
+          initialElapsed: Duration(
+            seconds: service.canResumeQuiz ? service.elapsedSeconds : 0,
+          ),
           skipResultDialog: true,
           adFreeExperience: true,
+          dailyMiniRankingMode: true,
           onProgress: ({
             required answers,
             required currentIndex,
@@ -159,29 +187,45 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
         ),
       ),
     );
-    if (result == null || !result.completed) return;
+    if (result == null) return;
 
-    await service.recordCompletion(
-      result: result,
-      answers: result.selectedAnswers,
-    );
-    if (!mounted) return;
-    await _openResult();
+    if (result.submitDailyMiniRanking ||
+        (result.completed && !service.rankingLocked)) {
+      await service.finalizeRanking(
+        result: result,
+        answers: result.selectedAnswers,
+      );
+      return;
+    } else if (result.completed && service.rankingLocked) {
+      await service.saveProgress(
+        answers: result.selectedAnswers,
+        currentIndex: result.selectedAnswers.length - 1,
+        elapsed: result.duration,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: DailyMiniExamService.instance,
+      listenable: Listenable.merge([
+        DailyMiniExamService.instance,
+        AuthService.instance,
+      ]),
       builder: (context, _) {
         final service = DailyMiniExamService.instance;
         final attempt = service.attempt;
-        final completed = service.completed;
-        final ctaLabel = service.hasInProgress
-            ? DailyMiniExamConstants.ctaResume
-            : (_window.isOpen
-                ? DailyMiniExamConstants.ctaStart
-                : '${DailyMiniExamConstants.opensClock}’de açılır');
+        final submittedRanking = service.hasSubmittedRanking;
+        final guestMustSignIn = service.guestMustSignIn;
+        final ctaLabel = guestMustSignIn
+            ? DailyMiniExamConstants.ctaGuestSignIn
+            : (service.rankingLocked
+                ? DailyMiniExamConstants.ctaResume
+                : (service.hasInProgress
+                    ? DailyMiniExamConstants.ctaResume
+                    : (_window.isOpen
+                        ? DailyMiniExamConstants.ctaStart
+                        : '${DailyMiniExamConstants.opensClock}’de açılır')));
         final rank = attempt?.rank;
         final dark = AppTheme.isDark(context);
 
@@ -337,15 +381,26 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const _CardHeader(),
-                          if (!completed) ...[
+                          if (!submittedRanking) ...[
                             const SizedBox(height: 10),
                             const _SubjectMix(),
+                            if (service.leaderboard.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              _LeaderboardPreviewPanel(
+                                leaders: service.leaderboard,
+                                participantCount: service.participantCount,
+                                totalQuestions:
+                                    DailyMiniExamConstants.questionCount,
+                              ),
+                            ],
                             const SizedBox(height: 14),
                             ScaleButton(
-                              onPressed: _startOrResume,
+                              onPressed: guestMustSignIn
+                                  ? _openProfileForLogin
+                                  : _startOrResume,
                               child: _StartExamCta(
                                 label: ctaLabel,
-                                enabled: _window.isOpen,
+                                enabled: guestMustSignIn || _window.isOpen,
                               ),
                             ),
                           ] else if (attempt != null) ...[
@@ -365,6 +420,16 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                               onShare: _shareRank,
                               onDetails: _openResult,
                             ),
+                            if (service.canResumeQuiz && _window.isOpen) ...[
+                              const SizedBox(height: 12),
+                              ScaleButton(
+                                onPressed: _startOrResume,
+                                child: const _StartExamCta(
+                                  label: DailyMiniExamConstants.ctaResume,
+                                  enabled: true,
+                                ),
+                              ),
+                            ],
                           ] else ...[
                             const SizedBox(height: 14),
                             _CompletedResultPending(
@@ -737,11 +802,45 @@ class _SubjectTile extends StatelessWidget {
   }
 }
 
-class _StartExamCta extends StatelessWidget {
+class _StartExamCta extends StatefulWidget {
   final String label;
   final bool enabled;
 
   const _StartExamCta({required this.label, required this.enabled});
+
+  @override
+  State<_StartExamCta> createState() => _StartExamCtaState();
+}
+
+class _StartExamCtaState extends State<_StartExamCta>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+    if (widget.enabled) _ctrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StartExamCta oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.enabled && !_ctrl.isAnimating) {
+      _ctrl.repeat();
+    } else if (!widget.enabled && _ctrl.isAnimating) {
+      _ctrl.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -752,12 +851,13 @@ class _StartExamCta extends StatelessWidget {
     final disabledText = dark
         ? Colors.white.withValues(alpha: 0.55)
         : AppTheme.slate.withValues(alpha: 0.7);
+    const radius = 14.0;
 
-    return Container(
+    final body = Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: enabled
+        borderRadius: BorderRadius.circular(radius - 1.5),
+        gradient: widget.enabled
             ? const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -768,13 +868,8 @@ class _StartExamCta extends StatelessWidget {
                 ],
               )
             : null,
-        color: enabled ? null : disabledFill,
-        border: Border.all(
-          color: enabled
-              ? AppTheme.champagne.withValues(alpha: 0.55)
-              : AppTheme.hairline(context),
-        ),
-        boxShadow: enabled
+        color: widget.enabled ? null : disabledFill,
+        boxShadow: widget.enabled
             ? [
                 BoxShadow(
                   color: AppTheme.champagne.withValues(alpha: 0.32),
@@ -789,7 +884,7 @@ class _StartExamCta extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              label,
+              widget.label,
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -798,23 +893,180 @@ class _StartExamCta extends StatelessWidget {
                 height: 1.2,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.15,
-                color: enabled ? AppTheme.ink : disabledText,
+                color: widget.enabled ? AppTheme.ink : disabledText,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            '🏆',
-            style: TextStyle(
-              fontSize: 22,
-              height: 1,
-              color: enabled ? null : disabledText,
-            ),
+          const SizedBox(width: 10),
+          Opacity(
+            opacity: widget.enabled ? 1 : 0.45,
+            child: const _FormulaCarMark(),
           ),
         ],
       ),
     );
+
+    if (!widget.enabled) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: AppTheme.hairline(context)),
+        ),
+        child: body,
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        return CustomPaint(
+          painter: _RunningGoldBorderPainter(
+            progress: _ctrl.value,
+            radius: radius,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(2.2),
+            child: child,
+          ),
+        );
+      },
+      child: body,
+    );
   }
+}
+
+class _RunningGoldBorderPainter extends CustomPainter {
+  final double progress;
+  final double radius;
+
+  _RunningGoldBorderPainter({
+    required this.progress,
+    required this.radius,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(1.1),
+      Radius.circular(radius),
+    );
+
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..color = AppTheme.champagne.withValues(alpha: 0.38),
+    );
+
+    final shader = SweepGradient(
+      transform: GradientRotation(progress * math.pi * 2),
+      colors: const [
+        Color(0x00FFFFFF),
+        Color(0x66FFE5A0),
+        Color(0xFFFFF8E7),
+        Color(0xFFFFFFFF),
+        Color(0xFFFFEDB0),
+        Color(0xFFE8C878),
+        Color(0x44C9A86C),
+        Color(0x00FFFFFF),
+      ],
+      stops: const [0.0, 0.08, 0.14, 0.2, 0.28, 0.36, 0.46, 0.58],
+    ).createShader(rect);
+
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round
+        ..shader = shader,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RunningGoldBorderPainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
+
+class _FormulaCarMark extends StatelessWidget {
+  const _FormulaCarMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 34,
+      height: 16,
+      child: CustomPaint(painter: _FormulaCarPainter()),
+    );
+  }
+}
+
+class _FormulaCarPainter extends CustomPainter {
+  const _FormulaCarPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ink = Paint()..color = AppTheme.ink;
+    final gold = Paint()..color = const Color(0xFF8F6E32);
+    final light = Paint()..color = const Color(0xFFFFF6E4);
+
+    final body = Path()
+      ..moveTo(size.width * 0.08, size.height * 0.62)
+      ..lineTo(size.width * 0.22, size.height * 0.62)
+      ..lineTo(size.width * 0.3, size.height * 0.38)
+      ..lineTo(size.width * 0.5, size.height * 0.32)
+      ..lineTo(size.width * 0.62, size.height * 0.38)
+      ..lineTo(size.width * 0.78, size.height * 0.58)
+      ..lineTo(size.width * 0.96, size.height * 0.58)
+      ..lineTo(size.width * 0.96, size.height * 0.72)
+      ..lineTo(size.width * 0.08, size.height * 0.72)
+      ..close();
+    canvas.drawPath(body, ink);
+
+    final wing = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.02,
+        size.height * 0.48,
+        size.width * 0.12,
+        size.height * 0.16,
+      ),
+      const Radius.circular(1.2),
+    );
+    canvas.drawRRect(wing, gold);
+
+    final nose = Path()
+      ..moveTo(size.width * 0.78, size.height * 0.6)
+      ..lineTo(size.width * 0.99, size.height * 0.64)
+      ..lineTo(size.width * 0.78, size.height * 0.7)
+      ..close();
+    canvas.drawPath(nose, gold);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * 0.34,
+          size.height * 0.18,
+          size.width * 0.22,
+          size.height * 0.22,
+        ),
+        const Radius.circular(1.4),
+      ),
+      light,
+    );
+
+    void wheel(double x) {
+      canvas.drawCircle(Offset(x, size.height * 0.78), 3.1, ink);
+      canvas.drawCircle(Offset(x, size.height * 0.78), 1.3, gold);
+    }
+
+    wheel(size.width * 0.26);
+    wheel(size.width * 0.74);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _CompletedResultPending extends StatelessWidget {
@@ -864,42 +1116,13 @@ class _CompletedResultPending extends StatelessWidget {
   }
 }
 
-class _CompletedLeaderboardPanel extends StatelessWidget {
-  final int? rank;
-  final int participantCount;
-  final List<DailyMiniLeaderRow> leaders;
-  final int totalQuestions;
-  final DailyMiniRankTrend trend;
-  final VoidCallback onShare;
-  final VoidCallback onDetails;
+class _LeaderboardShell extends StatelessWidget {
+  final Widget child;
 
-  const _CompletedLeaderboardPanel({
-    required this.rank,
-    required this.participantCount,
-    required this.leaders,
-    required this.totalQuestions,
-    required this.trend,
-    required this.onShare,
-    required this.onDetails,
-  });
+  const _LeaderboardShell({required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final topThree = [...leaders]
-      ..sort((a, b) => a.rank.compareTo(b.rank));
-    final currentRank = rank;
-    final hasRank = currentRank != null &&
-        currentRank > 0 &&
-        participantCount >= currentRank;
-    final myUserId = AuthService.instance.user?.id;
-
-    DailyMiniLeaderRow? leaderAt(int place) {
-      for (final leader in topThree) {
-        if (leader.rank == place) return leader;
-      }
-      return null;
-    }
-
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       decoration: BoxDecoration(
@@ -925,6 +1148,166 @@ class _CompletedLeaderboardPanel extends StatelessWidget {
           ),
         ],
       ),
+      child: child,
+    );
+  }
+}
+
+class _DailyMiniPodium extends StatelessWidget {
+  final List<DailyMiniLeaderRow> leaders;
+  final int totalQuestions;
+
+  const _DailyMiniPodium({
+    required this.leaders,
+    required this.totalQuestions,
+  });
+
+  DailyMiniLeaderRow? _leaderAt(int place) {
+    for (final leader in leaders) {
+      if (leader.rank == place) return leader;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final myUserId = AuthService.instance.user?.id;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: _PodiumPlace(
+            place: 2,
+            leader: _leaderAt(2),
+            totalQuestions: totalQuestions,
+            isMe: _leaderAt(2)?.userId == myUserId,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _PodiumPlace(
+            place: 1,
+            leader: _leaderAt(1),
+            totalQuestions: totalQuestions,
+            isMe: _leaderAt(1)?.userId == myUserId,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _PodiumPlace(
+            place: 3,
+            leader: _leaderAt(3),
+            totalQuestions: totalQuestions,
+            isMe: _leaderAt(3)?.userId == myUserId,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LeaderboardPreviewPanel extends StatelessWidget {
+  final List<DailyMiniLeaderRow> leaders;
+  final int participantCount;
+  final int totalQuestions;
+
+  const _LeaderboardPreviewPanel({
+    required this.leaders,
+    required this.participantCount,
+    required this.totalQuestions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
+
+    return _LeaderboardShell(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Text('🏆', style: TextStyle(fontSize: 22, height: 1)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'BUGÜNÜN KÜRSÜSÜ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.5,
+                    color: Color(0xFFF5E6BC),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: AppTheme.champagne.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  participantCount > 0 ? '$participantCount kişi' : 'Demo',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.champagneLight.withValues(alpha: 0.95),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _DailyMiniPodium(
+            leaders: topThree,
+            totalQuestions: totalQuestions,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Denemeyi bitirince sıralamana burada yer verilir.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.35,
+              color: Colors.white.withValues(alpha: 0.62),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompletedLeaderboardPanel extends StatelessWidget {
+  final int? rank;
+  final int participantCount;
+  final List<DailyMiniLeaderRow> leaders;
+  final int totalQuestions;
+  final DailyMiniRankTrend trend;
+  final VoidCallback onShare;
+  final VoidCallback onDetails;
+
+  const _CompletedLeaderboardPanel({
+    required this.rank,
+    required this.participantCount,
+    required this.leaders,
+    required this.totalQuestions,
+    required this.trend,
+    required this.onShare,
+    required this.onDetails,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
+    final currentRank = rank;
+    final hasRank = currentRank != null &&
+        currentRank > 0 &&
+        participantCount >= currentRank;
+
+    return _LeaderboardShell(
       child: Column(
         children: [
           Row(
@@ -955,107 +1338,16 @@ class _CompletedLeaderboardPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: _PodiumPlace(
-                  place: 2,
-                  leader: leaderAt(2),
-                  totalQuestions: totalQuestions,
-                  isMe: leaderAt(2)?.userId == myUserId,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _PodiumPlace(
-                  place: 1,
-                  leader: leaderAt(1),
-                  totalQuestions: totalQuestions,
-                  isMe: leaderAt(1)?.userId == myUserId,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _PodiumPlace(
-                  place: 3,
-                  leader: leaderAt(3),
-                  totalQuestions: totalQuestions,
-                  isMe: leaderAt(3)?.userId == myUserId,
-                ),
-              ),
-            ],
+          _DailyMiniPodium(
+            leaders: topThree,
+            totalQuestions: totalQuestions,
           ),
           const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(11),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFEDB0),
-                  Color(0xFFE8C878),
-                  AppTheme.champagne,
-                ],
-              ),
-              border: Border.all(
-                color: const Color(0xFFFFE5A0).withValues(alpha: 0.8),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.neonGold.withValues(alpha: 0.22),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.emoji_events_rounded,
-                  size: 20,
-                  color: AppTheme.ink,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    hasRank
-                        ? formatRankBadgeLine(
-                            participantCount: participantCount,
-                            rank: currentRank,
-                          )
-                        : 'Bugünkü sıralaman hesaplanıyor…',
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.ink,
-                    ),
-                  ),
-                ),
-                if (hasRank && trend == DailyMiniRankTrend.worsened)
-                  Semantics(
-                    label: 'Sıralaman düştü',
-                    child: const Icon(
-                      Icons.arrow_drop_down_rounded,
-                      size: 24,
-                      color: Color(0xFF8E0000),
-                    ),
-                  )
-                else if (hasRank && trend == DailyMiniRankTrend.improved)
-                  Semantics(
-                    label: 'Sıralaman yükseldi',
-                    child: const Icon(
-                      Icons.arrow_drop_up_rounded,
-                      size: 24,
-                      color: Color(0xFF145A20),
-                    ),
-                  ),
-              ],
-            ),
+          _RankRevealBadge(
+            rank: rank,
+            participantCount: participantCount,
+            leaders: topThree,
+            trend: trend,
           ),
           const SizedBox(height: 8),
           TextButton.icon(
@@ -1068,6 +1360,405 @@ class _CompletedLeaderboardPanel extends StatelessWidget {
             label: const Text(
               'Sıralama Detayları',
               style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankRevealBadge extends StatefulWidget {
+  static const countdownSeconds = 10;
+
+  final int? rank;
+  final int participantCount;
+  final List<DailyMiniLeaderRow> leaders;
+  final DailyMiniRankTrend trend;
+
+  const _RankRevealBadge({
+    required this.rank,
+    required this.participantCount,
+    required this.leaders,
+    required this.trend,
+  });
+
+  @override
+  State<_RankRevealBadge> createState() => _RankRevealBadgeState();
+}
+
+class _RankRevealBadgeState extends State<_RankRevealBadge> {
+  Timer? _timer;
+  int _secondsLeft = _RankRevealBadge.countdownSeconds;
+  bool _countdownDone = false;
+  bool _celebrateRank = false;
+  bool _confettiPlayed = false;
+
+  bool get _rankRevealActive =>
+      DailyMiniExamService.instance.rankRevealActive;
+
+  int? get _resolvedRank {
+    if (_showCountdown) return null;
+    if (widget.rank != null && widget.rank! > 0) return widget.rank;
+    if (!_countdownDone) return null;
+    final userId = AuthService.instance.user?.id;
+    if (userId == null) return null;
+    for (final row in widget.leaders) {
+      if (row.userId == userId && row.rank > 0) return row.rank;
+    }
+    return null;
+  }
+
+  bool get _hasRank {
+    final rank = _resolvedRank;
+    return rank != null &&
+        rank > 0 &&
+        widget.participantCount > 0 &&
+        widget.participantCount >= rank;
+  }
+
+  bool get _showCountdown =>
+      _rankRevealActive && !_countdownDone;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_showCountdown) return;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  @override
+  void didUpdateWidget(covariant _RankRevealBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_countdownDone && _hasRank) {
+      _timer?.cancel();
+      _timer = null;
+      _triggerRankCelebration();
+    } else if (_timer == null && _showCountdown) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    }
+  }
+
+  void _triggerRankCelebration() {
+    if (_confettiPlayed || !_hasRank) return;
+    _confettiPlayed = true;
+    if (!mounted) return;
+    setState(() => _celebrateRank = true);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    if (_secondsLeft <= 1) {
+      _timer?.cancel();
+      _timer = null;
+      setState(() {
+        _secondsLeft = 0;
+        _countdownDone = true;
+      });
+      unawaited(
+        DailyMiniExamService.instance.refresh().then((_) {
+          if (mounted) _triggerRankCelebration();
+        }),
+      );
+      DailyMiniExamService.instance.clearRankReveal();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _triggerRankCelebration();
+      });
+      return;
+    }
+    setState(() => _secondsLeft--);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rank = _resolvedRank;
+    final showRank = _hasRank;
+
+    return MiniConfettiBurst(
+      trigger: _celebrateRank,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(11),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: showRank
+                ? const [
+                    Color(0xFFFFEDB0),
+                    Color(0xFFF5DC98),
+                    Color(0xFFE8C878),
+                    AppTheme.champagne,
+                  ]
+                : const [
+                    Color(0xFFFFEDB0),
+                    Color(0xFFE8C878),
+                    AppTheme.champagne,
+                  ],
+          ),
+          border: Border.all(
+            color: Color(0xFFFFE5A0).withValues(alpha: showRank ? 1 : 0.8),
+            width: showRank ? 1.35 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.neonGold.withValues(alpha: showRank ? 0.38 : 0.22),
+              blurRadius: showRank ? 16 : 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'BUGÜNKÜ SIRALAMAN',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.35,
+                  color: AppTheme.ink,
+                  height: 1.15,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _RankRevealSlot(
+              showCountdown: _showCountdown,
+              secondsLeft: _secondsLeft,
+              totalSeconds: _RankRevealBadge.countdownSeconds,
+              rank: showRank ? rank : null,
+              trend: widget.trend,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RankRevealSlot extends StatelessWidget {
+  final bool showCountdown;
+  final int secondsLeft;
+  final int totalSeconds;
+  final int? rank;
+  final DailyMiniRankTrend trend;
+
+  const _RankRevealSlot({
+    required this.showCountdown,
+    required this.secondsLeft,
+    required this.totalSeconds,
+    required this.rank,
+    required this.trend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 46,
+      height: 46,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 520),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) {
+          return ScaleTransition(
+            scale: animation,
+            child: FadeTransition(opacity: animation, child: child),
+          );
+        },
+        child: showCountdown
+            ? _PremiumRankCountdown(
+                key: const ValueKey('countdown'),
+                secondsLeft: secondsLeft,
+                totalSeconds: totalSeconds,
+              )
+            : rank != null
+                ? _RankNumberBadge(
+                    key: ValueKey('rank-$rank'),
+                    rank: rank!,
+                    trend: trend,
+                  )
+                : const _RankPendingDot(key: ValueKey('pending')),
+      ),
+    );
+  }
+}
+
+class _RankNumberBadge extends StatelessWidget {
+  final int rank;
+  final DailyMiniRankTrend trend;
+
+  const _RankNumberBadge({
+    super.key,
+    required this.rank,
+    required this.trend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFFFF8EE),
+            Color(0xFFF0E0BC),
+          ],
+        ),
+        border: Border.all(
+          color: AppTheme.ink.withValues(alpha: 0.18),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.neonGold.withValues(alpha: 0.32),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            formatTrInt(rank),
+            style: const TextStyle(
+              fontFeatures: [FontFeature.tabularFigures()],
+              fontFamily: 'serif',
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              height: 1,
+              color: AppTheme.ink,
+            ),
+          ),
+          if (trend == DailyMiniRankTrend.improved)
+            const Positioned(
+              right: 2,
+              top: 2,
+              child: Icon(
+                Icons.arrow_drop_up_rounded,
+                size: 16,
+                color: Color(0xFF145A20),
+              ),
+            )
+          else if (trend == DailyMiniRankTrend.worsened)
+            const Positioned(
+              right: 2,
+              top: 2,
+              child: Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 16,
+                color: Color(0xFF8E0000),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankPendingDot extends StatelessWidget {
+  const _RankPendingDot({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46,
+      height: 46,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.ink.withValues(alpha: 0.06),
+        border: Border.all(
+          color: AppTheme.ink.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Text(
+        '…',
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          height: 1,
+          color: AppTheme.ink.withValues(alpha: 0.45),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumRankCountdown extends StatelessWidget {
+  final int secondsLeft;
+  final int totalSeconds;
+
+  const _PremiumRankCountdown({
+    super.key,
+    required this.secondsLeft,
+    required this.totalSeconds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = secondsLeft / totalSeconds;
+
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.55),
+            AppTheme.ink.withValues(alpha: 0.08),
+          ],
+        ),
+        border: Border.all(
+          color: AppTheme.ink.withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.ink.withValues(alpha: 0.12),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(4),
+            child: CircularProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              strokeWidth: 2.8,
+              backgroundColor: AppTheme.ink.withValues(alpha: 0.1),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.ink),
+            ),
+          ),
+          Text(
+            '$secondsLeft',
+            style: const TextStyle(
+              fontFeatures: [FontFeature.tabularFigures()],
+              fontFamily: 'serif',
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              height: 1,
+              color: AppTheme.ink,
             ),
           ),
         ],
@@ -1102,7 +1793,9 @@ class _PodiumPlace extends StatelessWidget {
         ? 'Sen'
         : leader == null
             ? '—'
-            : leader!.emailPrefix;
+            : (leader!.displayName.isNotEmpty
+                ? leader!.displayName
+                : leader!.emailPrefix);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
@@ -1167,7 +1860,7 @@ class _PodiumPlace extends StatelessWidget {
                     color: color,
                   ),
                 ),
-                if (leader != null)
+                if (leader != null) ...[
                   Text(
                     '${leader!.correct}/$totalQuestions',
                     style: TextStyle(
@@ -1176,6 +1869,16 @@ class _PodiumPlace extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.7),
                     ),
                   ),
+                  if (leader!.durationSeconds > 0)
+                    Text(
+                      formatExamDuration(leader!.durationSeconds),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.45),
+                      ),
+                    ),
+                ],
               ],
             ),
           ),

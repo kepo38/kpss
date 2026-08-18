@@ -24,9 +24,13 @@ class DailyMiniExamConstants {
   static const prefsState = 'daily_mini_exam_state_v1';
   static const prefsMonthlyWrongs = 'daily_mini_exam_monthly_wrongs_v1';
   static const prefsRankSnapshot = 'daily_mini_rank_snapshot_v1';
+  static const prefsRankingLocked = 'daily_mini_ranking_locked_v1';
+  static const prefsPendingRankingSubmit = 'daily_mini_pending_rank_submit_v1';
+  static const prefsGuestFirstDate = 'daily_mini_guest_first_date_v1';
 
   static const ctaStart = 'Denemeye Başla ve Sıralamanı Gör';
   static const ctaResume = 'Kaldığın Yerden Devam Et';
+  static const ctaGuestSignIn = 'Denemeye katılmak için giriş yap';
 
   static String pdfUpsellMessage({int monthlyPriceTl = 299}) =>
       'Bu ay çözdüğün mini denemelerdeki tüm yanlışlarının detaylı '

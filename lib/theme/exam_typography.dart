@@ -22,7 +22,7 @@ abstract final class ExamTypography {
     );
   }
 
-  static TextStyle option({required Color color, double fontSize = 14}) {
+  static TextStyle option({required Color color, double fontSize = 15}) {
     return body(
       color: color,
       fontSize: fontSize,

@@ -19,6 +19,7 @@ import 'services/boot_store.dart';
 import 'services/offline_pack_service.dart';
 import 'services/smart_review_service.dart';
 import 'services/announcement_service.dart';
+import 'services/app_config_service.dart';
 import 'services/auth_service.dart';
 import 'services/content_bank_service.dart';
 import 'services/content_sync_service.dart';
@@ -260,6 +261,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
         SmartReviewService.instance.initialize(),
         OfflinePackService.instance.initialize(),
         AnnouncementService.instance.initialize(),
+        AppConfigService.instance.initialize(),
         UserMessageService.instance.initialize(),
       ]);
       await UserSavingsInsightService.instance.initialize();

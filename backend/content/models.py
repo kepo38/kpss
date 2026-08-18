@@ -556,6 +556,34 @@ class ContentRevision(models.Model):
         return f"v{self.version}"
 
 
+class MobileUiConfig(models.Model):
+    """Tek satırlık mobil arayüz ayarları — ana sayfa promosyon balonu vb."""
+
+    wrong_notebook_bubble_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Yanlış defteri balonu aktif",
+    )
+    wrong_notebook_bubble_label = models.CharField(
+        max_length=48,
+        default="YANLIŞLARINI GÖR",
+        verbose_name="Balon metni",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mobil arayüz"
+        verbose_name_plural = "Mobil arayüz"
+
+    def __str__(self) -> str:
+        state = "açık" if self.wrong_notebook_bubble_enabled else "kapalı"
+        return f"Mobil arayüz · yanlış balonu {state}"
+
+
+def get_mobile_ui_config() -> MobileUiConfig:
+    obj, _ = MobileUiConfig.objects.get_or_create(pk=1)
+    return obj
+
+
 class AppUser(models.Model):
     """Mobil uygulama kullanıcısı — Google / Play Store hesabı."""
 
@@ -567,6 +595,11 @@ class AppUser(models.Model):
     email = models.EmailField(db_index=True, verbose_name="E-posta")
     display_name = models.CharField(
         max_length=160, blank=True, verbose_name="Ad"
+    )
+    display_name_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Son ad değişikliği",
     )
     photo_url = models.URLField(blank=True, max_length=512)
     is_anonymous = models.BooleanField(
@@ -749,6 +782,37 @@ ERROR_REPORT_STATUS_CHOICES = [
     ("resolved", "Çözüldü"),
     ("dismissed", "Reddedildi"),
 ]
+
+
+class TopicTestCompletion(models.Model):
+    """Kalıcı kullanıcının bitirdiği yayınlı konu testi (hata bildirimi kotası)."""
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="topic_test_completions",
+        verbose_name="Öğrenci",
+    )
+    topic_test = models.ForeignKey(
+        TopicTest,
+        on_delete=models.CASCADE,
+        related_name="completions",
+        verbose_name="Konu testi",
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "topic_test"],
+                name="unique_topic_test_completion_per_user",
+            ),
+        ]
+        verbose_name = "Konu testi tamamlama"
+        verbose_name_plural = "Konu testi tamamlamaları"
+
+    def __str__(self) -> str:
+        return f"{self.user_id} · {self.topic_test_id}"
 
 
 class QuestionErrorReport(models.Model):

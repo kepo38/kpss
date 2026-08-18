@@ -7,12 +7,14 @@ import '../models/user_model.dart';
 import '../services/ad_manager.dart';
 import '../services/auth_service.dart';
 import '../services/content_bank_service.dart';
-import '../services/database_service.dart';import '../services/kpss_preference_service.dart';
+import '../services/database_service.dart';
+import '../services/kpss_preference_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_shell_top_bar.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/wrong_notebook_promo_bubble.dart';
 import 'analytics_hub_screen.dart';
 import 'home_screen.dart';
 import 'premium/premium_paywall_screen.dart';
@@ -119,47 +121,55 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
-      body: Column(
+      body: Stack(
         children: [
-          AppShellTopBar(
-            topPad: topPad,
-            isPremium: _isPremium,
-            onPremiumTap: _openPaywall,
-            onMoreTap: _openMore,
+          Column(
+            children: [
+              AppShellTopBar(
+                topPad: topPad,
+                isPremium: _isPremium,
+                onPremiumTap: _openPaywall,
+                onMoreTap: _openMore,
+              ),
+              Expanded(
+                child: ValueListenableBuilder<KpssType>(
+                  valueListenable: _selectedType,
+                  builder: (context, type, _) {
+                    switch (_index) {
+                      case 1:
+                        return StudyHubScreen(
+                          kpssType: type,
+                          embedded: true,
+                          pane: StudyHubPane.subjects,
+                          shellTopBarVisible: true,
+                        );
+                      case 2:
+                        return AnalyticsHubScreen(
+                          kpssType: type,
+                          embedded: true,
+                        );
+                      case 3:
+                        return const StatisticsScreen(embedded: true);
+                      case 0:
+                      default:
+                        return StudyHubScreen(
+                          kpssType: type,
+                          embedded: true,
+                          pane: StudyHubPane.home,
+                          selectedType: _selectedType,
+                          onKpssTypeChanged: _onExamTypeChanged,
+                          isPremium: _isPremium,
+                          onPremiumTap: _openPaywall,
+                          onMoreTap: _openMore,
+                          shellTopBarVisible: true,
+                        );
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: ValueListenableBuilder<KpssType>(
-              valueListenable: _selectedType,
-              builder: (context, type, _) {
-                switch (_index) {
-                  case 1:
-                    return StudyHubScreen(
-                      kpssType: type,
-                      embedded: true,
-                      pane: StudyHubPane.subjects,
-                      shellTopBarVisible: true,
-                    );
-                  case 2:
-                    return AnalyticsHubScreen(kpssType: type, embedded: true);
-                  case 3:
-                    return const StatisticsScreen(embedded: true);
-                  case 0:
-                  default:
-                    return StudyHubScreen(
-                      kpssType: type,
-                      embedded: true,
-                      pane: StudyHubPane.home,
-                      selectedType: _selectedType,
-                      onKpssTypeChanged: _onExamTypeChanged,
-                      isPremium: _isPremium,
-                      onPremiumTap: _openPaywall,
-                      onMoreTap: _openMore,
-                      shellTopBarVisible: true,
-                    );
-                }
-              },
-            ),
-          ),
+          if (_index == 0) const WrongNotebookPromoBubble(),
         ],
       ),
       bottomNavigationBar: _PremiumBottomBar(

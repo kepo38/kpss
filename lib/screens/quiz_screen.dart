@@ -12,6 +12,7 @@ import '../services/ad_manager.dart';
 import '../services/ad_service.dart';
 import '../services/answer_feedback_service.dart';
 import '../services/content_bank_service.dart';
+import '../services/daily_mini_exam_service.dart';
 import '../services/favorites_service.dart';
 import '../services/auth_service.dart';
 import '../services/last_study_session_service.dart';
@@ -49,6 +50,7 @@ class QuizScreen extends StatefulWidget {
 
   /// Günün Denemesi gibi tanıtım oturumları — çözüm/banner/bitiş reklamı yok.
   final bool adFreeExperience;
+  final bool dailyMiniRankingMode;
   final String? statisticsTestId;
   final Future<void> Function({
     required List<String?> answers,
@@ -67,6 +69,7 @@ class QuizScreen extends StatefulWidget {
     this.resumeMeta,
     this.skipResultDialog = false,
     this.adFreeExperience = false,
+    this.dailyMiniRankingMode = false,
     this.statisticsTestId,
     this.onProgress,
   });
@@ -101,6 +104,7 @@ class _QuizScreenState extends State<QuizScreen>
   final Map<String, List<QuizStroke>> _drawings = {};
   bool _drawingEnabled = false;
   static const _maxStrokesPerQuestion = 80;
+  final ScrollController _scrollController = ScrollController();
 
   late final AnimationController _flashCtrl;
   late final Animation<double> _flashOpacity;
@@ -161,6 +165,7 @@ class _QuizScreenState extends State<QuizScreen>
   void dispose() {
     _ticker?.cancel();
     _flashCtrl.dispose();
+    _scrollController.dispose();
     AdManager.instance.endTestSession();
     super.dispose();
   }
@@ -347,7 +352,10 @@ class _QuizScreenState extends State<QuizScreen>
     return '$m:$s';
   }
 
-  QuizResult _buildResult({required bool completed}) {
+  QuizResult _buildResult({
+    required bool completed,
+    bool submitDailyMiniRanking = false,
+  }) {
     var correct = 0;
     var wrong = 0;
     var blank = 0;
@@ -373,6 +381,7 @@ class _QuizScreenState extends State<QuizScreen>
       total: widget.questions.length,
       duration: DateTime.now().difference(_startedAt),
       completed: completed,
+      submitDailyMiniRanking: submitDailyMiniRanking,
       questionIds: widget.questions.map((q) => q.id).toList(),
       wrongQuestionIds: wrongIds,
       correctQuestionIds: correctIds,
@@ -413,6 +422,122 @@ class _QuizScreenState extends State<QuizScreen>
     _answers[_currentIndex] = _selectedAnswer;
     await _persistProgress();
     if (!mounted) return false;
+
+    if (widget.dailyMiniRankingMode &&
+        !DailyMiniExamService.instance.rankingLocked) {
+      final answeredCount = _answers
+          .where((a) => a != null && a.isNotEmpty)
+          .length;
+      final result = await showDialog<_DailyMiniExitChoice>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.inkSoft,
+          title: const Text(
+            'Mini denemeden çık',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          content: Text(
+            answeredCount == 0
+                ? 'Henüz cevap vermediniz. Çıkarsanız ilerlemeniz kaydedilir; '
+                    'sıralamaya girmek için en az bir soru işaretlemelisiniz.'
+                : 'Şu ana kadar verdiğiniz $answeredCount cevap sıralamaya '
+                    'girer. Sonra devam etseniz bile sıralamanız güncellenmez.\n\n'
+                    'İnternet yoksa çıkabilirsiniz; bağlantı gelince kaldığınız '
+                    'yerden sürdürüp sıralamayı o zaman gönderebilirsiniz.',
+            style: TextStyle(
+              height: 1.45,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, _DailyMiniExitChoice.stay),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.champagne,
+              ),
+              child: const Text('Devam et'),
+            ),
+            if (answeredCount > 0)
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  context,
+                  _DailyMiniExitChoice.submitRanking,
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.champagne,
+                  foregroundColor: AppTheme.ink,
+                ),
+                child: const Text('Sıralamaya gönder'),
+              )
+            else
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  context,
+                  _DailyMiniExitChoice.saveOnly,
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.champagne,
+                  foregroundColor: AppTheme.ink,
+                ),
+                child: const Text('Kaydet ve çık'),
+              ),
+          ],
+        ),
+      );
+      if (result == null || result == _DailyMiniExitChoice.stay) {
+        return false;
+      }
+      if (result == _DailyMiniExitChoice.submitRanking) {
+        _popWithResult(
+          completed: false,
+          submitDailyMiniRanking: true,
+        );
+        return false;
+      }
+      _popWithResult(completed: false);
+      return false;
+    }
+
+    if (widget.dailyMiniRankingMode &&
+        DailyMiniExamService.instance.rankingLocked) {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.inkSoft,
+          title: const Text(
+            'Mini denemeden çık',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          content: Text(
+            'Sıralamanız kayıtlı. Kaldığınız yerden çözmeye devam '
+            'edebilirsiniz; sıralama değişmez.',
+            style: TextStyle(
+              height: 1.45,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.champagne,
+              ),
+              child: const Text('Devam et'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.champagne,
+                foregroundColor: AppTheme.ink,
+              ),
+              child: const Text('Kaydet ve çık'),
+            ),
+          ],
+        ),
+      );
+      return result ?? false;
+    }
+
     var wrongSoFar = 0;
     for (var i = 0; i < widget.questions.length; i++) {
       if (gradeAnswer(widget.questions[i], _answers[i]) == AnswerState.wrong) {
@@ -464,7 +589,10 @@ class _QuizScreenState extends State<QuizScreen>
     return result ?? false;
   }
 
-  void _popWithResult({required bool completed}) {
+  void _popWithResult({
+    required bool completed,
+    bool submitDailyMiniRanking = false,
+  }) {
     if (widget.questions.isNotEmpty) {
       _answers[_currentIndex] = _selectedAnswer;
     }
@@ -476,7 +604,12 @@ class _QuizScreenState extends State<QuizScreen>
     } else {
       unawaited(_persistProgress());
     }
-    Navigator.of(context).pop(_buildResult(completed: completed));
+    Navigator.of(context).pop(
+      _buildResult(
+        completed: completed,
+        submitDailyMiniRanking: submitDailyMiniRanking,
+      ),
+    );
   }
 
   void _goTo(int index) {
@@ -578,8 +711,39 @@ class _QuizScreenState extends State<QuizScreen>
     if (!QuestionErrorReportService.canReport(questionId)) return;
     if (!AuthService.instance.hasPermanentAccount) {
       if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.inkSoft,
+          title: const Text(
+            'Hata bildirimi',
+            style: TextStyle(color: Colors.white, fontFamily: 'serif'),
+          ),
+          content: const Text(
+            QuestionErrorReportService.guestWarning,
+            style: TextStyle(color: Colors.white70, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Tamam', style: TextStyle(color: AppTheme.neonEdge)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    if (!QuestionErrorReportService.instance.meetsLocalTestRequirement()) {
+      if (!mounted) return;
+      final completed = ContentBankService.instance.completedTopicTestCount;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bildirmek için Google hesabını bağlayın.')),
+        SnackBar(
+          content: Text(
+            QuestionErrorReportService.testsRequiredWarning(
+              completed: completed,
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -1164,8 +1328,7 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
               ),
             ),
-            if (QuestionErrorReportService.canReport(_currentQuestion.id) &&
-                AuthService.instance.hasPermanentAccount)
+            if (QuestionErrorReportService.canReport(_currentQuestion.id))
               SizedBox(
                 width: 40,
                 child: QuestionErrorReportAction(
@@ -1265,78 +1428,126 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
                 const SizedBox(height: 8),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_currentQuestion.hasScenarioPassage) ...[
-                          _ScenarioPassageCard(question: _currentQuestion),
-                          const SizedBox(height: 16),
-                        ],
-                        QuestionStemPanel(
-                          child: WatermarkWidget(
-                            opacity: 0.26,
-                            child: QuestionStemContent(
-                              stem: _currentQuestion.soruMetni,
-                              imageUrl: _currentQuestion.imageUrl,
-                              sekilKodu: _currentQuestion.sekilKodu,
-                            ),
-                          ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      SingleChildScrollView(
+                        controller: _scrollController,
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          8,
+                          20,
+                          _drawingEnabled ? 72 : 16,
                         ),
-                        const SizedBox(height: 20),
-                        if (_showingSolution)
-                          _SolutionPanel(
-                            question: _currentQuestion,
-                            selectedAnswer: _selectedAnswer,
-                            showFullSolution: _isSolutionFullyUnlocked,
-                            unlocking: _solutionUnlocking,
-                            onUnlockFull: _unlockFullSolution,
-                          )
-                        else
-                          ..._currentQuestion.siklar.entries.map(
-                            (entry) {
-                              final selected = _selectedAnswer == entry.key;
-                              final revealed = _selectedAnswer != null;
-                              final isCorrectKey =
-                                  entry.key == _currentQuestion.dogruCevap;
-                              _OptionTone? tone;
-                              if (revealed) {
-                                if (isCorrectKey) {
-                                  tone = _OptionTone.correct;
-                                } else if (selected) {
-                                  tone = _OptionTone.wrong;
-                                }
-                              }
-                              return _OptionTile(
-                                label: entry.key,
-                                text: entry.value,
-                                isSelected: selected,
-                                tone: tone,
-                                percentage: revealed
-                                    ? _visibleOptionPercentages[entry.key]
-                                    : null,
-                                onTap: () => _selectAnswer(entry.key),
-                              );
-                            },
-                          ),
-                        if (_selectedAnswer != null &&
-                            AuthService.instance.isSignedIn &&
-                            QuestionRatingService.canRate(
-                              _currentQuestion.id,
-                            )) ...[
-                          const SizedBox(height: 16),
-                          QuestionRatingBar(
-                            selectedStars: _ratingSummary?.userRating,
-                            averageRating: _ratingSummary?.averageRating,
-                            ratingCount: _ratingSummary?.ratingCount ?? 0,
-                            loading: _ratingLoading,
-                            saving: _ratingSaving,
-                            onRate: _rateQuestion,
-                          ),
-                        ],
-                      ],
-                    ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_currentQuestion.hasScenarioPassage) ...[
+                              _ScenarioPassageCard(question: _currentQuestion),
+                              const SizedBox(height: 16),
+                            ],
+                            QuestionStemPanel(
+                              child: WatermarkWidget(
+                                opacity: 0.26,
+                                child: QuestionStemContent(
+                                  stem: _currentQuestion.soruMetni,
+                                  imageUrl: _currentQuestion.imageUrl,
+                                  sekilKodu: _currentQuestion.sekilKodu,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            if (_showingSolution)
+                              _SolutionPanel(
+                                question: _currentQuestion,
+                                selectedAnswer: _selectedAnswer,
+                                showFullSolution: _isSolutionFullyUnlocked,
+                                unlocking: _solutionUnlocking,
+                                onUnlockFull: _unlockFullSolution,
+                              )
+                            else
+                              ..._currentQuestion.siklar.entries.map(
+                                (entry) {
+                                  final selected =
+                                      _selectedAnswer == entry.key;
+                                  final revealed = _selectedAnswer != null;
+                                  final isCorrectKey =
+                                      entry.key == _currentQuestion.dogruCevap;
+                                  _OptionTone? tone;
+                                  if (revealed) {
+                                    if (isCorrectKey) {
+                                      tone = _OptionTone.correct;
+                                    } else if (selected) {
+                                      tone = _OptionTone.wrong;
+                                    }
+                                  }
+                                  return _OptionTile(
+                                    label: entry.key,
+                                    text: entry.value,
+                                    isSelected: selected,
+                                    tone: tone,
+                                    percentage: revealed
+                                        ? _visibleOptionPercentages[entry.key]
+                                        : null,
+                                    onTap: () => _selectAnswer(entry.key),
+                                  );
+                                },
+                              ),
+                            if (_selectedAnswer != null &&
+                                AuthService.instance.isSignedIn &&
+                                QuestionRatingService.canRate(
+                                  _currentQuestion.id,
+                                )) ...[
+                              const SizedBox(height: 16),
+                              QuestionRatingBar(
+                                selectedStars: _ratingSummary?.userRating,
+                                averageRating: _ratingSummary?.averageRating,
+                                ratingCount: _ratingSummary?.ratingCount ?? 0,
+                                loading: _ratingLoading,
+                                saving: _ratingSaving,
+                                onRate: _rateQuestion,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      ListenableBuilder(
+                        listenable: _scrollController,
+                        builder: (context, _) {
+                          final scrollOffset = _scrollController.hasClients
+                              ? _scrollController.offset
+                              : 0.0;
+                          final strokes =
+                              _drawings[_currentQuestion.id] ?? const [];
+                          if (_drawingEnabled && !_isFinishing) {
+                            return QuizDrawingOverlay(
+                              scrollOffset: scrollOffset,
+                              strokes: strokes,
+                              onStrokeComplete: (stroke) {
+                                if (_isFinishing) return;
+                                setState(() {
+                                  final list = _drawings.putIfAbsent(
+                                    _currentQuestion.id,
+                                    () => [],
+                                  );
+                                  if (list.length >= _maxStrokesPerQuestion) {
+                                    return;
+                                  }
+                                  list.add(stroke);
+                                });
+                              },
+                              onClear: () => setState(
+                                () => _drawings.remove(_currentQuestion.id),
+                              ),
+                            );
+                          }
+                          return QuizStrokeLayer(
+                            scrollOffset: scrollOffset,
+                            strokes: strokes,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1367,28 +1578,6 @@ class _QuizScreenState extends State<QuizScreen>
                 },
               ),
             ),
-            if (_drawingEnabled && !_isFinishing)
-              QuizDrawingOverlay(
-                strokes: _drawings[_currentQuestion.id] ?? const [],
-                onStrokeComplete: (stroke) {
-                  if (_isFinishing) return;
-                  setState(() {
-                    final list = _drawings.putIfAbsent(
-                      _currentQuestion.id,
-                      () => [],
-                    );
-                    if (list.length >= _maxStrokesPerQuestion) return;
-                    list.add(stroke);
-                  });
-                },
-                onClear: () => setState(
-                  () => _drawings.remove(_currentQuestion.id),
-                ),
-              )
-            else
-              QuizStrokeLayer(
-                strokes: _drawings[_currentQuestion.id] ?? const [],
-              ),
           ],
         ),
         bottomNavigationBar: _buildBottomActions(),
@@ -1800,3 +1989,5 @@ class _OptionTile extends StatelessWidget {
     );
   }
 }
+
+enum _DailyMiniExitChoice { stay, submitRanking, saveOnly }

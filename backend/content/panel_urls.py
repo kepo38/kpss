@@ -177,6 +177,11 @@ urlpatterns = [
         name="panel_announcement_send",
     ),
     path(
+        "mobil-arayuz/",
+        panel_views.panel_mobile_ui,
+        name="panel_mobile_ui",
+    ),
+    path(
         "sinavlar/",
         panel_views.panel_exam_type_list,
         name="panel_exam_type_list",

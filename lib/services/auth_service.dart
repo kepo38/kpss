@@ -259,13 +259,22 @@ class AuthService extends ChangeNotifier {
       }
       if (res.statusCode != 200) {
         String detail = 'Ad güncellenemedi.';
+        DateTime? nextAllowed;
         try {
           final body = jsonDecode(utf8.decode(res.bodyBytes));
           if (body is Map && body['detail'] != null) {
             detail = body['detail'].toString();
           }
+          if (body is Map && body['isimDegistirilebilirAt'] != null) {
+            nextAllowed =
+                DateTime.tryParse('${body['isimDegistirilebilirAt']}');
+          }
         } catch (_) {}
         _lastError = detail;
+        if (nextAllowed != null && _user != null) {
+          _user = _user!.copyWith(isimDegistirilebilirAt: nextAllowed);
+          await _persist();
+        }
         return false;
       }
       final json = jsonDecode(utf8.decode(res.bodyBytes));

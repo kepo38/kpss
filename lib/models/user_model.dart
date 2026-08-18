@@ -8,6 +8,7 @@ class UserModel {
   final DateTime? premiumVerilisTarihi;
   final String? premiumGrantNote;
   final String? photoUrl;
+  final DateTime? isimDegistirilebilirAt;
 
   /// Auth henüz hazır değilken onboarding için geçici misafir.
   factory UserModel.placeholderGuest() => const UserModel(
@@ -27,7 +28,14 @@ class UserModel {
     this.premiumVerilisTarihi,
     this.premiumGrantNote,
     this.photoUrl,
+    this.isimDegistirilebilirAt,
   });
+
+  bool get canChangeDisplayName {
+    final at = isimDegistirilebilirAt;
+    if (at == null) return true;
+    return !at.isAfter(DateTime.now());
+  }
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
@@ -44,6 +52,9 @@ class UserModel {
           : null,
       premiumGrantNote: json['premiumGrantNote'] as String?,
       photoUrl: json['photoUrl'] as String?,
+      isimDegistirilebilirAt: json['isimDegistirilebilirAt'] != null
+          ? DateTime.tryParse('${json['isimDegistirilebilirAt']}')
+          : null,
     );
   }
 
@@ -69,6 +80,7 @@ class UserModel {
     DateTime? premiumVerilisTarihi,
     String? premiumGrantNote,
     String? photoUrl,
+    DateTime? isimDegistirilebilirAt,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -81,6 +93,8 @@ class UserModel {
           premiumVerilisTarihi ?? this.premiumVerilisTarihi,
       premiumGrantNote: premiumGrantNote ?? this.premiumGrantNote,
       photoUrl: photoUrl ?? this.photoUrl,
+      isimDegistirilebilirAt:
+          isimDegistirilebilirAt ?? this.isimDegistirilebilirAt,
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import 'auth_service.dart';
+import 'content_bank_service.dart';
 
 class QuestionErrorReportState {
   final bool reported;
@@ -11,6 +12,9 @@ class QuestionErrorReportState {
   final String? status;
   final bool dailyLimitReached;
   final bool canReport;
+  final int testsCompleted;
+  final int minTestsRequired;
+  final bool testsRequirementMet;
 
   const QuestionErrorReportState({
     required this.reported,
@@ -18,20 +22,31 @@ class QuestionErrorReportState {
     this.status,
     this.dailyLimitReached = false,
     this.canReport = true,
+    this.testsCompleted = 0,
+    this.minTestsRequired = QuestionErrorReportService.minCompletedTests,
+    this.testsRequirementMet = false,
   });
 
   factory QuestionErrorReportState.fromJson(Map<String, dynamic> json) {
     final reported = json['reported'] == true;
     final dailyLimit = json['dailyLimitReached'] == true;
+    final testsCompleted = (json['testsCompleted'] as num?)?.toInt() ?? 0;
+    final minTestsRequired =
+        (json['minTestsRequired'] as num?)?.toInt() ??
+            QuestionErrorReportService.minCompletedTests;
+    final testsRequirementMet = json['testsRequirementMet'] == true;
     final canReport = json.containsKey('canReport')
         ? json['canReport'] == true
-        : (!reported && !dailyLimit);
+        : (!reported && !dailyLimit && testsRequirementMet);
     return QuestionErrorReportState(
       reported: reported,
       category: json['category'] as String?,
       status: json['status'] as String?,
       dailyLimitReached: dailyLimit,
       canReport: canReport,
+      testsCompleted: testsCompleted,
+      minTestsRequired: minTestsRequired,
+      testsRequirementMet: testsRequirementMet,
     );
   }
 }
@@ -49,6 +64,17 @@ class QuestionErrorReportService {
   static final QuestionErrorReportService instance =
       QuestionErrorReportService._();
 
+  static const minCompletedTests = 5;
+  static const guestWarning =
+      'Sadece giriş yapan kullanıcılar hata bildirimi yapabilir.';
+
+  static String testsRequiredWarning({
+    required int completed,
+    int required = minCompletedTests,
+  }) =>
+      'En az $required test bitirdikten sonra hata bildirimi yapabilirsiniz. '
+      '(Tamamlanan: $completed/$required)';
+
   final Map<String, QuestionErrorReportState> _cache = {};
   bool? _dailyLimitReached;
 
@@ -61,6 +87,9 @@ class QuestionErrorReportService {
       _cache[_cacheKey(questionId)];
 
   bool get dailyLimitReached => _dailyLimitReached == true;
+
+  bool meetsLocalTestRequirement() =>
+      ContentBankService.instance.completedTopicTestCount >= minCompletedTests;
 
   void clear() {
     _cache.clear();
@@ -76,9 +105,7 @@ class QuestionErrorReportService {
   Future<QuestionErrorReportState> load(String questionId) async {
     final auth = AuthService.instance;
     if (!auth.hasPermanentAccount) {
-      throw const QuestionErrorReportException(
-        'Bildirmek için Google hesabını bağlayın.',
-      );
+      throw const QuestionErrorReportException(guestWarning);
     }
     final response = await http
         .get(
@@ -96,8 +123,13 @@ class QuestionErrorReportService {
   }) async {
     final auth = AuthService.instance;
     if (!auth.hasPermanentAccount) {
-      throw const QuestionErrorReportException(
-        'Bildirmek için Google hesabını bağlayın.',
+      throw const QuestionErrorReportException(guestWarning);
+    }
+    if (!meetsLocalTestRequirement()) {
+      throw QuestionErrorReportException(
+        testsRequiredWarning(
+          completed: ContentBankService.instance.completedTopicTestCount,
+        ),
       );
     }
     final response = await http
@@ -120,6 +152,18 @@ class QuestionErrorReportService {
     if (response.statusCode == 429) {
       _dailyLimitReached = true;
       var message = 'Günde yalnızca 1 hata bildirimi yapabilirsiniz.';
+      try {
+        final body = jsonDecode(utf8.decode(response.bodyBytes));
+        if (body is Map && body['detail'] != null) {
+          message = body['detail'].toString();
+        }
+      } catch (_) {}
+      throw QuestionErrorReportException(message);
+    }
+    if (response.statusCode == 403) {
+      var message = testsRequiredWarning(
+        completed: ContentBankService.instance.completedTopicTestCount,
+      );
       try {
         final body = jsonDecode(utf8.decode(response.bodyBytes));
         if (body is Map && body['detail'] != null) {

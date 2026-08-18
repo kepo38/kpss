@@ -37,8 +37,34 @@ String isoDate(DateTime d) {
 ({String prefix, String rest}) splitFrostedEmail(String email) {
   final value = email.trim();
   if (value.isEmpty) return (prefix: '', rest: '');
-  final n = value.length >= 5 ? 5 : (value.length >= 4 ? 4 : value.length);
-  return (prefix: value.substring(0, n), rest: value.substring(n));
+  final at = value.indexOf('@');
+  if (at < 0) {
+    final prefix = value.length <= 3 ? value : value.substring(0, 3);
+    final masked = '•' * (value.length - prefix.length);
+    return (prefix: prefix, rest: masked);
+  }
+  final local = value.substring(0, at);
+  final domain = value.substring(at);
+  if (local.length <= 3) {
+    return (prefix: local, rest: domain);
+  }
+  return (prefix: local.substring(0, 3), rest: '•••$domain');
+}
+
+/// Mini deneme süresi — örn. `8 dk 04 sn` veya `1:05:22`.
+String formatExamDuration(int seconds) {
+  if (seconds <= 0) return '—';
+  final d = Duration(seconds: seconds);
+  if (d.inHours > 0) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+  final m = d.inMinutes;
+  final s = d.inSeconds.remainder(60);
+  if (m > 0) return '$m dk ${s.toString().padLeft(2, '0')} sn';
+  return '$s sn';
 }
 
 String formatTrInt(int value) {

@@ -72,7 +72,10 @@ class QuestionAttemptService {
               ...auth.authHeaders,
               'Content-Type': 'application/json',
             },
-            body: jsonEncode({'answers': answers}),
+            body: jsonEncode({
+              'answers': answers,
+              'completed': true,
+            }),
           )
           .timeout(const Duration(seconds: 10));
     } catch (_) {

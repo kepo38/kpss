@@ -40,10 +40,11 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
 | **Ana sekme kabuğu** | Alt menü: Ana Sayfa, Dersler, Gelişim, Deneme; üstte profil | `lib/screens/main_shell.dart` |
+| **Yanlış defteri balonu** | Ana sayfa sağ kenarında sade metin sekmesi (YANLIŞ / DEFTERİ); ikon yok; dikey sürüklenebilir; kapatma oturum içi | `lib/widgets/wrong_notebook_promo_bubble.dart`, `lib/services/app_config_service.dart` |
 | **Genişletilmiş ana sayfa** | “Daha fazla” menüsü: modül listesi, görevler, araçlar, premium modüller | `lib/screens/home_screen.dart`, `lib/widgets/app_shell_top_bar.dart` |
 | **Giriş yönlendirme** | Sınav hedefi onboarding → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
-| **Hızlı açılış** | `BootStore` ile tema ve sınav tercihlerinin anında yüklenmesi | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart` |
+| **Hızlı açılış** | `BootStore` ile tema ve sınav tercihlerinin anında yüklenmesi; boot sırasında koyu ekranda «Ataman Gerçekleşiyor» + premium kayan altın çizgi | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart` |
 | **Dikey ekran kilidi** | Tüm cihazlarda yalnızca portrait | `lib/services/orientation_policy.dart`, `android/.../AndroidManifest.xml` |
 | **Web önizleme çerçevesi** | Masaüstü web’de telefon boyutunda kart | `lib/main.dart` |
 
@@ -87,16 +88,16 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı | `lib/screens/quiz_screen.dart` | Ücretsiz; reklamlı |
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil | `lib/widgets/question_stem_content.dart`, `lib/widgets/formatted_text.dart` | Ücretsiz |
 | **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet | `lib/widgets/osym_badge.dart` | Ücretsiz |
-| **Çizim katmanı** | Soru üzerinde kalem / yeşil fosfor / silgi; kalem kapalıyken işaretler görünür kalır; test bitince kaydedilmez. Stroke/nokta üst sınırı var | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
+| **Çizim katmanı** | Soru alanında kalem / yeşil fosfor (geniş vurgu) / silgi; işaretler kaydırınca metinde kalır; kalem kapalıyken görünür; test bitince kaydedilmez | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp) | `lib/widgets/favorite_heart_button.dart`, `lib/services/favorites_service.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
-| **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; günlük limit; **Google hesabı zorunlu** | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google hesabı |
+| **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; en az **5 konu testi** bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 test |
 | **Çözüm kilidi** | Tam çözüm önce gizli; reklam veya Premium ile açılır | `quiz_screen.dart`, `lib/services/ad_manager.dart` | Reklam / Premium |
 | **Ses ve titreşim** | Doğru/yanlış geri bildirimi | `lib/services/answer_feedback_service.dart` | Ücretsiz |
 | **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma | `lib/widgets/shareable_result_card.dart` | Ücretsiz |
 | **Filigran** | Ücretsiz planda marka filigranı | `lib/widgets/watermark_widget.dart` | Premium’da gizli |
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium / kampanya bypass |
-| **Reklamsız mini deneme oturumu** | Günün mini denemesinde reklam yok | `QuizScreen.adFreeExperience` | Ücretsiz |
+| **Pro Üyelik üst bar CTA** | Sağ üst altın pill + sol maskot (taçlı idle animasyon) | `lib/widgets/premium_header_button.dart`, `lib/widgets/premium_pro_mascot.dart` | Ücretsiz kullanıcı |
 
 **Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
 
@@ -104,7 +105,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 | Alan | ÖSYM | Uygulama |
 |---|---|---|
-| Soru kökü, şık, çözüm | Times New Roman | Google Fonts **Tinos** (mobil yedek) |
+| Soru kökü, şık, çözüm | Times New Roman | Google Fonts **Tinos** (mobil yedek); şık **15pt**, çözüm **15pt** |
 | Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
 | Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
 
@@ -117,7 +118,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Günlük görev merkezi** | Ders bazlı günlük ilerleme çubukları (Türkçe, Mat, Tarih, Coğrafya, Vatandaşlık) | `lib/widgets/daily_mission_center.dart` | Ücretsiz |
-| **Günün mini denemesi** | 20 soruluk günlük deneme, süre penceresi, sıralama, sonuç paylaşımı | `lib/widgets/daily_mini_exam_card.dart`, `lib/services/daily_mini_exam_service.dart`, `lib/screens/daily_mini_exam_result_screen.dart` | Ücretsiz, reklamsız oturum |
+| **Günün mini denemesi** | 20 soruluk günlük deneme; bitirince detay sayfası açılmaz, ana karttaki BUGÜNÜN KÜRSÜSÜ + 10 sn sayaç başlar; misafir yalnızca ilk gün katılır, sonraki günlerde profil girişi zorunlu; sıralama kilitli erken çıkış; kayan altın CTA + formula aracı | `lib/widgets/daily_mini_exam_card.dart`, `lib/widgets/mini_confetti_burst.dart`, `lib/services/daily_mini_exam_service.dart`, `lib/screens/quiz_screen.dart`, `backend/content/daily_mini_exam.py` | Ücretsiz (misafir: ilk gün) |
 | **Mini deneme PDF upsell** | Sonuç sonrası Premium yönlendirmesi (aylık yanlış varsa) | `daily_mini_exam_result_screen.dart` | Upsell |
 | **Tasarruf içgörüsü** | Ücretsiz testlerin tahmini TL değeri; 20 test kilometre taşı | `lib/widgets/savings_insight_banner.dart`, `lib/services/user_savings_insight_service.dart` | Ücretsiz |
 
@@ -199,16 +200,16 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
-| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; avatar altında Rozetler; Mesajlar/Duyurular ızgarası (okunmamış sayı rozeti); modül listesi. Misafirlerde avatar = Hedef Kamu uygulama ikonu | `lib/screens/profile_screen.dart` |
+| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; premium değilse hero’da kompakt “Premium’a Geç” pill (PREMIUM chip ile aynı stil); avatar altında Rozetler; Mesajlar/Duyurular; sağ üstte “Değerlendir” (giriş yapmış kullanıcı); modül listesi | `lib/screens/profile_screen.dart` |
 | **Premium üyelik bilgisi** | Hero’daki PREMIUM chip köşesindeki bilgi ikonu → veriliş/bitiş tarihi bottom sheet | `profile_screen.dart` |
 | **Google hesap bağlama** | Anonim → kalıcı Google hesabı | `lib/widgets/account_link_card.dart`, `lib/services/auth_service.dart` |
 | **Görünen ad düzenleme** | Bağlı hesap gerekir | `profile_screen.dart` |
 | **Tema** | Açık / koyu / sistem | `lib/widgets/theme_preference_picker.dart`, `lib/services/theme_preference_service.dart` |
 | **Sınav hedefi değiştirme** | Geri sayım hedefini yeniden seçme | `lib/widgets/exam_track_picker_sheet.dart` |
 | **Bildirim ayarları** | Sabah/akşam/haftalık aç-kapa (duyuru ve tasarruf sabit açık) | `lib/widgets/notification_settings_section.dart`, `lib/services/notification_preference_service.dart` |
-| **Duyurular** | Admin yayınları, okundu durumu | `lib/screens/announcements_screen.dart`, `lib/services/announcement_service.dart` |
+| **Duyurular** | Admin yayınları; okundu durumu yerel. İlk kurulumda mevcut duyurular rozet sayılmaz | `lib/screens/announcements_screen.dart`, `lib/services/announcement_service.dart` |
 | **Mesajlarım** | Doğrudan admin mesajları | `lib/screens/user_messages_screen.dart`, `lib/services/user_message_service.dart` |
-| **Destek ve İletişim** | Deneme paketi talepleri; e-posta ile destek (`hedefkamu@gmail.com`) | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
+| **Destek ve İletişim** | Deneme paketi talepleri; soru hata bildirimi (uyarı kartı); e-posta ile destek (`hedefkamu@gmail.com`) | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
 | **Çıkış** | Oturumu kapat (misafir değilse) | `profile_screen.dart` |
 
 ---
@@ -230,7 +231,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Yerel misafir oturumu** | Çevrimdışı öncelikli yer tutucu kullanıcı | `lib/services/auth_service.dart` |
 | **Anonim backend oturumu** | Firebase anonim + Django `AppUser` token | `auth_service.dart`, `backend/content/auth.py` |
 | **Google giriş / bağlama** | ID token → `POST /api/v1/auth/google/` | `auth_service.dart` |
-| **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad | `backend/content/views.py` |
+| **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad (haftada en fazla 1 değişiklik) | `backend/content/views.py` |
 | **Ağ güvenliği engeli** | VPN/DNS/reklam engelleyici tespiti → uygulama kilitlenir | `lib/services/network_security_service.dart`, `lib/screens/security_warning_modal.dart` |
 
 ---
@@ -326,6 +327,7 @@ Staff-only Django görünümleri: `backend/content/panel_views.py`, `backend/con
 | Kullanıcı listesi | `/panel/kullanicilar/` |
 | Premium ver / kaldır | `/panel/kullanici/<id>/premium/` |
 | Duyuru CRUD + push gönder | `/panel/duyuru/...` |
+| Mobil arayüz (yanlış defteri balonu aç/kapa, metin) | `/panel/mobil-arayuz/` |
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
 | Deneme paketi CRUD + şablondan üret | `/panel/deneme-paket/...` |
@@ -395,6 +397,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET /tests/<id>/questions/` | Test soruları | Hayır | `QuestionFetchService` |
 | `POST /tests/<id>/attempt/` | Test tamamlama | Bearer | Quiz |
 | `GET /announcements/` | Aktif duyurular | Hayır | `AnnouncementService` |
+| `GET /mobile-ui/` | Mobil arayüz ayarları (yanlış defteri balonu) | Hayır | `AppConfigService` |
 | `POST /device-tokens/` | FCM token | Opsiyonel | `PushNotificationService` |
 | `POST /auth/google/` | Google giriş | Hayır | `AuthService` |
 | `GET/PATCH /me/` | Profil | Bearer | `AuthService` |

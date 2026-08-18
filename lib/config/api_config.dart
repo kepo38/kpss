@@ -18,6 +18,7 @@ class ApiConfig {
   static const String healthPath = '/api/v1/health/';
   static const String deviceTokensPath = '/api/v1/device-tokens/';
   static const String announcementsPath = '/api/v1/announcements/';
+  static const String mobileUiPath = '/api/v1/mobile-ui/';
   static const String authGooglePath = '/api/v1/auth/google/';
   static const String mePath = '/api/v1/me/';
   static const String meMessagesPath = '/api/v1/me/messages/';
@@ -37,6 +38,7 @@ class ApiConfig {
   static Uri healthUri() => Uri.parse('$baseUrl$healthPath');
   static Uri deviceTokensUri() => Uri.parse('$baseUrl$deviceTokensPath');
   static Uri announcementsUri() => Uri.parse('$baseUrl$announcementsPath');
+  static Uri mobileUiUri() => Uri.parse('$baseUrl$mobileUiPath');
   static Uri authGoogleUri() => Uri.parse('$baseUrl$authGooglePath');
   static Uri meUri() => Uri.parse('$baseUrl$mePath');
   static Uri meMessagesUri() => Uri.parse('$baseUrl$meMessagesPath');

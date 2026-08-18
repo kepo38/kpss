@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'premium_pro_mascot.dart';
 import 'scale_button.dart';
 
-/// Hero / üst bar premium CTA — sıcak altın pill, krem zeminle uyumlu.
+/// Hero / üst bar premium CTA — maskot sola yaslanır, pati pill'e dokunur.
 class PremiumHeaderButton extends StatelessWidget {
   final bool isPremium;
   final VoidCallback? onTap;
@@ -14,6 +15,9 @@ class PremiumHeaderButton extends StatelessWidget {
     this.onTap,
   });
 
+  static const _mascotHeight = 50.0;
+  static const _mascotReach = 28.0; // pati pill üzerine taşan mesafe
+
   @override
   Widget build(BuildContext context) {
     if (isPremium) {
@@ -21,7 +25,25 @@ class PremiumHeaderButton extends StatelessWidget {
     }
     return ScaleButton(
       onPressed: onTap,
-      child: const _ProPill(),
+      child: SizedBox(
+        height: _mascotHeight,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.centerLeft,
+          children: [
+            Positioned(
+              left: _mascotReach,
+              top: (_mascotHeight - 32) / 2,
+              child: const _ProPill(),
+            ),
+            const Positioned(
+              left: 0,
+              bottom: 0,
+              child: PremiumProMascot(height: _mascotHeight),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -54,13 +76,13 @@ class _ProPill extends StatelessWidget {
             color: AppTheme.champagne.withValues(alpha: 0.4),
             blurRadius: 12,
             spreadRadius: 0,
-            offset: const Offset(0, 3),
+            offset: Offset(0, 3),
           ),
           BoxShadow(
             color: Colors.white.withValues(alpha: 0.85),
             blurRadius: 0,
             spreadRadius: 0.5,
-            offset: const Offset(0, 1),
+            offset: Offset(0, 1),
           ),
         ],
       ),
@@ -86,7 +108,7 @@ class _ProPill extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(9, 6, 10, 6),
+            padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -108,7 +130,7 @@ class _ProPill extends StatelessWidget {
                       BoxShadow(
                         color: AppTheme.ink.withValues(alpha: 0.25),
                         blurRadius: 4,
-                        offset: const Offset(0, 2),
+                        offset: Offset(0, 2),
                       ),
                     ],
                   ),
@@ -174,7 +196,7 @@ class _ActiveBadge extends StatelessWidget {
             BoxShadow(
               color: AppTheme.champagne.withValues(alpha: 0.3),
               blurRadius: 10,
-              offset: const Offset(0, 2),
+              offset: Offset(0, 2),
             ),
           ],
         ),

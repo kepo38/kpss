@@ -21,10 +21,17 @@ void main() {
   });
 
   group('frosted email', () {
-    test('ilk 5 harfi ayırır', () {
+    test('@ öncesinde ilk 3 harfi ayırır', () {
       final parts = splitFrostedEmail('ahmet@gmail.com');
-      expect(parts.prefix, 'ahmet');
-      expect(parts.rest, '@gmail.com');
+      expect(parts.prefix, 'ahm');
+      expect(parts.rest, '•••@gmail.com');
+    });
+  });
+
+  group('exam duration', () {
+    test('dakika ve saniye formatlar', () {
+      expect(formatExamDuration(484), '8 dk 04 sn');
+      expect(formatExamDuration(45), '45 sn');
     });
   });
 

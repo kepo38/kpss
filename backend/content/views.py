@@ -15,6 +15,7 @@ from .auth import (
 from .embeddings import similar_questions
 from .models import (
     Announcement,
+    get_mobile_ui_config,
     DailyMiniExamAttempt,
     ExamPack,
     ExamPackExam,
@@ -27,6 +28,7 @@ from .models import (
     Subject,
     TopicLesson,
     TopicTest,
+    TopicTestCompletion,
 )
 from .revision import get_content_version
 from .test_grouping import order_questions_keeping_scenarios
@@ -287,6 +289,9 @@ class TestAttemptView(APIView):
             else:
                 ignored += 1
 
+        if request.data.get("completed") is True and len(questions) > 0:
+            TopicTestCompletion.objects.get_or_create(user=user, topic_test=test)
+
         return Response(
             {
                 "accepted": accepted,
@@ -463,18 +468,61 @@ class QuestionErrorReportThrottle(SimpleRateThrottle):
         }
 
 
+MIN_COMPLETED_TESTS_FOR_ERROR_REPORT = 5
+
+
+def _user_completed_topic_test_count(user) -> int:
+    explicit = TopicTestCompletion.objects.filter(user=user).count()
+    if explicit >= MIN_COMPLETED_TESTS_FOR_ERROR_REPORT:
+        return explicit
+
+    completed = explicit
+    tests = TopicTest.objects.filter(
+        is_published=True,
+        topic__is_active=True,
+    ).prefetch_related("questions")
+    for test in tests:
+        question_pks = [
+            question.pk
+            for question in test.questions.all()
+            if question.is_published
+        ]
+        if not question_pks:
+            continue
+        answered = (
+            QuestionAttempt.objects.filter(
+                user=user,
+                question_id__in=question_pks,
+            )
+            .values("question_id")
+            .distinct()
+            .count()
+        )
+        if answered >= len(question_pks):
+            completed += 1
+            if completed >= MIN_COMPLETED_TESTS_FOR_ERROR_REPORT:
+                break
+    return completed
+
+
 def _error_report_payload(
     report: QuestionErrorReport | None,
     *,
     daily_limit_reached: bool,
+    user=None,
 ) -> dict:
+    tests_completed = _user_completed_topic_test_count(user) if user else 0
+    tests_ok = tests_completed >= MIN_COMPLETED_TESTS_FOR_ERROR_REPORT
     return {
         "reported": report is not None,
         "category": report.category if report else None,
         "status": report.status if report else None,
         "createdAt": report.created_at.isoformat() if report else None,
         "dailyLimitReached": daily_limit_reached,
-        "canReport": report is None and not daily_limit_reached,
+        "testsCompleted": tests_completed,
+        "minTestsRequired": MIN_COMPLETED_TESTS_FOR_ERROR_REPORT,
+        "testsRequirementMet": tests_ok,
+        "canReport": report is None and not daily_limit_reached and tests_ok,
     }
 
 
@@ -511,7 +559,11 @@ class QuestionErrorReportView(APIView):
         ).first()
         daily_limit = _user_reported_today(user)
         return Response(
-            _error_report_payload(report, daily_limit_reached=daily_limit)
+            _error_report_payload(
+                report,
+                daily_limit_reached=daily_limit,
+                user=user,
+            )
         )
 
     def post(self, request, public_id: str):
@@ -539,7 +591,28 @@ class QuestionErrorReportView(APIView):
         ).first()
         if existing is not None:
             return Response(
-                _error_report_payload(existing, daily_limit_reached=True)
+                _error_report_payload(
+                    existing,
+                    daily_limit_reached=True,
+                    user=user,
+                )
+            )
+
+        completed_count = _user_completed_topic_test_count(user)
+        if completed_count < MIN_COMPLETED_TESTS_FOR_ERROR_REPORT:
+            return Response(
+                {
+                    "detail": (
+                        f"En az {MIN_COMPLETED_TESTS_FOR_ERROR_REPORT} test "
+                        "bitirmeden hata bildirimi yapamazsınız."
+                    ),
+                    "testsCompleted": completed_count,
+                    "minTestsRequired": MIN_COMPLETED_TESTS_FOR_ERROR_REPORT,
+                    "testsRequirementMet": False,
+                    "reported": False,
+                    "canReport": False,
+                },
+                status=403,
             )
 
         if _user_reported_today(user):
@@ -560,7 +633,11 @@ class QuestionErrorReportView(APIView):
             note=note,
             status="open",
         )
-        payload = _error_report_payload(report, daily_limit_reached=True)
+        payload = _error_report_payload(
+            report,
+            daily_limit_reached=True,
+            user=user,
+        )
         payload["created"] = True
         return Response(payload, status=201)
 
@@ -583,6 +660,23 @@ class CurriculumView(APIView):
     def get(self, request):
         qs = Subject.objects.filter(is_active=True).prefetch_related("topics")
         return Response(SubjectSerializer(qs, many=True).data)
+
+
+class MobileUiConfigView(APIView):
+    """Mobil arayüz ayarları — ana sayfa promosyon balonu vb."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        cfg = get_mobile_ui_config()
+        return Response(
+            {
+                "wrongNotebookBubbleEnabled": cfg.wrong_notebook_bubble_enabled,
+                "wrongNotebookBubbleLabel": cfg.wrong_notebook_bubble_label,
+                "updatedAt": cfg.updated_at,
+            }
+        )
 
 
 class AnnouncementListView(APIView):
@@ -696,8 +790,35 @@ class MeView(APIView):
                 {"detail": "Ad en fazla 160 karakter olabilir."}, status=400
             )
 
+        old_name = (user.display_name or "").strip()
+        if old_name == name:
+            return Response(user_to_dict(user))
+
+        from datetime import timedelta
+
+        if user.display_name_changed_at is not None:
+            next_allowed = user.display_name_changed_at + timedelta(days=7)
+            if timezone.now() < next_allowed:
+                return Response(
+                    {
+                        "detail": (
+                            "Ad en fazla haftada bir kez değiştirilebilir. "
+                            f"Tekrar deneme: {next_allowed.strftime('%d.%m.%Y %H:%M')}"
+                        ),
+                        "isimDegistirilebilirAt": next_allowed.isoformat(),
+                    },
+                    status=429,
+                )
+
         user.display_name = name
-        user.save(update_fields=["display_name", "updated_at"])
+        user.display_name_changed_at = timezone.now()
+        user.save(
+            update_fields=[
+                "display_name",
+                "display_name_changed_at",
+                "updated_at",
+            ]
+        )
         return Response(user_to_dict(user))
 
     def delete(self, request):
@@ -792,6 +913,7 @@ class DailyMiniExamView(APIView):
     def _payload(self, request, kpss_type: str) -> dict:
         from .daily_mini_exam import (
             get_or_create_today_exam,
+            guest_login_required,
             is_exam_open,
             leaderboard_rows,
             rank_for_user,
@@ -842,6 +964,7 @@ class DailyMiniExamView(APIView):
             "participantCount": participant_count,
             "myAttempt": my_attempt,
             "leaderboard": leaderboard_rows(exam.exam_date, kpss_type),
+            "guestLoginRequired": guest_login_required(user, exam.exam_date),
         }
 
     def get(self, request):
@@ -855,6 +978,7 @@ class DailyMiniExamView(APIView):
             OPENS_HOUR,
             QUESTION_COUNT,
             get_or_create_today_exam,
+            guest_login_required,
             is_exam_open,
         )
 
@@ -873,6 +997,15 @@ class DailyMiniExamView(APIView):
             )
 
         exam = get_or_create_today_exam(kpss_type)
+        if guest_login_required(user, exam.exam_date):
+            return Response(
+                {
+                    "detail": "Misafir yalnızca ilk gün denemeye katılabilir. Profil’den giriş yapın.",
+                    "code": "guest_login_required",
+                    "guestLoginRequired": True,
+                },
+                status=403,
+            )
         expected_ids = list(exam.question_ids)
         if len(expected_ids) < QUESTION_COUNT:
             return Response(

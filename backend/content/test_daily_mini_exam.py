@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -5,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from content.daily_mini_exam import (
+    guest_login_required,
     lcg_shuffle,
     pick_question_ids,
     split_frosted_email,
@@ -13,12 +16,16 @@ from content.models import AppUser, Question, Subject, Topic
 
 
 class DailyMiniExamLogicTests(TestCase):
-    def test_frosted_email_splits_first_five_chars(self):
+    def test_frosted_email_masks_after_three_chars(self):
         self.assertEqual(
             split_frosted_email("ahmet@gmail.com"),
-            ("ahmet", "@gmail.com"),
+            ("ahm", "•••@gmail.com"),
         )
-        self.assertEqual(split_frosted_email("ali@x.com")[0], "ali@x")
+        self.assertEqual(
+            split_frosted_email("ahmet.yilmaz@example.com"),
+            ("ahm", "•••@example.com"),
+        )
+        self.assertEqual(split_frosted_email("ali@x.com"), ("ali", "@x.com"))
         self.assertEqual(split_frosted_email("ab"), ("ab", ""))
 
     def test_lcg_shuffle_is_deterministic(self):
@@ -156,9 +163,46 @@ class DailyMiniExamApiTests(TestCase):
             self.assertEqual(second.status_code, 201)
             board = second.json()["leaderboard"]
             self.assertEqual(board[0]["userId"], str(self.user.pk))
-            self.assertEqual(board[0]["emailPrefix"], "ahmet")
+            self.assertEqual(board[0]["emailPrefix"], "ahm")
+            self.assertEqual(board[0]["displayName"], "Ahmet")
             self.assertEqual(board[1]["rank"], 2)
             self.assertEqual(second.json()["participantCount"], 2)
+
+    def test_equal_score_ranks_by_duration(self):
+        open_now = self._open_now()
+        with patch("content.daily_mini_exam.istanbul_now", return_value=open_now):
+            exam = self.client.get(
+                self.url(), {"kpss_type": "lisans"}, **self.auth()
+            ).json()
+            qids = exam["questionIds"]
+            answers = {qid: "A" for qid in qids[:18]}
+            for qid in qids[18:]:
+                answers[qid] = "B"
+            self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": answers,
+                    "duration_seconds": 900,
+                },
+                content_type="application/json",
+                **self.auth(),
+            )
+            self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": answers,
+                    "duration_seconds": 600,
+                },
+                content_type="application/json",
+                **self.auth(self.other),
+            )
+            board = self.client.get(
+                self.url(), {"kpss_type": "lisans"}, **self.auth(self.other)
+            ).json()["leaderboard"]
+        self.assertEqual(board[0]["userId"], str(self.other.pk))
+        self.assertEqual(board[1]["userId"], str(self.user.pk))
 
     def test_closed_window_rejects_submit(self):
         now = timezone.localtime().replace(
@@ -200,3 +244,61 @@ class DailyMiniExamApiTests(TestCase):
             )
         self.assertEqual(again.status_code, 200)
         self.assertEqual(again.json()["myAttempt"]["correct"], 20)
+
+    def test_first_day_guest_can_submit(self):
+        guest = AppUser.objects.create(
+            google_sub="guest-first-day",
+            email="guest-first@guest.hedefkamu.app",
+            display_name="Misafir",
+            api_token="guest-token-1",
+            is_anonymous=True,
+        )
+        open_now = self._open_now()
+        with patch("content.daily_mini_exam.istanbul_now", return_value=open_now):
+            exam = self.client.get(
+                self.url(), {"kpss_type": "lisans"}, **self.auth(guest)
+            ).json()
+            self.assertFalse(exam["guestLoginRequired"])
+            response = self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": {qid: "A" for qid in exam["questionIds"]},
+                    "duration_seconds": 120,
+                },
+                content_type="application/json",
+                **self.auth(guest),
+            )
+        self.assertEqual(response.status_code, 201)
+
+    def test_later_day_guest_must_sign_in(self):
+        guest = AppUser.objects.create(
+            google_sub="guest-later-day",
+            email="guest-later@guest.hedefkamu.app",
+            display_name="Misafir",
+            api_token="guest-token-2",
+            is_anonymous=True,
+        )
+        AppUser.objects.filter(pk=guest.pk).update(
+            created_at=timezone.now() - timedelta(days=2),
+        )
+        guest.refresh_from_db()
+        self.assertTrue(guest_login_required(guest, timezone.localdate()))
+        open_now = self._open_now()
+        with patch("content.daily_mini_exam.istanbul_now", return_value=open_now):
+            exam = self.client.get(
+                self.url(), {"kpss_type": "lisans"}, **self.auth(guest)
+            ).json()
+            self.assertTrue(exam["guestLoginRequired"])
+            response = self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": {qid: "A" for qid in exam["questionIds"]},
+                    "duration_seconds": 120,
+                },
+                content_type="application/json",
+                **self.auth(guest),
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "guest_login_required")

@@ -58,7 +58,12 @@ class SupportContactScreen extends StatelessWidget {
           ),
         ),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 36),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            4,
+            20,
+            28 + MediaQuery.paddingOf(context).bottom,
+          ),
           children: [
             const _HeroCard(),
             const SizedBox(height: 28),
@@ -81,11 +86,12 @@ class SupportContactScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const _InfoBlock(
-              icon: Icons.flag_outlined,
+              icon: Icons.report_rounded,
               title: 'Soru hata bildirimi',
               body:
                   'Sorulardaki hatalar için soru ekranında sağ üstten '
                   'hata bildirimi yapabilirsiniz.',
+              warning: true,
             ),
             const SizedBox(height: 32),
             _ContactButton(onTap: () => _contact(context)),
@@ -95,10 +101,10 @@ class SupportContactScreen extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: _gold.withValues(alpha: 0.28),
+                    color: _gold.withValues(alpha: 0.4),
                   ),
                 ),
                 child: Text(
@@ -106,7 +112,7 @@ class SupportContactScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     letterSpacing: 0.15,
-                    color: _gold.withValues(alpha: 0.92),
+                    color: _gold.withValues(alpha: 0.95),
                   ),
                 ),
               ),
@@ -183,24 +189,40 @@ class _HeroCard extends StatelessWidget {
 }
 
 class _InfoBlock extends StatelessWidget {
+  static const _warn = Color(0xFFFF8A4C);
+
   final IconData icon;
   final String title;
   final String body;
+  final bool warning;
 
   const _InfoBlock({
     required this.icon,
     required this.title,
     required this.body,
+    this.warning = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final neon = warning ? _warn : SupportContactScreen._gold;
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: SubjectNeonPalette.lightNeonModule(
-        neon: SupportContactScreen._neon,
-        radius: 16,
-      ),
+      decoration: warning
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF3A2218).withValues(alpha: 0.98),
+                  AppTheme.smokeDeep.withValues(alpha: 0.96),
+                ],
+              ),
+              border: Border.all(color: _warn.withValues(alpha: 0.72), width: 1.35),
+              boxShadow: SubjectNeonPalette.glow(_warn, blur: 18),
+            )
+          : SubjectNeonPalette.darkGlassCard(neon: neon, radius: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -209,30 +231,55 @@ class _InfoBlock extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: SupportContactScreen._neon.withValues(alpha: 0.14),
+              color: neon.withValues(alpha: warning ? 0.22 : 0.14),
               border: Border.all(
-                color: SupportContactScreen._neon.withValues(alpha: 0.28),
+                color: neon.withValues(alpha: warning ? 0.55 : 0.32),
               ),
             ),
-            child: Icon(
-              icon,
-              color: SupportContactScreen._neon,
-              size: 22,
-            ),
+            child: Icon(icon, color: neon, size: 22),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: warning ? _warn : Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (warning)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _warn.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: _warn.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: const Text(
+                          'UYARI',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                            color: _warn,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -240,7 +287,7 @@ class _InfoBlock extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     height: 1.55,
-                    color: Colors.white.withValues(alpha: 0.82),
+                    color: Colors.white.withValues(alpha: 0.86),
                   ),
                 ),
               ],

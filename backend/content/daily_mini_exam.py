@@ -40,6 +40,18 @@ def is_exam_open(now: datetime | None = None) -> bool:
     return opens_at <= current < closes_at
 
 
+def guest_login_required(user, exam_date: date | None = None) -> bool:
+    """Misafir yalnızca kayıt gününde katılır; sonraki günlerde giriş zorunlu."""
+    if user is None or not getattr(user, "is_anonymous", False):
+        return False
+    created = getattr(user, "created_at", None)
+    if created is None:
+        return False
+    created_day = timezone.localtime(created).date()
+    day = exam_date or exam_date_for()
+    return day > created_day
+
+
 def seconds_until_deadline(now: datetime | None = None) -> int:
     """Açıkken gece yarısına, kapalıyken 06:00'e kalan saniye."""
     current, opens_at, closes_at = window_bounds(now)
@@ -48,17 +60,18 @@ def seconds_until_deadline(now: datetime | None = None) -> int:
 
 
 def split_frosted_email(email: str) -> tuple[str, str]:
-    """E-postanın ilk 4-5 harfi buzlu gösterim için ayrılır."""
+    """@ öncesinde ilk 3 harfi gösterir; kalanını @ işaretine kadar gizler."""
     value = (email or "").strip()
     if not value:
         return "", ""
-    if len(value) >= 5:
-        n = 5
-    elif len(value) >= 4:
-        n = 4
-    else:
-        n = len(value)
-    return value[:n], value[n:]
+    if "@" not in value:
+        prefix = value[:3]
+        masked = "•" * max(0, len(value) - len(prefix))
+        return prefix, masked
+    local, domain = value.split("@", 1)
+    if len(local) <= 3:
+        return local, f"@{domain}"
+    return local[:3], f"•••@{domain}"
 
 
 def _uint32_seed(exam_date: date, kpss_type: str) -> int:
@@ -149,10 +162,12 @@ def leaderboard_rows(exam_date: date, kpss_type: str, *, limit: int = 20) -> lis
     rows = []
     for index, attempt in enumerate(attempts, start=1):
         prefix, rest = split_frosted_email(attempt.user.email)
+        display = (attempt.user.display_name or "").strip()
         rows.append(
             {
                 "rank": index,
                 "userId": str(attempt.user_id),
+                "displayName": display,
                 "emailPrefix": prefix,
                 "emailRest": rest,
                 "correct": attempt.correct,

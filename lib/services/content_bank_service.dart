@@ -510,6 +510,10 @@ class ContentBankService extends ChangeNotifier {
   /// Tasarruf hesabı ve istatistikler için salt okunur deneme listesi.
   List<TestAttemptModel> get allAttempts => List.unmodifiable(_attempts);
 
+  /// Tamamlanan konu testi sayısı (günün mini denemesi hariç).
+  int get completedTopicTestCount =>
+      _attempts.where(countsTowardDailyHomework).length;
+
   /// Günün Mini Denemesi ödev barını ve günlük test hakkını tüketmez.
   @visibleForTesting
   static bool countsTowardDailyHomework(TestAttemptModel attempt) {

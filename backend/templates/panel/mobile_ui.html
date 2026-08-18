@@ -1,0 +1,32 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Ana sayfadaki kenar promosyon balonunu buradan açıp kapatabilirsiniz.</p>
+
+<form class="form" method="post" style="max-width:720px;">
+  {% csrf_token %}
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Yanlış defteri balonu</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Ana sayfa sağ kenarında premium tarzı baloncuk gösterilir; tıklanınca yanlış defterine gider.
+      Kullanıcı balonu kapatabilir; ayar tekrar kaydedildiğinde balon yeniden görünür.
+    </p>
+    <label class="check">
+      <input type="checkbox" name="wrong_notebook_bubble_enabled"
+        {% if config.wrong_notebook_bubble_enabled %}checked{% endif %}>
+      Balonu göster (aktif)
+    </label>
+    <label>Balon metni
+      <input type="text" name="wrong_notebook_bubble_label" maxlength="48" required
+        value="{{ config.wrong_notebook_bubble_label|default:'YANLIŞLARINI GÖR' }}"
+        placeholder="YANLIŞLARINI GÖR">
+    </label>
+  </fieldset>
+  <p class="media-hint">Son güncelleme: {{ config.updated_at|date:"d.m.Y H:i" }}</p>
+  <button class="btn btn-primary" type="submit">Kaydet</button>
+</form>
+{% endblock %}

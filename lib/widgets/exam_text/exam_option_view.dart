@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/exam_typography.dart';
 import '../formatted_text.dart';
 
-/// Şık metni — 14pt, wrap.
+/// Şık metni — 15pt, wrap.
 class ExamOptionView extends StatelessWidget {
   final String text;
 

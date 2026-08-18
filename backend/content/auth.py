@@ -247,13 +247,28 @@ def upsert_app_user(claims: dict[str, Any]) -> AppUser:
 
 
 def user_to_dict(user: AppUser) -> dict[str, Any]:
+    from datetime import timedelta
+
+    from django.utils import timezone
+
     email = user.email or ""
     if user.is_anonymous or is_guest_email(email):
         email = ""
+    name_change_available_at = None
+    changed_at = getattr(user, "display_name_changed_at", None)
+    if changed_at is not None:
+        name_change_available_at = changed_at + timedelta(days=7)
+        if name_change_available_at <= timezone.now():
+            name_change_available_at = None
     return {
         "id": str(user.pk),
         "isim": user.display_name or "Misafir",
         "eposta": email,
+        "isimDegistirilebilirAt": (
+            name_change_available_at.isoformat()
+            if name_change_available_at
+            else None
+        ),
         "isPremium": user.premium_active,
         "isAnonymous": user.is_anonymous,
         "premiumBitisTarihi": (
@@ -291,6 +306,7 @@ def get_user_from_request(request) -> AppUser | None:
             "google_sub",
             "email",
             "display_name",
+            "display_name_changed_at",
             "photo_url",
             "is_anonymous",
             "is_premium",

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/exam_typography.dart';
 import '../formatted_text.dart';
 
-/// Çözüm metni — 12pt, wrap (yatay kesilme yok).
+/// Çözüm metni — 15pt, wrap (yatay kesilme yok).
 class ExamSolutionView extends StatelessWidget {
   final String text;
 
@@ -18,8 +18,8 @@ class ExamSolutionView extends StatelessWidget {
       examWrap: true,
       examScaleDown: false,
       style: ExamTypography.solution(
-        color: Colors.white.withValues(alpha: 0.9),
-        fontSize: 12,
+        color: Colors.white.withValues(alpha: 0.92),
+        fontSize: 15,
       ),
     );
   }

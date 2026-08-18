@@ -102,6 +102,18 @@ class DailyMiniExamResultScreen extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.5),
             ),
           ),
+          if (attempt.durationSeconds > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Süre: ${formatExamDuration(attempt.durationSeconds)}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.champagne.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
           if (rankLine != null) ...[
             const SizedBox(height: 8),
             Container(
@@ -184,22 +196,54 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                         ),
                       ),
                       Expanded(
-                        child: FrostedEmail(
-                          prefix: row.emailPrefix,
-                          rest: row.emailRest,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.9),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (row.displayName.isNotEmpty)
+                              Text(
+                                row.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            FrostedEmail(
+                              prefix: row.emailPrefix,
+                              rest: row.emailRest,
+                              style: TextStyle(
+                                fontSize: row.displayName.isNotEmpty ? 11 : 13,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white.withValues(
+                                  alpha: row.displayName.isNotEmpty ? 0.55 : 0.9,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        '${row.correct}/${DailyMiniExamConstants.questionCount}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${row.correct}/${DailyMiniExamConstants.questionCount}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          if (row.durationSeconds > 0)
+                            Text(
+                              formatExamDuration(row.durationSeconds),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
