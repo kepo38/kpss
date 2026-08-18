@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import types
 import uuid
 
@@ -26,6 +27,7 @@ from .models import (
     ERROR_REPORT_STATUS_CHOICES,
     ExamType,
     MapTemplate,
+    OcrIngestLog,
     Question,
     QuestionErrorReport,
     QuestionScenario,
@@ -36,7 +38,7 @@ from .models import (
 )
 from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
-from .ocr import ocr_question_image, strip_option_emphasis, _needs_gemini_fallback
+from .ocr import ocr_question_image, strip_option_emphasis
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
 from .svg_sanitize import extract_svg, is_safe_svg
 from .push import firebase_ready, send_announcement_push
@@ -60,6 +62,79 @@ staff_required = user_passes_test(lambda u: u.is_active and u.is_staff)
 
 def _pid(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
+
+
+def _detect_formula_missing(stem: str, options: dict[str, str], raw_text: str) -> bool:
+    text = f"{stem}\n" + "\n".join((options or {}).values())
+    raw = raw_text or ""
+    raw_has_math = bool(
+        re.search(r"[=^√]|\\frac|\\sqrt|\d+\s*/\s*\d+|\d+\s*-\s*\d+\s*/\s*\d+", raw)
+    )
+    has_latex = "$" in text or r"\frac" in text or r"\sqrt" in text
+    return raw_has_math and not has_latex
+
+
+def _detect_char_drift(stem: str, options: dict[str, str], raw_text: str) -> bool:
+    text = f"{stem}\n{raw_text}\n" + "\n".join((options or {}).values())
+    if "�" in text:
+        return True
+    # OCR kaynaklı bozulma sinyalleri: çoklu ? ve anlamsız symbol zincirleri.
+    return bool(re.search(r"\?{2,}|[<>]{2,}|[|/\\-]{4,}", text))
+
+
+def _log_ocr_ingest(
+    request: HttpRequest,
+    *,
+    topic: Topic | None = None,
+    image_path: str = "",
+    source_image_hash: str = "",
+    source_image_phash: str = "",
+    result=None,
+    duplicate_question: Question | None = None,
+    duplicate_match: str = "",
+    error_message: str = "",
+    status: str | None = None,
+    raw_response: str = "",
+) -> None:
+    try:
+        stem = (getattr(result, "stem", "") or "") if result is not None else ""
+        options = (getattr(result, "options", {}) or {}) if result is not None else {}
+        raw_text = (getattr(result, "raw_text", "") or "") if result is not None else ""
+        ok = bool(getattr(result, "ok", False)) if result is not None else False
+        engine = (getattr(result, "engine", "") or "") if result is not None else ""
+        used_model = ""
+        if engine.startswith("gemini:"):
+            used_model = engine.split(":", 1)[1]
+            engine = "gemini"
+        elif engine:
+            used_model = engine
+        computed_status = status or (
+            OcrIngestLog.STATUS_SUCCESS if ok else OcrIngestLog.STATUS_FAILED
+        )
+        err = error_message or (getattr(result, "error", "") or "")
+        OcrIngestLog.objects.create(
+            image_path=image_path or "",
+            source_image_hash=source_image_hash or "",
+            source_image_phash=source_image_phash or "",
+            engine=engine,
+            used_model=used_model,
+            status=computed_status,
+            topic=topic,
+            duplicate_question=duplicate_question,
+            duplicate_match=duplicate_match or "",
+            initiated_by=request.user if request.user.is_authenticated else None,
+            ok=ok,
+            error_message=err,
+            raw_response=raw_response or raw_text,
+            stem=stem,
+            options=options if isinstance(options, dict) else {},
+            raw_text=raw_text,
+            issue_formula_missing=_detect_formula_missing(stem, options, raw_text),
+            issue_char_drift=_detect_char_drift(stem, options, raw_text),
+        )
+    except Exception:
+        # OCR logu ana akışı bozmamalı.
+        return
 
 
 def _store_ocr_draft(
@@ -655,6 +730,8 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
         else:
             topic = get_object_or_404(Topic, pk=topic_id, is_active=True)
             try:
+                gemini_attempted = False
+                gemini_failed = False
                 img_hash = image_fingerprint(image)
                 if hasattr(image, "seek"):
                     image.seek(0)
@@ -662,16 +739,27 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                 if hasattr(image, "seek"):
                     image.seek(0)
                 if gemini_configured():
+                    gemini_attempted = True
                     img_bytes = image.read()
                     mime = getattr(image, "content_type", "image/png") or "image/png"
                     ocr = ocr_question_image_gemini(img_bytes, mime)
                     if not ocr.ok:
+                        gemini_failed = True
                         if hasattr(image, "seek"):
                             image.seek(0)
                         ocr = ocr_question_image(image)
                 else:
                     ocr = ocr_question_image(image)
             except Exception:  # noqa: BLE001
+                _log_ocr_ingest(
+                    request,
+                    topic=topic,
+                    image_path=getattr(image, "name", "") or "",
+                    source_image_hash=img_hash if "img_hash" in locals() else "",
+                    source_image_phash=img_phash if "img_phash" in locals() else "",
+                    error_message="OCR sırasında beklenmeyen hata",
+                    status=OcrIngestLog.STATUS_FAILED,
+                )
                 messages.error(
                     request,
                     "OCR sırasında beklenmeyen bir hata oluştu. "
@@ -686,6 +774,15 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                     (ocr.stem or "").strip() or (ocr.raw_text or "").strip()
                 )
                 if hard_fail:
+                    _log_ocr_ingest(
+                        request,
+                        topic=topic,
+                        image_path=getattr(image, "name", "") or "",
+                        source_image_hash=img_hash,
+                        source_image_phash=img_phash,
+                        result=ocr,
+                        status=OcrIngestLog.STATUS_FAILED,
+                    )
                     messages.error(
                         request,
                         ocr.error
@@ -740,6 +837,21 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                         image_phash_hex=img_phash,
                         require_options=bool(
                             option_a and option_b and option_c
+                        ),
+                    )
+                    _log_ocr_ingest(
+                        request,
+                        topic=topic,
+                        image_path=getattr(image, "name", "") or "",
+                        source_image_hash=img_hash,
+                        source_image_phash=img_phash,
+                        result=ocr,
+                        duplicate_question=dup,
+                        duplicate_match=match,
+                        status=(
+                            OcrIngestLog.STATUS_FALLBACK_SUCCESS
+                            if gemini_attempted and gemini_failed and ocr.ok
+                            else OcrIngestLog.STATUS_SUCCESS
                         ),
                     )
                     if dup and not force_duplicate:
@@ -857,8 +969,12 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
 
     exclude_raw = request.POST.get("exclude_question_id") or ""
     exclude_pk = int(exclude_raw) if exclude_raw.isdigit() else None
+    topic_raw = request.POST.get("topic_id") or ""
+    topic = Topic.objects.filter(pk=topic_raw, is_active=True).first() if topic_raw else None
 
     try:
+        gemini_attempted = False
+        gemini_failed = False
         img_hash = image_fingerprint(image)
         if hasattr(image, "seek"):
             image.seek(0)
@@ -866,16 +982,27 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         if hasattr(image, "seek"):
             image.seek(0)
         if gemini_configured():
+            gemini_attempted = True
             img_bytes = image.read()
             mime = getattr(image, "content_type", "image/png") or "image/png"
             result = ocr_question_image_gemini(img_bytes, mime)
             if not result.ok:
+                gemini_failed = True
                 if hasattr(image, "seek"):
                     image.seek(0)
                 result = ocr_question_image(image)
         else:
             result = ocr_question_image(image)
     except Exception:  # noqa: BLE001
+        _log_ocr_ingest(
+            request,
+            topic=topic,
+            image_path=getattr(image, "name", "") or "",
+            source_image_hash=img_hash if "img_hash" in locals() else "",
+            source_image_phash=img_phash if "img_phash" in locals() else "",
+            error_message="OCR sırasında beklenmeyen hata",
+            status=OcrIngestLog.STATUS_FAILED,
+        )
         messages.error(
             request,
             "OCR sırasında beklenmeyen bir hata oluştu. "
@@ -896,6 +1023,15 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
     )
     if hard_fail:
         err = result.error or "Görselden metin okunamadı."
+        _log_ocr_ingest(
+            request,
+            topic=topic,
+            image_path=getattr(image, "name", "") or "",
+            source_image_hash=img_hash,
+            source_image_phash=img_phash,
+            result=result,
+            status=OcrIngestLog.STATUS_FAILED,
+        )
         messages.error(request, err)
         return JsonResponse(
             {
@@ -931,6 +1067,21 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             (opts.get("A") or "").strip()
             and (opts.get("B") or "").strip()
             and (opts.get("C") or "").strip()
+        ),
+    )
+    _log_ocr_ingest(
+        request,
+        topic=topic,
+        image_path=getattr(image, "name", "") or "",
+        source_image_hash=img_hash,
+        source_image_phash=img_phash,
+        result=result,
+        duplicate_question=dup,
+        duplicate_match=match,
+        status=(
+            OcrIngestLog.STATUS_FALLBACK_SUCCESS
+            if gemini_attempted and gemini_failed and result.ok
+            else OcrIngestLog.STATUS_SUCCESS
         ),
     )
     payload = {

@@ -318,6 +318,93 @@ def _payload_solution(data: dict[str, Any]) -> str:
     return ""
 
 
+# JSON \f \b \t \n \r kaçışları LaTeX komutlarından ters eğik çizgiyi yer.
+_LATEX_JSON_CMDS = (
+    "frac",
+    "dfrac",
+    "tfrac",
+    "sqrt",
+    "cdot",
+    "times",
+    "circ",
+    "left",
+    "right",
+    "text",
+    "beta",
+    "alpha",
+    "gamma",
+    "theta",
+    "leq",
+    "geq",
+    "neq",
+    "begin",
+    "end",
+    "rho",
+    "nu",
+    "nabla",
+    "tau",
+    "tan",
+    "tilde",
+    "pm",
+    "mp",
+    "infty",
+    "sum",
+    "int",
+    "log",
+    "sin",
+    "cos",
+    "overline",
+    "underline",
+)
+_LATEX_JSON_CMD_PATTERN = "|".join(_LATEX_JSON_CMDS)
+_LATEX_JSON_CONTROL_REPAIRS: tuple[tuple[str, str], ...] = (
+    ("\x0crac", "\\frac"),
+    ("\x08eta", "\\beta"),
+    ("\x08egin", "\\begin"),
+    ("\x09ext{", "\\text{"),
+    ("\x09ext ", "\\text "),
+    ("\x09imes", "\\times"),
+    ("\x09heta", "\\theta"),
+    ("\x09au", "\\tau"),
+    ("\x09an", "\\tan"),
+    ("\x09ilde", "\\tilde"),
+    ("\x0dight", "\\right"),
+    ("\x0dho", "\\rho"),
+    ("\x0aeq", "\\neq"),
+    ("\x0anu", "\\nu"),
+    ("\x0aabla", "\\nabla"),
+)
+
+
+def repair_json_latex_escapes(text: str) -> str:
+    """Gemini JSON'unda \\frac → form-feed+rac gibi bozulmaları düzelt."""
+    if not text:
+        return text
+    for bad, good in _LATEX_JSON_CONTROL_REPAIRS:
+        text = text.replace(bad, good)
+    text = re.sub(r"\$rac\{", r"$\\frac{", text)
+    text = re.sub(r"\$sqrt\{", r"$\\sqrt{", text)
+    return text
+
+
+def _double_latex_escapes_before_json(raw: str) -> str:
+    """json.loads öncesi tek \\ ile yazılmış LaTeX komutlarını çiftle."""
+    if not raw:
+        return raw
+    pat = re.compile(rf"(?<!\\)\\({_LATEX_JSON_CMD_PATTERN})\b")
+    return pat.sub(lambda m: "\\\\" + m.group(1), raw)
+
+
+def _repair_payload_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return repair_json_latex_escapes(value)
+    if isinstance(value, dict):
+        return {k: _repair_payload_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_repair_payload_strings(v) for v in value]
+    return value
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     text = (text or "").strip()
     if not text:
@@ -331,9 +418,12 @@ def _extract_json(text: str) -> dict[str, Any]:
         end = text.rfind("}")
         if start >= 0 and end > start:
             text = text[start : end + 1]
+    text = _double_latex_escapes_before_json(text)
     try:
         data = json.loads(text)
-        return data if isinstance(data, dict) else {}
+        if isinstance(data, dict):
+            return _repair_payload_strings(data)
+        return {}
     except json.JSONDecodeError:
         return {}
 

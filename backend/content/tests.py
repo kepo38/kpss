@@ -582,6 +582,51 @@ class QuestionFingerprintTests(TestCase):
         self.assertEqual(dup2.id, q.id)
         self.assertEqual(match2, "content")
 
+    def test_phash_alone_does_not_block_different_content(self):
+        from content.question_fingerprint import find_duplicate_question
+
+        q = Question.objects.create(
+            topic=self.topic,
+            public_id="q_fp_phash",
+            stem="Kök içeren farklı soru metni burada uzun.",
+            option_a="1",
+            option_b="2",
+            option_c="3",
+            option_d="4",
+            option_e="5",
+            source_image_phash="0000000000000000",
+            content_hash="content_a",
+            stem_hash="stem_a",
+        )
+        dup, match = find_duplicate_question(
+            image_phash_hex="000000000000000f",  # 4 bit fark
+            content_hash="content_b",
+            stem_hash="stem_b",
+        )
+        self.assertIsNone(dup)
+        self.assertEqual(match, "")
+
+    def test_phash_strict_blocks_near_identical_image(self):
+        from content.question_fingerprint import find_duplicate_question
+
+        Question.objects.create(
+            topic=self.topic,
+            public_id="q_fp_phash2",
+            stem="Aynı görsel tekrar.",
+            option_a="1",
+            option_b="2",
+            option_c="3",
+            option_d="4",
+            option_e="5",
+            source_image_phash="ffffffffffffffff",
+        )
+        dup, match = find_duplicate_question(
+            image_phash_hex="fffffffffffffffe",  # 1 bit fark
+            content_hash="totally_different",
+        )
+        self.assertIsNone(dup)
+        self.assertEqual(match, "")
+
     def test_normalized_punctuation_match(self):
         from content.question_fingerprint import content_fingerprint
 

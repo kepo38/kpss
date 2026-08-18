@@ -396,7 +396,7 @@ class ContentBankService extends ChangeNotifier {
       topicQuestionProgress(type, topicId).total;
 
   int catalogQuestionCountForSubject(KpssType type, String subjectId) =>
-      catalogQuestionIdsForSubject(type, subjectId).length;
+      subjectQuestionProgress(type, subjectId).total;
 
   QuestionModel? questionById(String id) {
     for (final q in _questions) {
@@ -767,6 +767,17 @@ class ContentBankService extends ChangeNotifier {
     for (final t in testsForTopic(type, topicId)) {
       ids.addAll(t.questionIds);
     }
+    final total = ids.length;
+    final solved = ids.where(_solvedQuestionIds.contains).length;
+    return (total: total, solved: solved, unsolved: total - solved);
+  }
+
+  /// Dersteki yayınlanmış testlerdeki toplam / çözülen / çözülmeyen soru.
+  ({int total, int solved, int unsolved}) subjectQuestionProgress(
+    KpssType type,
+    String subjectId,
+  ) {
+    final ids = catalogQuestionIdsForSubject(type, subjectId);
     final total = ids.length;
     final solved = ids.where(_solvedQuestionIds.contains).length;
     return (total: total, solved: solved, unsolved: total - solved);

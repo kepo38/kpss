@@ -1245,7 +1245,7 @@ class _QuizScreenState extends State<QuizScreen>
                               imageUrl: _currentQuestion.imageUrl,
                               sekilKodu: _currentQuestion.sekilKodu,
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w500,
                                 height: 1.5,
                                 color: Colors.white,

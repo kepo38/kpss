@@ -3,13 +3,30 @@
  */
 (function (global) {
   function normalizeLatex(text) {
-    return String(text || "")
+    var src = repairLatexEscapes(String(text || ""));
+    return src
       .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
         return "$$" + body.trim() + "$$";
       })
       .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
         return "$" + body.trim() + "$";
       });
+  }
+
+  /** JSON/OCR: \\frac → form-feed+rac; önizlemede geri yamala. */
+  function repairLatexEscapes(text) {
+    return String(text || "")
+      .replace(/\x0crac/g, "\\frac")
+      .replace(/\x08eta/g, "\\beta")
+      .replace(/\x08egin/g, "\\begin")
+      .replace(/\x09ext\{/g, "\\text{")
+      .replace(/\x09imes/g, "\\times")
+      .replace(/\x09heta/g, "\\theta")
+      .replace(/\x09an/g, "\\tan")
+      .replace(/\x0dight/g, "\\right")
+      .replace(/\x0aeq/g, "\\neq")
+      .replace(/\$rac\{/g, "$\\frac{")
+      .replace(/\$sqrt\{/g, "$\\sqrt{");
   }
 
   function hasLatex(text) {

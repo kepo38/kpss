@@ -8,9 +8,12 @@ import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
 import '../services/question_fetch_service.dart';
+import '../services/play_billing_service.dart';
+import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/study_empty_cta.dart';
 import 'quiz_screen.dart';
@@ -27,6 +30,7 @@ class WrongQuestionsScreen extends StatefulWidget {
 class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   String? _subjectFilter;
   bool _hydrating = false;
+  String? _similarLoadingId;
 
   @override
   void initState() {
@@ -101,6 +105,11 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     BuildContext context,
     QuestionModel question,
   ) async {
+    if (!PremiumService.instance.isPremium) {
+      await ProUpsellSheet.show(context);
+      return;
+    }
+    if (_similarLoadingId != null) return;
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -210,18 +219,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
     final navigator = Navigator.of(this.context);
     final messenger = ScaffoldMessenger.of(this.context);
-    showDialog<void>(
-      context: this.context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.champagne),
-      ),
-    );
-    final similar = await QuestionFetchService.instance.fetchSimilar(
-      question.id,
-    );
+    setState(() => _similarLoadingId = question.id);
+    List<QuestionModel> similar = const [];
+    try {
+      similar = await QuestionFetchService.instance.fetchSimilar(
+        question.id,
+      );
+    } finally {
+      if (mounted) setState(() => _similarLoadingId = null);
+    }
     if (!mounted) return;
-    navigator.pop();
     if (similar.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Benzer soru bulunamadı.')),
@@ -290,6 +297,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
       listenable: Listenable.merge([
         ContentBankService.instance,
         FavoritesService.instance,
+        PlayBillingService.instance.premiumNotifier,
       ]),
       builder: (context, _) {
         final bank = ContentBankService.instance;
@@ -475,6 +483,11 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                         isFavorite: favs.isFavorite(
                                           entry.value[i].id,
                                         ),
+                                        similarLoading:
+                                            _similarLoadingId ==
+                                                entry.value[i].id,
+                                        showProBadge:
+                                            !PremiumService.instance.isPremium,
                                         onToggleFavorite: () =>
                                             _toggleFavorite(entry.value[i].id),
                                         onSimilar: () => _openSimilar(
@@ -504,6 +517,8 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 class _WrongQuestionTile extends StatelessWidget {
   final QuestionModel question;
   final bool isFavorite;
+  final bool similarLoading;
+  final bool showProBadge;
   final VoidCallback onToggleFavorite;
   final VoidCallback onSimilar;
   final VoidCallback onTap;
@@ -511,6 +526,8 @@ class _WrongQuestionTile extends StatelessWidget {
   const _WrongQuestionTile({
     required this.question,
     required this.isFavorite,
+    required this.similarLoading,
+    required this.showProBadge,
     required this.onToggleFavorite,
     required this.onSimilar,
     required this.onTap,
@@ -575,7 +592,19 @@ class _WrongQuestionTile extends StatelessWidget {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _SimilarInfoChip(onTap: onSimilar),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _SimilarInfoChip(
+                    loading: similarLoading,
+                    onTap: similarLoading ? null : onSimilar,
+                  ),
+                  if (showProBadge) ...[
+                    const SizedBox(width: 4),
+                    ProCrownBadge(onTap: onSimilar),
+                  ],
+                ],
+              ),
               const SizedBox(height: 4),
               GestureDetector(
                 onTap: onToggleFavorite,
@@ -597,43 +626,58 @@ class _WrongQuestionTile extends StatelessWidget {
 
 /// Yanlış satırından ayrı; yanlış çözümü açmaz, bilgilendirici BENZER kutusu.
 class _SimilarInfoChip extends StatelessWidget {
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool loading;
 
-  const _SimilarInfoChip({required this.onTap});
+  const _SimilarInfoChip({required this.onTap, this.loading = false});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: const Color(0xFF1A2740),
-          border: Border.all(
-            color: AppTheme.champagne.withValues(alpha: 0.35),
-            width: 0.5,
+      onTap: loading ? null : onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: loading ? 0.85 : 1,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: const Color(0xFF1A2740),
+            border: Border.all(
+              color: AppTheme.champagne.withValues(alpha: 0.35),
+              width: 0.5,
+            ),
           ),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 11,
-              color: AppTheme.champagneLight,
-            ),
-            SizedBox(width: 4),
-            Text(
-              'BENZER',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                color: AppTheme.champagneLight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (loading)
+                const SizedBox(
+                  width: 11,
+                  height: 11,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppTheme.champagneLight,
+                  ),
+                )
+              else
+                const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 11,
+                  color: AppTheme.champagneLight,
+                ),
+              const SizedBox(width: 4),
+              const Text(
+                'BENZER',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: AppTheme.champagneLight,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

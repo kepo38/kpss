@@ -216,4 +216,12 @@ void main() {
     expect(boldSpan, isNotNull);
     expect(boldSpan!.text, 'kalın');
   });
+
+  test('frac in dollar signs is treated as display math', () {
+    expect(
+      FormattedText.usesDisplayMath(r'\frac{5^{-1}}{3}'),
+      isTrue,
+    );
+    expect(FormattedText.usesDisplayMath('x+1'), isFalse);
+  });
 }

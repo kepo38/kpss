@@ -40,6 +40,7 @@ SolutionPreviewParts splitSolutionPreview(
   if (preview.length > charCap) {
     preview = _truncateAtWord(preview, charCap);
   }
+  preview = _cutOutsideMath(normalized, preview);
 
   if (preview.length >= normalized.length) {
     if (normalized.length <= 120) {
@@ -78,10 +79,25 @@ SolutionPreviewParts splitSolutionPreview(
 List<String> _splitSentences(String text) {
   final result = <String>[];
   final buffer = StringBuffer();
+  var inInlineMath = false;
+  var inDisplayMath = false;
 
   for (var i = 0; i < text.length; i++) {
     final ch = text[i];
+    final nextCh = i + 1 < text.length ? text[i + 1] : '';
+    if (ch == r'$') {
+      if (nextCh == r'$') {
+        inDisplayMath = !inDisplayMath;
+        buffer.write(r'$$');
+        i++;
+        continue;
+      }
+      inInlineMath = !inInlineMath;
+      buffer.write(ch);
+      continue;
+    }
     buffer.write(ch);
+    if (inInlineMath || inDisplayMath) continue;
     if (ch == '.' || ch == '!' || ch == '?' || ch == '…') {
       final next = i + 1 < text.length ? text[i + 1] : ' ';
       if (next == ' ' || next == '\n' || i + 1 == text.length) {
@@ -101,8 +117,66 @@ String _truncateAtWord(String text, int maxChars) {
   if (text.length <= maxChars) return text;
   final slice = text.substring(0, maxChars);
   final lastSpace = slice.lastIndexOf(' ');
-  if (lastSpace > maxChars ~/ 2) {
-    return '${slice.substring(0, lastSpace).trim()}…';
+  final cut = lastSpace > maxChars ~/ 2
+      ? slice.substring(0, lastSpace).trim()
+      : slice.trim();
+  return _cutOutsideMath(text, cut);
+}
+
+/// Önizlemeyi `$...$` / `$$...$$` ortasında kesmez; yarım LaTeX basılmaz.
+String _cutOutsideMath(String source, String candidate) {
+  if (candidate.isEmpty || source.isEmpty) return candidate;
+  var end = 0;
+  final limit = math.min(candidate.length, source.length);
+  while (end < limit && source.codeUnitAt(end) == candidate.codeUnitAt(end)) {
+    end++;
   }
-  return '${slice.trim()}…';
+  if (end == 0) return candidate;
+  final span = _mathSpanContaining(source, end);
+  if (span == null) {
+    return source.substring(0, end).trimRight();
+  }
+  final (start, close) = span;
+  final consumed = end - start;
+  final spanLen = close - start;
+  if (consumed * 2 >= spanLen) {
+    return source.substring(0, close).trim();
+  }
+  final trimmed = source.substring(0, start).trimRight();
+  if (trimmed.isEmpty) {
+    return source.substring(0, close).trim();
+  }
+  return trimmed;
+}
+
+(int, int)? _mathSpanContaining(String text, int index) {
+  var i = 0;
+  while (i < text.length) {
+    if (text.startsWith(r'$$', i)) {
+      final close = text.indexOf(r'$$', i + 2);
+      if (close < 0) {
+        if (index > i) return (i, text.length);
+        i += 2;
+        continue;
+      }
+      final end = close + 2;
+      if (index > i && index < end) return (i, end);
+      i = end;
+      continue;
+    }
+    if (text[i] == r'$') {
+      final close = text.indexOf(r'$', i + 1);
+      if (close < 0) {
+        if (index > i) return (i, text.length);
+        i++;
+        continue;
+      }
+      final end = close + 1;
+      if (index > i && index < end) return (i, end);
+      i = end;
+      continue;
+    }
+    i++;
+  }
+  return null;
 }

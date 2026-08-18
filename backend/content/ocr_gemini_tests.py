@@ -8,10 +8,30 @@ from content.ocr import (
     _needs_gemini_fallback,
     _ocr_result_score,
 )
-from content.ocr_gemini import _extract_json, gemini_configured
+from content.ocr_gemini import _extract_json, gemini_configured, repair_json_latex_escapes
 
 
 class GeminiJsonExtractTests(SimpleTestCase):
+    def test_json_frac_single_backslash_repaired(self):
+        # Gemini tek \ döndürürse JSON \f → form feed yutar
+        raw = '{"soru_metni": "$\\frac{(0,4)^2 + (0,1)^3}{(0,5)^2 - 0,02}$ işleminin sonucu kaçtır?"}'
+        data = _extract_json(raw)
+        self.assertIn("\\frac", data["soru_metni"])
+        self.assertNotIn("$rac{", data["soru_metni"])
+        self.assertNotIn("\x0c", data["soru_metni"])
+
+    def test_json_sqrt_and_beta_repaired(self):
+        raw = r'{"stem": "$\sqrt{x} + \beta$"}'
+        data = _extract_json(raw)
+        self.assertIn("\\sqrt", data["stem"])
+        self.assertIn("\\beta", data["stem"])
+
+    def test_repair_visible_rac_corruption(self):
+        broken = "$rac{(0,4)^2}{(0,5)^2}$"
+        fixed = repair_json_latex_escapes(broken)
+        self.assertIn("\\frac", fixed)
+        self.assertNotIn("$rac{", fixed)
+
     def test_fence_json(self):
         raw = '```json\n{"stem": "test", "options": {"A": "1"}}\n```'
         data = _extract_json(raw)

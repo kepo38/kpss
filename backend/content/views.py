@@ -171,10 +171,11 @@ class SimilarQuestionsView(APIView):
             topic__is_active=True,
         )
         try:
-            limit = int(request.query_params.get("limit") or 5)
+            threshold = float(request.query_params.get("threshold") or 0.75)
         except (TypeError, ValueError):
-            limit = 5
-        scored = similar_questions(question, limit=limit)
+            threshold = 0.75
+        threshold = max(0.0, min(threshold, 1.0))
+        scored = similar_questions(question, limit=5, threshold=threshold)
         payload = []
         for score, candidate in scored:
             item = QuestionSerializer(

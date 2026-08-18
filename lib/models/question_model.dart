@@ -45,19 +45,44 @@ class QuestionModel {
     this.scenarioOrder = 0,
   });
 
+  static String _normalizeLatexDelimiters(String input) {
+    var text = input.trim();
+    if (text.isEmpty) return text;
+    // \(...\), \[...\] -> $...$, $$...$$
+    text = text.replaceAllMapped(
+      RegExp(r'\\\(([\s\S]+?)\\\)'),
+      (m) => '\$${m.group(1)!.trim()}\$',
+    );
+    text = text.replaceAllMapped(
+      RegExp(r'\\\[([\s\S]+?)\\\]'),
+      (m) => '\$\$${m.group(1)!.trim()}\$\$',
+    );
+    // Gemini bazen kısa ifadeleri $$...$$ döndürebiliyor; satır-içiye indir.
+    text = text.replaceAllMapped(
+      RegExp(r'\$\$([^\n$]+?)\$\$'),
+      (m) => '\$${m.group(1)!.trim()}\$',
+    );
+    return text;
+  }
+
   factory QuestionModel.fromJson(Map<String, dynamic> json) {
     final rawSvg = (json['sekilKodu'] as String?)?.trim();
+    final rawStem = (json['soruMetni'] as String? ?? '');
+    final rawOptions = Map<String, String>.from(json['siklar'] as Map);
+    final normalizedOptions = {
+      for (final e in rawOptions.entries) e.key: _normalizeLatexDelimiters(e.value),
+    };
     return QuestionModel(
       id: json['id'] as String,
       dersAdi: json['dersAdi'] as String,
       konuAdi: json['konuAdi'] as String,
       altKonuAdi: json['altKonuAdi'] as String,
-      soruMetni: json['soruMetni'] as String,
+      soruMetni: _normalizeLatexDelimiters(rawStem),
       imageUrl: json['imageUrl'] as String?,
       sekilKodu: (rawSvg == null || rawSvg.isEmpty) ? null : rawSvg,
-      siklar: Map<String, String>.from(json['siklar'] as Map),
+      siklar: normalizedOptions,
       dogruCevap: json['dogruCevap'] as String,
-      cozumMetni: json['cozumMetni'] as String,
+      cozumMetni: _normalizeLatexDelimiters(json['cozumMetni'] as String),
       hataBildirimSayisi: json['hataBildirimSayisi'] as int? ?? 0,
       guncellenmeTarihi: DateTime.parse(json['guncellenmeTarihi'] as String),
       osymSordu: json['osymSordu'] as bool? ?? false,
@@ -67,7 +92,9 @@ class QuestionModel {
       difficultyVisible: json['difficultyVisible'] as bool? ?? false,
       scenarioId: json['scenarioId'] as String?,
       scenarioTitle: json['scenarioTitle'] as String?,
-      scenarioStem: json['scenarioStem'] as String?,
+      scenarioStem: (json['scenarioStem'] as String?) == null
+          ? null
+          : _normalizeLatexDelimiters(json['scenarioStem'] as String),
       scenarioOrder: (json['scenarioOrder'] as num?)?.toInt() ?? 0,
     );
   }

@@ -21,6 +21,7 @@ from .models import (
     Question,
     QuestionAttempt,
     QuestionRating,
+    OcrIngestLog,
     QuestionErrorReport,
     Subject,
     Topic,
@@ -334,6 +335,69 @@ class QuestionErrorReportAdmin(ModelAdmin):
     def has_add_permission(self, request):
         return False
 
+
+@admin.register(OcrIngestLog)
+class OcrIngestLogAdmin(ModelAdmin):
+    list_display = (
+        "created_at",
+        "status",
+        "engine",
+        "used_model",
+        "ok",
+        "issue_formula_missing",
+        "issue_char_drift",
+        "duplicate_match",
+        "topic",
+        "duplicate_question",
+    )
+    list_filter = (
+        "status",
+        "ok",
+        "engine",
+        "issue_formula_missing",
+        "issue_char_drift",
+        "duplicate_match",
+        "topic__subject",
+    )
+    search_fields = (
+        "image_path",
+        "source_image_hash",
+        "source_image_phash",
+        "used_model",
+        "raw_response",
+        "stem",
+        "raw_text",
+        "error_message",
+        "duplicate_question__public_id",
+    )
+    readonly_fields = (
+        "created_at",
+        "source_image_hash",
+        "source_image_phash",
+        "image_path",
+        "engine",
+        "used_model",
+        "status",
+        "topic",
+        "duplicate_question",
+        "duplicate_match",
+        "initiated_by",
+        "ok",
+        "error_message",
+        "raw_response",
+        "stem",
+        "options",
+        "raw_text",
+        "issue_formula_missing",
+        "issue_char_drift",
+    )
+    list_filter_sheet = False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 @admin.register(TopicLesson)
 class TopicLessonAdmin(ModelAdmin):

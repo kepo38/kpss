@@ -157,13 +157,12 @@ class StudyHubScreen extends StatelessWidget {
                           crossAxisCount: 2,
                           mainAxisSpacing: 8,
                           crossAxisSpacing: 8,
-                          childAspectRatio: 1.18,
+                          childAspectRatio: 1.12,
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
                             final subject = subjects[index];
-                            final questionCount = bank
-                                .catalogQuestionCountForSubject(
+                            final progress = bank.subjectQuestionProgress(
                               kpssType,
                               subject.id,
                             );
@@ -172,7 +171,10 @@ class StudyHubScreen extends StatelessWidget {
                               name: subject.name,
                               icon: subjectIcon(subject.id),
                               subtitle:
-                                  '${subject.topics.length} konu · $questionCount soru',
+                                  '${subject.topics.length} konu · ${progress.total} soru',
+                              progress: progress.total == 0
+                                  ? 0
+                                  : progress.solved / progress.total,
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute<void>(
@@ -332,6 +334,7 @@ class _SubjectTile extends StatelessWidget {
   final String name;
   final IconData icon;
   final String subtitle;
+  final double progress;
   final VoidCallback onTap;
 
   const _SubjectTile({
@@ -339,6 +342,7 @@ class _SubjectTile extends StatelessWidget {
     required this.name,
     required this.icon,
     required this.subtitle,
+    required this.progress,
     required this.onTap,
   });
 
@@ -420,6 +424,16 @@ class _SubjectTile extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: neon.withValues(alpha: 0.88),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0),
+                        minHeight: 3,
+                        backgroundColor: neon.withValues(alpha: 0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(neon),
                       ),
                     ),
                   ],

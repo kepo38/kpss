@@ -56,9 +56,19 @@ class FormattedText extends StatelessWidget {
     return buffer.toString();
   }
 
+  static bool usesDisplayMath(String tex) {
+    final t = tex;
+    return t.contains(r'\frac') ||
+        t.contains(r'\dfrac') ||
+        t.contains(r'\sqrt') ||
+        t.contains(r'\left') ||
+        t.contains(r'\sum') ||
+        t.contains(r'\int');
+  }
+
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
     final size = base.fontSize ?? 16;
-    final scale = display ? 1.42 : 1.35;
+    final scale = display ? 1.55 : 1.48;
     return base.copyWith(fontSize: size * scale);
   }
 
@@ -294,8 +304,24 @@ class FormattedText extends StatelessWidget {
     return text;
   }
 
+  static String _repairLatexEscapes(String text) {
+    if (text.isEmpty) return text;
+    return text
+        .replaceAll('\x0crac', r'\frac')
+        .replaceAll('\x08eta', r'\beta')
+        .replaceAll('\x08egin', r'\begin')
+        .replaceAll('\x09ext{', r'\text{')
+        .replaceAll('\x09imes', r'\times')
+        .replaceAll('\x09heta', r'\theta')
+        .replaceAll('\x09an', r'\tan')
+        .replaceAll('\x0dight', r'\right')
+        .replaceAll('\x0aeq', r'\neq')
+        .replaceAll(r'$rac{', r'$\frac{')
+        .replaceAll(r'$sqrt{', r'$\sqrt{');
+  }
+
   static String prepareTex(String tex) {
-    var t = tex.trim();
+    var t = _repairLatexEscapes(tex.trim());
     t = t.replaceAllMapped(
       RegExp(
         r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan)',
@@ -395,7 +421,7 @@ class FormattedText extends StatelessWidget {
       }
       final tex = prepareTex((m.group(1) ?? m.group(2) ?? '').trim());
       if (tex.isNotEmpty) {
-        final display = m.group(1) != null;
+        final display = m.group(1) != null || usesDisplayMath(tex);
         spans.add(
           WidgetSpan(
             alignment: display
@@ -558,6 +584,40 @@ class _ParagraphText extends StatelessWidget {
           ),
         ),
       );
+    }
+
+    final leadingInline = RegExp(r'^\$([^$\n]+)\$\s*(.*)$').firstMatch(paragraph);
+    if (leadingInline != null) {
+      final tex = FormattedText.prepareTex(leadingInline.group(1)!.trim());
+      if (FormattedText.usesDisplayMath(tex)) {
+        final rest = (leadingInline.group(2) ?? '').trim();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Center(
+                child: FormattedText.buildMathWidget(
+                  tex,
+                  base: base,
+                  display: true,
+                ),
+              ),
+            ),
+            if (rest.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text.rich(
+                  TextSpan(
+                    style: base,
+                    children: FormattedText._parse(rest, base),
+                  ),
+                  textAlign: textAlign,
+                ),
+              ),
+          ],
+        );
+      }
     }
 
     return Text.rich(

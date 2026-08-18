@@ -21,23 +21,32 @@ logger = logging.getLogger(__name__)
 
 LOCAL_DIM = 64
 DEFAULT_LIMIT = 5
+DEFAULT_SIMILARITY_THRESHOLD = 0.75
+DEFAULT_SIMILAR_MAX_SCAN = 1200
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9ğüşıöçĞÜŞİÖÇ]+", re.UNICODE)
 
 
 def embedding_text_for(question) -> str:
-    parts = [
-        getattr(question.topic.subject, "name", "") if question.topic_id else "",
-        getattr(question.topic, "name", "") if question.topic_id else "",
-        question.subtopic or "",
-        getattr(question.scenario, "stem", "") if question.scenario_id else "",
-        question.stem or "",
-        question.option_a or "",
-        question.option_b or "",
-        question.option_c or "",
-        question.option_d or "",
-        question.option_e or "",
+    subject_name = getattr(question.topic.subject, "name", "") if question.topic_id else ""
+    topic_name = getattr(question.topic, "name", "") if question.topic_id else ""
+    scenario_stem = getattr(question.scenario, "stem", "") if question.scenario_id else ""
+    option_parts = [
+        f"A) {question.option_a or ''}",
+        f"B) {question.option_b or ''}",
+        f"C) {question.option_c or ''}",
+        f"D) {question.option_d or ''}",
+        f"E) {question.option_e or ''}",
     ]
-    return "\n".join(part.strip() for part in parts if part and part.strip())
+    labeled_parts = [
+        f"DERS: {subject_name}".strip(),
+        f"KONU: {topic_name}".strip(),
+        f"ALT KONU: {question.subtopic or ''}".strip(),
+        f"SENARYO: {scenario_stem}".strip(),
+        f"SORU: {question.stem or ''}".strip(),
+        "ŞIKLAR: " + " | ".join(part.strip() for part in option_parts if part.strip()),
+        f"ÇÖZÜM: {question.solution or ''}".strip(),
+    ]
+    return "\n".join(part for part in labeled_parts if part and not part.endswith(": "))
 
 
 def text_hash(text: str) -> str:
@@ -93,6 +102,20 @@ def embed_text(text: str) -> tuple[list[float], str]:
     return local_embedding(text), "local-hash-v1"
 
 
+def embed_texts(texts: list[str]) -> tuple[list[list[float]], str]:
+    """Toplu gömme: OpenAI varsa batch, yoksa yerel hash."""
+    if not texts:
+        return [], "local-hash-v1"
+    openai_key = getattr(settings, "OPENAI_API_KEY", "") or ""
+    if openai_key:
+        model = getattr(settings, "EMBEDDING_MODEL", "") or "text-embedding-3-small"
+        try:
+            return _openai_embed_batch(texts, openai_key, model), model
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("OpenAI batch embedding failed: %s", exc)
+    return [local_embedding(text) for text in texts], "local-hash-v1"
+
+
 def refresh_question_embedding(question, *, force: bool = False) -> bool:
     """Soru gövdesi değiştiyse vektörü yenile. Başarısız olsa kayıt bozulmaz."""
     text = embedding_text_for(question)
@@ -118,7 +141,13 @@ def refresh_question_embedding(question, *, force: bool = False) -> bool:
     return True
 
 
-def similar_questions(question, *, limit: int = DEFAULT_LIMIT):
+def similar_questions(
+    question,
+    *,
+    limit: int = DEFAULT_LIMIT,
+    threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+    max_scan: int = DEFAULT_SIMILAR_MAX_SCAN,
+):
     from .models import Question
 
     if not question.embedding:
@@ -127,26 +156,50 @@ def similar_questions(question, *, limit: int = DEFAULT_LIMIT):
     if not source:
         return []
 
-    qs = (
+    base_qs = (
         Question.objects.filter(is_published=True, topic__is_active=True)
         .exclude(pk=question.pk)
+        .exclude(embedding=[])
         .select_related("topic", "topic__subject", "scenario")
     )
     scored: list[tuple[float, object]] = []
     same_subject = question.topic.subject_id if question.topic_id else None
     same_topic = question.topic_id
-    for candidate in qs:
-        vector = list(candidate.embedding or [])
-        if not vector or len(vector) != len(source):
-            continue
-        score = cosine_similarity(source, vector)
-        if same_topic and candidate.topic_id == same_topic:
-            score += 0.04
-        elif same_subject and candidate.topic.subject_id == same_subject:
-            score += 0.02
-        if score <= 0:
-            continue
-        scored.append((score, candidate))
+
+    target_hits = max(8, limit * 3)
+
+    def score_candidates(candidates_qs, remaining_scan: int) -> int:
+        scanned = 0
+        for candidate in candidates_qs.iterator(chunk_size=256):
+            if scanned >= remaining_scan:
+                break
+            if len(scored) >= target_hits:
+                break
+            scanned += 1
+            vector = list(candidate.embedding or [])
+            if not vector or len(vector) != len(source):
+                continue
+            score = cosine_similarity(source, vector)
+            if same_topic and candidate.topic_id == same_topic:
+                score += 0.04
+            elif same_subject and candidate.topic.subject_id == same_subject:
+                score += 0.02
+            if score < threshold:
+                continue
+            scored.append((score, candidate))
+        return scanned
+
+    scanned_total = 0
+    if same_subject:
+        scanned_total += score_candidates(
+            base_qs.filter(topic__subject_id=same_subject), max_scan
+        )
+    if scanned_total < max_scan and len(scored) < target_hits:
+        scanned_total += score_candidates(
+            base_qs.exclude(topic__subject_id=same_subject) if same_subject else base_qs,
+            max_scan - scanned_total,
+        )
+
     scored.sort(key=lambda item: item[0], reverse=True)
     return scored[: max(1, min(limit, 20))]
 
@@ -166,6 +219,30 @@ def _openai_embed(text: str, api_key: str, model: str) -> list[float]:
         body = json.loads(response.read().decode("utf-8"))
     values = body["data"][0]["embedding"]
     return [float(v) for v in values]
+
+
+def _openai_embed_batch(texts: list[str], api_key: str, model: str) -> list[list[float]]:
+    payload = json.dumps(
+        {
+            "model": model,
+            "input": [text[:8000] for text in texts],
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/embeddings",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as response:
+        body = json.loads(response.read().decode("utf-8"))
+    data = body.get("data") or []
+    if len(data) != len(texts):
+        raise RuntimeError("OpenAI batch embedding count mismatch")
+    return [[float(v) for v in row["embedding"]] for row in data]
 
 
 def iter_missing_embeddings(queryset: Iterable) -> list:

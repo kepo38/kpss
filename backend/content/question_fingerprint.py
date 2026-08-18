@@ -138,9 +138,6 @@ def phash_hamming(h1: str, h2: str) -> int:
         return _PHASH_BITS
 
 
-PHASH_THRESHOLD = 4  # ≤4 bit fark = neredeyse aynı görsel (kırpma/resize)
-
-
 def fingerprints_for_question(question: Question) -> tuple[str, str]:
     content = content_fingerprint(
         question.stem,
@@ -179,15 +176,8 @@ def find_duplicate_question(
         if hit:
             return hit, "image"
 
-    # Perceptual hash — düzenlenmiş görselleri yakalar
-    if image_phash_hex and len(image_phash_hex) == 16:
-        candidates = qs.exclude(source_image_phash="").values_list(
-            "pk", "source_image_phash", named=True
-        )
-        for row in candidates.iterator(chunk_size=500):
-            if phash_hamming(image_phash_hex, row.source_image_phash) <= PHASH_THRESHOLD:
-                hit = qs.get(pk=row.pk)
-                return hit, "image_similar"
+    # phash yalnızca kayıt/analitik için tutulur; otomatik engelleme yapmaz.
+    # ÖSYM şablonlu farklı sorular 8x8 average hash'te ≤2 bit yakın çıkabiliyor.
 
     if content_hash:
         hit = qs.filter(content_hash=content_hash).exclude(content_hash="").first()

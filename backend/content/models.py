@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import IntegrityError, models, transaction
 
@@ -797,6 +798,77 @@ class QuestionErrorReport(models.Model):
 
     def __str__(self) -> str:
         return f"{self.question.public_id} · {self.get_category_display()} · {self.status}"
+
+
+class OcrIngestLog(models.Model):
+    """Panel OCR ingest kayıtları — parse kalitesi, hata ve eşleşme izleme."""
+
+    STATUS_SUCCESS = "success"
+    STATUS_FAILED = "failed"
+    STATUS_FALLBACK_SUCCESS = "fallback_success"
+    STATUS_CHOICES = [
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_FALLBACK_SUCCESS, "Fallback Success"),
+    ]
+
+    image_path = models.CharField(max_length=512, blank=True, default="")
+    source_image_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    source_image_phash = models.CharField(max_length=16, blank=True, default="", db_index=True)
+    engine = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    used_model = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    status = models.CharField(
+        max_length=24,
+        choices=STATUS_CHOICES,
+        default=STATUS_SUCCESS,
+        db_index=True,
+    )
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_ingest_logs",
+    )
+    duplicate_question = models.ForeignKey(
+        Question,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_duplicate_logs",
+    )
+    duplicate_match = models.CharField(max_length=32, blank=True, default="")
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_ingest_logs",
+    )
+    ok = models.BooleanField(default=False)
+    error_message = models.TextField(blank=True, default="")
+    raw_response = models.TextField(blank=True, default="")
+    stem = models.TextField(blank=True, default="")
+    options = models.JSONField(default=dict, blank=True)
+    raw_text = models.TextField(blank=True, default="")
+    issue_formula_missing = models.BooleanField(default=False)
+    issue_char_drift = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["engine", "-created_at"], name="ocrlog_engine_created"),
+            models.Index(fields=["ok", "-created_at"], name="ocrlog_ok_created"),
+            models.Index(fields=["duplicate_match"], name="ocrlog_dup_match"),
+            models.Index(fields=["status", "-created_at"], name="ocrlog_status_created"),
+        ]
+        verbose_name = "OCR ingest kaydı"
+        verbose_name_plural = "OCR ingest kayıtları"
+
+    def __str__(self) -> str:
+        state = "ok" if self.ok else "fail"
+        return f"{self.engine or 'ocr'} · {state} · {self.created_at:%Y-%m-%d %H:%M}"
 
 
 class UserMessage(models.Model):
