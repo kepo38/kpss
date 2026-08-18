@@ -27,8 +27,11 @@ _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
-# Kota / 404 durumunda sırayla dene (ücretsiz katman)
+# Kota / 503 / 404 durumunda sırayla dene (ücretsiz katman)
 _GEMINI_MODEL_FALLBACKS = (
+    "gemini-2.0-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b",
     "gemini-flash-latest",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
@@ -407,7 +410,7 @@ def _retryable(exc: RuntimeError) -> bool:
     msg = str(exc)
     return any(
         token in msg
-        for token in ("429", "404", "403", "JSON ayrıştırılamadı", "boş yanıt")
+        for token in ("429", "404", "403", "503", "UNAVAILABLE", "JSON ayrıştırılamadı", "boş yanıt")
     )
 
 

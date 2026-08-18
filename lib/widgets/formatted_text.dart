@@ -58,7 +58,7 @@ class FormattedText extends StatelessWidget {
 
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
     final size = base.fontSize ?? 16;
-    final scale = display ? 1.42 : 1.18;
+    final scale = display ? 1.42 : 1.35;
     return base.copyWith(fontSize: size * scale);
   }
 
@@ -302,6 +302,9 @@ class FormattedText extends StatelessWidget {
       ),
       (m) => '\\${m.group(1)}',
     );
+    // \frac → \dfrac for larger fractions in inline mode
+    t = t.replaceAll(r'\frac', r'\dfrac');
+    t = t.replaceAll(r'\ddfrac', r'\dfrac');
     return t;
   }
 

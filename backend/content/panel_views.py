@@ -36,7 +36,8 @@ from .models import (
 )
 from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
-from .ocr import ocr_question_image, strip_option_emphasis
+from .ocr import ocr_question_image, strip_option_emphasis, _needs_gemini_fallback
+from .ocr_gemini import gemini_configured, ocr_question_image_gemini
 from .svg_sanitize import extract_svg, is_safe_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
@@ -660,7 +661,16 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                 img_phash = image_phash(image)
                 if hasattr(image, "seek"):
                     image.seek(0)
-                ocr = ocr_question_image(image)
+                if gemini_configured():
+                    img_bytes = image.read()
+                    mime = getattr(image, "content_type", "image/png") or "image/png"
+                    ocr = ocr_question_image_gemini(img_bytes, mime)
+                    if not ocr.ok:
+                        if hasattr(image, "seek"):
+                            image.seek(0)
+                        ocr = ocr_question_image(image)
+                else:
+                    ocr = ocr_question_image(image)
             except Exception:  # noqa: BLE001
                 messages.error(
                     request,
@@ -855,7 +865,16 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         img_phash = image_phash(image)
         if hasattr(image, "seek"):
             image.seek(0)
-        result = ocr_question_image(image)
+        if gemini_configured():
+            img_bytes = image.read()
+            mime = getattr(image, "content_type", "image/png") or "image/png"
+            result = ocr_question_image_gemini(img_bytes, mime)
+            if not result.ok:
+                if hasattr(image, "seek"):
+                    image.seek(0)
+                result = ocr_question_image(image)
+        else:
+            result = ocr_question_image(image)
     except Exception:  # noqa: BLE001
         messages.error(
             request,

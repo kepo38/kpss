@@ -138,7 +138,7 @@ def phash_hamming(h1: str, h2: str) -> int:
         return _PHASH_BITS
 
 
-PHASH_THRESHOLD = 10  # ≤10 bit fark = muhtemelen aynı görsel
+PHASH_THRESHOLD = 4  # ≤4 bit fark = neredeyse aynı görsel (kırpma/resize)
 
 
 def fingerprints_for_question(question: Question) -> tuple[str, str]:
