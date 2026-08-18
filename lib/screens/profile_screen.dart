@@ -133,6 +133,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (newName == null || !mounted) return;
     if (newName.isEmpty || newName == current) return;
 
+    // Dialog overlay animasyonu bitmeden ağ/notify tetikleme.
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+
     final ok = await _auth.updateDisplayName(newName);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -253,18 +257,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   backgroundColor: Colors.transparent,
                   foregroundColor: AppTheme.onPage(context),
                   leading: const AppBackButton(),
-                  title: ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [_cyan, AppTheme.champagneLight],
-                    ).createShader(bounds),
-                    child: Text(
-                      'Profil',
-                      style: TextStyle(
-                        fontFamily: 'serif',
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.onPage(context),
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [_cyan, AppTheme.champagneLight],
+                        ).createShader(bounds),
+                        child: Text(
+                          'Profil',
+                          style: TextStyle(
+                            fontFamily: 'serif',
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.onPage(context),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.person_rounded,
+                        size: 22,
+                        color: AppTheme.champagneLight.withValues(alpha: 0.95),
+                      ),
+                    ],
                   ),
                   actions: [
                     if (user.isPremium)
@@ -281,7 +296,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       _ProfileHero(
-                        user: user,
+                        user: user.copyWith(
+                          isAnonymous: user.isAnonymous || _auth.isAnonymous,
+                        ),
                         displayName: displayName,
                         email: _auth.isAnonymous ? 'Misafir oturum' : user.eposta,
                         level: stats.seviye,
@@ -425,8 +442,6 @@ class _ProfileRateAction extends StatelessWidget {
 
   const _ProfileRateAction({required this.onTap});
 
-  static const _rose = Color(0xFFFB7185);
-
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -435,41 +450,43 @@ class _ProfileRateAction extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(999),
-          splashColor: _rose.withValues(alpha: 0.2),
+          splashColor: AppTheme.champagne.withValues(alpha: 0.22),
           child: Ink(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              gradient: LinearGradient(
+              gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  _rose.withValues(alpha: 0.28),
-                  AppTheme.champagne.withValues(alpha: 0.18),
+                  Color(0xFFE8C87A),
+                  Color(0xFFC9A86C),
+                  Color(0xFF8B6914),
                 ],
               ),
               border: Border.all(
-                color: _rose.withValues(alpha: 0.55),
+                color: AppTheme.champagneLight.withValues(alpha: 0.85),
+                width: 1.1,
               ),
-              boxShadow: SubjectNeonPalette.glow(_rose, blur: 10),
+              boxShadow: SubjectNeonPalette.glow(AppTheme.champagne, blur: 12),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.star_rounded,
-                    size: 17,
-                    color: _rose.withValues(alpha: 0.98),
+                    Icons.thumb_up_alt_rounded,
+                    size: 14,
+                    color: Colors.white.withValues(alpha: 0.96),
                   ),
-                  const SizedBox(width: 5),
+                  const SizedBox(width: 6),
                   Text(
                     'Değerlendir',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                       letterSpacing: 0.15,
-                      color: AppTheme.onPage(context).withValues(alpha: 0.92),
+                      color: Colors.white.withValues(alpha: 0.96),
                     ),
                   ),
                 ],
@@ -802,6 +819,7 @@ class _NeonTile extends StatelessWidget {
             radius: 14,
           ),
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               Positioned(
                 top: -12,
@@ -820,32 +838,8 @@ class _NeonTile extends StatelessWidget {
                   ),
                 ),
               ),
-              if (badge != null)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: neon,
-                      borderRadius: BorderRadius.circular(999),
-                      boxShadow: SubjectNeonPalette.glow(neon, blur: 8),
-                    ),
-                    child: Text(
-                      '$badge',
-                      style: const TextStyle(
-                        color: AppTheme.ink,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
+                padding: const EdgeInsets.fromLTRB(10, 10, 14, 9),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -895,8 +889,56 @@ class _NeonTile extends StatelessWidget {
                   ],
                 ),
               ),
+              if (badge != null)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _UnreadCountBadge(count: badge!, neon: neon),
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadCountBadge extends StatelessWidget {
+  final int count;
+  final Color neon;
+
+  const _UnreadCountBadge({required this.count, required this.neon});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            neon,
+            AppTheme.champagneLight,
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.85),
+          width: 1.2,
+        ),
+        boxShadow: SubjectNeonPalette.glow(neon, blur: 10),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppTheme.ink,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+          height: 1,
         ),
       ),
     );
@@ -929,6 +971,7 @@ class _ProfileHero extends StatelessWidget {
   });
 
   static const _violet = Color(0xFFA78BFA);
+  static const _heroSide = 82.0;
 
   @override
   Widget build(BuildContext context) {
@@ -975,88 +1018,109 @@ class _ProfileHero extends StatelessWidget {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Column(
+                    Row(
                       children: [
-                        _AvatarRing(
-                          user: user,
-                          displayName: displayName,
-                          neon: neon,
-                        ),
-                        if (onBadgesTap != null) ...[
-                          const SizedBox(height: 10),
-                          _HeroBadgesButton(
-                            neon: _violet,
-                            level: level,
-                            xp: xp,
-                            sonrakiSeviyeXp: sonrakiSeviyeXp,
-                            onTap: onBadgesTap!,
+                        SizedBox(
+                          width: _heroSide,
+                          child: Center(
+                            child: _AvatarRing(
+                              user: user,
+                              displayName: displayName,
+                              neon: neon,
+                            ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              InkWell(
+                                onTap: onEditName,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        displayName,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontFamily: 'serif',
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.05,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    if (onEditName != null)
+                                      Icon(
+                                        Icons.edit_rounded,
+                                        size: 17,
+                                        color: neon.withValues(alpha: 0.95),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                email,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: neon.withValues(alpha: 0.82),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          InkWell(
-                            onTap: onEditName,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    displayName,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.05,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: _heroSide,
+                          child: onBadgesTap == null
+                              ? const SizedBox.shrink()
+                              : _HeroBadgesButton(
+                                  neon: _violet,
+                                  level: level,
+                                  xp: xp,
+                                  sonrakiSeviyeXp: sonrakiSeviyeXp,
+                                  onTap: onBadgesTap!,
                                 ),
-                                if (onEditName != null)
-                                  Icon(
-                                    Icons.edit_rounded,
-                                    size: 17,
-                                    color: neon.withValues(alpha: 0.95),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: neon.withValues(alpha: 0.82),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
                             children: [
-                              _StatChip(
-                                neon: AppTheme.neonEdge,
-                                label: 'Lv.$level',
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  _StatChip(
+                                    neon: AppTheme.neonEdge,
+                                    label: 'Lv.$level',
+                                  ),
+                                  _StatChip(
+                                    neon: AppTheme.neonGold,
+                                    label: '$xp XP',
+                                  ),
+                                  _StatChip(
+                                    neon: const Color(0xFF34D399),
+                                    label: '$streak gün',
+                                  ),
+                                ],
                               ),
-                              _StatChip(
-                                neon: AppTheme.neonGold,
-                                label: '$xp XP',
-                              ),
-                              _StatChip(
-                                neon: const Color(0xFF34D399),
-                                label: '$streak gün',
-                              ),
+                              const SizedBox(height: 8),
                               if (user.isPremium)
                                 _PremiumStatChip(user: user)
                               else
@@ -1067,8 +1131,8 @@ class _ProfileHero extends StatelessWidget {
                                 ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1183,14 +1247,22 @@ class _AvatarRing extends StatelessWidget {
           color: AppTheme.smokeDeep,
         ),
         clipBehavior: Clip.antiAlias,
-        child: photo != null && photo.isNotEmpty
-            ? Image.network(
-                photo,
+        child: user.isAnonymous
+            ? Image.asset(
+                BrandConstants.appIconAsset,
                 fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
                 errorBuilder: (_, __, ___) =>
                     _InitialsAvatar(name: displayName),
               )
-            : _InitialsAvatar(name: displayName),
+            : photo != null && photo.isNotEmpty
+                ? Image.network(
+                    photo,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _InitialsAvatar(name: displayName),
+                  )
+                : _InitialsAvatar(name: displayName),
       ),
     );
   }
@@ -1304,45 +1376,79 @@ class _PremiumStatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        const _StatChip(
-          neon: AppTheme.champagne,
-          label: 'PREMIUM',
-          filled: true,
-        ),
-        Positioned(
-          top: -5,
-          right: -5,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _showPremiumInfoSheet(context, user),
-              customBorder: const CircleBorder(),
-              child: Container(
-                width: 18,
-                height: 18,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showPremiumInfoSheet(context, user),
+        borderRadius: BorderRadius.circular(999),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.18),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.champagne.withValues(alpha: 0.38),
+                const Color(0xFF3A2E14).withValues(alpha: 0.92),
+                AppTheme.neonGold.withValues(alpha: 0.28),
+              ],
+            ),
+            border: Border.all(
+              color: AppTheme.champagneLight.withValues(alpha: 0.85),
+              width: 1.15,
+            ),
+            boxShadow: [
+              ...SubjectNeonPalette.glow(AppTheme.champagne, blur: 12),
+              BoxShadow(
+                color: AppTheme.neonGold.withValues(alpha: 0.18),
+                blurRadius: 16,
+                spreadRadius: -2,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.workspace_premium_rounded,
+                size: 15,
+                color: AppTheme.champagneLight,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'PREMIUM',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 20,
+                height: 20,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppTheme.inkSoft,
+                  color: AppTheme.inkSoft.withValues(alpha: 0.72),
                   border: Border.all(
-                    color: AppTheme.champagne.withValues(alpha: 0.9),
-                    width: 1.2,
+                    color: AppTheme.champagneLight.withValues(alpha: 0.7),
                   ),
-                  boxShadow: SubjectNeonPalette.glow(AppTheme.champagne, blur: 6),
                 ),
                 child: const Icon(
-                  Icons.info_outline,
-                  size: 11,
-                  color: AppTheme.champagne,
+                  Icons.info_outline_rounded,
+                  size: 12,
+                  color: AppTheme.champagneLight,
                 ),
               ),
-            ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

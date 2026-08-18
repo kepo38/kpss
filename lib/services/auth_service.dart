@@ -241,7 +241,6 @@ class AuthService extends ChangeNotifier {
     }
     _busy = true;
     _lastError = null;
-    notifyListeners();
     try {
       final res = await http
           .patch(

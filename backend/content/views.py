@@ -229,6 +229,19 @@ class TestQuestionsView(APIView):
         )
 
 
+def _require_permanent_user(request):
+    """Google ile bağlı hesap; misafir Firebase oturumu reddedilir."""
+    user = get_user_from_request(request)
+    if user is None:
+        return None, Response({"detail": "Oturum gerekli."}, status=401)
+    if user.is_anonymous:
+        return None, Response(
+            {"detail": "Google hesabı gerekli."},
+            status=401,
+        )
+    return user, None
+
+
 class TestAttemptView(APIView):
     """Store a logged-in user's first answers for a published topic test."""
 
@@ -236,9 +249,9 @@ class TestAttemptView(APIView):
     permission_classes = []
 
     def post(self, request, test_id: str):
-        user = get_user_from_request(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
 
         test = get_object_or_404(
             TopicTest.objects.prefetch_related("questions"),
@@ -312,9 +325,9 @@ class QuestionAttemptView(APIView):
     permission_classes = []
 
     def post(self, request, public_id: str):
-        user = get_user_from_request(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
 
         test_id = str(request.data.get("testId") or "").strip()
         selected_option = str(request.data.get("selectedOption") or "").strip().upper()
@@ -398,9 +411,9 @@ class QuestionRatingView(APIView):
         return get_user_from_request(request)
 
     def get(self, request, public_id: str):
-        user = self._user(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
         question = get_object_or_404(
             Question,
             public_id=public_id,
@@ -409,9 +422,9 @@ class QuestionRatingView(APIView):
         return Response(_rating_payload(question, user))
 
     def put(self, request, public_id: str):
-        user = self._user(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
 
         raw_stars = request.data.get("stars")
         if isinstance(raw_stars, bool) or not isinstance(raw_stars, (int, str)):
@@ -485,9 +498,9 @@ class QuestionErrorReportView(APIView):
         return get_user_from_request(request)
 
     def get(self, request, public_id: str):
-        user = self._user(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
         question = get_object_or_404(
             Question,
             public_id=public_id,
@@ -502,9 +515,9 @@ class QuestionErrorReportView(APIView):
         )
 
     def post(self, request, public_id: str):
-        user = self._user(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
 
         category = (request.data.get("category") or "").strip()
         valid = {c[0] for c in ERROR_REPORT_CATEGORY_CHOICES}
@@ -924,20 +937,35 @@ class DailyMiniExamView(APIView):
         return Response(self._payload(request, kpss_type), status=201)
 
 
+class PromoRedeemThrottle(SimpleRateThrottle):
+    scope = "promo_redeem"
+
+    def get_cache_key(self, request, view):
+        user = get_user_from_request(request)
+        if user is None:
+            return None
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": user.pk,
+        }
+
+
 class PromoRedeemView(APIView):
     """Promosyon kodu kullanımı — premium tanımlar."""
 
     authentication_classes = []
     permission_classes = []
+    throttle_classes = [PromoRedeemThrottle]
 
     def post(self, request):
-        user = get_user_from_request(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
 
         raw = request.data.get("code") or request.data.get("kod")
         if raw is None:
             return Response({"detail": "Promosyon kodu gerekli."}, status=400)
+        raw = str(raw)[:32]
 
         from .promo import PromoError, redeem_promo_code
 

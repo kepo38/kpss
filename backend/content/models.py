@@ -1372,4 +1372,4 @@ class PromoCodeRedemption(models.Model):
 
 
 def normalize_promo_code(raw: str) -> str:
-    return (raw or "").strip().upper().replace(" ", "")
+    return (raw or "").strip().upper().replace(" ", "")[:32]

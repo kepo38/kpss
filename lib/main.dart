@@ -67,6 +67,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
   /// Auth hazır → hemen ana sayfa (ağır servisler arka planda).
   bool _bootReady = false;
+  bool? _routedSignedIn;
+  String? _routedUserId;
 
   @override
   void initState() {
@@ -87,13 +89,21 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
   void _onAuthChanged() {
     if (!mounted || !_bootReady) return;
-    final user = AuthService.instance.user;
+    final auth = AuthService.instance;
+    final user = auth.user;
     if (user != null) {
       DatabaseService.instance.setCurrentUser(user);
       SchedulerBinding.instance.addPostFrameCallback((_) {
         unawaited(AppNavigator.consumePending());
       });
     }
+    // İsim/premium gibi profil güncellemelerinde MaterialApp'i yeniden
+    // kurma — kapanan dialog overlay'i _dependents.isEmpty hatası verir.
+    final signedIn = auth.isSignedIn;
+    final userId = user?.id;
+    if (signedIn == _routedSignedIn && userId == _routedUserId) return;
+    _routedSignedIn = signedIn;
+    _routedUserId = userId;
     setState(() {});
   }
 

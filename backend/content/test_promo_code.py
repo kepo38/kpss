@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from content.models import AppUser, PromoCode, PromoCodeRedemption
+from content.models import AppUser, PromoCode, PromoCodeRedemption, normalize_promo_code
 from content.promo import PromoError, redeem_promo_code
 
 
@@ -17,6 +17,9 @@ class PromoCodeModelTests(TestCase):
             valid_until=timezone.now() + timedelta(days=30),
         )
         self.assertEqual(promo.code, "KPSS-2026")
+
+    def test_normalize_truncates_to_32(self):
+        self.assertEqual(len(normalize_promo_code("A" * 80)), 32)
 
 
 class PromoRedeemServiceTests(TestCase):

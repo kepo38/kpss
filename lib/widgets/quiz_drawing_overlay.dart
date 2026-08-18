@@ -7,13 +7,33 @@ class QuizStroke {
   final Color color;
   final double width;
   final bool eraser;
+  final bool highlighter;
 
   const QuizStroke({
     required this.points,
     required this.color,
     required this.width,
     this.eraser = false,
+    this.highlighter = false,
   });
+}
+
+/// Kaydedilmiş çizimleri etkileşimsiz gösterir (kalem kapalıyken).
+class QuizStrokeLayer extends StatelessWidget {
+  final List<QuizStroke> strokes;
+
+  const QuizStrokeLayer({super.key, required this.strokes});
+
+  @override
+  Widget build(BuildContext context) {
+    if (strokes.isEmpty) return const SizedBox.shrink();
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: QuizStrokePainter(strokes),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
 }
 
 class QuizDrawingOverlay extends StatefulWidget {
@@ -39,11 +59,26 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
     Colors.black,
   ];
   static const _widths = [2.5, 4.5, 7.5];
+  static const _highlighterColor = Color(0xFF76FF03);
+  static const _highlighterWidth = 22.0;
+  static const _maxPointsPerStroke = 400;
+  static const _minPointDelta = 2.0;
 
   Color _color = _colors.first;
   double _width = _widths[1];
   bool _eraser = false;
+  bool _highlighter = false;
   final _points = <Offset>[];
+
+  void _addPoint(Offset point) {
+    if (_points.isEmpty) {
+      _points.add(point);
+      return;
+    }
+    if (_points.length >= _maxPointsPerStroke) return;
+    if ((point - _points.last).distance < _minPointDelta) return;
+    _points.add(point);
+  }
 
   void _finishStroke() {
     if (_points.length < 2) {
@@ -53,9 +88,10 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
     widget.onStrokeComplete(
       QuizStroke(
         points: List.of(_points),
-        color: _color,
-        width: _width,
+        color: _highlighter ? _highlighterColor : _color,
+        width: _highlighter ? _highlighterWidth : _width,
         eraser: _eraser,
+        highlighter: _highlighter && !_eraser,
       ),
     );
     _points.clear();
@@ -74,18 +110,22 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                 ..clear()
                 ..add(details.localPosition);
             }),
-            onPanUpdate: (details) =>
-                setState(() => _points.add(details.localPosition)),
+            onPanUpdate: (details) {
+              final before = _points.length;
+              _addPoint(details.localPosition);
+              if (_points.length != before) setState(() {});
+            },
             onPanEnd: (_) => setState(_finishStroke),
             child: CustomPaint(
-              painter: _StrokePainter([
+              painter: QuizStrokePainter([
                 ...widget.strokes,
                 if (_points.isNotEmpty)
                   QuizStroke(
                     points: _points,
-                    color: _color,
-                    width: _width,
+                    color: _highlighter ? _highlighterColor : _color,
+                    width: _highlighter ? _highlighterWidth : _width,
                     eraser: _eraser,
+                    highlighter: _highlighter && !_eraser,
                   ),
               ]),
             ),
@@ -122,10 +162,11 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: _ToolButton(
-                        selected: !_eraser && _color == color,
+                        selected: !_eraser && !_highlighter && _color == color,
                         onTap: () => setState(() {
                           _color = color;
                           _eraser = false;
+                          _highlighter = false;
                         }),
                         child: Container(
                           width: 15,
@@ -141,15 +182,39 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                         ),
                       ),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: _ToolButton(
+                      selected: _highlighter && !_eraser,
+                      tooltip: 'Yeşil fosfor',
+                      onTap: () => setState(() {
+                        _highlighter = true;
+                        _eraser = false;
+                      }),
+                      child: Container(
+                        width: 15,
+                        height: 15,
+                        decoration: BoxDecoration(
+                          color: _highlighterColor.withValues(alpha: 0.55),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            width: 1.2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   _ToolbarDivider(),
                   for (final width in _widths)
                     Padding(
                       padding: const EdgeInsets.only(right: 2),
                       child: _ToolButton(
-                        selected: !_eraser && _width == width,
+                        selected: !_eraser && !_highlighter && _width == width,
                         onTap: () => setState(() {
                           _width = width;
                           _eraser = false;
+                          _highlighter = false;
                         }),
                         child: Icon(
                           Icons.circle,
@@ -162,7 +227,10 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                   _ToolButton(
                     selected: _eraser,
                     tooltip: 'Silgi',
-                    onTap: () => setState(() => _eraser = true),
+                    onTap: () => setState(() {
+                      _eraser = true;
+                      _highlighter = false;
+                    }),
                     child: Icon(
                       Icons.auto_fix_high_rounded,
                       size: 16,
@@ -239,10 +307,10 @@ class _ToolButton extends StatelessWidget {
   }
 }
 
-class _StrokePainter extends CustomPainter {
+class QuizStrokePainter extends CustomPainter {
   final List<QuizStroke> strokes;
 
-  const _StrokePainter(this.strokes);
+  const QuizStrokePainter(this.strokes);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -250,12 +318,25 @@ class _StrokePainter extends CustomPainter {
     for (final stroke in strokes) {
       if (stroke.points.length < 2) continue;
       final paint = Paint()
-        ..color = stroke.color
         ..strokeWidth = stroke.width
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke
-        ..blendMode = stroke.eraser ? BlendMode.clear : BlendMode.srcOver;
+        ..style = PaintingStyle.stroke;
+
+      if (stroke.eraser) {
+        paint
+          ..color = stroke.color
+          ..blendMode = BlendMode.clear;
+      } else if (stroke.highlighter) {
+        paint
+          ..color = stroke.color.withValues(alpha: 0.38)
+          ..blendMode = BlendMode.srcOver;
+      } else {
+        paint
+          ..color = stroke.color
+          ..blendMode = BlendMode.srcOver;
+      }
+
       final path = Path()
         ..moveTo(stroke.points.first.dx, stroke.points.first.dy);
       for (final point in stroke.points.skip(1)) {
@@ -267,6 +348,6 @@ class _StrokePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _StrokePainter oldDelegate) =>
+  bool shouldRepaint(covariant QuizStrokePainter oldDelegate) =>
       oldDelegate.strokes != strokes;
 }

@@ -30,6 +30,7 @@ class _ExamPackDetailScreenState extends State<ExamPackDetailScreen> {
   ExamPackModel? _detail;
   bool _loading = true;
   bool _buying = false;
+  bool _starting = false;
 
   @override
   void initState() {
@@ -104,6 +105,7 @@ class _ExamPackDetailScreenState extends State<ExamPackDetailScreen> {
   }
 
   Future<void> _startExam(ExamPackExamSummary exam) async {
+    if (_starting || _buying) return;
     if (!await _ensureGoogleAccount()) return;
     if (!mounted) return;
     if (_pack.playProductId.isNotEmpty && !_owned) {
@@ -112,51 +114,56 @@ class _ExamPackDetailScreenState extends State<ExamPackDetailScreen> {
     }
 
     if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    _starting = true;
+    try {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
 
-    final fetch = await _svc.fetchExamQuestions(
-      packId: _pack.id,
-      examIndex: exam.index,
-    );
-    if (!mounted) return;
-    Navigator.of(context).pop();
+      final fetch = await _svc.fetchExamQuestions(
+        packId: _pack.id,
+        examIndex: exam.index,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
 
-    if (fetch.questions.isEmpty) {
-      _showMessage(fetch.errorMessage ?? 'Sorular yüklenemedi.');
-      return;
-    }
+      if (fetch.questions.isEmpty) {
+        _showMessage(fetch.errorMessage ?? 'Sorular yüklenemedi.');
+        return;
+      }
 
-    final meta = ExamPackQuizMeta(
-      packId: _pack.id,
-      packTitle: _pack.title,
-      examIndex: exam.index,
-      examTitle: exam.title,
-      branchSubjectName: _pack.subjectName,
-    );
+      final meta = ExamPackQuizMeta(
+        packId: _pack.id,
+        packTitle: _pack.title,
+        examIndex: exam.index,
+        examTitle: exam.title,
+        branchSubjectName: _pack.subjectName,
+      );
 
-    final result = await Navigator.of(context).push<QuizResult>(
-      MaterialPageRoute(
-        builder: (_) => QuizScreen(
-          title: exam.title,
-          questions: fetch.questions,
-          timeLimitMinutes: _pack.timeLimitMinutes,
-          adFreeExperience: true,
+      final result = await Navigator.of(context).push<QuizResult>(
+        MaterialPageRoute(
+          builder: (_) => QuizScreen(
+            title: exam.title,
+            questions: fetch.questions,
+            timeLimitMinutes: _pack.timeLimitMinutes,
+            adFreeExperience: true,
+          ),
         ),
-      ),
-    );
+      );
 
-    if (result == null || !result.completed) return;
+      if (result == null || !result.completed) return;
 
-    ExamPackAnalyticsBridge.record(
-      meta: meta,
-      result: result,
-      questions: fetch.questions,
-      answers: result.selectedAnswers,
-    );
+      ExamPackAnalyticsBridge.record(
+        meta: meta,
+        result: result,
+        questions: fetch.questions,
+        answers: result.selectedAnswers,
+      );
+    } finally {
+      _starting = false;
+    }
   }
 
   @override

@@ -136,6 +136,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "question_rating": "60/min",
         "question_error_report": "30/min",
+        "promo_redeem": "5/min",
     },
 }
 

@@ -16,7 +16,7 @@ class QuestionAttemptService {
     required String selectedOption,
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession ||
+    if (!auth.hasPermanentAccount ||
         testId.isEmpty ||
         questionId.isEmpty ||
         !RegExp(r'^[A-E]$').hasMatch(selectedOption)) {
@@ -52,7 +52,7 @@ class QuestionAttemptService {
     required List<String?> selectedAnswers,
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession ||
+    if (!auth.hasPermanentAccount ||
         testId.isEmpty ||
         questionIds.length != selectedAnswers.length) {
       return;

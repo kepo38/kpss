@@ -87,10 +87,10 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı | `lib/screens/quiz_screen.dart` | Ücretsiz; reklamlı |
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil | `lib/widgets/question_stem_content.dart`, `lib/widgets/formatted_text.dart` | Ücretsiz |
 | **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet | `lib/widgets/osym_badge.dart` | Ücretsiz |
-| **Çizim katmanı** | Soru üzerinde parmakla çizim | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
+| **Çizim katmanı** | Soru üzerinde kalem / yeşil fosfor / silgi; kalem kapalıyken işaretler görünür kalır; test bitince kaydedilmez. Stroke/nokta üst sınırı var | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp) | `lib/widgets/favorite_heart_button.dart`, `lib/services/favorites_service.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
-| **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; günlük limit | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Oturum gerekli |
+| **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; günlük limit; **Google hesabı zorunlu** | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google hesabı |
 | **Çözüm kilidi** | Tam çözüm önce gizli; reklam veya Premium ile açılır | `quiz_screen.dart`, `lib/services/ad_manager.dart` | Reklam / Premium |
 | **Ses ve titreşim** | Doğru/yanlış geri bildirimi | `lib/services/answer_feedback_service.dart` | Ücretsiz |
 | **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma | `lib/widgets/shareable_result_card.dart` | Ücretsiz |
@@ -167,7 +167,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Premium paywall** | Aylık/yıllık Google Play abonelik, özellik listesi, promosyon kodu | `lib/screens/premium/premium_paywall_screen.dart`, `lib/services/play_billing_service.dart` | Satın alma |
-| **Promosyon kodu** | Backend’den Premium süresi | `lib/services/promo_code_service.dart` | Oturum gerekli |
+| **Promosyon kodu** | Backend’den Premium süresi; misafir kullanamaz; kod en fazla 32 karakter; 5/dk | `lib/services/promo_code_service.dart` | Google hesabı |
 | **Konu takibi** | Müfredat maddelerini işaretleme, ilerleme yüzdesi | `lib/screens/premium/topic_tracking_screen.dart`, `lib/services/topic_progress_service.dart` | Premium |
 | **Görev yönetimi** | Haftalık görevler, öncelik, tamamlama/silme | `lib/screens/premium/task_management_screen.dart`, `lib/services/task_service.dart` | Premium |
 | **Odak · Pomodoro** | 25/50/90/özel dk, ortam sesleri, tamamlanınca XP | `lib/screens/premium/focus_mode_screen.dart`, `lib/services/pomodoro_service.dart` | Premium (araçlar menüsü) |
@@ -188,7 +188,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 |---|---|---|
 | **XP ve seviye** | Doğru/yanlış, test bonusu, çalışma dakikasından XP | `lib/services/gamification_service.dart` |
 | **Günlük seri (streak)** | Ardışık çalışma günü | `gamification_service.dart` |
-| **Rozetler** | İlk çalışma, 7 gün seri, günlük hedef, 5 deneme, konu ustası, 10 pomodoro | `lib/screens/premium/badges_screen.dart` |
+| **Rozetler** | Seviye halkası, günlük hedef kısayolları, sıradaki rozet, ilerleme çubuğu; dokununca nasıl kazanılır | `lib/screens/premium/badges_screen.dart` |
 | **Profil gamification kartı** | XP, seviye, seri | `lib/screens/profile_screen.dart` |
 | **Instagram bağlantısı** | Harici sosyal link | `lib/widgets/instagram_link_button.dart`, `lib/services/social_links_service.dart` |
 | **Mağaza değerlendirme** | Play Store inceleme istemi (Premium kullanıcılar) | `lib/services/store_rating_service.dart`, `lib/widgets/store_rating_card.dart` |
@@ -199,7 +199,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
-| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; avatar altında Rozetler; Mesajlar/Duyurular ızgarası; modül listesi | `lib/screens/profile_screen.dart` |
+| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; avatar altında Rozetler; Mesajlar/Duyurular ızgarası (okunmamış sayı rozeti); modül listesi. Misafirlerde avatar = Hedef Kamu uygulama ikonu | `lib/screens/profile_screen.dart` |
 | **Premium üyelik bilgisi** | Hero’daki PREMIUM chip köşesindeki bilgi ikonu → veriliş/bitiş tarihi bottom sheet | `profile_screen.dart` |
 | **Google hesap bağlama** | Anonim → kalıcı Google hesabı | `lib/widgets/account_link_card.dart`, `lib/services/auth_service.dart` |
 | **Görünen ad düzenleme** | Bağlı hesap gerekir | `profile_screen.dart` |
@@ -390,7 +390,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET /questions/<id>/similar/` | Benzer sorular (limit 5) | Hayır | Yanlış defteri (Premium) |
 | `GET/POST /questions/<id>/rating/` | Yıldız puanı | Bearer | `QuestionRatingService` |
 | `POST /questions/<id>/attempt/` | Soru denemesi logu | Bearer | `QuestionAttemptService` |
-| `GET/POST /questions/<id>/error-report/` | Hata bildirimi | Bearer | `QuestionErrorReportService` |
+| `GET/POST /questions/<id>/error-report/` | Hata bildirimi (Google; misafir 401) | Bearer (Google) | `QuestionErrorReportService` |
 | `GET /tests/` | Yayın test listesi | Hayır | Katalog |
 | `GET /tests/<id>/questions/` | Test soruları | Hayır | `QuestionFetchService` |
 | `POST /tests/<id>/attempt/` | Test tamamlama | Bearer | Quiz |
@@ -400,7 +400,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET/PATCH /me/` | Profil | Bearer | `AuthService` |
 | `GET/PATCH/DELETE /me/messages/` | Kullanıcı mesajları | Bearer | `UserMessageService` |
 | `GET/POST /daily-mini-exam/` | Mini deneme + gönderim | Opsiyonel/Bearer | `DailyMiniExamService` |
-| `POST /promo/redeem/` | Promosyon kodu | Bearer | `PromoCodeService` |
+| `POST /promo/redeem/` | Promosyon kodu (Google; 5/dk; max 32) | Bearer (Google) | `PromoCodeService` |
 | `GET /exam-types/` | Sınav geri sayım kataloğu | Hayır | `ExamCatalogService` |
 | `GET /exam-packs/?exam_type=` | Yayınlanmış deneme paketleri | Hayır | `ExamPackService` |
 | `GET /exam-packs/<id>/` | Paket detayı + deneme listesi | Hayır | `ExamPackService` |

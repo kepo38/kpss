@@ -103,6 +103,14 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
 
   Future<void> _redeemPromo() async {
     if (_redeemingPromo) return;
+    if (AuthService.instance.isAnonymous) {
+      await AccountLinkCard.prompt(
+        context,
+        title: 'Kod için giriş yap',
+        subtitle: 'Promosyon kodunu kullanmak için Google hesabını bağla.',
+      );
+      return;
+    }
     setState(() => _redeemingPromo = true);
     try {
       final result =
@@ -330,7 +338,7 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
                       ),
                     ],
                     if (!PremiumService.instance.isPremium &&
-                        AuthService.instance.hasBackendSession) ...[
+                        AuthService.instance.hasPermanentAccount) ...[
                       const SizedBox(height: 20),
                       _PromoCodeSection(
                         controller: _promoController,
@@ -644,12 +652,14 @@ class _PromoCodeSection extends StatelessWidget {
                 child: TextField(
                   controller: controller,
                   enabled: !busy,
+                  maxLength: 32,
                   textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(
                     hintText: 'Kodu gir',
                     isDense: true,
                     filled: true,
                     fillColor: Colors.white,
+                    counterText: '',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),

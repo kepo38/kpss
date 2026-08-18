@@ -100,6 +100,7 @@ class _QuizScreenState extends State<QuizScreen>
   final Map<String, QuestionAttemptSummary> _attemptSummaries = {};
   final Map<String, List<QuizStroke>> _drawings = {};
   bool _drawingEnabled = false;
+  static const _maxStrokesPerQuestion = 80;
 
   late final AnimationController _flashCtrl;
   late final Animation<double> _flashOpacity;
@@ -464,9 +465,12 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _popWithResult({required bool completed}) {
-    _answers[_currentIndex] = _selectedAnswer;
+    if (widget.questions.isNotEmpty) {
+      _answers[_currentIndex] = _selectedAnswer;
+    }
     _isFinishing = true;
-    AdManager.instance.endTestSession();
+    _drawingEnabled = false;
+    if (completed) _drawings.clear();
     if (completed) {
       unawaited(LastStudySessionService.instance.clearQuizProgress());
     } else {
@@ -476,6 +480,8 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _goTo(int index) {
+    if (_isFinishing || widget.questions.isEmpty) return;
+    if (index < 0 || index >= widget.questions.length) return;
     _answers[_currentIndex] = _selectedAnswer;
     setState(() {
       _currentIndex = index;
@@ -531,7 +537,7 @@ class _QuizScreenState extends State<QuizScreen>
   Future<void> _loadErrorReportState() async {
     final questionId = _currentQuestion.id;
     if (!QuestionErrorReportService.canReport(questionId) ||
-        !AuthService.instance.hasBackendSession) {
+        !AuthService.instance.hasPermanentAccount) {
       if (mounted) {
         setState(() {
           _errorReported = false;
@@ -570,10 +576,10 @@ class _QuizScreenState extends State<QuizScreen>
   Future<void> _openErrorReport() async {
     final questionId = _currentQuestion.id;
     if (!QuestionErrorReportService.canReport(questionId)) return;
-    if (!AuthService.instance.hasBackendSession) {
+    if (!AuthService.instance.hasPermanentAccount) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bildirmek için giriş yapın.')),
+        const SnackBar(content: Text('Bildirmek için Google hesabını bağlayın.')),
       );
       return;
     }
@@ -919,11 +925,19 @@ class _QuizScreenState extends State<QuizScreen>
 
   Future<void> _finishTest() async {
     if (_isFinishing || !mounted) return;
-    setState(() => _isFinishing = true);
+    setState(() {
+      _isFinishing = true;
+      _drawingEnabled = false;
+    });
     _ticker?.cancel();
-    _answers[_currentIndex] = _selectedAnswer;
+    if (widget.questions.isNotEmpty) {
+      _answers[_currentIndex] = _selectedAnswer;
+    }
+    _drawings.clear();
     final result = _buildResult(completed: true);
 
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
     AdManager.instance.endTestSession();
     await LastStudySessionService.instance.clearQuizProgress();
     await AdManager.instance.showTestCompletionInterstitial();
@@ -1054,7 +1068,7 @@ class _QuizScreenState extends State<QuizScreen>
                 ],
               ),
             ),
-            if (bannerAd != null)
+            if (bannerAd != null && !_isFinishing)
               SizedBox(
                 width: double.infinity,
                 height: bannerAd.size.height.toDouble(),
@@ -1068,6 +1082,22 @@ class _QuizScreenState extends State<QuizScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.questions.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppTheme.ink,
+        appBar: AppBar(
+          backgroundColor: AppTheme.inkSoft,
+          foregroundColor: Colors.white,
+          leading: const AppBackButton(),
+        ),
+        body: const Center(
+          child: Text(
+            'Bu testte soru yok.',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
     final isFav = FavoritesService.instance.isFavorite(_currentQuestion.id);
     final urgent = _isCountdown && _displayDuration.inSeconds <= 60;
 
@@ -1121,8 +1151,11 @@ class _QuizScreenState extends State<QuizScreen>
               child: IconButton(
                 padding: EdgeInsets.zero,
                 tooltip: _drawingEnabled ? 'Çizimi kapat' : 'Çizim modu',
-                onPressed: () =>
-                    setState(() => _drawingEnabled = !_drawingEnabled),
+                onPressed: _isFinishing
+                    ? null
+                    : () => setState(
+                          () => _drawingEnabled = !_drawingEnabled,
+                        ),
                 icon: Icon(
                   _drawingEnabled
                       ? Icons.edit_off_outlined
@@ -1131,7 +1164,8 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
               ),
             ),
-            if (QuestionErrorReportService.canReport(_currentQuestion.id))
+            if (QuestionErrorReportService.canReport(_currentQuestion.id) &&
+                AuthService.instance.hasPermanentAccount)
               SizedBox(
                 width: 40,
                 child: QuestionErrorReportAction(
@@ -1333,17 +1367,27 @@ class _QuizScreenState extends State<QuizScreen>
                 },
               ),
             ),
-            if (_drawingEnabled)
+            if (_drawingEnabled && !_isFinishing)
               QuizDrawingOverlay(
                 strokes: _drawings[_currentQuestion.id] ?? const [],
-                onStrokeComplete: (stroke) => setState(
-                  () => _drawings
-                      .putIfAbsent(_currentQuestion.id, () => [])
-                      .add(stroke),
-                ),
+                onStrokeComplete: (stroke) {
+                  if (_isFinishing) return;
+                  setState(() {
+                    final list = _drawings.putIfAbsent(
+                      _currentQuestion.id,
+                      () => [],
+                    );
+                    if (list.length >= _maxStrokesPerQuestion) return;
+                    list.add(stroke);
+                  });
+                },
                 onClear: () => setState(
                   () => _drawings.remove(_currentQuestion.id),
                 ),
+              )
+            else
+              QuizStrokeLayer(
+                strokes: _drawings[_currentQuestion.id] ?? const [],
               ),
           ],
         ),

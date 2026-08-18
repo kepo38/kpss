@@ -75,9 +75,9 @@ class QuestionErrorReportService {
 
   Future<QuestionErrorReportState> load(String questionId) async {
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession) {
+    if (!auth.hasPermanentAccount) {
       throw const QuestionErrorReportException(
-        'Bildirmek için giriş yapın.',
+        'Bildirmek için Google hesabını bağlayın.',
       );
     }
     final response = await http
@@ -95,9 +95,9 @@ class QuestionErrorReportService {
     String note = '',
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession) {
+    if (!auth.hasPermanentAccount) {
       throw const QuestionErrorReportException(
-        'Bildirmek için giriş yapın.',
+        'Bildirmek için Google hesabını bağlayın.',
       );
     }
     final response = await http
