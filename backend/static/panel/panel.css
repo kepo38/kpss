@@ -20,6 +20,10 @@
   --sidebar-w: 248px;
   --font: "Outfit", system-ui, sans-serif;
   --serif: "Fraunces", Georgia, serif;
+  /* ÖSYM kitapçığı önizlemesi */
+  --exam-serif: "Times New Roman", Times, "Tinos", Georgia, serif;
+  --exam-math: "Cambria Math", "Latin Modern Math", serif;
+  --exam-sans: Arial, Helvetica, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -676,6 +680,7 @@ h2 {
   box-shadow: 0 3px 12px rgba(0,0,0,0.32);
 }
 .quiz-mock-stem {
+  font-family: var(--exam-serif);
   font-size: 14px;
   line-height: 1.55;
   font-weight: 400;
@@ -801,6 +806,7 @@ h2 {
   color: var(--ink);
 }
 .quiz-mock-opt-text {
+  font-family: var(--exam-serif);
   font-size: 13px;
   line-height: 1.4;
   font-weight: 400;
@@ -837,6 +843,7 @@ h2 {
   margin: 0 0 6px;
 }
 .quiz-mock-solution .body {
+  font-family: var(--exam-serif);
   font-size: 13px;
   line-height: 1.45;
   color: rgba(255,255,255,0.85);
@@ -917,17 +924,16 @@ h2 {
 }
 .quiz-mock-stem .katex,
 .quiz-mock-solution .body .katex {
+  font-family: var(--exam-math);
+  font-style: italic;
   font-size: 1em;
   max-width: 100%;
 }
-.quiz-mock-opt-text {
-  font-family: inherit;
-  font-style: normal;
-}
 .quiz-mock-opt-text .katex,
 .quiz-mock-opt-text .katex-display {
+  font-family: var(--exam-math);
+  font-style: italic;
   font-size: 1em;
-  font-style: normal;
   margin: 0;
   display: inline;
   text-align: left;

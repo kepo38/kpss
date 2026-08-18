@@ -20,6 +20,7 @@ import '../services/question_error_report_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/question_rating_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/exam_typography.dart';
 import '../utils/solution_preview.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
@@ -1244,11 +1245,11 @@ class _QuizScreenState extends State<QuizScreen>
                               stem: _currentQuestion.soruMetni,
                               imageUrl: _currentQuestion.imageUrl,
                               sekilKodu: _currentQuestion.sekilKodu,
-                              style: const TextStyle(
+                              style: ExamTypography.body(
+                                color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w500,
                                 height: 1.5,
-                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -1408,13 +1409,13 @@ class _ScenarioPassageCard extends StatelessWidget {
           const SizedBox(height: 8),
           FormattedText(
             question.scenarioStem!,
+            preserveLineBreaks: true,
             paragraphLayout: true,
             textAlign: TextAlign.start,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              height: 1.5,
+            style: ExamTypography.body(
               color: Colors.white,
+              fontSize: 15,
+              height: 1.5,
             ),
           ),
         ],
@@ -1503,9 +1504,7 @@ class _SolutionPanel extends StatelessWidget {
             FormattedText(
               question.cozumMetni,
               preserveLineBreaks: true,
-              style: TextStyle(
-                height: 1.55,
-                fontSize: 15,
+              style: ExamTypography.solution(
                 color: Colors.white.withValues(alpha: 0.9),
               ),
             )
@@ -1513,9 +1512,7 @@ class _SolutionPanel extends StatelessWidget {
             FormattedText(
               parts.preview,
               preserveLineBreaks: true,
-              style: TextStyle(
-                height: 1.55,
-                fontSize: 15,
+              style: ExamTypography.solution(
                 color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
@@ -1531,9 +1528,7 @@ class _SolutionPanel extends StatelessWidget {
                       child: FormattedText(
                         parts.remainder,
                         preserveLineBreaks: true,
-                        style: TextStyle(
-                          height: 1.55,
-                          fontSize: 15,
+                        style: ExamTypography.solution(
                           color: Colors.white.withValues(alpha: 0.85),
                         ),
                       ),
@@ -1769,13 +1764,7 @@ class _OptionTile extends StatelessWidget {
                     FormattedText.wrapBareLatex(
                       FormattedText.stripMarkup(text),
                     ),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.35,
-                      fontWeight: FontWeight.w500,
-                      fontStyle: FontStyle.normal,
-                      color: Colors.white,
-                    ),
+                    style: ExamTypography.option(color: Colors.white),
                   ),
                 ),
                 if (tone == _OptionTone.correct)

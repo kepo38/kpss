@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
+import '../theme/exam_typography.dart';
+
 /// Markdown + LaTeX: **kalın**, *italik*, __altı çizili__, {green}renk{/green}, $...$ / $$...$$.
 /// Panel ile uyumlu paragraf düzeni ve HTML etiket yedek desteği.
 class FormattedText extends StatelessWidget {
@@ -100,10 +102,11 @@ class FormattedText extends StatelessWidget {
   }
 
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
-    final size = base.fontSize ?? 16;
-    return base.copyWith(
-      fontSize: size,
-      color: base.color,
+    return ExamTypography.mathFrom(
+      base.copyWith(
+        fontSize: base.fontSize ?? 16,
+        color: base.color,
+      ),
     );
   }
 

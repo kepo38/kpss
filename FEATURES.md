@@ -95,7 +95,17 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium / kampanya bypass |
 | **Reklamsız mini deneme oturumu** | Günün mini denemesinde reklam yok | `QuizScreen.adFreeExperience` | Ücretsiz |
 
-**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto (`fontSize`) kullanır.
+**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
+
+**ÖSYM yazı standartları (`lib/theme/exam_typography.dart`):**
+
+| Alan | ÖSYM | Uygulama |
+|---|---|---|
+| Soru kökü, şık, çözüm | Times New Roman | Google Fonts **Tinos** (mobil yedek) |
+| Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
+| Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
+
+Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`).
 
 ---
 
