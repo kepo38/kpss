@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../constants/brand_constants.dart';
 import '../../constants/daily_mini_exam_constants.dart';
 import '../../theme/app_theme.dart';
 
@@ -133,7 +134,7 @@ class _DailyMiniExamCtaState extends State<DailyMiniExamCta>
                   ),
                 ),
                 SizedBox(width: 10),
-                _FormulaIconBadge(size: 34),
+                _CtaPremiumMedallion(size: 34),
               ],
             )
           : Row(
@@ -156,7 +157,7 @@ class _DailyMiniExamCtaState extends State<DailyMiniExamCta>
                 ),
                 if (widget.enabled && !widget.twoLineStart) ...[
                   const SizedBox(width: 10),
-                  const _FormulaIconBadge(size: 28),
+                  const _CtaPremiumMedallion(size: 28),
                 ],
               ],
             ),
@@ -286,35 +287,85 @@ class _RunningGoldBorderPainter extends CustomPainter {
       oldDelegate.progress != progress;
 }
 
-class _FormulaIconBadge extends StatelessWidget {
+class _CtaPremiumMedallion extends StatelessWidget {
   final double size;
 
-  const _FormulaIconBadge({required this.size});
+  const _CtaPremiumMedallion({required this.size});
 
   @override
   Widget build(BuildContext context) {
+    final logoSize = size * 0.5;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(size * 0.24),
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFFFF8EE),
+            Color(0xFFF3E2B8),
+            Color(0xFFE8C878),
+            Color(0xFFC9A86C),
+          ],
+          stops: [0.0, 0.34, 0.72, 1.0],
+        ),
         border: Border.all(
-          color: AppTheme.ink,
-          width: 1.25,
+          color: const Color(0xFFD4AF6A).withValues(alpha: 0.92),
+          width: 1.15,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.ink.withValues(alpha: 0.14),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            color: AppTheme.neonGold.withValues(alpha: 0.4),
+            blurRadius: 10,
+            spreadRadius: -1,
+            offset: const Offset(0, 3),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.55),
+            blurRadius: 0,
+            spreadRadius: 0.35,
+            offset: const Offset(-0.5, -0.5),
           ),
         ],
       ),
-      child: Icon(
-        Icons.functions_rounded,
-        size: size * 0.58,
-        color: AppTheme.ink,
+      child: Padding(
+        padding: EdgeInsets.all(size * 0.12),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                AppTheme.ink.withValues(alpha: 0.1),
+                AppTheme.ink.withValues(alpha: 0.04),
+              ],
+            ),
+            border: Border.all(
+              color: AppTheme.ink.withValues(alpha: 0.12),
+              width: 0.8,
+            ),
+          ),
+          child: Center(
+            child: Image.asset(
+              BrandConstants.logoAsset,
+              width: logoSize,
+              height: logoSize,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => Image.asset(
+                BrandConstants.watermarkAsset,
+                width: logoSize,
+                height: logoSize,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.emoji_events_rounded,
+                  size: logoSize * 0.9,
+                  color: AppTheme.ink,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -13,31 +13,40 @@ import '../../constants/brand_constants.dart';
 class DailyMiniPodiumShare {
   DailyMiniPodiumShare._();
 
+  static Rect? _shareOrigin(BuildContext? context) {
+    if (context == null) return null;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
   static Future<bool> share({
     required GlobalKey boundaryKey,
     required String shareText,
   }) async {
+    final origin = _shareOrigin(boundaryKey.currentContext);
+
     if (kIsWeb) {
-      await Share.share(shareText);
+      await Share.share(shareText, sharePositionOrigin: origin);
       return true;
     }
 
     try {
       final context = boundaryKey.currentContext;
       if (context == null) {
-        await Share.share(shareText);
+        await Share.share(shareText, sharePositionOrigin: origin);
         return false;
       }
       final boundary = context.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
-        await Share.share(shareText);
+        await Share.share(shareText, sharePositionOrigin: origin);
         return false;
       }
 
       final image = await boundary.toImage(pixelRatio: 3);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       if (bytes == null) {
-        await Share.share(shareText);
+        await Share.share(shareText, sharePositionOrigin: origin);
         return false;
       }
 
@@ -53,10 +62,11 @@ class DailyMiniPodiumShare {
         [XFile(file.path, mimeType: 'image/png')],
         text: shareText,
         subject: '${BrandConstants.appName} · Günün Kürsüsü',
+        sharePositionOrigin: origin,
       );
       return true;
     } catch (_) {
-      await Share.share(shareText);
+      await Share.share(shareText, sharePositionOrigin: origin);
       return false;
     }
   }

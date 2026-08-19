@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/puan_hesaplama_button.dart';
 import '../../widgets/statistics_exams_tab.dart';
 import '../../widgets/statistics_overview_tab.dart';
 import '../../widgets/statistics_publishers_tab.dart';
@@ -88,12 +89,23 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           ),
         ],
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          StatisticsOverviewTab(onRefresh: () => setState(() {})),
-          StatisticsPublishersTab(onFilter: () => setState(() {})),
-          StatisticsExamsTab(onRefresh: () => setState(() {})),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, embedded ? 8 : 12, 16, 8),
+            child: const PuanHesaplamaButton(),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                StatisticsOverviewTab(onRefresh: () => setState(() {})),
+                StatisticsPublishersTab(onFilter: () => setState(() {})),
+                StatisticsExamsTab(onRefresh: () => setState(() {})),
+              ],
+            ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(

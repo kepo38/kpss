@@ -364,9 +364,9 @@ class AuthService extends ChangeNotifier {
       final msg = e.toString();
       if (msg.contains('ApiException: 10') || msg.contains('sign_in_failed')) {
         _lastError =
-            'Google girişi yapılandırılmamış. '
-            'android/app/google-services.json dosyasını Firebase’den indirip '
-            'SHA-1 ekleyin (GOOGLE_GIRIS.md).';
+            'Google girişi yapılandırılmamış (SHA-1 / OAuth). '
+            'Güncel google-services.json ile uygulamayi-yukle.bat çalıştırın. '
+            'Detay: GOOGLE_GIRIS.md';
       } else if (msg.contains('SocketException') ||
           msg.contains('Failed host lookup') ||
           msg.contains('Connection refused') ||

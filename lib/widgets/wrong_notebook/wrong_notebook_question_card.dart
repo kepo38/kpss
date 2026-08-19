@@ -81,6 +81,7 @@ class WrongNotebookQuestionCard extends StatelessWidget {
   final VoidCallback onToggleFavorite;
   final VoidCallback onSimilar;
   final VoidCallback onTap;
+  final VoidCallback onRemove;
 
   const WrongNotebookQuestionCard({
     super.key,
@@ -91,6 +92,7 @@ class WrongNotebookQuestionCard extends StatelessWidget {
     required this.onToggleFavorite,
     required this.onSimilar,
     required this.onTap,
+    required this.onRemove,
   });
 
   @override
@@ -163,6 +165,8 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                                   isFavorite: isFavorite,
                                   onTap: onToggleFavorite,
                                 ),
+                                const SizedBox(width: 6),
+                                _RemoveButton(onTap: onRemove),
                               ],
                             ),
                             const SizedBox(height: 6),
@@ -253,6 +257,35 @@ class _FavoriteButton extends StatelessWidget {
           isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
           size: 16,
           color: isFavorite ? AppTheme.champagne : muted.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+}
+
+class _RemoveButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _RemoveButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppTheme.mutedOnPage(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppTheme.ink.withValues(alpha: 0.04),
+          border: Border.all(color: AppTheme.ink.withValues(alpha: 0.06)),
+        ),
+        child: Icon(
+          Icons.delete_outline_rounded,
+          size: 16,
+          color: muted.withValues(alpha: 0.55),
         ),
       ),
     );

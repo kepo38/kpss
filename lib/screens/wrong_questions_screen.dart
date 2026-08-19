@@ -14,6 +14,7 @@ import '../services/kpss_preference_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/pro_upsell_sheet.dart';
+import '../widgets/question_stem_content.dart';
 import '../widgets/wrong_notebook/wrong_notebook_empty_state.dart';
 import '../widgets/wrong_notebook/wrong_notebook_header.dart';
 import '../widgets/wrong_notebook/wrong_notebook_practice_bar.dart';
@@ -23,7 +24,7 @@ import '../widgets/wrong_notebook/wrong_notebook_subject_filter.dart';
 import 'quiz_screen.dart';
 import 'smart_review_screen.dart';
 
-/// Konu testlerinde yanlış yapılan sorular (doğru çözünce listeden düşmez).
+/// Konu testlerinde yanlış yapılan sorular; kullanıcı istediğini kaldırabilir.
 class WrongQuestionsScreen extends StatefulWidget {
   const WrongQuestionsScreen({super.key});
 
@@ -66,6 +67,59 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   Future<void> _toggleFavorite(String questionId) async {
     await FavoritesService.instance.toggle(questionId);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _confirmRemoveQuestion(QuestionModel question) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surfaceCard(context),
+          title: const Text(
+            'Soruyu kaldır?',
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: Text(
+            'Bu soru yanlış defterinden silinir. İstersen testlerde '
+            'tekrar yanlış yapınca yeniden eklenir.',
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              color: AppTheme.mutedOnPage(context),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.champagne,
+                foregroundColor: AppTheme.ink,
+              ),
+              child: const Text(
+                'Kaldır',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    await ContentBankService.instance.removeWrongQuestion(question.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('«${QuestionStemContent.previewText(question.soruMetni)}» kaldırıldı.'),
+      ),
+    );
   }
 
   Future<void> _openQuestion(BuildContext context, String questionId) async {
@@ -330,10 +384,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
             centerTitle: false,
             titleSpacing: 0,
             leading: const AppBackButton(),
-            title: WrongNotebookHeaderTitle(
-              questionCount: allQuestions.length,
-              subjectCount: subjects.length,
-            ),
+            title: const WrongNotebookHeaderTitle(),
             actions: [
               if (allQuestions.isNotEmpty)
                 WrongNotebookHeaderPill(
@@ -428,6 +479,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                           context,
                                           q.id,
                                         ),
+                                        onRemove: () => _confirmRemoveQuestion(q),
                                       ),
                                   ],
                                 ],

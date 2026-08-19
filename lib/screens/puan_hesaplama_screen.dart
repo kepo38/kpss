@@ -196,17 +196,15 @@ class _ResultHeroCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: _MiniStat(
-                        label: 'GY Puan',
-                        value: estimate.gyScore.toStringAsFixed(2),
-                        sub: '${estimate.gyNet.toStringAsFixed(2)} net',
+                        label: 'GY-Net',
+                        value: estimate.gyNet.toStringAsFixed(2),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: _MiniStat(
-                        label: 'GK Puan',
-                        value: estimate.gkScore.toStringAsFixed(2),
-                        sub: '${estimate.gkNet.toStringAsFixed(2)} net',
+                        label: 'GK-Net',
+                        value: estimate.gkNet.toStringAsFixed(2),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -232,13 +230,13 @@ class _ResultHeroCard extends StatelessWidget {
 class _MiniStat extends StatelessWidget {
   final String label;
   final String value;
-  final String sub;
+  final String? sub;
   final bool bold;
 
   const _MiniStat({
     required this.label,
     required this.value,
-    required this.sub,
+    this.sub,
     this.bold = false,
   });
 
@@ -272,14 +270,15 @@ class _MiniStat extends StatelessWidget {
               color: AppTheme.ink,
             ),
           ),
-          Text(
-            sub,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.ink.withValues(alpha: 0.5),
+          if (sub != null && sub!.isNotEmpty)
+            Text(
+              sub!,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.ink.withValues(alpha: 0.5),
+              ),
             ),
-          ),
         ],
       ),
     );

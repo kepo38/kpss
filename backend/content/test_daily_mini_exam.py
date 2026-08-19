@@ -331,3 +331,52 @@ class DailyMiniExamApiTests(TestCase):
             )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["code"], "guest_login_required")
+
+    def test_demo_users_excluded_from_leaderboard(self):
+        from content.models import DailyMiniExamAttempt
+        from content.daily_mini_exam import exam_date_for, get_or_create_today_exam
+
+        demo = AppUser.objects.create(
+            google_sub="demo-mini-leader-99",
+            email="demo.mini99@hedefkamu.app",
+            display_name="Demo Test",
+            api_token="demo-token",
+            is_anonymous=False,
+        )
+        today = exam_date_for()
+        exam = get_or_create_today_exam("lisans")
+        DailyMiniExamAttempt.objects.create(
+            user=demo,
+            exam_date=today,
+            kpss_type="lisans",
+            correct=19,
+            wrong=1,
+            blank=0,
+            total=20,
+            duration_seconds=300,
+            wrong_question_ids=[],
+            answers={},
+        )
+
+        open_now = self._open_now()
+        with patch("content.daily_mini_exam.istanbul_now", return_value=open_now):
+            exam_json = self.client.get(self.url(), {"kpss_type": "lisans"}).json()
+            answers = {qid: "A" for qid in exam_json["questionIds"]}
+            self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": answers,
+                    "duration_seconds": 400,
+                },
+                content_type="application/json",
+                **self.auth(),
+            )
+            body = self.client.get(self.url(), {"kpss_type": "lisans"}).json()
+
+        self.assertEqual(body["participantCount"], 1)
+        self.assertEqual(body["leaderboardParticipantCount"], 1)
+        self.assertEqual(len(body["leaderboard"]), 1)
+        self.assertEqual(body["leaderboard"][0]["userId"], str(self.user.pk))
+        demo_ids = {row["userId"] for row in body["leaderboard"]}
+        self.assertNotIn(str(demo.pk), demo_ids)

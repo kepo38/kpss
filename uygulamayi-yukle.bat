@@ -4,11 +4,11 @@ title KPSS Akademi — Uygulamayı Yükle
 cd /d "%~dp0"
 
 set "PACKAGE=com.hedefkamu.hedef_kamu"
-set "APK=build\app\outputs\flutter-apk\app-debug.apk"
+set "APK="
 
 echo.
 echo  ============================================================
-echo   KPSS Akademi — bağlı telefona GÜNCEL uygulamayı kur
+echo   KPSS Akademi — bağlı telefona GÜNCEL RELEASE uygulamayı kur
 echo  ============================================================
 echo.
 echo   Telefon USB ile bağlı olsun, USB hata ayıklama açık olsun.
@@ -68,21 +68,57 @@ if errorlevel 1 (
   exit /b 1
 )
 
-flutter build apk --debug
+flutter clean
+if errorlevel 1 (
+  echo [HATA] flutter clean başarısız.
+  pause
+  exit /b 1
+)
+
+flutter build apk --release
 if errorlevel 1 (
   echo [HATA] APK derlenemedi.
   pause
   exit /b 1
 )
 
-if not exist "%APK%" (
-  echo [HATA] APK yok: %APK%
+:: Build çıktısının bulunduğu yeri otomatik bul (Flutter sürümlerine göre path değişebiliyor)
+echo.
+echo [.] Release APK aranıyor...
+set "APK_CANDIDATE="
+
+:: 1) flutter-apk çıktısı (en yaygını)
+for /f "delims=" %%F in ('dir /b /s build\app\outputs\flutter-apk\*release*.apk 2^>nul') do (
+  set "APK_CANDIDATE=%%F"
+  goto :apk_found
+)
+
+:: 2) apk çıktısı (alternatif)
+for /f "delims=" %%F in ('dir /b /s build\app\outputs\apk\release\*release*.apk 2^>nul') do (
+  set "APK_CANDIDATE=%%F"
+  goto :apk_found
+)
+
+:apk_found
+set "APK=%APK_CANDIDATE%"
+
+if "%APK%"=="" (
+  echo [HATA] Release APK bulunamadı. Build çıktısında hata olabilir.
   pause
   exit /b 1
 )
 
+echo [OK] APK bulundu: %APK%
+dir "%APK%"
+
 echo.
-echo [.] Telefona kuruluyor (eski sürümün üzerine)...
+echo [.] Telefondaki eski sürüm kaldırılıyor...
+"%ADB%" -s %SERIAL% uninstall %PACKAGE% >nul 2>&1
+
+:: Uninstall başarısız olursa (hata/izin), pm uninstall dene
+%ADB% -s %SERIAL% shell pm uninstall %PACKAGE% >nul 2>&1
+
+echo [.] Telefona kuruluyor (release)...
 "%ADB%" -s %SERIAL% install -r "%APK%"
 if errorlevel 1 (
   echo [HATA] Kurulum başarısız. USB kablo / hata ayıklama iznini kontrol edin.

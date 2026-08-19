@@ -84,7 +84,7 @@ class DailyMiniExamService extends ChangeNotifier {
   }
   List<DailyMiniLeaderRow> get leaderboard {
     final remote = _remote?.leaderboard ?? const <DailyMiniLeaderRow>[];
-    if (remote.isNotEmpty) return remote;
+    if (remote.isNotEmpty) return _withoutDemoLeaders(remote);
     final attempt = this.attempt;
     final user = AuthService.instance.user;
     if (attempt == null || user == null || attempt.rank == null) {
@@ -105,12 +105,68 @@ class DailyMiniExamService extends ChangeNotifier {
       ),
     ];
   }
+
+  /// seed_daily_mini_demo kayıtları — eski API yanıtlarında da gizlenir.
+  static bool isDemoLeaderRow(DailyMiniLeaderRow row) {
+    if (row.displayName.toLowerCase().startsWith('demo ')) return true;
+    return row.emailRest.toLowerCase().contains('@hedefkamu.app') &&
+        row.emailPrefix.toLowerCase().startsWith('dem');
+  }
+
+  static List<DailyMiniLeaderRow> _withoutDemoLeaders(
+    List<DailyMiniLeaderRow> rows,
+  ) {
+    return rows.where((row) => !isDemoLeaderRow(row)).toList();
+  }
+
+  int _demoLeaderCount(List<DailyMiniLeaderRow> rows) =>
+      rows.where(isDemoLeaderRow).length;
+
+  /// Paylaşım ve kürsü rozeti için gerçek katılımcı sayısı.
+  int get visibleParticipantCount {
+    final remote = _remote;
+    if (remote != null) {
+      final demoInBoard = _demoLeaderCount(remote.leaderboard);
+      final boardCount = remote.leaderboardParticipantCount;
+      if (boardCount > 0) {
+        return (boardCount - demoInBoard).clamp(0, boardCount);
+      }
+      final todayCount = remote.participantCount;
+      if (todayCount > 0) {
+        return (todayCount - demoInBoard).clamp(0, todayCount);
+      }
+    }
+    if (leaderboard.isNotEmpty) return leaderboard.length;
+    return participantCount;
+  }
+
+  /// Sıra: attempt → kürsü satırı.
+  int? rankForCurrentUser() {
+    final attemptRank = attempt?.rank;
+    if (attemptRank != null && attemptRank > 0) return attemptRank;
+    final userId = AuthService.instance.user?.id;
+    if (userId == null) return null;
+    for (final row in leaderboard) {
+      if (row.userId == userId && row.rank > 0) return row.rank;
+    }
+    return null;
+  }
+
+  bool get canShareRank {
+    final rank = rankForCurrentUser();
+    final count = visibleParticipantCount;
+    return rank != null && rank > 0 && count > 0;
+  }
   int get participantCount => _remote?.participantCount ?? 0;
   int get podiumParticipantCount {
     final remoteCount = _remote?.leaderboardParticipantCount ?? 0;
-    if (remoteCount > 0) return remoteCount;
+    if (remoteCount > 0) {
+      final demoInBoard =
+          _demoLeaderCount(_remote?.leaderboard ?? const []);
+      return (remoteCount - demoInBoard).clamp(0, remoteCount);
+    }
     if (window.isPreOpen) return 0;
-    return participantCount;
+    return visibleParticipantCount;
   }
   bool get showingYesterdayPodium => window.isPreOpen;
   List<String> get questionIds => List.unmodifiable(_questionIds);

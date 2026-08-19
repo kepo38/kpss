@@ -15,6 +15,33 @@ OPENS_HOUR = 6
 TURKCE_TOPIC_SLUGS = ("turkce_anlam", "turkce_dilbilgisi")
 VALID_KPSS_TYPES = ("lisans", "onLisans", "ortaogretim")
 SUBJECT_POOLS = ("tarih", "cografya", "vatandaslik")
+DEMO_EMAIL_PREFIX = "demo.mini"
+DEMO_GOOGLE_SUB_PREFIX = "demo-mini-leader-"
+
+
+def is_demo_mini_user(user) -> bool:
+    """seed_daily_mini_demo kayıtları — canlı kürsüde gösterilmez."""
+    if user is None:
+        return False
+    email = (getattr(user, "email", "") or "").strip().lower()
+    google_sub = (getattr(user, "google_sub", "") or "").strip()
+    return email.startswith(DEMO_EMAIL_PREFIX) or google_sub.startswith(
+        DEMO_GOOGLE_SUB_PREFIX
+    )
+
+
+def attempts_for_leaderboard(exam_date: date, kpss_type: str):
+    from .models import DailyMiniExamAttempt
+
+    return (
+        DailyMiniExamAttempt.objects.filter(
+            exam_date=exam_date,
+            kpss_type=kpss_type,
+        )
+        .exclude(user__email__startswith=DEMO_EMAIL_PREFIX)
+        .exclude(user__google_sub__startswith=DEMO_GOOGLE_SUB_PREFIX)
+        .select_related("user")
+    )
 
 
 def istanbul_now() -> datetime:
@@ -149,14 +176,8 @@ def get_or_create_today_exam(kpss_type: str, now: datetime | None = None) -> Dai
 
 
 def leaderboard_rows(exam_date: date, kpss_type: str, *, limit: int = 20) -> list[dict]:
-    from .models import DailyMiniExamAttempt
-
     attempts = (
-        DailyMiniExamAttempt.objects.filter(
-            exam_date=exam_date,
-            kpss_type=kpss_type,
-        )
-        .select_related("user")
+        attempts_for_leaderboard(exam_date, kpss_type)
         .order_by("-correct", "duration_seconds", "completed_at")[:limit]
     )
     rows = []
@@ -180,12 +201,9 @@ def leaderboard_rows(exam_date: date, kpss_type: str, *, limit: int = 20) -> lis
 
 
 def rank_for_user(exam_date: date, kpss_type: str, user_id: int) -> tuple[int | None, int]:
-    from .models import DailyMiniExamAttempt
-
-    qs = DailyMiniExamAttempt.objects.filter(
-        exam_date=exam_date,
-        kpss_type=kpss_type,
-    ).order_by("-correct", "duration_seconds", "completed_at")
+    qs = attempts_for_leaderboard(exam_date, kpss_type).order_by(
+        "-correct", "duration_seconds", "completed_at"
+    )
     total = qs.count()
     for index, attempt in enumerate(qs.only("user_id"), start=1):
         if attempt.user_id == user_id:

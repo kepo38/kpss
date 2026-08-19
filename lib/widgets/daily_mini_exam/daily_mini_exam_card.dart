@@ -91,23 +91,35 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
     if (_sharingPodium) return;
     final service = DailyMiniExamService.instance;
     final attempt = service.attempt;
-    final rank = attempt?.rank;
-    if (attempt == null || rank == null || service.participantCount <= 0) {
+    final rank = service.rankForCurrentUser();
+    final participantCount = service.visibleParticipantCount;
+    if (attempt == null || rank == null || participantCount <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sıralama henüz hazır değil. Birkaç saniye sonra tekrar dene.'),
+        ),
+      );
+      unawaited(service.refresh());
       return;
     }
     final text = buildDailyMiniShareText(
       rank: rank,
-      participantCount: service.participantCount,
+      participantCount: participantCount,
       correct: attempt.correct,
       total: attempt.total,
     );
     setState(() => _sharingPodium = true);
     await WidgetsBinding.instance.endOfFrame;
-    await DailyMiniPodiumShare.share(
+    final ok = await DailyMiniPodiumShare.share(
       boundaryKey: _podiumShareKey,
       shareText: text,
     );
     if (mounted) setState(() => _sharingPodium = false);
+    if (!mounted || ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Paylaşım açılamadı. Metin panosu kullanıldı.')),
+    );
   }
 
   Future<void> _openProfileForLogin() async {
@@ -245,7 +257,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                 : (_window.isOpen
                     ? DailyMiniExamConstants.ctaStart
                     : '${DailyMiniExamConstants.opensClock}’de açılır'));
-        final rank = attempt?.rank;
+        final rank = service.rankForCurrentUser();
         final dark = AppTheme.isDark(context);
 
         return Padding(
@@ -440,13 +452,14 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                             DailyMiniExamCompletedLeaderboard(
                               shareBoundaryKey: _podiumShareKey,
                               rank: rank,
-                              participantCount: service.participantCount,
+                              participantCount: service.visibleParticipantCount,
                               leaders: service.leaderboard,
                               totalQuestions:
                                   DailyMiniExamConstants.questionCount,
                               trend: service.rankTrend,
                               onShare: _shareRank,
                               onDetails: _openResult,
+                              shareEnabled: service.canShareRank,
                             ),
                             if (service.canResumeQuiz && _window.isOpen) ...[
                               const SizedBox(height: 12),

@@ -947,9 +947,10 @@ class DailyMiniExamView(APIView):
                     "completedAt": attempt.completed_at.isoformat(),
                 }
 
-        participant_count = DailyMiniExamAttempt.objects.filter(
-            exam_date=exam.exam_date,
-            kpss_type=kpss_type,
+        from .daily_mini_exam import attempts_for_leaderboard
+
+        participant_count = attempts_for_leaderboard(
+            exam.exam_date, kpss_type
         ).count()
 
         # 00:00–06:00 arası kürsüde dünün liderleri gösterilir.
@@ -958,9 +959,8 @@ class DailyMiniExamView(APIView):
             from datetime import timedelta
 
             leaderboard_date = exam.exam_date - timedelta(days=1)
-        leaderboard_participant_count = DailyMiniExamAttempt.objects.filter(
-            exam_date=leaderboard_date,
-            kpss_type=kpss_type,
+        leaderboard_participant_count = attempts_for_leaderboard(
+            leaderboard_date, kpss_type
         ).count()
 
         return {

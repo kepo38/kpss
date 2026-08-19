@@ -14,12 +14,12 @@ import '../widgets/account_link_card.dart';
 import '../widgets/analytics_study_vault.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/puan_hesaplama_button.dart';
 import '../widgets/scale_button.dart';
-import 'favorites_screen.dart';
-import 'notes_screen.dart';
-import 'puan_hesaplama_screen.dart';
 import 'study_hub_screen.dart';
 import 'subject_analytics_detail_screen.dart';
+import 'favorites_screen.dart';
+import 'notes_screen.dart';
 import 'wrong_questions_screen.dart';
 
 /// Ders bazlı performans özeti (yalnızca konu testleri).
@@ -162,15 +162,7 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   kpssType: widget.kpssType,
                 ),
                 const SizedBox(height: 14),
-                _PremiumScoreCalculatorButton(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PuanHesaplamaScreen(),
-                      ),
-                    );
-                  },
-                ),
+                const PuanHesaplamaButton(),
               ],
             ),
           ),
@@ -631,99 +623,6 @@ class _SubjectCard extends StatelessWidget {
                 ),
               ],
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PremiumScoreCalculatorButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PremiumScoreCalculatorButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleButton(
-      onPressed: onTap,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFF6E3),
-                  Color(0xFFF1DEB8),
-                  Color(0xFFE2C885),
-                ],
-              ),
-              border: Border.all(color: const Color(0xFFD4AF6A), width: 1.1),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.champagne.withValues(alpha: 0.34),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppTheme.ink.withValues(alpha: 0.1),
-                  ),
-                  child: const Icon(
-                    Icons.calculate_rounded,
-                    color: AppTheme.ink,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'PUAN HESAPLAMA',
-                        style: TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.2,
-                          color: AppTheme.ink,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Netlerine göre tahmini KPSS puanı',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xCC1F2937),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 16,
-                  color: AppTheme.ink,
-                ),
-              ],
-            ),
           ),
         ),
       ),

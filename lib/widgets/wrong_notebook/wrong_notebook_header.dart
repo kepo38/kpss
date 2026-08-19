@@ -3,69 +3,24 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
 class WrongNotebookHeaderTitle extends StatelessWidget {
-  final int questionCount;
-  final int subjectCount;
-
-  const WrongNotebookHeaderTitle({
-    super.key,
-    required this.questionCount,
-    required this.subjectCount,
-  });
+  const WrongNotebookHeaderTitle({super.key});
 
   @override
   Widget build(BuildContext context) {
     final on = AppTheme.onPage(context);
-    final muted = AppTheme.mutedOnPage(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Yanlış Defterim',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontFamily: 'serif',
-            fontWeight: FontWeight.w700,
-            fontSize: 17,
-            height: 1.05,
-            letterSpacing: -0.25,
-            color: on,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Container(
-              width: 20,
-              height: 2,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(99),
-                gradient: const LinearGradient(
-                  colors: [AppTheme.champagneLight, AppTheme.champagne],
-                ),
-              ),
-            ),
-            const SizedBox(width: 7),
-            Flexible(
-              child: Text(
-                questionCount == 0
-                    ? 'Hatalar burada toplanır'
-                    : '$questionCount soru · $subjectCount ders',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.1,
-                  color: muted,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+    return Text(
+      'Yanlış Defterim',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontFamily: 'serif',
+        fontWeight: FontWeight.w700,
+        fontSize: 17,
+        height: 1.05,
+        letterSpacing: -0.25,
+        color: on,
+      ),
     );
   }
 }

@@ -146,6 +146,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onDetails;
   final GlobalKey shareBoundaryKey;
+  final bool shareEnabled;
 
   const DailyMiniExamCompletedLeaderboard({
     super.key,
@@ -157,15 +158,12 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
     required this.onShare,
     required this.onDetails,
     required this.shareBoundaryKey,
+    this.shareEnabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
-    final currentRank = rank;
-    final hasRank = currentRank != null &&
-        currentRank > 0 &&
-        participantCount >= currentRank;
 
     return _LeaderboardShell(
       child: Column(
@@ -225,7 +223,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                 top: 0,
                 right: 0,
                 child: IconButton(
-                  onPressed: hasRank ? onShare : null,
+                  onPressed: shareEnabled ? onShare : null,
                   tooltip: 'Sıralamanı paylaş',
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(

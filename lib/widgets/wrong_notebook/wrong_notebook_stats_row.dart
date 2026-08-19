@@ -52,9 +52,8 @@ class WrongNotebookStatsRow extends StatelessWidget {
             child: _StatCard(
               icon: Icons.trending_up_rounded,
               value: topSubject ?? '—',
-              label: topSubjectCount != null
-                  ? 'En çok yanlış yapılan ders · $topSubjectCount yanlış'
-                  : 'En çok yanlış yapılan ders',
+              label: 'En çok yanlış yapılan ders',
+              cornerBadge: topSubjectCount?.toString(),
               on: on,
               muted: muted,
               card: card,
@@ -75,6 +74,7 @@ class _StatCard extends StatelessWidget {
   final Color muted;
   final Color card;
   final bool compactValue;
+  final String? cornerBadge;
 
   const _StatCard({
     required this.icon,
@@ -84,6 +84,7 @@ class _StatCard extends StatelessWidget {
     required this.muted,
     required this.card,
     this.compactValue = false,
+    this.cornerBadge,
   });
 
   @override
@@ -102,35 +103,71 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Icon(icon, size: 16, color: AppTheme.champagne),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            maxLines: compactValue ? 1 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: compactValue ? null : 'serif',
-              fontSize: compactValue ? 13 : 20,
-              fontWeight: FontWeight.w700,
-              height: 1.1,
-              color: on,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: AppTheme.champagne),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                maxLines: compactValue ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: compactValue ? null : 'serif',
+                  fontSize: compactValue ? 13 : 20,
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                  color: on,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                  color: muted,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-              color: muted,
+          if (cornerBadge != null)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE85D4C),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE85D4C).withValues(alpha: 0.28),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  cornerBadge!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
