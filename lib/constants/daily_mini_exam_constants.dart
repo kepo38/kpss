@@ -5,7 +5,7 @@ class DailyMiniExamConstants {
   static const questionCount = 20;
   static const perPool = 5;
   static const opensHour = 6;
-  static const title = 'Günün Mini Denemesi';
+  static const title = 'MİNİ DENEME';
   static const eyebrow = 'ÜCRETSİZ';
   static const cardHeadline = 'Günün denemesi';
   static const testIdPrefix = 'daily_mini_';
@@ -28,7 +28,9 @@ class DailyMiniExamConstants {
   static const prefsPendingRankingSubmit = 'daily_mini_pending_rank_submit_v1';
   static const prefsGuestFirstDate = 'daily_mini_guest_first_date_v1';
 
-  static const ctaStart = 'Denemeye Başla ve Sıralamanı Gör';
+  static const ctaStartLine1 = 'Denemeye Başla';
+  static const ctaStartLine2 = 'Sıralamanı Gör';
+  static const ctaStart = 'Denemeye Başla · Sıralamanı Gör';
   static const ctaResume = 'Kaldığın Yerden Devam Et';
   static const ctaGuestSignIn = 'Denemeye katılmak için giriş yap';
 

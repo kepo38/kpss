@@ -864,11 +864,23 @@ class ExamPackAdmin(ModelAdmin):
         "is_published",
         "sort_order",
     )
+    list_display_links = ("title", "public_id")
     list_editable = ("is_published", "sort_order")
     list_filter = ("pack_kind", "is_published", "exam_type")
     search_fields = ("title", "public_id", "play_product_id")
     inlines = (ExamPackExamInline,)
     autocomplete_fields = ("exam_type", "subject")
+    actions = ("activate_packs", "deactivate_packs")
+
+    @admin.action(description="Seçili paketleri aktif et (Dersler vitrini)")
+    def activate_packs(self, request, queryset):
+        updated = queryset.update(is_published=True)
+        self.message_user(request, f"{updated} paket aktif edildi.")
+
+    @admin.action(description="Seçili paketleri pasif et (vitrinden çıkar)")
+    def deactivate_packs(self, request, queryset):
+        updated = queryset.update(is_published=False)
+        self.message_user(request, f"{updated} paket pasif edildi.")
 
 
 @admin.register(ExamPackExam)

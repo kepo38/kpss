@@ -565,7 +565,7 @@ class MobileUiConfig(models.Model):
     )
     wrong_notebook_bubble_label = models.CharField(
         max_length=48,
-        default="YANLIŞLARINI GÖR",
+        default="YANLIŞ DEFTERİM",
         verbose_name="Balon metni",
     )
     updated_at = models.DateTimeField(auto_now=True)
@@ -1226,7 +1226,11 @@ class ExamPack(models.Model):
         blank=True,
         verbose_name="Play Store SKU",
     )
-    is_published = models.BooleanField(default=False, verbose_name="Yayında")
+    is_published = models.BooleanField(
+        default=False,
+        verbose_name="Aktif",
+        help_text="Kapalıysa mobil Dersler vitrininde görünmez.",
+    )
     sort_order = models.PositiveIntegerField(default=0, verbose_name="Sıra")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

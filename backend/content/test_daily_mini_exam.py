@@ -217,6 +217,35 @@ class DailyMiniExamApiTests(TestCase):
             )
         self.assertEqual(response.status_code, 403)
 
+    def test_pre_open_shows_yesterday_leaderboard(self):
+        yesterday_open = timezone.localtime().replace(
+            hour=10, minute=0, second=0, microsecond=0
+        ) - timedelta(days=1)
+        with patch("content.daily_mini_exam.istanbul_now", return_value=yesterday_open):
+            exam = self.client.get(self.url(), {"kpss_type": "lisans"}).json()
+            answers = {qid: "A" for qid in exam["questionIds"]}
+            self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": answers,
+                    "duration_seconds": 400,
+                },
+                content_type="application/json",
+                **self.auth(),
+            )
+
+        pre_open = timezone.localtime().replace(
+            hour=2, minute=0, second=0, microsecond=0
+        )
+        with patch("content.daily_mini_exam.istanbul_now", return_value=pre_open):
+            body = self.client.get(self.url(), {"kpss_type": "lisans"}).json()
+
+        self.assertFalse(body["isOpen"])
+        self.assertGreater(len(body["leaderboard"]), 0)
+        self.assertGreater(body["leaderboardParticipantCount"], 0)
+        self.assertNotEqual(body["leaderboardDate"], body["examDate"])
+
     def test_duplicate_submit_does_not_change_score(self):
         open_now = self._open_now()
         with patch("content.daily_mini_exam.istanbul_now", return_value=open_now):

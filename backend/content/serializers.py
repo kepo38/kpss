@@ -2,7 +2,10 @@ from rest_framework import serializers
 
 from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicTest, UserMessage
 from .models import ExamPack, ExamPackExam
-from .test_grouping import order_questions_keeping_scenarios
+from .test_grouping import (
+    interleave_osym_questions,
+    order_questions_keeping_scenarios,
+)
 
 
 class TopicSerializer(serializers.ModelSerializer):
@@ -159,7 +162,9 @@ class TopicTestSerializer(serializers.ModelSerializer):
             for q in obj.questions.all()
             if q.is_published and q.topic_id == obj.topic_id
         ]
-        return order_questions_keeping_scenarios(published)
+        return interleave_osym_questions(
+            order_questions_keeping_scenarios(published)
+        )
 
     def get_questionIds(self, obj: TopicTest) -> list[str]:
         return [q.public_id for q in self._published_questions(obj)]

@@ -32,9 +32,8 @@ class DailyMiniExamResultScreen extends StatelessWidget {
         }
         final participantCount = service.participantCount;
         final leaderboard = service.leaderboard;
-        final rankLine = attempt.rank != null && participantCount > 0
-            ? '${attempt.rank}. sıra · ${formatTrInt(participantCount)} kişi'
-            : null;
+        final rank = attempt.rank;
+        final showRank = rank != null && rank > 0 && participantCount > 0;
 
         return Scaffold(
       backgroundColor: AppTheme.ink,
@@ -114,10 +113,10 @@ class DailyMiniExamResultScreen extends StatelessWidget {
               ),
             ),
           ],
-          if (rankLine != null) ...[
+          if (showRank) ...[
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: AppTheme.champagne.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -125,21 +124,38 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                   color: AppTheme.champagne.withValues(alpha: 0.35),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Text('🏆', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      'Senin Sıran: $rankLine',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.champagneLight,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🏆', style: TextStyle(fontSize: 22)),
+                      const SizedBox(width: 10),
+                      Text(
+                        '$rank. sıradasın',
+                        style: const TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.champagneLight,
+                          height: 1.15,
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Gün içinde sürekli güncellenmektedir',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.2,
+                      color: Colors.white.withValues(alpha: 0.78),
+                      height: 1.25,
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ],

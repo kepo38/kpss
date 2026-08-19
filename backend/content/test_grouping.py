@@ -35,11 +35,12 @@ def order_questions_keeping_scenarios(
     return sorted(items, key=_sort_key)
 
 
-def chunk_questions_keeping_scenarios(
-    ordered: list[Question], capacity: int
-) -> list[list[Question]]:
-    """Kapasiteye bölerken aynı olay grubunu ayırma."""
-    cap = max(1, int(capacity))
+OSYM_PER_TEST = 4
+PLAIN_BEFORE_OSYM = 4
+
+
+def _question_blocks(ordered: list[Question]) -> list[list[Question]]:
+    """Aynı olay grubunu tek blokta tut."""
     blocks: list[list[Question]] = []
     index = 0
     while index < len(ordered):
@@ -56,10 +57,90 @@ def chunk_questions_keeping_scenarios(
             end += 1
         blocks.append(ordered[index:end])
         index = end
+    return blocks
 
+
+def _is_osym_block(block: list[Question]) -> bool:
+    return any(getattr(q, "osym_sordu", False) for q in block)
+
+
+def _pop_blocks_upto(
+    source: list[list[Question]], max_questions: int
+) -> list[list[Question]]:
+    taken: list[list[Question]] = []
+    count = 0
+    while source and max_questions > 0:
+        nxt = source[0]
+        if taken and count + len(nxt) > max_questions:
+            break
+        if not taken and len(nxt) > max_questions:
+            taken.append(source.pop(0))
+            break
+        taken.append(source.pop(0))
+        count += len(taken[-1])
+        if count >= max_questions:
+            break
+    return taken
+
+
+def interleave_osym_questions(questions: list[Question]) -> list[Question]:
+    """Her 4 etiketsiz sorudan sonra 1 ÖSYM; testte en fazla 4 ÖSYM öne alınır.
+
+    Etiketsiz yetmezse kalan sorular normal sırada eklenir. Olay grupları bölünmez.
+    """
+    if len(questions) < 2:
+        return list(questions)
+    blocks = _question_blocks(order_questions_keeping_scenarios(questions))
+    osym_blocks = [b for b in blocks if _is_osym_block(b)]
+    plain_blocks = [b for b in blocks if not _is_osym_block(b)]
+    if not osym_blocks or not plain_blocks:
+        return [q for b in blocks for q in b]
+
+    osym_use: list[list[Question]] = []
+    osym_count = 0
+    osym_rest: list[list[Question]] = []
+    for block in osym_blocks:
+        if osym_count >= OSYM_PER_TEST:
+            osym_rest.append(block)
+            continue
+        osym_use.append(block)
+        osym_count += len(block)
+
+    out: list[Question] = []
+    plain_i = 0
+    osym_i = 0
+    plain_since = 0
+    while plain_i < len(plain_blocks) or osym_i < len(osym_use):
+        if osym_i < len(osym_use) and plain_since >= PLAIN_BEFORE_OSYM:
+            out.extend(osym_use[osym_i])
+            osym_i += 1
+            plain_since = 0
+            continue
+        if plain_i < len(plain_blocks):
+            block = plain_blocks[plain_i]
+            plain_i += 1
+            out.extend(block)
+            plain_since += len(block)
+            continue
+        break
+
+    for block in osym_use[osym_i:]:
+        out.extend(block)
+    for block in osym_rest:
+        out.extend(block)
+    for block in plain_blocks[plain_i:]:
+        out.extend(block)
+    return out
+
+
+def chunk_questions_keeping_scenarios(
+    ordered: list[Question], capacity: int
+) -> list[list[Question]]:
+    """Kapasiteye bölerken aynı olay grubunu ayırma."""
+    cap = max(1, int(capacity))
     chunks: list[list[Question]] = []
     bucket: list[Question] = []
-    for block in blocks:
+    for block in _question_blocks(ordered):
         if bucket and len(bucket) + len(block) > cap:
             chunks.append(bucket)
             bucket = []
@@ -69,6 +150,32 @@ def chunk_questions_keeping_scenarios(
         bucket.extend(block)
     if bucket:
         chunks.append(bucket)
+    return chunks
+
+
+def chunk_questions_with_osym_quota(
+    ordered: list[Question], capacity: int
+) -> list[list[Question]]:
+    """Her teste mümkünse 4 ÖSYM koyar, sonra 4+1 sıraya dizer."""
+    cap = max(1, int(capacity))
+    osym_blocks = [
+        b for b in _question_blocks(ordered) if _is_osym_block(b)
+    ]
+    plain_blocks = [
+        b for b in _question_blocks(ordered) if not _is_osym_block(b)
+    ]
+    chunks: list[list[Question]] = []
+    while osym_blocks or plain_blocks:
+        osym_take = _pop_blocks_upto(osym_blocks, OSYM_PER_TEST)
+        osym_n = sum(len(b) for b in osym_take)
+        plain_take = _pop_blocks_upto(plain_blocks, max(0, cap - osym_n))
+        leftover = cap - osym_n - sum(len(b) for b in plain_take)
+        if leftover > 0 and osym_blocks:
+            osym_take.extend(_pop_blocks_upto(osym_blocks, leftover))
+        mixed = [q for b in (plain_take + osym_take) for q in b]
+        if not mixed:
+            break
+        chunks.append(interleave_osym_questions(mixed))
     return chunks
 
 _TEST_NUM = re.compile(r"^\s*Test\s+(\d+)\s*$", re.IGNORECASE)
@@ -266,7 +373,7 @@ def rebalance_topic_tests(topic: Topic) -> dict:
             "removed": len(tests_ordered),
         }
 
-    chunks = chunk_questions_keeping_scenarios(ordered, capacity)
+    chunks = chunk_questions_with_osym_quota(ordered, capacity)
 
     kept: list[TopicTest] = []
     created = 0

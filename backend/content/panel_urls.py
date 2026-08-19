@@ -237,6 +237,11 @@ urlpatterns = [
         name="panel_exam_pack_edit",
     ),
     path(
+        "deneme-paket/<int:pack_id>/toggle/",
+        panel_views.panel_exam_pack_toggle,
+        name="panel_exam_pack_toggle",
+    ),
+    path(
         "deneme-paket/<int:pack_id>/sil/",
         panel_views.panel_exam_pack_delete,
         name="panel_exam_pack_delete",

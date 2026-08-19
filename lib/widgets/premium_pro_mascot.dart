@@ -5,12 +5,16 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// Pro Üyelik pill'inin soluna yaslanan sevimli premium maskot.
+enum PremiumMascotLayer { full, bodyOnly, pawOnly }
+
 class PremiumProMascot extends StatefulWidget {
   final double height;
+  final PremiumMascotLayer layer;
 
   const PremiumProMascot({
     super.key,
     this.height = 50,
+    this.layer = PremiumMascotLayer.full,
   });
 
   @override
@@ -55,6 +59,7 @@ class _PremiumProMascotState extends State<PremiumProMascot>
               painter: _CuteLeanMascotPainter(
                 height: widget.height,
                 blink: blink,
+                layer: widget.layer,
               ),
             ),
           ),
@@ -67,16 +72,30 @@ class _PremiumProMascotState extends State<PremiumProMascot>
 class _CuteLeanMascotPainter extends CustomPainter {
   final double height;
   final double blink;
+  final PremiumMascotLayer layer;
 
   _CuteLeanMascotPainter({
     required this.height,
     required this.blink,
+    this.layer = PremiumMascotLayer.full,
   });
+
+  bool get _shouldDrawBody =>
+      layer == PremiumMascotLayer.full || layer == PremiumMascotLayer.bodyOnly;
+  bool get _shouldDrawPaw =>
+      layer == PremiumMascotLayer.full || layer == PremiumMascotLayer.pawOnly;
 
   @override
   void paint(Canvas canvas, Size size) {
     final h = height;
     final s = h / 50;
+
+    if (_shouldDrawPaw && !_shouldDrawBody) {
+      _paintPawArm(canvas, h, s);
+      return;
+    }
+
+    if (!_shouldDrawBody) return;
 
     // Gölge — butona yaslanmış his
     canvas.drawOval(
@@ -233,35 +252,54 @@ class _CuteLeanMascotPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
 
-    // Kol + el — pill'e yaslanmış (sağa uzanan)
-    final shoulder = Offset(h * 0.48, h * 0.54);
-    final elbow = Offset(h * 0.68, h * 0.48);
-    final pawCenter = Offset(h * 0.88, h * 0.46);
+    // Kol + el — gövdeden çıkan, pill'e yaslanmış (sağa uzanan)
+    if (_shouldDrawPaw) {
+      _paintPawArm(canvas, h, s, bodyCenter: bodyCenter);
+    }
+
+    // Parıltı
+    if (_shouldDrawBody) {
+      _drawSparkle(canvas, Offset(h * 0.14, h * 0.16), 2.8 * s);
+    }
+  }
+
+  void _paintPawArm(Canvas canvas, double h, double s, {Offset? bodyCenter}) {
+    final body = bodyCenter ?? Offset(h * 0.36, h * 0.56);
+    final shoulder = Offset(body.dx + 10 * s, body.dy - 2 * s);
+    final elbow = Offset(h * 0.72, h * 0.46);
+    final pawCenter = Offset(h * 0.94, h * 0.44);
+
+    final armFill = Paint()
+      ..color = const Color(0xFFFFEDB0)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5.4 * s
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
     final arm = Path()
       ..moveTo(shoulder.dx, shoulder.dy)
       ..quadraticBezierTo(
-        shoulder.dx + 8 * s,
-        shoulder.dy - 6 * s,
+        shoulder.dx + 10 * s,
+        shoulder.dy - 8 * s,
         elbow.dx,
         elbow.dy,
       )
       ..quadraticBezierTo(
-        elbow.dx + 6 * s,
-        elbow.dy + 2 * s,
-        pawCenter.dx - 4 * s,
-        pawCenter.dy,
+        elbow.dx + 8 * s,
+        elbow.dy + 3 * s,
+        pawCenter.dx - 5 * s,
+        pawCenter.dy + 1 * s,
       );
+    canvas.drawPath(arm, armFill);
     canvas.drawPath(
       arm,
       Paint()
-        ..color = const Color(0xFFFFEDB0)
+        ..color = Colors.white.withValues(alpha: 0.35)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 5.5 * s
+        ..strokeWidth = 1.1 * s
         ..strokeCap = StrokeCap.round,
     );
 
-    // Pati — buton kenarına basıyor
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(
@@ -301,7 +339,6 @@ class _CuteLeanMascotPainter extends CustomPainter {
         ..strokeWidth = 0.8 * s
         ..color = const Color(0xFFD4AF6A).withValues(alpha: 0.85),
     );
-    // Pati izleri
     for (final dx in [-3.0, 0.0, 3.0]) {
       canvas.drawCircle(
         Offset(pawCenter.dx + dx * s, pawCenter.dy - 1.5 * s),
@@ -309,9 +346,6 @@ class _CuteLeanMascotPainter extends CustomPainter {
         Paint()..color = AppTheme.champagne.withValues(alpha: 0.55),
       );
     }
-
-    // Parıltı
-    _drawSparkle(canvas, Offset(h * 0.14, h * 0.16), 2.8 * s);
   }
 
   void _drawMiniCrown(Canvas canvas, Offset c, double s) {
@@ -395,5 +429,7 @@ class _CuteLeanMascotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CuteLeanMascotPainter oldDelegate) =>
-      oldDelegate.height != height || oldDelegate.blink != blink;
+      oldDelegate.height != height ||
+      oldDelegate.blink != blink ||
+      oldDelegate.layer != layer;
 }

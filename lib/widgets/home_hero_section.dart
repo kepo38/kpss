@@ -119,14 +119,14 @@ class HomeHeroSection extends StatelessWidget {
                       ),
                     ),
                     ValueListenableBuilder<bool>(
-                      valueListenable: isPremium,
-                      builder: (context, premium, _) {
-                        return PremiumHeaderButton(
-                          isPremium: premium,
-                          onTap: premium ? null : onPremiumTap,
-                        );
-                      },
-                    ),
+                        valueListenable: isPremium,
+                        builder: (context, premium, _) {
+                          return PremiumHeaderButton(
+                            isPremium: premium,
+                            onTap: premium ? null : onPremiumTap,
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),

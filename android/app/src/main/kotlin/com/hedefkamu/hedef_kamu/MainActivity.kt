@@ -1,4 +1,4 @@
-package com.example.kpss_akademi
+package com.hedefkamu.hedef_kamu
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -97,10 +97,8 @@ class MainActivity : FlutterActivity() {
         private const val TAG = "KpssScreenshot"
 
         // Geliştirici telefonu (2409BRN2CA / Redmi) — release'te de SS alınabilsin.
-        // Not: Android 8+ uygulama imzasına göre ANDROID_ID üretir; adb'deki
-        // cihaz ID'si (95cb54…) ile uygulamanın gördüğü ID (55d7e0…) farklı olabilir.
         private val ALLOWED_ANDROID_IDS = setOf(
-            "55d7e0039fdd2679", // app-scoped (com.example.kpss_odak)
+            "55d7e0039fdd2679", // eski app-scoped (com.example.kpss_odak)
             "95cb54eeb2a4ebd4", // adb settings android_id
         )
         private val ALLOWED_SERIALS = setOf("GAD6ZHBU4LJJ9XVW")

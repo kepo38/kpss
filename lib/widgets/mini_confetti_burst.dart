@@ -24,7 +24,7 @@ class _MiniConfettiBurstState extends State<MiniConfettiBurst>
   late final AnimationController _ctrl;
   late List<_ConfettiParticle> _particles;
   final _random = math.Random();
-  bool _fired = false;
+  OverlayEntry? _overlayEntry;
 
   static const _palette = [
     Color(0xFFFFEDB0),
@@ -42,13 +42,16 @@ class _MiniConfettiBurstState extends State<MiniConfettiBurst>
     _particles = _spawnParticles();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1800),
     )..addStatusListener((status) {
-        if (status == AnimationStatus.completed && mounted) {
-          setState(() {});
+        if (status == AnimationStatus.completed) {
+          _removeOverlay();
+          if (mounted) setState(() {});
         }
       });
-    if (widget.trigger) _fire();
+    if (widget.trigger) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fire());
+    }
   }
 
   @override
@@ -56,28 +59,69 @@ class _MiniConfettiBurstState extends State<MiniConfettiBurst>
     super.didUpdateWidget(oldWidget);
     if (widget.trigger && !oldWidget.trigger) {
       _fire();
+    } else if (!widget.trigger && oldWidget.trigger) {
+      _ctrl.reset();
+      _removeOverlay();
     }
   }
 
   void _fire() {
-    if (_fired) return;
-    _fired = true;
     _particles = _spawnParticles();
+    _removeOverlay();
     _ctrl.forward(from: 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showOverlay());
+  }
+
+  void _showOverlay() {
+    if (!mounted || !_ctrl.isAnimating) return;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+
+    final origin = box.localToGlobal(Offset(box.size.width * 0.72, 8));
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) {
+        return IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (context, _) {
+              final progress = Curves.easeOutCubic.transform(_ctrl.value);
+              return CustomPaint(
+                painter: _OverlayConfettiPainter(
+                  progress: progress,
+                  particles: _particles,
+                  origin: origin,
+                ),
+                size: MediaQuery.sizeOf(context),
+              );
+            },
+          ),
+        );
+      },
+    );
+    overlay.insert(_overlayEntry!);
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
   }
 
   List<_ConfettiParticle> _spawnParticles() {
-    return List.generate(28, (_) {
+    return List.generate(36, (_) {
       final shape = _random.nextInt(3);
       return _ConfettiParticle(
-        originX: 0.38 + _random.nextDouble() * 0.24,
-        originY: 0.55,
-        velocityX: (_random.nextDouble() - 0.5) * 1.35,
-        velocityY: 0.55 + _random.nextDouble() * 0.95,
-        gravity: 0.85 + _random.nextDouble() * 0.35,
+        originX: (_random.nextDouble() - 0.5) * 0.55,
+        originY: 0,
+        velocityX: (_random.nextDouble() - 0.5) * 220,
+        velocityY: -(80 + _random.nextDouble() * 160),
+        gravity: 320 + _random.nextDouble() * 180,
         rotation: _random.nextDouble() * math.pi * 2,
-        spin: (_random.nextDouble() - 0.5) * 7,
-        size: 4 + _random.nextDouble() * 5,
+        spin: (_random.nextDouble() - 0.5) * 8,
+        size: 4 + _random.nextDouble() * 6,
         color: _palette[_random.nextInt(_palette.length)],
         isCircle: shape == 0,
         isStrip: shape == 1,
@@ -87,45 +131,14 @@ class _MiniConfettiBurstState extends State<MiniConfettiBurst>
 
   @override
   void dispose() {
+    _removeOverlay();
     _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final showOverlay = _ctrl.isAnimating || _ctrl.value > 0;
-        return Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            widget.child,
-            if (showOverlay)
-              Positioned(
-                left: -8,
-                right: -8,
-                top: -36,
-                height: 88,
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _ctrl,
-                    builder: (context, _) {
-                      return CustomPaint(
-                        painter: _ConfettiPainter(
-                          progress: Curves.easeOutCubic.transform(_ctrl.value),
-                          particles: _particles,
-                        ),
-                        size: Size(constraints.maxWidth + 16, 88),
-                      );
-                    },
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
+    return widget.child;
   }
 }
 
@@ -157,24 +170,26 @@ class _ConfettiParticle {
   });
 }
 
-class _ConfettiPainter extends CustomPainter {
+class _OverlayConfettiPainter extends CustomPainter {
   final double progress;
   final List<_ConfettiParticle> particles;
+  final Offset origin;
 
-  _ConfettiPainter({
+  _OverlayConfettiPainter({
     required this.progress,
     required this.particles,
+    required this.origin,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (progress <= 0 || progress >= 1) return;
+    if (progress <= 0 || progress > 1) return;
+    final t = progress;
     final fade = (1 - progress).clamp(0.0, 1.0);
 
     for (final p in particles) {
-      final t = progress;
-      final x = (p.originX + p.velocityX * t) * size.width;
-      final y = (p.originY - p.velocityY * t + p.gravity * t * t) * size.height;
+      final x = origin.dx + p.originX * 120 + p.velocityX * t;
+      final y = origin.dy + p.originY + p.velocityY * t + p.gravity * t * t;
       final paint = Paint()..color = p.color.withValues(alpha: fade * 0.95);
 
       canvas.save();
@@ -210,6 +225,6 @@ class _ConfettiPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _OverlayConfettiPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.origin != origin;
 }

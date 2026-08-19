@@ -1,12 +1,22 @@
 import 'dart:math' as math;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import '../theme/app_theme.dart';
+import 'brand_mark.dart';
+
+/// Boot / atama splash süresi.
+const kAssignmentSplashDuration = Duration(milliseconds: 3500);
 
 /// Boot sırasında — koyu zemin, premium kayan çizgi ve atama mesajı.
 class BootSplashScreen extends StatefulWidget {
-  const BootSplashScreen({super.key});
+  final VoidCallback? onComplete;
+
+  const BootSplashScreen({super.key, this.onComplete});
 
   @override
   State<BootSplashScreen> createState() => _BootSplashScreenState();
@@ -19,10 +29,22 @@ class _BootSplashScreenState extends State<BootSplashScreen>
   @override
   void initState() {
     super.initState();
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      FlutterNativeSplash.remove();
+    });
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+    if (widget.onComplete != null) {
+      unawaited(_holdAndComplete());
+    }
+  }
+
+  Future<void> _holdAndComplete() async {
+    await Future<void>.delayed(kAssignmentSplashDuration);
+    if (!mounted) return;
+    widget.onComplete?.call();
   }
 
   @override
@@ -66,20 +88,27 @@ class _BootSplashScreenState extends State<BootSplashScreen>
               },
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  BrandMark(
+                    dark: true,
+                    logoSize: 64,
+                    alignment: CrossAxisAlignment.center,
+                  ),
+                  const SizedBox(height: 24),
                   const Text(
                     'Ataman Gerçekleşiyor',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'serif',
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
+                      letterSpacing: 0.3,
                       height: 1.1,
                       color: AppTheme.champagneLight,
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 20),
                   _PremiumSlidingLine(progress: _ctrl),
                 ],
               ),

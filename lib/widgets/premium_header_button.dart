@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 import 'premium_pro_mascot.dart';
 import 'scale_button.dart';
 
-/// Hero / üst bar premium CTA — maskot sola yaslanır, pati pill'e dokunur.
+/// Üst bar premium CTA — maskot solda, pati pill’in üstünde.
 class PremiumHeaderButton extends StatelessWidget {
   final bool isPremium;
   final VoidCallback? onTap;
@@ -15,8 +15,8 @@ class PremiumHeaderButton extends StatelessWidget {
     this.onTap,
   });
 
-  static const _mascotHeight = 50.0;
-  static const _mascotReach = 28.0; // pati pill üzerine taşan mesafe
+  static const _mascotHeight = 48.0;
+  static const _pillInset = 36.0;
 
   @override
   Widget build(BuildContext context) {
@@ -31,15 +31,23 @@ class PremiumHeaderButton extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.centerLeft,
           children: [
-            Positioned(
-              left: _mascotReach,
-              top: (_mascotHeight - 32) / 2,
-              child: const _ProPill(),
+            const Padding(
+              padding: EdgeInsets.only(
+                left: _pillInset,
+                top: 10,
+                bottom: 8,
+              ),
+              child: _ProPill(),
             ),
             const Positioned(
               left: 0,
-              bottom: 0,
-              child: PremiumProMascot(height: _mascotHeight),
+              bottom: 1,
+              child: IgnorePointer(
+                child: PremiumProMascot(
+                  height: _mascotHeight,
+                  layer: PremiumMascotLayer.bodyOnly,
+                ),
+              ),
             ),
           ],
         ),
@@ -56,7 +64,7 @@ class _ProPill extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(15),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -73,95 +81,74 @@ class _ProPill extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.champagne.withValues(alpha: 0.4),
-            blurRadius: 12,
-            spreadRadius: 0,
-            offset: Offset(0, 3),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.85),
-            blurRadius: 0,
-            spreadRadius: 0.5,
-            offset: Offset(0, 1),
+            color: AppTheme.champagne.withValues(alpha: 0.38),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -10,
-            top: -12,
-            child: IgnorePointer(
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: 0.55),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
+      child: const Padding(
+        padding: EdgeInsets.fromLTRB(8, 6, 8, 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _CrownDot(),
+            SizedBox(width: 5),
+            Text(
+              'Pro Üyelik',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+                height: 1,
+                color: AppTheme.ink,
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF2A3548),
-                        AppTheme.ink,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.ink.withValues(alpha: 0.25),
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.workspace_premium_rounded,
-                    size: 12,
-                    color: AppTheme.champagneLight,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Pro Üyelik',
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    height: 1,
-                    color: AppTheme.ink,
-                  ),
-                ),
-                const SizedBox(width: 3),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 9,
-                  color: AppTheme.champagne.withValues(alpha: 0.9),
-                ),
-              ],
+            SizedBox(width: 2),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 8,
+              color: Color(0xE6C9A86C),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CrownDot extends StatelessWidget {
+  const _CrownDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 18,
+      height: 18,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF2A3548),
+            AppTheme.ink,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.ink.withValues(alpha: 0.22),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
           ),
         ],
+      ),
+      child: const Icon(
+        Icons.workspace_premium_rounded,
+        size: 11,
+        color: AppTheme.champagneLight,
       ),
     );
   }
@@ -177,9 +164,9 @@ class _ActiveBadge extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(15),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -195,8 +182,8 @@ class _ActiveBadge extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: AppTheme.champagne.withValues(alpha: 0.3),
-              blurRadius: 10,
-              offset: Offset(0, 2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),

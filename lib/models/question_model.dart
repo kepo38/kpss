@@ -223,4 +223,81 @@ class QuestionModel {
     }
     return out;
   }
+
+  static const osymPerTest = 4;
+  static const plainBeforeOsym = 4;
+
+  /// Her 4 etiketsiz sorudan sonra 1 ÖSYM SORDU (testte en fazla 4).
+  /// Etiketsiz yetmezse kalan sorular normal sırada eklenir; olay grubu bölünmez.
+  static List<QuestionModel> interleaveOsymSordu(List<QuestionModel> questions) {
+    if (questions.length < 2) return questions;
+    final grouped = keepGroupsContiguous(questions);
+    final blocks = <List<QuestionModel>>[];
+    var i = 0;
+    while (i < grouped.length) {
+      final current = grouped[i];
+      final sid = current.scenarioId;
+      if (sid == null || sid.isEmpty) {
+        blocks.add([current]);
+        i += 1;
+        continue;
+      }
+      var end = i + 1;
+      while (end < grouped.length && grouped[end].scenarioId == sid) {
+        end += 1;
+      }
+      blocks.add(grouped.sublist(i, end));
+      i = end;
+    }
+
+    bool isOsym(List<QuestionModel> block) =>
+        block.any((q) => q.osymSordu);
+
+    final osymBlocks = blocks.where(isOsym).toList();
+    final plainBlocks = blocks.where((b) => !isOsym(b)).toList();
+    if (osymBlocks.isEmpty || plainBlocks.isEmpty) return grouped;
+
+    final osymUse = <List<QuestionModel>>[];
+    final osymRest = <List<QuestionModel>>[];
+    var osymCount = 0;
+    for (final block in osymBlocks) {
+      if (osymCount >= osymPerTest) {
+        osymRest.add(block);
+        continue;
+      }
+      osymUse.add(block);
+      osymCount += block.length;
+    }
+
+    final out = <QuestionModel>[];
+    var plainI = 0;
+    var osymI = 0;
+    var plainSince = 0;
+    while (plainI < plainBlocks.length || osymI < osymUse.length) {
+      if (osymI < osymUse.length && plainSince >= plainBeforeOsym) {
+        out.addAll(osymUse[osymI]);
+        osymI += 1;
+        plainSince = 0;
+        continue;
+      }
+      if (plainI < plainBlocks.length) {
+        final block = plainBlocks[plainI];
+        plainI += 1;
+        out.addAll(block);
+        plainSince += block.length;
+        continue;
+      }
+      break;
+    }
+    for (final block in osymUse.skip(osymI)) {
+      out.addAll(block);
+    }
+    for (final block in osymRest) {
+      out.addAll(block);
+    }
+    for (final block in plainBlocks.skip(plainI)) {
+      out.addAll(block);
+    }
+    return out;
+  }
 }

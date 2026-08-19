@@ -37,6 +37,9 @@ class DailyMiniExamService extends ChangeNotifier {
   bool _completed = false;
   bool _rankingLocked = false;
   bool _rankRevealActive = false;
+  int _rankRevealSecondsLeft = 0;
+  bool _rankRevealCelebrated = false;
+  bool _formallyFinished = false;
   bool _pendingRankingSubmit = false;
   String? _guestFirstDate;
   DailyMiniAttempt? _localAttempt;
@@ -44,6 +47,11 @@ class DailyMiniExamService extends ChangeNotifier {
   DailyMiniRankTrend _rankTrend = DailyMiniRankTrend.steady;
   int? _snapshotRank;
   int? _snapshotParticipants;
+  String? _activeUserId;
+
+  String get _userScopeId => AuthService.instance.user?.id ?? 'unknown';
+
+  String _scopedKey(String base) => '${base}_$_userScopeId';
 
   bool get isInitialized => _initialized;
   DailyMiniRankTrend get rankTrend => _rankTrend;
@@ -51,6 +59,11 @@ class DailyMiniExamService extends ChangeNotifier {
   bool get rankingLocked =>
       _rankingLocked || _remote?.myAttempt != null;
   bool get rankRevealActive => _rankRevealActive;
+  bool get rankRevealCountdownVisible =>
+      _rankRevealActive && _rankRevealSecondsLeft > 0;
+  int get rankRevealSecondsLeft => _rankRevealSecondsLeft;
+  bool get rankRevealCelebrated => _rankRevealCelebrated;
+  bool get formallyFinished => _formallyFinished;
   bool get hasSubmittedRanking => rankingLocked || _pendingRankingSubmit;
   bool get completed => hasSubmittedRanking;
 
@@ -62,7 +75,13 @@ class DailyMiniExamService extends ChangeNotifier {
     if (first == null || first.isEmpty) return false;
     return first != isoDate(window.examDate);
   }
-  DailyMiniAttempt? get attempt => _remote?.myAttempt ?? _localAttempt;
+  DailyMiniAttempt? get attempt {
+    if (_remote?.myAttempt != null) return _remote!.myAttempt;
+    if (_pendingRankingSubmit || _rankingLocked || _completed) {
+      return _localAttempt;
+    }
+    return null;
+  }
   List<DailyMiniLeaderRow> get leaderboard {
     final remote = _remote?.leaderboard ?? const <DailyMiniLeaderRow>[];
     if (remote.isNotEmpty) return remote;
@@ -87,6 +106,13 @@ class DailyMiniExamService extends ChangeNotifier {
     ];
   }
   int get participantCount => _remote?.participantCount ?? 0;
+  int get podiumParticipantCount {
+    final remoteCount = _remote?.leaderboardParticipantCount ?? 0;
+    if (remoteCount > 0) return remoteCount;
+    if (window.isPreOpen) return 0;
+    return participantCount;
+  }
+  bool get showingYesterdayPodium => window.isPreOpen;
   List<String> get questionIds => List.unmodifiable(_questionIds);
   List<String?> get answers => List<String?>.from(_answers);
   int get currentIndex => _currentIndex;
@@ -96,8 +122,9 @@ class DailyMiniExamService extends ChangeNotifier {
       _questionIds.isNotEmpty &&
       _answers.any((a) => a != null && a.isNotEmpty);
 
-  /// Sıralama kilitlendikten sonra bile yanıtsız soru varsa quiz sürdürülebilir.
+  /// Erken çıkış + kısmi cevap: devam edilebilir. Onaylı «Bitir»: devam yok.
   bool get canResumeQuiz {
+    if (_formallyFinished) return false;
     if (_questionIds.isEmpty) return false;
     final hasBlanks = _answers.any((a) => a == null || a.isEmpty);
     if (!hasBlanks) return false;
@@ -124,12 +151,14 @@ class DailyMiniExamService extends ChangeNotifier {
   Future<void> initialize({KpssType? kpssType}) async {
     _kpssType = kpssType ?? _kpssType;
     final prefs = await SharedPreferences.getInstance();
+    await _migrateLegacyPrefsIfNeeded(prefs);
     _loadMonthly(prefs);
     _loadProgress(prefs);
     _loadRankSnapshot(prefs);
     _loadRankingFlags(prefs);
     _loadGuestFirstDate(prefs);
     await _stampGuestFirstDateIfNeeded(prefs);
+    _activeUserId = _userScopeId;
     _initialized = true;
     notifyListeners();
     unawaited(refresh());
@@ -138,23 +167,25 @@ class DailyMiniExamService extends ChangeNotifier {
 
   void _loadRankingFlags(SharedPreferences prefs) {
     final today = isoDate(window.examDate);
-    if (prefs.getString(_kRankingFlagDate) != today) {
+    if (prefs.getString(_scopedKey(_kRankingFlagDate)) != today) {
       _rankingLocked = false;
       _pendingRankingSubmit = false;
       return;
     }
-    _rankingLocked = prefs.getBool(DailyMiniExamConstants.prefsRankingLocked) ??
-        false;
-    _pendingRankingSubmit =
-        prefs.getBool(DailyMiniExamConstants.prefsPendingRankingSubmit) ??
+    _rankingLocked =
+        prefs.getBool(_scopedKey(DailyMiniExamConstants.prefsRankingLocked)) ??
             false;
+    _pendingRankingSubmit = prefs.getBool(
+          _scopedKey(DailyMiniExamConstants.prefsPendingRankingSubmit),
+        ) ??
+        false;
   }
 
   static const _kRankingFlagDate = 'daily_mini_ranking_flag_date_v1';
 
   void _loadGuestFirstDate(SharedPreferences prefs) {
     _guestFirstDate =
-        prefs.getString(DailyMiniExamConstants.prefsGuestFirstDate);
+        prefs.getString(_scopedKey(DailyMiniExamConstants.prefsGuestFirstDate));
   }
 
   Future<void> _stampGuestFirstDateIfNeeded(SharedPreferences prefs) async {
@@ -162,19 +193,19 @@ class DailyMiniExamService extends ChangeNotifier {
     if (_guestFirstDate != null && _guestFirstDate!.isNotEmpty) return;
     _guestFirstDate = isoDate(window.examDate);
     await prefs.setString(
-      DailyMiniExamConstants.prefsGuestFirstDate,
+      _scopedKey(DailyMiniExamConstants.prefsGuestFirstDate),
       _guestFirstDate!,
     );
   }
 
   Future<void> _persistRankingFlags(SharedPreferences prefs) async {
-    await prefs.setString(_kRankingFlagDate, isoDate(window.examDate));
+    await prefs.setString(_scopedKey(_kRankingFlagDate), isoDate(window.examDate));
     await prefs.setBool(
-      DailyMiniExamConstants.prefsRankingLocked,
+      _scopedKey(DailyMiniExamConstants.prefsRankingLocked),
       _rankingLocked,
     );
     await prefs.setBool(
-      DailyMiniExamConstants.prefsPendingRankingSubmit,
+      _scopedKey(DailyMiniExamConstants.prefsPendingRankingSubmit),
       _pendingRankingSubmit,
     );
   }
@@ -185,6 +216,50 @@ class DailyMiniExamService extends ChangeNotifier {
     _resetDayIfNeeded();
     notifyListeners();
     await refresh();
+  }
+
+  /// Oturum değişince (çıkış, misafir→Google) o kullanıcının durumunu yükle.
+  Future<void> onAuthSessionChanged() async {
+    if (!_initialized) return;
+    final userId = _userScopeId;
+    if (_activeUserId != userId) {
+      await _reloadForCurrentUser();
+    }
+    await refresh();
+    await _retryPendingRankingSubmitIfNeeded();
+    notifyListeners();
+  }
+
+  void _clearSessionMemory() {
+    _remote = null;
+    _questionIds = const [];
+    _answers = const [];
+    _currentIndex = 0;
+    _elapsedSeconds = 0;
+    _completed = false;
+    _rankingLocked = false;
+    _rankRevealActive = false;
+    _rankRevealSecondsLeft = 0;
+    _rankRevealCelebrated = false;
+    _formallyFinished = false;
+    _pendingRankingSubmit = false;
+    _localAttempt = null;
+    _snapshotRank = null;
+    _snapshotParticipants = null;
+    _rankTrend = DailyMiniRankTrend.steady;
+    _guestFirstDate = null;
+    _storedDate = null;
+  }
+
+  Future<void> _reloadForCurrentUser() async {
+    _clearSessionMemory();
+    final prefs = await SharedPreferences.getInstance();
+    await _migrateLegacyPrefsIfNeeded(prefs);
+    _loadProgress(prefs);
+    _loadRankSnapshot(prefs);
+    _loadRankingFlags(prefs);
+    _loadGuestFirstDate(prefs);
+    _activeUserId = _userScopeId;
   }
 
   Future<void> refresh() async {
@@ -208,6 +283,14 @@ class DailyMiniExamService extends ChangeNotifier {
             _localAttempt = _remote!.myAttempt;
             _rankingLocked = true;
             _pendingRankingSubmit = false;
+          } else if (!_pendingRankingSubmit) {
+            _localAttempt = null;
+            _completed = false;
+            _rankingLocked = false;
+            _formallyFinished = false;
+            _rankRevealActive = false;
+            _rankRevealSecondsLeft = 0;
+            _rankRevealCelebrated = false;
           }
         }
       }
@@ -226,7 +309,7 @@ class DailyMiniExamService extends ChangeNotifier {
   }
 
   void _loadRankSnapshot(SharedPreferences prefs) {
-    final raw = prefs.getString(DailyMiniExamConstants.prefsRankSnapshot);
+    final raw = prefs.getString(_scopedKey(DailyMiniExamConstants.prefsRankSnapshot));
     if (raw == null || raw.isEmpty) return;
     try {
       final json = Map<String, dynamic>.from(jsonDecode(raw) as Map);
@@ -267,7 +350,7 @@ class DailyMiniExamService extends ChangeNotifier {
     if (_snapshotRank == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      DailyMiniExamConstants.prefsRankSnapshot,
+      _scopedKey(DailyMiniExamConstants.prefsRankSnapshot),
       jsonEncode({
         'date': isoDate(window.examDate),
         'rank': _snapshotRank,
@@ -301,6 +384,13 @@ class DailyMiniExamService extends ChangeNotifier {
   String get testId =>
       '${DailyMiniExamConstants.testIdPrefix}${isoDate(window.examDate)}_${_kpssType.name}';
 
+  Future<void> markFormallyFinished() async {
+    if (_formallyFinished) return;
+    _formallyFinished = true;
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> saveProgress({
     required List<String?> answers,
     required int currentIndex,
@@ -331,12 +421,18 @@ class DailyMiniExamService extends ChangeNotifier {
         currentIndex: _currentIndex,
         elapsed: result.duration,
       );
+      if (result.completed) {
+        await markFormallyFinished();
+      }
       return;
     }
 
     _completed = true;
     _answers = List<String?>.from(answers);
     _elapsedSeconds = result.duration.inSeconds;
+    if (result.completed) {
+      _formallyFinished = true;
+    }
     _localAttempt = DailyMiniAttempt(
       correct: result.correct,
       wrong: result.wrong,
@@ -347,6 +443,8 @@ class DailyMiniExamService extends ChangeNotifier {
     );
     _mergeMonthlyWrongs(result.wrongQuestionIds);
     _rankRevealActive = true;
+    _rankRevealSecondsLeft = 10;
+    _rankRevealCelebrated = false;
 
     await ContentBankService.instance.recordAttempt(
       TestAttemptModel(
@@ -381,6 +479,12 @@ class DailyMiniExamService extends ChangeNotifier {
     if (ok) {
       _rankingLocked = true;
       _pendingRankingSubmit = false;
+      // Sıra ilk kez geldiyse (misafir→Google sonrası vb.) sayaçsız göster.
+      if (_localAttempt?.rank != null &&
+          _rankRevealSecondsLeft <= 0 &&
+          !_rankRevealActive) {
+        notifyListeners();
+      }
     } else {
       _pendingRankingSubmit = true;
     }
@@ -411,6 +515,8 @@ class DailyMiniExamService extends ChangeNotifier {
     if (ok) {
       _rankingLocked = true;
       _pendingRankingSubmit = false;
+      _rankRevealActive = false;
+      _rankRevealSecondsLeft = 0;
       _syncRankSnapshot();
       await _persistRankSnapshot();
       await _persist();
@@ -467,8 +573,28 @@ class DailyMiniExamService extends ChangeNotifier {
   }
 
   void clearRankReveal() {
-    if (!_rankRevealActive) return;
+    if (!_rankRevealActive && _rankRevealSecondsLeft <= 0) return;
     _rankRevealActive = false;
+    _rankRevealSecondsLeft = 0;
+    unawaited(_persist());
+    notifyListeners();
+  }
+
+  /// Konfeti yalnızca sıralama ilk kez açıldığında — gün başına bir kez.
+  Future<void> markRankRevealCelebrated() async {
+    if (_rankRevealCelebrated) return;
+    _rankRevealCelebrated = true;
+    await _persist();
+    notifyListeners();
+  }
+
+  void tickRankRevealCountdown() {
+    if (!_rankRevealActive || _rankRevealSecondsLeft <= 0) return;
+    _rankRevealSecondsLeft--;
+    if (_rankRevealSecondsLeft <= 0) {
+      _rankRevealActive = false;
+    }
+    unawaited(_persist());
     notifyListeners();
   }
 
@@ -540,6 +666,9 @@ class DailyMiniExamService extends ChangeNotifier {
       _localAttempt = null;
       _rankingLocked = false;
       _rankRevealActive = false;
+      _rankRevealSecondsLeft = 0;
+      _rankRevealCelebrated = false;
+      _formallyFinished = false;
       _pendingRankingSubmit = false;
       _snapshotRank = null;
       _snapshotParticipants = null;
@@ -550,7 +679,7 @@ class DailyMiniExamService extends ChangeNotifier {
   String? _storedDate;
 
   void _loadProgress(SharedPreferences prefs) {
-    final raw = prefs.getString(DailyMiniExamConstants.prefsState);
+    final raw = prefs.getString(_scopedKey(DailyMiniExamConstants.prefsState));
     if (raw == null || raw.isEmpty) return;
     try {
       final json = Map<String, dynamic>.from(jsonDecode(raw) as Map);
@@ -573,6 +702,14 @@ class DailyMiniExamService extends ChangeNotifier {
       _elapsedSeconds = json['elapsedSeconds'] as int? ?? 0;
       _completed = json['completed'] as bool? ?? false;
       _rankingLocked = json['rankingLocked'] as bool? ?? _rankingLocked;
+      _rankRevealActive =
+          json['rankRevealActive'] as bool? ?? _rankRevealActive;
+      _rankRevealSecondsLeft =
+          json['rankRevealSecondsLeft'] as int? ?? _rankRevealSecondsLeft;
+      _rankRevealCelebrated =
+          json['rankRevealCelebrated'] as bool? ?? _rankRevealCelebrated;
+      _formallyFinished =
+          json['formallyFinished'] as bool? ?? _formallyFinished;
       _pendingRankingSubmit =
           json['pendingRankingSubmit'] as bool? ?? _pendingRankingSubmit;
       if (json['attempt'] is Map) {
@@ -584,7 +721,8 @@ class DailyMiniExamService extends ChangeNotifier {
   }
 
   void _loadMonthly(SharedPreferences prefs) {
-    final raw = prefs.getString(DailyMiniExamConstants.prefsMonthlyWrongs);
+    final raw =
+        prefs.getString(_scopedKey(DailyMiniExamConstants.prefsMonthlyWrongs));
     if (raw == null || raw.isEmpty) return;
     try {
       final json = Map<String, dynamic>.from(jsonDecode(raw) as Map);
@@ -606,11 +744,39 @@ class DailyMiniExamService extends ChangeNotifier {
   String _monthKey(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
 
+  Future<void> _migrateLegacyPrefsIfNeeded(SharedPreferences prefs) async {
+    final pairs = <String, String>{
+      DailyMiniExamConstants.prefsState:
+          _scopedKey(DailyMiniExamConstants.prefsState),
+      DailyMiniExamConstants.prefsRankSnapshot:
+          _scopedKey(DailyMiniExamConstants.prefsRankSnapshot),
+      DailyMiniExamConstants.prefsMonthlyWrongs:
+          _scopedKey(DailyMiniExamConstants.prefsMonthlyWrongs),
+      DailyMiniExamConstants.prefsGuestFirstDate:
+          _scopedKey(DailyMiniExamConstants.prefsGuestFirstDate),
+      _kRankingFlagDate: _scopedKey(_kRankingFlagDate),
+      DailyMiniExamConstants.prefsRankingLocked:
+          _scopedKey(DailyMiniExamConstants.prefsRankingLocked),
+      DailyMiniExamConstants.prefsPendingRankingSubmit:
+          _scopedKey(DailyMiniExamConstants.prefsPendingRankingSubmit),
+    };
+    for (final entry in pairs.entries) {
+      if (prefs.containsKey(entry.value)) continue;
+      final legacy = prefs.get(entry.key);
+      if (legacy == null) continue;
+      if (legacy is String) {
+        await prefs.setString(entry.value, legacy);
+      } else if (legacy is bool) {
+        await prefs.setBool(entry.value, legacy);
+      }
+    }
+  }
+
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
     _storedDate = isoDate(window.examDate);
     await prefs.setString(
-      DailyMiniExamConstants.prefsState,
+      _scopedKey(DailyMiniExamConstants.prefsState),
       jsonEncode({
         'date': _storedDate,
         'kpssType': _kpssType.name,
@@ -620,6 +786,10 @@ class DailyMiniExamService extends ChangeNotifier {
         'elapsedSeconds': _elapsedSeconds,
         'completed': _completed,
         'rankingLocked': _rankingLocked,
+        'rankRevealActive': _rankRevealActive,
+        'rankRevealSecondsLeft': _rankRevealSecondsLeft,
+        'rankRevealCelebrated': _rankRevealCelebrated,
+        'formallyFinished': _formallyFinished,
         'pendingRankingSubmit': _pendingRankingSubmit,
         if (_localAttempt != null)
           'attempt': {
@@ -634,7 +804,7 @@ class DailyMiniExamService extends ChangeNotifier {
       }),
     );
     await prefs.setString(
-      DailyMiniExamConstants.prefsMonthlyWrongs,
+      _scopedKey(DailyMiniExamConstants.prefsMonthlyWrongs),
       jsonEncode(_monthlyWrongs),
     );
     await _persistRankingFlags(prefs);

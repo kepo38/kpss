@@ -68,6 +68,10 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
   /// Auth hazır → hemen ana sayfa (ağır servisler arka planda).
   bool _bootReady = false;
+  bool _showLaunchSplash = true;
+  bool _minSplashDone = false;
+  bool _bootDataReady = false;
+  bool _showAssignmentSplash = false;
   bool? _routedSignedIn;
   String? _routedUserId;
 
@@ -76,9 +80,42 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AuthService.instance.addListener(_onAuthChanged);
+    // Varsayılan tercihler — ilk karede UI çizebilsin.
+    final defaults = BootSnapshot.defaults();
+    ThemePreferenceService.instance.applyBootSnapshot(defaults);
+    KpssPreferenceService.instance.applyBootSnapshot(defaults);
     unawaited(OrientationPolicy.apply());
     unawaited(_boot());
+    unawaited(_minLaunchSplash());
     unawaited(_checkNetworkSecurity());
+  }
+
+  Future<void> _minLaunchSplash() async {
+    await Future<void>.delayed(kAssignmentSplashDuration);
+    _minSplashDone = true;
+    _tryDismissLaunchSplash();
+  }
+
+  void _tryDismissLaunchSplash() {
+    if (!mounted) return;
+    final needsExamChoice = !KpssPreferenceService.instance.hasChosenExam;
+    if (needsExamChoice) {
+      setState(() => _showLaunchSplash = false);
+      FlutterNativeSplash.remove();
+      return;
+    }
+    if (!_minSplashDone || !_bootDataReady) return;
+    setState(() => _showLaunchSplash = false);
+    FlutterNativeSplash.remove();
+  }
+
+  void _beginAssignmentSplash() {
+    setState(() => _showAssignmentSplash = true);
+  }
+
+  void _finishAssignmentSplash() {
+    if (!mounted) return;
+    setState(() => _showAssignmentSplash = false);
   }
 
   @override
@@ -126,92 +163,62 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
   Future<void> _boot() async {
     final sw = Stopwatch()..start();
+    unawaited(_finishAuthBoot());
+
     try {
-      if (await BootStore.exists()) {
-        final snap = await BootStore.load();
-        ThemePreferenceService.instance.applyBootSnapshot(snap);
-        KpssPreferenceService.instance.applyBootSnapshot(snap);
-        if (kDebugMode) {
-          debugPrint('Boot fast-path: ${sw.elapsedMilliseconds}ms');
-        }
-        if (!mounted) return;
-        setState(() => _bootReady = true);
-        FlutterNativeSplash.remove();
-        unawaited(_finishFullBoot());
-      } else {
-        // BootStore yok: onboarding'i hemen göster; ağır SharedPreferences arka planda.
-        final defaults = BootSnapshot.defaults();
-        ThemePreferenceService.instance.applyBootSnapshot(defaults);
-        KpssPreferenceService.instance.applyBootSnapshot(defaults);
-        if (kDebugMode) {
-          debugPrint('Boot optimistic UI: ${sw.elapsedMilliseconds}ms');
-        }
-        if (!mounted) return;
-        setState(() => _bootReady = true);
-        FlutterNativeSplash.remove();
-        unawaited(_legacyFirstBoot(sw));
+      await _loadBootPreferences();
+      if (kDebugMode) {
+        debugPrint(
+          'Boot prefs-ready: ${sw.elapsedMilliseconds}ms '
+          'chosen=${KpssPreferenceService.instance.hasChosenExam}',
+        );
       }
     } catch (e, st) {
       debugPrint('Boot init error: $e\n$st');
-      if (!mounted) return;
-      setState(() => _bootReady = true);
-      FlutterNativeSplash.remove();
-      unawaited(_finishFullBoot());
     }
+
+    if (!mounted) return;
+    final needsExamChoice = !KpssPreferenceService.instance.hasChosenExam;
+    setState(() {
+      _bootReady = true;
+      _bootDataReady = true;
+      if (needsExamChoice) _showLaunchSplash = false;
+    });
+    if (needsExamChoice) {
+      FlutterNativeSplash.remove();
+    } else {
+      _tryDismissLaunchSplash();
+    }
+
+    unawaited(_finishFullBoot());
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
       unawaited(AppNavigator.consumePending());
     });
   }
 
-  /// BootStore yokken — SharedPreferences bir kez yüklenir, sonra boot dosyası yazılır.
-  Future<void> _legacyFirstBoot(Stopwatch sw) async {
-    try {
-      await Future.wait([
-        ThemePreferenceService.instance.initialize(),
-        KpssPreferenceService.instance.initialize(),
-      ]);
-      await BootStore.syncFrom(
-        hasChosenExam: KpssPreferenceService.instance.hasChosenExam,
-        themePreference: ThemePreferenceService.instance.preference.name,
-        examTrackId: KpssPreferenceService.instance.examTrackId,
-      );
-      if (kDebugMode) {
-        debugPrint('Boot legacy-path done: ${sw.elapsedMilliseconds}ms');
-      }
-    } catch (e, st) {
-      debugPrint('Boot legacy error: $e\n$st');
+  Future<void> _loadBootPreferences() async {
+    if (await BootStore.exists()) {
+      final snap = await BootStore.load();
+      ThemePreferenceService.instance.applyBootSnapshot(snap);
+      KpssPreferenceService.instance.applyBootSnapshot(snap);
     }
-    if (!mounted) return;
-    setState(() => _bootReady = true);
-    FlutterNativeSplash.remove();
-    unawaited(_finishFullBoot());
+    await Future.wait([
+      ThemePreferenceService.instance.initialize(),
+      KpssPreferenceService.instance.initialize(),
+    ]);
+    await BootStore.syncFrom(
+      hasChosenExam: KpssPreferenceService.instance.hasChosenExam,
+      themePreference: ThemePreferenceService.instance.preference.name,
+      examTrackId: KpssPreferenceService.instance.examTrackId,
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _finishFullBoot() async {
     await initializeDateFormatting('tr', null);
-    unawaited(_finishAuthBoot());
     unawaited(_initializeHeavyInBackground());
     unawaited(_initFirebaseInBackground());
-    if (!KpssPreferenceService.instance.isInitialized ||
-        !ThemePreferenceService.instance.isInitialized) {
-      try {
-        await Future.wait([
-          if (!ThemePreferenceService.instance.isInitialized)
-            ThemePreferenceService.instance.initialize(),
-          if (!KpssPreferenceService.instance.isInitialized)
-            KpssPreferenceService.instance.initialize(),
-        ]);
-        await BootStore.syncFrom(
-          hasChosenExam: KpssPreferenceService.instance.hasChosenExam,
-          themePreference: ThemePreferenceService.instance.preference.name,
-          examTrackId: KpssPreferenceService.instance.examTrackId,
-        );
-        if (mounted) setState(() {});
-      } catch (e, st) {
-        debugPrint('Boot prefs sync error: $e\n$st');
-      }
-    }
   }
 
   Future<void> _finishAuthBoot() async {
@@ -326,30 +333,37 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final auth = AuthService.instance;
-
-    Widget home;
-    if (_isConnectionBlocked && _securityChecked) {
-      home = const _BlockedHomeScreen();
-    } else if (!_bootReady) {
-      home = const BootSplashScreen();
-    } else if (!KpssPreferenceService.instance.hasChosenExam) {
-      home = const AppEntry();
-    } else if (!auth.isSignedIn) {
-      home = _SessionRetryScreen(
-        message: auth.lastError,
-        onRetry: () async {
-          await auth.ensureAnonymousSession();
-          if (mounted) setState(() {});
-        },
-      );
-    } else {
-      home = const AppEntry();
-    }
-
     return ListenableBuilder(
-      listenable: ThemePreferenceService.instance,
+      listenable: Listenable.merge([
+        ThemePreferenceService.instance,
+        AuthService.instance,
+        KpssPreferenceService.instance,
+      ]),
       builder: (context, _) {
+        final auth = AuthService.instance;
+        final Widget home;
+        if (_isConnectionBlocked && _securityChecked) {
+          home = const _BlockedHomeScreen();
+        } else if (!_bootReady) {
+          home = const SizedBox.shrink();
+        } else if (_showLaunchSplash) {
+          home = const BootSplashScreen();
+        } else if (_showAssignmentSplash) {
+          home = BootSplashScreen(onComplete: _finishAssignmentSplash);
+        } else if (!KpssPreferenceService.instance.hasChosenExam) {
+          home = AppEntry(onExamChosen: _beginAssignmentSplash);
+        } else if (!auth.isSignedIn) {
+          home = _SessionRetryScreen(
+            message: auth.lastError,
+            onRetry: () async {
+              await auth.ensureAnonymousSession();
+              if (mounted) setState(() {});
+            },
+          );
+        } else {
+          home = const AppEntry();
+        }
+
         return MaterialApp(
           title: BrandConstants.appName,
           navigatorKey: AppNavigator.key,

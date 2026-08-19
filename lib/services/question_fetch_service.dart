@@ -165,13 +165,18 @@ class QuestionFetchService {
   ) {
     if (questions.isEmpty) return const [];
     if (test.questionIds.isEmpty) {
-      return QuestionModel.keepGroupsContiguous(questions);
+      return QuestionModel.interleaveOsymSordu(
+        QuestionModel.keepGroupsContiguous(questions),
+      );
     }
     final ordered = _orderByIds(questions, test.questionIds);
     final contiguous = QuestionModel.keepGroupsContiguous(
       ordered.isNotEmpty ? ordered : questions,
     );
-    return contiguous.isNotEmpty ? contiguous : questions;
+    final laidOut = QuestionModel.interleaveOsymSordu(
+      contiguous.isNotEmpty ? contiguous : questions,
+    );
+    return laidOut.isNotEmpty ? laidOut : questions;
   }
 
   Future<List<QuestionModel>> _fetchIdsFromApi(List<String> ids) async {

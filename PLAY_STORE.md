@@ -2,6 +2,8 @@
 
 KPSS Akademi yalnızca **Google Play** üzerinden premium abonelik satar.
 
+**Android paket adı (applicationId):** `com.hedefkamu.hedef_kamu` — Play Console’da yeni uygulama oluştururken bu ID kullanılmalıdır.
+
 ## 1. Play Console'da Abonelik Oluşturma
 
 1. [Google Play Console](https://play.google.com/console) → Uygulamanız

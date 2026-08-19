@@ -2,7 +2,7 @@
 
 ## Durum
 - Firebase proje: `kpss-odak`
-- Paket (applicationId): `com.example.kpss_odak`
+- Paket (applicationId / Play Store): `com.hedefkamu.hedef_kamu`
 - `google-services.json` yolu: `android/app/google-services.json`
 
 ## SHA-1 ekle (zorunlu — oauth_client şu an boş)
@@ -23,4 +23,10 @@ Dosyada `"oauth_client": [ ... ]` dolu olmalı (boş `[]` olmamalı).
 Build → Authentication → Sign-in method → **Google** → Enable
 
 ## Uygulamayı yükle
-`basla-telefon.bat` (eski `kpss_akademi` paketi ayrı uygulama gibi kalabilir; kaldırabilirsin)
+`basla-telefon.bat` (eski `com.example.kpss_odak` / `kpss_akademi` paketi ayrı uygulama gibi kalabilir; kaldırabilirsin)
+
+## Paket adı değişikliği (Hedef Kamu)
+
+Firebase Console → Project settings → **Add app** (Android)  
+Paket adı: `com.hedefkamu.hedef_kamu`  
+Aynı SHA-1 parmak izini ekleyin → yeni `google-services.json` indirin.

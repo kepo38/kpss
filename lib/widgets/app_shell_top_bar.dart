@@ -34,7 +34,7 @@ class AppShellTopBar extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPad + 8, 12, 4),
+        padding: EdgeInsets.fromLTRB(20, topPad + 6, 10, 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -67,19 +67,26 @@ class AppShellTopBar extends StatelessWidget {
               builder: (context, premium, _) {
                 return Row(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    PremiumHeaderButton(
-                      isPremium: premium,
-                      onTap: premium ? null : onPremiumTap,
-                    ),
                     IconButton(
                       tooltip: 'Daha fazla',
                       onPressed: onMoreTap,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                       icon: Icon(
                         Icons.apps_outlined,
                         color: AppTheme.mutedOnPage(context),
                         size: 22,
                       ),
+                    ),
+                    PremiumHeaderButton(
+                      isPremium: premium,
+                      onTap: premium ? null : onPremiumTap,
                     ),
                   ],
                 );

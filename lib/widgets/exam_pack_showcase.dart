@@ -4,16 +4,19 @@ import 'package:flutter/material.dart';
 
 import '../models/exam_pack_model.dart';
 import '../screens/exam_pack_detail_screen.dart';
+import '../services/exam_catalog_service.dart';
 import '../services/exam_pack_service.dart';
+import '../services/kpss_preference_service.dart';
 import '../services/play_billing_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
+import '../widgets/countdown_widget.dart';
 
-/// Dersler sekmesi altında yatay deneme paketi vitrini.
+/// Dersler sekmesi altı — yumuşak yatay deneme paketi vitrini.
 class ExamPackShowcase extends StatefulWidget {
-  final String examTypeId;
+  final KpssType kpssType;
 
-  const ExamPackShowcase({super.key, required this.examTypeId});
+  const ExamPackShowcase({super.key, required this.kpssType});
 
   @override
   State<ExamPackShowcase> createState() => _ExamPackShowcaseState();
@@ -22,20 +25,25 @@ class ExamPackShowcase extends StatefulWidget {
 class _ExamPackShowcaseState extends State<ExamPackShowcase> {
   final _svc = ExamPackService.instance;
   final _billing = PlayBillingService.instance;
+  final _prefs = KpssPreferenceService.instance;
+
+  String get _catalogExamTypeId =>
+      ExamCatalogService.instance.forContentType(widget.kpssType).id;
 
   @override
   void initState() {
     super.initState();
     _svc.addListener(_onChanged);
     _billing.packOwnershipRevision.addListener(_onChanged);
-    unawaited(_svc.refresh(examTypeId: widget.examTypeId));
+    _prefs.addListener(_onPrefChanged);
+    unawaited(_refreshPacks());
   }
 
   @override
   void didUpdateWidget(covariant ExamPackShowcase oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.examTypeId != widget.examTypeId) {
-      unawaited(_svc.refresh(examTypeId: widget.examTypeId));
+    if (oldWidget.kpssType != widget.kpssType) {
+      unawaited(_refreshPacks());
     }
   }
 
@@ -43,7 +51,19 @@ class _ExamPackShowcaseState extends State<ExamPackShowcase> {
   void dispose() {
     _svc.removeListener(_onChanged);
     _billing.packOwnershipRevision.removeListener(_onChanged);
+    _prefs.removeListener(_onPrefChanged);
     super.dispose();
+  }
+
+  Future<void> _refreshPacks() async {
+    await _svc.refresh(examTypeId: _catalogExamTypeId);
+    if (_svc.packs.isEmpty && _prefs.examTrackId != _catalogExamTypeId) {
+      await _svc.refresh(examTypeId: _prefs.examTrackId);
+    }
+  }
+
+  void _onPrefChanged() {
+    unawaited(_refreshPacks());
   }
 
   void _onChanged() {
@@ -55,11 +75,11 @@ class _ExamPackShowcaseState extends State<ExamPackShowcase> {
     final packs = _svc.packs;
     if (_svc.isLoading && packs.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+        padding: EdgeInsets.fromLTRB(16, 28, 16, 12),
         child: Center(
           child: SizedBox(
-            width: 22,
-            height: 22,
+            width: 20,
+            height: 20,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
@@ -68,43 +88,36 @@ class _ExamPackShowcaseState extends State<ExamPackShowcase> {
     if (packs.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 24, 0, 8),
+      padding: const EdgeInsets.fromLTRB(0, 28, 0, 4),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: AppTheme.champagne,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Deneme Paketleri',
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'DENEME PAKETLERİ',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.1,
+                color: AppTheme.champagne.withValues(alpha: 0.72),
+              ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 168,
+            height: 132,
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 2),
               scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              clipBehavior: Clip.none,
               itemCount: packs.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final pack = packs[index];
                 return _ExamPackCard(
@@ -141,11 +154,11 @@ class _ExamPackCard extends StatelessWidget {
     required this.onTap,
   });
 
-  Color get _neon {
+  Color get _accent {
     if (pack.subjectId != null && pack.subjectId!.isNotEmpty) {
       return SubjectNeonPalette.forSubject(pack.subjectId!);
     }
-    return AppTheme.neonGold;
+    return AppTheme.champagne;
   }
 
   @override
@@ -153,22 +166,34 @@ class _ExamPackCard extends StatelessWidget {
     final locked = pack.playProductId.isNotEmpty && !owned;
 
     return SizedBox(
-      width: 220,
+      width: 188,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
+          splashColor: _accent.withValues(alpha: 0.08),
+          highlightColor: _accent.withValues(alpha: 0.04),
           child: Ink(
-            decoration: SubjectNeonPalette.lightNeonModule(
-              neon: _neon,
-              accent: true,
-              radius: 16,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: Colors.white.withValues(alpha: 0.04),
+              border: Border.all(
+                color: _accent.withValues(alpha: 0.22),
+                width: 0.7,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Stack(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -178,80 +203,63 @@ class _ExamPackCard extends StatelessWidget {
                             pack.isBranch
                                 ? Icons.layers_outlined
                                 : Icons.fact_check_outlined,
-                            color: _neon,
-                            size: 20,
+                            color: _accent.withValues(alpha: 0.82),
+                            size: 16,
                           ),
                           const Spacer(),
                           if (owned)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _neon.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'Sahipsin',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: _neon,
-                                ),
+                            Text(
+                              'Sahipsin',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: _accent.withValues(alpha: 0.88),
                               ),
                             ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
                         pack.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'serif',
-                          fontSize: 16,
+                          fontSize: 14.5,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          height: 1.2,
+                          color: Colors.white.withValues(alpha: 0.92),
+                          height: 1.18,
                         ),
                       ),
                       const Spacer(),
                       Text(
                         '${pack.examCount} deneme'
-                        '${pack.questionsPerExam > 0 ? ' · ${pack.questionsPerExam} soru' : ''}'
                         '${pack.timeLimitMinutes > 0 ? ' · ${pack.timeLimitMinutes} dk' : ''}',
                         style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 10,
+                          color: Colors.white.withValues(alpha: 0.48),
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
                         owned ? 'Aç' : priceLabel,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
-                          color: _neon,
+                          color: _accent.withValues(alpha: 0.9),
                         ),
                       ),
                     ],
                   ),
                 ),
                 if (locked)
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.22),
-                        alignment: Alignment.topRight,
-                        padding: const EdgeInsets.all(10),
-                        child: Icon(
-                          Icons.lock_rounded,
-                          color: Colors.white.withValues(alpha: 0.85),
-                          size: 18,
-                        ),
-                      ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Icon(
+                      Icons.lock_rounded,
+                      color: Colors.white.withValues(alpha: 0.55),
+                      size: 14,
                     ),
                   ),
               ],

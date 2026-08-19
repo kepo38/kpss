@@ -54,7 +54,7 @@
           <p class="nav-label">Sistem</p>
           <a class="nav-link {% if url_name == 'panel_exam_type_list' or url_name == 'panel_exam_type_new' or url_name == 'panel_exam_type_edit' %}is-active{% endif %}" href="{% url 'panel_exam_type_list' %}">Sınavlar</a>
           <a class="nav-link {% if url_name == 'panel_exam_distribution_list' or url_name == 'panel_exam_distribution_new' or url_name == 'panel_exam_distribution_edit' %}is-active{% endif %}" href="{% url 'panel_exam_distribution_list' %}">Deneme şablonu</a>
-          <a class="nav-link {% if url_name == 'panel_exam_pack_list' or url_name == 'panel_exam_pack_new' or url_name == 'panel_exam_pack_edit' %}is-active{% endif %}" href="{% url 'panel_exam_pack_list' %}">Deneme paketleri</a>
+          <a class="nav-link {% if url_name == 'panel_exam_pack_list' or url_name == 'panel_exam_pack_new' or url_name == 'panel_exam_pack_edit' or url_name == 'panel_exam_pack_toggle' %}is-active{% endif %}" href="{% url 'panel_exam_pack_list' %}">Deneme paketleri</a>
           <a class="nav-link {% if url_name == 'panel_announcement_list' or url_name == 'panel_announcement_new' or url_name == 'panel_announcement_edit' %}is-active{% endif %}" href="{% url 'panel_announcement_list' %}">Duyurular</a>
           <a class="nav-link {% if url_name == 'panel_mobile_ui' %}is-active{% endif %}" href="{% url 'panel_mobile_ui' %}">Mobil arayüz</a>
           <a class="nav-link {% if url_name == 'panel_users' or url_name == 'panel_user_grant_premium' or url_name == 'panel_user_revoke_premium' %}is-active{% endif %}" href="{% url 'panel_users' %}">Kullanıcılar</a>

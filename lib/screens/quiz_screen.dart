@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import '../constants/daily_mini_exam_constants.dart';
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
@@ -500,6 +501,11 @@ class _QuizScreenState extends State<QuizScreen>
 
     if (widget.dailyMiniRankingMode &&
         DailyMiniExamService.instance.rankingLocked) {
+      final svc = DailyMiniExamService.instance;
+      if (svc.formallyFinished || !svc.canResumeQuiz) {
+        _popWithResult(completed: false);
+        return false;
+      }
       final result = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1287,26 +1293,40 @@ class _QuizScreenState extends State<QuizScreen>
               _popWithResult(completed: false);
             }
           }),
-          title: Row(
-            children: [
-              const Spacer(),
-              Flexible(
-                child: Text(
-                  widget.title,
+          title: widget.dailyMiniRankingMode
+              ? const Text(
+                  DailyMiniExamConstants.title,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.champagne,
-                    height: 1.15,
+                  overflow: TextOverflow.visible,
+                  style: TextStyle(
+                    fontFamily: 'sans-serif',
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.7,
+                    color: Colors.white,
+                    height: 1.05,
                   ),
+                )
+              : Row(
+                  children: [
+                    const Spacer(),
+                    Flexible(
+                      child: Text(
+                        widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.champagne,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
           toolbarHeight: 56,
           actionsPadding: const EdgeInsets.only(right: 2),
           actions: [

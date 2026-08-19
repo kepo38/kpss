@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -21,13 +22,17 @@ class ExamPackService extends ChangeNotifier {
   bool _loading = false;
   String? _error;
   String? _cachedExamTypeId;
+  String? _pendingExamTypeId;
 
   List<ExamPackModel> get packs => List.unmodifiable(_packs);
   bool get isLoading => _loading;
   String? get error => _error;
 
   Future<void> refresh({required String examTypeId}) async {
-    if (_loading) return;
+    if (_loading) {
+      _pendingExamTypeId = examTypeId;
+      return;
+    }
     _loading = true;
     _error = null;
     notifyListeners();
@@ -50,6 +55,7 @@ class ExamPackService extends ChangeNotifier {
             )
             .toList();
         _cachedExamTypeId = examTypeId;
+        _error = null;
         await _persistCache(examTypeId);
         await PlayBillingService.instance.syncPackProductIds(
           _packs.map((p) => p.playProductId).where((id) => id.isNotEmpty),
@@ -65,6 +71,13 @@ class ExamPackService extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
+      final pending = _pendingExamTypeId;
+      if (pending != null && pending != examTypeId) {
+        _pendingExamTypeId = null;
+        unawaited(refresh(examTypeId: pending));
+      } else {
+        _pendingExamTypeId = null;
+      }
     }
   }
 

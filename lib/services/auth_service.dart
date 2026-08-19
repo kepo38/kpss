@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
+import 'daily_mini_exam_service.dart';
 import '../models/user_model.dart';
 import 'ad_manager.dart';
 import 'app_preferences.dart';
@@ -430,6 +431,7 @@ class AuthService extends ChangeNotifier {
       await _persist();
       _syncPremiumSideEffects();
       notifyListeners();
+      unawaited(DailyMiniExamService.instance.onAuthSessionChanged());
       return true;
     } catch (e) {
       debugPrint('Auth exchange: $e');
@@ -457,6 +459,7 @@ class AuthService extends ChangeNotifier {
     await _clearLocal();
     notifyListeners();
     await ensureAnonymousSession();
+    unawaited(DailyMiniExamService.instance.onAuthSessionChanged());
   }
 
   Future<void> _persist() async {

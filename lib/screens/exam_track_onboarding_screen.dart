@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/brand_constants.dart';
 import '../models/user_model.dart';
-import '../screens/main_shell.dart';
+import '../services/auth_service.dart';
 import '../services/kpss_preference_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/countdown_widget.dart';
@@ -12,8 +12,13 @@ import '../widgets/countdown_widget.dart';
 /// Google girişinden sonra hedef sınavı bir kez sorar.
 class ExamTrackOnboardingScreen extends StatefulWidget {
   final UserModel user;
+  final VoidCallback? onExamChosen;
 
-  const ExamTrackOnboardingScreen({super.key, required this.user});
+  const ExamTrackOnboardingScreen({
+    super.key,
+    required this.user,
+    this.onExamChosen,
+  });
 
   @override
   State<ExamTrackOnboardingScreen> createState() =>
@@ -24,13 +29,16 @@ class _ExamTrackOnboardingScreenState extends State<ExamTrackOnboardingScreen> {
   ExamTrack? _hover;
 
   void _select(ExamTrack track) {
-    setState(() => _hover = track);
-    unawaited(KpssPreferenceService.instance.setExamTrack(track));
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => MainShell(user: widget.user),
-      ),
-    );
+    unawaited(_goToHome(track));
+  }
+
+  Future<void> _goToHome(ExamTrack track) async {
+    widget.onExamChosen?.call();
+    await KpssPreferenceService.instance.setExamTrack(track);
+    if (!mounted) return;
+    if (!AuthService.instance.isSignedIn) {
+      await AuthService.instance.ensureAnonymousSession();
+    }
   }
 
   @override

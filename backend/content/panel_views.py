@@ -2398,6 +2398,26 @@ def panel_exam_pack_edit(
 @login_required
 @staff_required
 @require_POST
+def panel_exam_pack_toggle(request: HttpRequest, pack_id: int) -> HttpResponse:
+    item = get_object_or_404(ExamPack, pk=pack_id)
+    item.is_published = not item.is_published
+    item.save(update_fields=["is_published", "updated_at"])
+    if item.is_published:
+        messages.success(
+            request,
+            f"“{item.title}” aktif — Dersler vitrininde görünür.",
+        )
+    else:
+        messages.success(
+            request,
+            f"“{item.title}” pasif — Dersler vitrininden çıktı.",
+        )
+    return redirect("panel_exam_pack_list")
+
+
+@login_required
+@staff_required
+@require_POST
 def panel_exam_pack_delete(request: HttpRequest, pack_id: int) -> HttpResponse:
     item = get_object_or_404(ExamPack, pk=pack_id)
     label = item.title

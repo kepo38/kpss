@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 DEVICE = "GAD6ZHBU4LJJ9XVW"
-PKG = "com.example.kpss_odak"
+PKG = "com.hedefkamu.hedef_kamu"
 TMP = Path(r"C:\Users\halit\AppData\Local\Temp\FlutterSharedPreferences.xml")
 REMOTE_TMP = "/data/local/tmp/FlutterSharedPreferences.xml"
 
@@ -65,7 +65,7 @@ def main() -> None:
         "am",
         "start",
         "-n",
-        f"{PKG}/com.example.kpss_akademi.MainActivity",
+        f"{PKG}/com.hedefkamu.hedef_kamu.MainActivity",
     )
     print("app launched with demo_sim_1 in wrong notebook")
 

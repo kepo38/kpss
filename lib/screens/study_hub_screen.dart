@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../data/kpss_curriculum.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
-import '../services/kpss_preference_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/app_back_button.dart';
@@ -16,6 +15,7 @@ import '../widgets/exam_focus_panel.dart';
 import '../widgets/exam_pack_showcase.dart';
 import '../widgets/premium_header_button.dart';
 import '../widgets/savings_insight_banner.dart';
+import 'notes_screen.dart';
 import 'topic_detail_screen.dart';
 
 IconData subjectIcon(String subjectId) {
@@ -137,6 +137,7 @@ class StudyHubScreen extends StatelessWidget {
                                   s.id,
                                 ),
                           ),
+                          kpssType: kpssType,
                         ),
                       ),
                     ),
@@ -152,7 +153,7 @@ class StudyHubScreen extends StatelessWidget {
                       ),
                     ),
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                       sliver: SliverGrid(
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
@@ -172,8 +173,7 @@ class StudyHubScreen extends StatelessWidget {
                               subjectId: subject.id,
                               name: subject.name,
                               icon: subjectIcon(subject.id),
-                              subtitle:
-                                  '${subject.topics.length} konu · ${progress.total} soru',
+                              subtitle: '${progress.total} soru',
                               progress: progress.total == 0
                                   ? 0
                                   : progress.solved / progress.total,
@@ -194,10 +194,9 @@ class StudyHubScreen extends StatelessWidget {
                       ),
                     ),
                     SliverToBoxAdapter(
-                      child: ExamPackShowcase(
-                        examTypeId: KpssPreferenceService.instance.examTrackId,
-                      ),
+                      child: ExamPackShowcase(kpssType: kpssType),
                     ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
                   ],
                   if (showHome)
                     const SliverToBoxAdapter(child: SizedBox(height: 28)),
@@ -294,44 +293,115 @@ class SubjectTopicsScreen extends StatelessWidget {
 
 class _SubjectsHeader extends StatelessWidget {
   final int totalQuestions;
+  final KpssType kpssType;
 
-  const _SubjectsHeader({required this.totalQuestions});
+  const _SubjectsHeader({
+    required this.totalQuestions,
+    required this.kpssType,
+  });
 
   @override
   Widget build(BuildContext context) {
     final countLabel =
         totalQuestions == 0 ? 'Henüz soru yok' : '$totalQuestions soru';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              'Dersler',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.onPage(context),
-                height: 1.1,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                countLabel,
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'Dersler',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.champagne.withValues(alpha: 0.95),
+                  fontFamily: 'serif',
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.onPage(context),
+                  height: 1.1,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  countLabel,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.champagne.withValues(alpha: 0.95),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        _MyNotesButton(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => NotesScreen(kpssType: kpssType),
+              ),
+            );
+          },
         ),
       ],
+    );
+  }
+}
+
+class _MyNotesButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _MyNotesButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF5EEAD4);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(2),
+        splashColor: accent.withValues(alpha: 0.12),
+        highlightColor: accent.withValues(alpha: 0.06),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
+            color: const Color(0xFF121E2C),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.42),
+              width: 1,
+            ),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.fromLTRB(10, 7, 10, 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.sticky_note_2_outlined,
+                  size: 14,
+                  color: Color(0xFF99F6E4),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Notlarım',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                    height: 1,
+                    color: Color(0xFFE8FAF8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -575,18 +645,21 @@ class _HeaderChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PremiumHeaderButton(
-          isPremium: isPremium,
-          onTap: onPremiumTap,
-        ),
         IconButton(
           tooltip: 'Daha fazla',
           onPressed: onMoreTap,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           icon: Icon(
             Icons.apps_outlined,
             color: AppTheme.mutedOnPage(context),
             size: 22,
           ),
+        ),
+        PremiumHeaderButton(
+          isPremium: isPremium,
+          onTap: onPremiumTap,
         ),
       ],
     );

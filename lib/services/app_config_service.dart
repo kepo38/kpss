@@ -13,7 +13,7 @@ class AppConfigService extends ChangeNotifier {
 
   bool _loaded = false;
   bool _wrongNotebookBubbleEnabled = false;
-  String _wrongNotebookBubbleLabel = 'YANLIŞLARINI GÖR';
+  String _wrongNotebookBubbleLabel = 'YANLIŞ DEFTERİM';
   DateTime? _updatedAt;
   bool _authListening = false;
 

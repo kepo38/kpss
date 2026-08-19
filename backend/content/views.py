@@ -952,6 +952,17 @@ class DailyMiniExamView(APIView):
             kpss_type=kpss_type,
         ).count()
 
+        # 00:00–06:00 arası kürsüde dünün liderleri gösterilir.
+        leaderboard_date = exam.exam_date
+        if now < opens_at:
+            from datetime import timedelta
+
+            leaderboard_date = exam.exam_date - timedelta(days=1)
+        leaderboard_participant_count = DailyMiniExamAttempt.objects.filter(
+            exam_date=leaderboard_date,
+            kpss_type=kpss_type,
+        ).count()
+
         return {
             "examDate": exam.exam_date.isoformat(),
             "kpssType": kpss_type,
@@ -962,8 +973,10 @@ class DailyMiniExamView(APIView):
             "questionIds": exam.question_ids,
             "questionCount": len(exam.question_ids),
             "participantCount": participant_count,
+            "leaderboardDate": leaderboard_date.isoformat(),
+            "leaderboardParticipantCount": leaderboard_participant_count,
             "myAttempt": my_attempt,
-            "leaderboard": leaderboard_rows(exam.exam_date, kpss_type),
+            "leaderboard": leaderboard_rows(leaderboard_date, kpss_type),
             "guestLoginRequired": guest_login_required(user, exam.exam_date),
         }
 
@@ -1142,7 +1155,14 @@ class ExamPackListView(APIView):
             "exam_type", "subject"
         )
         if exam_type:
-            qs = qs.filter(exam_type__slug=exam_type)
+            et = ExamType.objects.filter(slug=exam_type).only(
+                "slug", "content_type"
+            ).first()
+            if et is not None and not et.slug.startswith("kpss"):
+                # AGS/ALES/DGS hedefi — aynı müfredat (content_type) KPSS paketleri
+                qs = qs.filter(exam_type__content_type=et.content_type)
+            else:
+                qs = qs.filter(exam_type__slug=exam_type)
         qs = qs.order_by("sort_order", "title")
         return Response(
             {

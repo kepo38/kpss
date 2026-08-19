@@ -132,6 +132,9 @@ class DailyMiniExamWindow {
 
   bool get isOpen => !now.isBefore(opensAt) && now.isBefore(closesAt);
 
+  /// Gece yarısı – 06:00 arası (henüz açılmadan önce).
+  bool get isPreOpen => now.isBefore(opensAt);
+
   DateTime get examDate => DateTime(now.year, now.month, now.day);
 
   Duration get remaining {

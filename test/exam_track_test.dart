@@ -5,8 +5,8 @@ void main() {
   test('AGS sayacı KPSS lisans tarihinden bağımsızdır', () {
     final ags = ExamTrack.defaults.firstWhere((e) => e.id == 'ags');
     final kpss = ExamTrack.defaults.firstWhere((e) => e.id == 'kpssLisans');
-    expect(ags.nextExamDate(DateTime(2026, 8, 13)), DateTime(2027, 7, 26));
-    expect(kpss.nextExamDate(DateTime(2026, 8, 13)), DateTime(2026, 9, 6));
+    expect(ags.nextExamDate(DateTime(2026, 8, 13)), DateTime(2027, 7, 26, 10));
+    expect(kpss.nextExamDate(DateTime(2026, 8, 13)), DateTime(2026, 9, 6, 10));
     expect(ags.contentType, KpssType.lisans);
   });
 
@@ -18,11 +18,19 @@ void main() {
     final lisans =
         ExamTrack.defaults.firstWhere((e) => e.id == 'kpssLisans');
 
-    expect(onLisans.nextExamDate(DateTime(2026, 8, 13)), DateTime(2026, 10, 4));
-    expect(onLisans.nextExamDate(DateTime(2026, 10, 5)), DateTime(2028, 10, 4));
-    expect(onLisans.nextExamDate(DateTime(2027, 3, 1)), DateTime(2028, 10, 4));
-    expect(orta.nextExamDate(DateTime(2027, 1, 1)), DateTime(2028, 10, 25));
-    expect(lisans.nextExamDate(DateTime(2026, 9, 7)), DateTime(2027, 9, 6));
+    expect(onLisans.nextExamDate(DateTime(2026, 8, 13)), DateTime(2026, 10, 4, 10));
+    expect(onLisans.nextExamDate(DateTime(2026, 10, 5)), DateTime(2028, 10, 4, 10));
+    expect(onLisans.nextExamDate(DateTime(2027, 3, 1)), DateTime(2028, 10, 4, 10));
+    expect(orta.nextExamDate(DateTime(2027, 1, 1)), DateTime(2028, 10, 25, 10));
+    expect(lisans.nextExamDate(DateTime(2026, 9, 7)), DateTime(2027, 9, 6, 10));
+    expect(
+      lisans.nextExamDate(DateTime(2026, 9, 6, 9, 0)),
+      DateTime(2026, 9, 6, 10),
+    );
+    expect(
+      lisans.nextExamDate(DateTime(2026, 9, 6, 10, 0)),
+      DateTime(2027, 9, 6, 10),
+    );
   });
 
   test('JSON katalogdan yeni sınav tipi okunur', () {
@@ -39,16 +47,17 @@ void main() {
       'isActive': true,
     });
     expect(track.id, 'ales');
-    expect(track.nextExamDate(DateTime(2026, 8, 13)), DateTime(2026, 11, 15));
+    expect(track.nextExamDate(DateTime(2026, 8, 13)), DateTime(2026, 11, 15, 10));
   });
 
   test('ALES ve DGS yerel sınav kataloğunda bulunur', () {
     final ales = ExamTrack.defaults.firstWhere((e) => e.id == 'ales');
     final dgs = ExamTrack.defaults.firstWhere((e) => e.id == 'dgs');
 
-    expect(ales.nextExamDate(DateTime(2026, 8, 14)), DateTime(2026, 11, 29));
+    expect(ales.nextExamDate(DateTime(2026, 8, 14)), DateTime(2026, 11, 29, 10));
     expect(ales.hasUpcomingDate(DateTime(2026, 8, 14)), isTrue);
-    expect(ales.hasUpcomingDate(DateTime(2026, 11, 29, 12)), isTrue);
+    expect(ales.hasUpcomingDate(DateTime(2026, 11, 29, 9, 59)), isTrue);
+    expect(ales.hasUpcomingDate(DateTime(2026, 11, 29, 10)), isFalse);
     expect(ales.hasUpcomingDate(DateTime(2026, 11, 30)), isFalse);
     expect(dgs.hasUpcomingDate(DateTime(2026, 8, 14)), isFalse);
     expect(ales.contentType, KpssType.lisans);

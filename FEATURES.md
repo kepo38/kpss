@@ -1,7 +1,8 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-08-18  
-> **Paket:** `kpss_akademi`  
+> **Son güncelleme:** 2026-08-19  
+> **Dart paketi:** `kpss_akademi`  
+> **Android applicationId (Play Store):** `com.hedefkamu.hedef_kamu`  
 > **Stack:** Flutter mobil + Django REST API + içerik paneli (`/panel/`) + Unfold admin (`/admin/`)
 
 Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kaynakta toplar. Yeni özellik eklendiğinde, mevcut bir özellik değiştirildiğinde veya kaldırıldığında **aynı PR/commit ile güncellenmelidir**.
@@ -40,11 +41,11 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
 | **Ana sekme kabuğu** | Alt menü: Ana Sayfa, Dersler, Gelişim, Deneme; üstte profil | `lib/screens/main_shell.dart` |
-| **Yanlış defteri balonu** | Ana sayfa sağ kenarında sade metin sekmesi (YANLIŞ / DEFTERİ); ikon yok; dikey sürüklenebilir; kapatma oturum içi | `lib/widgets/wrong_notebook_promo_bubble.dart`, `lib/services/app_config_service.dart` |
+| **Yanlış defteri balonu** | Koyu teal iç zemin; parlak **YANLIŞ** → **DEFTERİM** 3D metin; mavi-yeşil premium çerçeve; sağ üst X; **sol**-orta (~%34) | `lib/widgets/wrong_notebook_promo_bubble.dart` |
 | **Genişletilmiş ana sayfa** | “Daha fazla” menüsü: modül listesi, görevler, araçlar, premium modüller | `lib/screens/home_screen.dart`, `lib/widgets/app_shell_top_bar.dart` |
-| **Giriş yönlendirme** | Sınav hedefi onboarding → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart` |
+| **Giriş yönlendirme** | Sınav seçilmemişse hemen onboarding → seçimden sonra «Ataman Gerçekleşiyor» (**3,5 sn**) → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart`, `lib/screens/exam_track_onboarding_screen.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
-| **Hızlı açılış** | `BootStore` ile tema ve sınav tercihlerinin anında yüklenmesi; boot sırasında koyu ekranda «Ataman Gerçekleşiyor» + premium kayan altın çizgi | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart` |
+| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda «Ataman Gerçekleşiyor» (**3,5 sn**). Sınav seçimi `exam_track_chosen_v1` prefs ile | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
 | **Dikey ekran kilidi** | Tüm cihazlarda yalnızca portrait | `lib/services/orientation_policy.dart`, `android/.../AndroidManifest.xml` |
 | **Web önizleme çerçevesi** | Masaüstü web’de telefon boyutunda kart | `lib/main.dart` |
 
@@ -55,7 +56,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
 | **Sınav takibi seçimi** | İlk açılışta hedef sınav (KPSS Lisans/Ön Lisans/Ortaöğretim, ALES, DGS vb.) | `lib/screens/exam_track_onboarding_screen.dart`, `lib/services/kpss_preference_service.dart` |
-| **Geri sayım paneli** | Seçilen sınav adı, tarihi, kalan süre; dokunarak değiştirme | `lib/widgets/exam_focus_panel.dart`, `lib/widgets/countdown_widget.dart` |
+| **Geri sayım paneli** | Seçilen sınav adı, tarihi, kalan süre; hedef **sınav günü 10:00**; dokunarak değiştirme | `lib/widgets/exam_focus_panel.dart`, `lib/widgets/countdown_widget.dart` |
 | **Sınav kataloğu senkronu** | API’den aktif sınav türleri; yerel önbellek yedek | `lib/services/exam_catalog_service.dart` |
 | **KPSS içerik tipi** | Lisans / Ön Lisans / Ortaöğretim — müfredat ve soru bankası filtresi | `lib/widgets/kpss_type_preference_picker.dart` |
 
@@ -66,7 +67,9 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Ana Sayfa sekmesi** | Günün mini denemesi, günlük görevler, tasarruf banner’ı, sınav odağı | `lib/screens/study_hub_screen.dart` | Ücretsiz |
-| **Dersler sekmesi** | Ders ızgarası, soru sayıları, ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
+| **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (teal ton, Pro altın değil) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
+| **Dersler sekmesi** | 2 sütunlu ders ızgarası (tüm dersler görünür); kartta sadece soru sayısı + ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
+| **Gelişim sekmesi alt CTA** | En altta premium tarzı **PUAN HESAPLAMA** butonu → `PuanHesaplamaScreen` (GY/GK net → tahmini P3) | `lib/screens/analytics_hub_screen.dart`, `lib/screens/puan_hesaplama_screen.dart`, `lib/services/kpss_score_calculator_service.dart` | Ücretsiz |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
 | **Konu detayı** | İstatistik, ders kartları, test listesi, teste devam/başla | `lib/screens/topic_detail_screen.dart` | Günlük kota |
 | **Ders okuyucu** | Konuya özel bilgi kartları (markdown / zengin metin) | `lib/screens/lesson_reader_screen.dart` | Ücretsiz |
@@ -76,7 +79,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Günlük test kotası (ücretsiz):** Her derste günde **1 test** (`ContentBankService.dailyFreeTestsPerSubject = 1`). Reklam izleyerek derse özel **+1 bonus test** (`AdRewardKind.dailyTestBonus`). Premium’da sınırsız.
 
-| **Deneme paketleri vitrini** | Dersler sekmesi altında yatay paket kartları; Play SKU ile kilit/açma; **Google girişi zorunlu** | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart` | IAP + Google |
+| **Deneme paketleri vitrini** | Dersler sekmesi altında yatay paket kartları; yalnızca panelde **aktif** paketler; Play SKU ile kilit/açma; **Google girişi zorunlu** | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart` | IAP + Google |
 | **Deneme paketi detayı** | Alt deneme listesi → quiz; sorular 1000+ cevaplı orta zorluk; oturumda daha önce çözülen en fazla **%20**; bitince HEDEF KAMU kaydı | `lib/screens/exam_pack_detail_screen.dart`, `lib/services/exam_pack_analytics_bridge.dart`, `backend/content/exam_pack_personalize.py` | IAP + Google |
 
 ---
@@ -87,7 +90,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 |---|---|---|---|
 | **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı | `lib/screens/quiz_screen.dart` | Ücretsiz; reklamlı |
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil | `lib/widgets/question_stem_content.dart`, `lib/widgets/formatted_text.dart` | Ücretsiz |
-| **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet | `lib/widgets/osym_badge.dart` | Ücretsiz |
+| **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; her konuda testte mümkünse **4 ÖSYM** soru, **4 etiketsiz + 1 ÖSYM** sırası (etiketsiz yetmezse normal sıra) | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
 | **Çizim katmanı** | Soru alanında kalem / yeşil fosfor (geniş vurgu) / silgi; işaretler kaydırınca metinde kalır; kalem kapalıyken görünür; test bitince kaydedilmez | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp) | `lib/widgets/favorite_heart_button.dart`, `lib/services/favorites_service.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
@@ -97,7 +100,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma | `lib/widgets/shareable_result_card.dart` | Ücretsiz |
 | **Filigran** | Ücretsiz planda marka filigranı | `lib/widgets/watermark_widget.dart` | Premium’da gizli |
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium / kampanya bypass |
-| **Pro Üyelik üst bar CTA** | Sağ üst altın pill + sol maskot (taçlı idle animasyon) | `lib/widgets/premium_header_button.dart`, `lib/widgets/premium_pro_mascot.dart` | Ücretsiz kullanıcı |
+| **Pro Üyelik üst bar CTA** | Maskot (el yok) + kompakt pill; üst barda kırpılmadan hizalı | `lib/widgets/premium_header_button.dart`, `lib/widgets/premium_pro_mascot.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
 
 **Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
 
@@ -118,7 +121,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Günlük görev merkezi** | Ders bazlı günlük ilerleme çubukları (Türkçe, Mat, Tarih, Coğrafya, Vatandaşlık) | `lib/widgets/daily_mission_center.dart` | Ücretsiz |
-| **Günün mini denemesi** | 20 soruluk günlük deneme; bitirince detay sayfası açılmaz, ana karttaki BUGÜNÜN KÜRSÜSÜ + 10 sn sayaç başlar; misafir yalnızca ilk gün katılır, sonraki günlerde profil girişi zorunlu; sıralama kilitli erken çıkış; kayan altın CTA + formula aracı | `lib/widgets/daily_mini_exam_card.dart`, `lib/widgets/mini_confetti_burst.dart`, `lib/services/daily_mini_exam_service.dart`, `lib/screens/quiz_screen.dart`, `backend/content/daily_mini_exam.py` | Ücretsiz (misafir: ilk gün) |
+| **Günün mini denemesi** | 20 soruluk günlük deneme; kürsü paylaşımı PNG + metin (ortada siyah daire gölge içinde soluk Hedef Kamu logosu); sıra açılışı öncesi **Heyecan Dorukta!** + sayaç 4’te **İŞTE SIRALAMAN**; sonra **BUGÜNKÜ SIRALAMAN**; 00:00–06:00 arası kürsüde dünün liderleri | `lib/widgets/daily_mini_exam/`, `lib/screens/quiz_screen.dart`, `lib/services/daily_mini_exam_service.dart`, `backend/content/views.py` | Ücretsiz (misafir: ilk gün) |
+| **Deneme paketleri vitrini** | Dersler sekmesi **en altında**; yumuşak yatay kaydırma; ortalanmış başlık | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart`, `GET /api/v1/exam-packs/` | Ücretsiz vitrin |
 | **Mini deneme PDF upsell** | Sonuç sonrası Premium yönlendirmesi (aylık yanlış varsa) | `daily_mini_exam_result_screen.dart` | Upsell |
 | **Tasarruf içgörüsü** | Ücretsiz testlerin tahmini TL değeri; 20 test kilometre taşı | `lib/widgets/savings_insight_banner.dart`, `lib/services/user_savings_insight_service.dart` | Ücretsiz |
 
@@ -129,9 +133,9 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Akıllı tekrar** | Günlük 15 soruluk aralıklı tekrar seti (yanlışlar → vadesi gelen → zayıf konular) | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
-| **Yanlış defteri** | Konu testlerinden yanlış cevaplar; derse göre filtre; quiz’de yeniden açma | `lib/screens/wrong_questions_screen.dart`, `lib/services/content_bank_service.dart`, `lib/services/local_database.dart` | Ücretsiz |
+| **Yanlış defteri** | Konu testlerinden yanlış cevaplar; istatistik kartları (en çok yanlış: ders adı + adet), ders filtresi, kart listesi; üst bar yalnızca «Akıllı Tekrar»; alt «Tüm yanlışları çöz» barı | `lib/screens/wrong_questions_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/services/content_bank_service.dart` | Ücretsiz |
 | **Benzer sorular** | Embedding tabanlı benzer soru seti (API) | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar` | **Premium** |
-| **Boş kasa CTA** | Yanlış yokken akıllı tekrara yönlendirme | `lib/widgets/study_empty_cta.dart` | Ücretsiz |
+| **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; ana CTA «Derslerden test çöz» (eski «X dersinden 1 test çöz» kaldırıldı) | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
 ---
 
@@ -139,7 +143,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Gelişim sekmesi** | Genel doğruluk, ders kırılımı, çalışma kasası kısayolları | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
+| **Gelişim sekmesi** | Genel doğruluk, yatay kaydırmalı ders kartları + ders sayısı kadar nokta göstergesi, çalışma kasası kısayolları | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
 | **Favorilerim** | Kayıtlı soru ID’leri; orijinal test bağlamında açma | `lib/screens/favorites_screen.dart` | Ücretsiz |
@@ -330,7 +334,7 @@ Staff-only Django görünümleri: `backend/content/panel_views.py`, `backend/con
 | Mobil arayüz (yanlış defteri balonu aç/kapa, metin) | `/panel/mobil-arayuz/` |
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
-| Deneme paketi CRUD + şablondan üret | `/panel/deneme-paket/...` |
+| Deneme paketi düzenle / sil / aktif-pasif (Dersler vitrini) + şablondan üret | `/panel/deneme-paket/...` |
 
 ### Embedding ve test gruplama
 
@@ -369,6 +373,7 @@ Panel URL’lerinde doğrudan UI yok; operasyonel/script ile çalışır.
 | Push | `DeviceToken` |
 | Mini deneme | `DailyMiniExam`, `DailyMiniExamAttempt` |
 | Sınav kataloğu | `ExamType` |
+| Deneme paketleri | `ExamPack` — aktif/pasif, düzenle, sil; `ExamPackExam` |
 | Promosyon | `PromoCode`, `PromoCodeRedemption` |
 | Duyurular | `Announcement` — push aksiyonu |
 | Staff | Django `User`, `Group` |
@@ -477,3 +482,4 @@ Bu sürümde dokümana eklenen son mobil/panel iyileştirmeler:
 - Soru kökünde satır kırılımları (Romen maddeler, `**ifadelerinden**` cümlesi) panel önizlemesi ile uyumlu
 - Display math (`\begin{array}`, `\hline`, `\frac`) mobilde `$$...$$` olarak korunur
 - Tüm cihazlarda dikey ekran kilidi
+- Deneme paketleri panelde aktif/pasif, düzenleme ve silme (`/panel/deneme-paket/`)

@@ -2,7 +2,9 @@
 {% block content %}
 <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Deneme paketleri</div>
 <h1>Deneme paketleri</h1>
-<p class="lead">Satılabilir deneme paketleri — mobil Dersler vitrininde listelenir.</p>
+<p class="lead">
+  Satılabilir deneme paketleri. <strong>Aktif</strong> olanlar mobil Dersler vitrininde listelenir.
+</p>
 
 <div class="toolbar">
   <strong>{{ packs|length }} paket</strong>
@@ -21,9 +23,15 @@
       </div>
       <div class="hint">{{ p.price_display|default:"—" }} · SKU: {{ p.play_product_id|default:"—" }}</div>
     </div>
-    {% if p.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+    {% if p.is_published %}<span class="badge on">Aktif</span>{% else %}<span class="badge off">Pasif</span>{% endif %}
+    <form method="post" action="{% url 'panel_exam_pack_toggle' p.id %}">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit">
+        {% if p.is_published %}Pasifleştir{% else %}Aktifleştir{% endif %}
+      </button>
+    </form>
     <a class="btn btn-ghost" href="{% url 'panel_exam_pack_edit' p.id %}">Düzenle</a>
-    <form method="post" action="{% url 'panel_exam_pack_delete' p.id %}" onsubmit="return confirm('{{ p.title }} silinsin mi?');">
+    <form method="post" action="{% url 'panel_exam_pack_delete' p.id %}" onsubmit="return confirm('{{ p.title|escapejs }} silinsin mi? Bağlı denemeler de silinir.');">
       {% csrf_token %}
       <button class="btn btn-danger" type="submit">Sil</button>
     </form>

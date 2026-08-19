@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.kpss_akademi"
+    namespace = "com.hedefkamu.hedef_kamu"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,7 +21,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.kpss_odak"
+        applicationId = "com.hedefkamu.hedef_kamu"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

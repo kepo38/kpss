@@ -77,6 +77,8 @@ class DailyMiniExamSnapshot {
   final bool isOpen;
   final List<String> questionIds;
   final int participantCount;
+  final String? leaderboardDate;
+  final int leaderboardParticipantCount;
   final DailyMiniAttempt? myAttempt;
   final List<DailyMiniLeaderRow> leaderboard;
   final int secondsRemaining;
@@ -88,6 +90,8 @@ class DailyMiniExamSnapshot {
     required this.isOpen,
     required this.questionIds,
     required this.participantCount,
+    this.leaderboardDate,
+    this.leaderboardParticipantCount = 0,
     this.myAttempt,
     this.leaderboard = const [],
     this.secondsRemaining = 0,
@@ -104,6 +108,9 @@ class DailyMiniExamSnapshot {
               .toList() ??
           const [],
       participantCount: (json['participantCount'] as num?)?.toInt() ?? 0,
+      leaderboardDate: json['leaderboardDate']?.toString(),
+      leaderboardParticipantCount:
+          (json['leaderboardParticipantCount'] as num?)?.toInt() ?? 0,
       myAttempt: json['myAttempt'] is Map
           ? DailyMiniAttempt.fromJson(
               Map<String, dynamic>.from(json['myAttempt'] as Map),

@@ -17,6 +17,7 @@ import '../widgets/countdown_widget.dart';
 import '../widgets/scale_button.dart';
 import 'favorites_screen.dart';
 import 'notes_screen.dart';
+import 'puan_hesaplama_screen.dart';
 import 'study_hub_screen.dart';
 import 'subject_analytics_detail_screen.dart';
 import 'wrong_questions_screen.dart';
@@ -156,17 +157,157 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                ...subjects.map(
-                  (s) => _SubjectCard(
-                    performance: s,
-                    kpssType: widget.kpssType,
-                  ),
+                _SubjectCarouselSection(
+                  subjects: subjects,
+                  kpssType: widget.kpssType,
+                ),
+                const SizedBox(height: 14),
+                _PremiumScoreCalculatorButton(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PuanHesaplamaScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _SubjectCarouselSection extends StatefulWidget {
+  final List<SubjectPerformance> subjects;
+  final KpssType kpssType;
+
+  const _SubjectCarouselSection({
+    required this.subjects,
+    required this.kpssType,
+  });
+
+  @override
+  State<_SubjectCarouselSection> createState() =>
+      _SubjectCarouselSectionState();
+}
+
+class _SubjectCarouselSectionState extends State<_SubjectCarouselSection> {
+  static const _cardWidth = 272.0;
+  static const _gap = 10.0;
+
+  late final ScrollController _scrollCtrl;
+  int _activeIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl = ScrollController()..addListener(_syncActiveIndex);
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_syncActiveIndex);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _syncActiveIndex() {
+    if (!_scrollCtrl.hasClients || widget.subjects.isEmpty) return;
+    const stride = _cardWidth + _gap;
+    final next = (_scrollCtrl.offset / stride)
+        .round()
+        .clamp(0, widget.subjects.length - 1);
+    if (next == _activeIndex) return;
+    setState(() => _activeIndex = next);
+  }
+
+  void _jumpToIndex(int index) {
+    if (!_scrollCtrl.hasClients) return;
+    const stride = _cardWidth + _gap;
+    _scrollCtrl.animateTo(
+      index * stride,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 168,
+          child: ListView.separated(
+            controller: _scrollCtrl,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: widget.subjects.length,
+            separatorBuilder: (_, __) => const SizedBox(width: _gap),
+            itemBuilder: (context, index) {
+              return SizedBox(
+                width: _cardWidth,
+                child: _SubjectCard(
+                  performance: widget.subjects[index],
+                  kpssType: widget.kpssType,
+                  compact: true,
+                ),
+              );
+            },
+          ),
+        ),
+        if (widget.subjects.length > 1) ...[
+          const SizedBox(height: 10),
+          _SubjectScrollDots(
+            count: widget.subjects.length,
+            activeIndex: _activeIndex,
+            onDotTap: _jumpToIndex,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SubjectScrollDots extends StatelessWidget {
+  final int count;
+  final int activeIndex;
+  final ValueChanged<int> onDotTap;
+
+  const _SubjectScrollDots({
+    required this.count,
+    required this.activeIndex,
+    required this.onDotTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (var i = 0; i < count; i++)
+          GestureDetector(
+            onTap: () => onDotTap(i),
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: i == activeIndex ? 18 : 6,
+              height: 6,
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(99),
+                color: i == activeIndex
+                    ? AppTheme.champagne
+                    : AppTheme.champagne.withValues(alpha: 0.22),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -372,10 +513,12 @@ class _HeroSummary extends StatelessWidget {
 class _SubjectCard extends StatelessWidget {
   final SubjectPerformance performance;
   final KpssType kpssType;
+  final bool compact;
 
   const _SubjectCard({
     required this.performance,
     required this.kpssType,
+    this.compact = false,
   });
 
   void _openDetail(BuildContext context) {
@@ -399,11 +542,12 @@ class _SubjectCard extends StatelessWidget {
     final muted = AppTheme.mutedOnPage(context);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: compact ? 0 : 10),
       child: ScaleButton(
         onPressed: () => _openDetail(context),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+          height: compact ? double.infinity : null,
+          padding: EdgeInsets.fromLTRB(14, compact ? 12 : 14, 12, compact ? 12 : 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             color: AppTheme.surfaceCard(context),
@@ -432,9 +576,11 @@ class _SubjectCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       p.subjectName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontFamily: 'serif',
-                        fontSize: 17,
+                        fontSize: compact ? 16 : 17,
                         fontWeight: FontWeight.w600,
                         color: on,
                       ),
@@ -444,7 +590,7 @@ class _SubjectCard extends StatelessWidget {
                     p.hasActivity ? '%$rate' : '—',
                     style: TextStyle(
                       fontFamily: 'serif',
-                      fontSize: 20,
+                      fontSize: compact ? 18 : 20,
                       fontWeight: FontWeight.w700,
                       color: p.hasActivity
                           ? AppTheme.champagne
@@ -479,37 +625,105 @@ class _SubjectCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   '${p.solved} soru  ·  ${p.correct} doğru  ·  ${p.wrong} yanlış',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: muted),
                 ),
-                if (p.topWeakTopics.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final w in p.topWeakTopics)
-                        Container(
-                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: const Color(0xFFDC2626).withValues(
-                              alpha: 0.08,
-                            ),
-                          ),
-                          child: Text(
-                            '${w.topicName}  ${w.wrongCount}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: on.withValues(alpha: 0.75),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumScoreCalculatorButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PremiumScoreCalculatorButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleButton(
+      onPressed: onTap,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFFFF6E3),
+                  Color(0xFFF1DEB8),
+                  Color(0xFFE2C885),
+                ],
+              ),
+              border: Border.all(color: const Color(0xFFD4AF6A), width: 1.1),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.champagne.withValues(alpha: 0.34),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.ink.withValues(alpha: 0.1),
+                  ),
+                  child: const Icon(
+                    Icons.calculate_rounded,
+                    color: AppTheme.ink,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'PUAN HESAPLAMA',
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                          color: AppTheme.ink,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Netlerine göre tahmini KPSS puanı',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xCC1F2937),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 16,
+                  color: AppTheme.ink,
+                ),
+              ],
+            ),
           ),
         ),
       ),

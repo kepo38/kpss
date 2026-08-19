@@ -373,11 +373,13 @@ class ContentBankService extends ChangeNotifier {
 
   List<QuestionModel> questionsForTest(TopicTestModel test) {
     final byId = {for (final q in _questions) q.id: q};
-    return QuestionModel.keepGroupsContiguous(
-      test.questionIds
-          .map((id) => byId[id])
-          .whereType<QuestionModel>()
-          .toList(),
+    return QuestionModel.interleaveOsymSordu(
+      QuestionModel.keepGroupsContiguous(
+        test.questionIds
+            .map((id) => byId[id])
+            .whereType<QuestionModel>()
+            .toList(),
+      ),
     );
   }
 

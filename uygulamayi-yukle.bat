@@ -3,7 +3,7 @@ chcp 65001 >nul
 title KPSS Akademi — Uygulamayı Yükle
 cd /d "%~dp0"
 
-set "PACKAGE=com.example.kpss_odak"
+set "PACKAGE=com.hedefkamu.hedef_kamu"
 set "APK=build\app\outputs\flutter-apk\app-debug.apk"
 
 echo.
@@ -93,7 +93,7 @@ if errorlevel 1 (
 echo [.] Uygulama açılıyor...
 "%ADB%" -s %SERIAL% shell monkey -p %PACKAGE% -c android.intent.category.LAUNCHER 1 >nul 2>&1
 if errorlevel 1 (
-  "%ADB%" -s %SERIAL% shell am start -n %PACKAGE%/com.example.kpss_akademi.MainActivity >nul 2>&1
+  "%ADB%" -s %SERIAL% shell am start -n %PACKAGE%/com.hedefkamu.hedef_kamu.MainActivity >nul 2>&1
 )
 
 echo.

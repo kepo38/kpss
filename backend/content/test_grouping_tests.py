@@ -142,3 +142,73 @@ class TestGroupingUnitTests(TestCase):
         removed = detach_foreign_test_questions(self.topic)
         self.assertEqual(removed, 1)
         self.assertEqual(test.questions.count(), 0)
+
+
+class OsymInterleaveTests(TestCase):
+    def setUp(self):
+        self.subject = Subject.objects.create(
+            slug="t_osym", name="Tarih", sort_order=1
+        )
+        self.topic = Topic.objects.create(
+            subject=self.subject,
+            slug="t_osmanli",
+            name="Osmanlı",
+            questions_per_test=20,
+        )
+
+    def _q(self, i: int, *, osym: bool = False) -> Question:
+        return Question.objects.create(
+            topic=self.topic,
+            public_id=f"q_osym_{i:02d}",
+            stem=f"Soru {i}",
+            option_a="a",
+            option_b="b",
+            option_c="c",
+            option_d="d",
+            option_e="e",
+            correct_option="A",
+            is_published=True,
+            osym_sordu=osym,
+        )
+
+    def test_interleave_four_plus_one(self):
+        from content.test_grouping import interleave_osym_questions
+
+        plains = [self._q(i) for i in range(1, 17)]
+        osyms = [self._q(100 + i, osym=True) for i in range(1, 5)]
+        laid = interleave_osym_questions(plains + osyms)
+        self.assertEqual(len(laid), 20)
+        osym_indexes = [i for i, q in enumerate(laid) if q.osym_sordu]
+        self.assertEqual(osym_indexes, [4, 9, 14, 19])
+
+    def test_scarce_unlabeled_keeps_rest_in_order(self):
+        from content.test_grouping import interleave_osym_questions
+
+        laid = interleave_osym_questions(
+            [
+                self._q(1),
+                self._q(2),
+                self._q(3, osym=True),
+                self._q(4, osym=True),
+                self._q(5, osym=True),
+            ]
+        )
+        self.assertEqual(
+            [q.public_id for q in laid],
+            ["q_osym_01", "q_osym_02", "q_osym_03", "q_osym_04", "q_osym_05"],
+        )
+
+    def test_rebalance_puts_four_osym_per_test(self):
+        from content.test_grouping import rebalance_topic_tests
+
+        plains = [self._q(i) for i in range(1, 33)]
+        osyms = [self._q(200 + i, osym=True) for i in range(1, 9)]
+        t1 = create_topic_test(self.topic, force_number=1)
+        t1.questions.set(plains + osyms)
+        summary = rebalance_topic_tests(self.topic)
+        self.assertEqual(summary["tests"], 2)
+        tests = list(self.topic.tests.order_by("created_at", "id"))
+        for test in tests:
+            osym_count = test.questions.filter(osym_sordu=True).count()
+            self.assertEqual(osym_count, 4)
+            self.assertEqual(test.questions.count(), 20)

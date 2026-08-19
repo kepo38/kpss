@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 class StoreRatingService {
   StoreRatingService._();
 
-  static const _packageId = 'com.example.kpss_odak';
+  static const _packageId = 'com.hedefkamu.hedef_kamu';
 
   static Future<void> openStoreListing() async {
     final market = Uri.parse('market://details?id=$_packageId');
