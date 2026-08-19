@@ -23,6 +23,7 @@ from .views import (
     ExamPackListView,
     ExamTypeListView,
     PromoRedeemView,
+    SpecialTestsView,
     TestQuestionsView,
     TestAttemptView,
     QuestionAttemptView,
@@ -75,6 +76,7 @@ urlpatterns = [
     path("daily-mini-exam/", DailyMiniExamView.as_view(), name="daily-mini-exam"),
     path("promo/redeem/", PromoRedeemView.as_view(), name="promo-redeem"),
     path("exam-types/", ExamTypeListView.as_view(), name="exam-types"),
+    path("special-tests/", SpecialTestsView.as_view(), name="special-tests"),
     path("exam-packs/", ExamPackListView.as_view(), name="exam-packs"),
     path(
         "exam-packs/<str:pack_id>/",

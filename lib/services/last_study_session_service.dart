@@ -83,12 +83,10 @@ class LastStudySession {
       case LastStudyKind.wrongNotebook:
         return true;
       case LastStudyKind.quiz:
-        if (!hasQuizProgress || testId == null) return false;
-        final bank = ContentBankService.instance;
-        final test = bank.testById(testId!);
-        if (test == null || !test.published) return false;
-        final loaded = bank.questionsByIds(questionIds);
-        return loaded.length == questionIds.length;
+        return hasQuizProgress &&
+            testId != null &&
+            subjectId != null &&
+            topicId != null;
     }
   }
 
@@ -191,8 +189,9 @@ class LastStudySessionService extends ChangeNotifier {
         _session = LastStudySession.fromJson(
           Map<String, dynamic>.from(jsonDecode(raw) as Map),
         );
+        // Soru gövdeleri henüz RAM’de olmayabilir; kaydı silme.
         if (_session != null &&
-            (!_session!.isValid || !isContinuableKind(_session!.kind))) {
+            (!isContinuableKind(_session!.kind) || !_session!.isValid)) {
           _session = null;
           await prefs.remove(storageKey);
         }

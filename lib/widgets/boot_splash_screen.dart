@@ -63,8 +63,8 @@ class _BootSplashScreenState extends State<BootSplashScreen>
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: const Alignment(0, -0.05),
-                  radius: 0.85,
+                  center: Alignment.center,
+                  radius: 0.55,
                   colors: [
                     AppTheme.champagne.withValues(alpha: 0.12),
                     AppTheme.neonEdge.withValues(alpha: 0.04),
@@ -80,21 +80,15 @@ class _BootSplashScreenState extends State<BootSplashScreen>
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
               child: Column(
                 children: [
-                  const SizedBox(height: 12),
+                  const Spacer(flex: 3),
                   const BrandMark(
                     dark: true,
                     logoSize: 56,
                     alignment: CrossAxisAlignment.center,
                   ),
-                  const Spacer(),
-                  Image.asset(
-                    BrandConstants.appIconAsset,
-                    width: 168,
-                    height: 168,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                  ),
-                  const Spacer(),
+                  const SizedBox(height: 18),
+                  const _SplashAppIcon(),
+                  const SizedBox(height: 28),
                   const Text(
                     'Ataman Gerçekleşiyor',
                     textAlign: TextAlign.center,
@@ -107,10 +101,63 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                       color: AppTheme.champagneLight,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                   _PremiumSlidingLine(progress: _ctrl),
-                  const SizedBox(height: 28),
+                  const Spacer(flex: 2),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SplashAppIcon extends StatelessWidget {
+  const _SplashAppIcon();
+
+  static const _size = 220.0;
+  static const _glow = 220.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _glow,
+      height: _glow,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: _glow,
+            height: _glow,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  Colors.black.withValues(alpha: 0.22),
+                  Colors.black.withValues(alpha: 0.10),
+                  AppTheme.ink.withValues(alpha: 0.0),
+                ],
+                stops: const [0.0, 0.55, 1.0],
+              ),
+            ),
+          ),
+          ClipOval(
+            child: ColorFiltered(
+              colorFilter: ColorFilter.mode(
+                const Color(0xFF7D8B94).withValues(alpha: 0.72),
+                BlendMode.modulate,
+              ),
+              child: Opacity(
+                opacity: 0.62,
+                child: Image.asset(
+                  BrandConstants.appIconAsset,
+                  width: _size,
+                  height: _size,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.high,
+                ),
               ),
             ),
           ),

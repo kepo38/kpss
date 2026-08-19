@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -52,6 +53,7 @@ class AppConfigService extends ChangeNotifier {
 
   void _onAuthChanged() {
     notifyListeners();
+    unawaited(refresh());
   }
 
   Future<void> refresh() async {

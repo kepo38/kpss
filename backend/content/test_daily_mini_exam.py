@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from content.daily_mini_exam import (
+    exam_date_for,
     guest_login_required,
     lcg_shuffle,
     pick_question_ids,
@@ -122,6 +123,61 @@ class DailyMiniExamApiTests(TestCase):
         self.assertTrue(body["isOpen"])
         self.assertEqual(len(body["questionIds"]), 20)
         self.assertEqual(body["participantCount"], 0)
+
+    def test_blank_submit_does_not_lock_ranking(self):
+        from content.models import DailyMiniExamAttempt
+
+        open_now = self._open_now()
+        with patch("content.daily_mini_exam.istanbul_now", return_value=open_now):
+            exam = self.client.get(
+                self.url(), {"kpss_type": "lisans"}, **self.auth()
+            ).json()
+            empty = self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": {},
+                    "duration_seconds": 5,
+                },
+                content_type="application/json",
+                **self.auth(),
+            )
+            self.assertEqual(empty.status_code, 400)
+            self.assertIsNone(
+                self.client.get(
+                    self.url(), {"kpss_type": "lisans"}, **self.auth()
+                ).json()["myAttempt"]
+            )
+            DailyMiniExamAttempt.objects.create(
+                user=self.user,
+                exam_date=exam_date_for(open_now),
+                kpss_type="lisans",
+                correct=0,
+                wrong=0,
+                blank=20,
+                total=20,
+                duration_seconds=5,
+                wrong_question_ids=[],
+                answers={},
+            )
+            locked = self.client.get(
+                self.url(), {"kpss_type": "lisans"}, **self.auth()
+            ).json()
+            self.assertIsNone(locked["myAttempt"])
+            qids = exam["questionIds"]
+            real = self.client.post(
+                self.url(),
+                data={
+                    "kpss_type": "lisans",
+                    "answers": {qids[0]: "A"},
+                    "duration_seconds": 40,
+                },
+                content_type="application/json",
+                **self.auth(),
+            )
+            self.assertEqual(real.status_code, 201)
+            self.assertIsNotNone(real.json()["myAttempt"])
+
 
     def test_submit_grades_and_ranks(self):
         open_now = self._open_now()

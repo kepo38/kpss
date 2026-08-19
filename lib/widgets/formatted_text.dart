@@ -288,6 +288,34 @@ class FormattedText extends StatelessWidget {
   /// `** metin **` / `__ metin __` gibi boşluklu işaretleri sıkılaştırır.
   static String _tightenMarkdownMarkers(String text) {
     var t = text;
+    var prev = '';
+    while (prev != t) {
+      prev = t;
+      t = t.replaceAllMapped(
+        RegExp(r'\*\*__\*\*([^*]+)\*\*__\*\*', dotAll: true),
+        (m) => '**__${m.group(1)!.trim()}__**',
+      );
+      t = t.replaceAllMapped(
+        RegExp(r'__\*\*__([^_]+)__\*\*__', dotAll: true),
+        (m) => '__**${m.group(1)!.trim()}**__',
+      );
+      t = t.replaceAllMapped(
+        RegExp(r'\*\*\s*\*\*([^*]+)\*\*\s*\*\*', dotAll: true),
+        (m) => '**${m.group(1)!.trim()}**',
+      );
+      t = t.replaceAllMapped(
+        RegExp(r'__\s*__([^_]+)__\s*__', dotAll: true),
+        (m) => '__${m.group(1)!.trim()}__',
+      );
+      t = t.replaceAllMapped(
+        RegExp(r'\*{4,}([^*\n]+)\*{4,}'),
+        (m) => '**${m.group(1)!.trim()}**',
+      );
+      t = t.replaceAllMapped(
+        RegExp(r'_{4,}([^_\n]+)_{4,}'),
+        (m) => '__${m.group(1)!.trim()}__',
+      );
+    }
     t = t.replaceAllMapped(
       RegExp(r'\*\*\s+(.+?)\s+\*\*', dotAll: true),
       (m) => '**${m.group(1)!.trim()}**',
@@ -537,10 +565,16 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)'),
       (m) => '${m.group(1)}\n',
     );
-    src = src.replaceAllMapped(
-      RegExp(r'(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)'),
-      (m) => '\n',
-    );
+    // I. II. III. madde dizisi; "III. Jeolojik Zaman" gibi tek kullanıma dokunma.
+    if (RegExp(r'\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
+            .allMatches(src)
+            .length >=
+        2) {
+      src = src.replaceAllMapped(
+        RegExp(r'(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)'),
+        (m) => '\n',
+      );
+    }
     src = src.replaceAllMapped(
       RegExp(r'(§§M\d+§§)\s*(?=\*\*[a-zçğıöşüâîû])'),
       (m) => '${m.group(1)}\n',
@@ -831,18 +865,17 @@ class FormattedText extends StatelessWidget {
           ),
         );
       } else if (m.group(4) != null) {
-        spans.add(
-          TextSpan(
-            text: m.group(4)!,
-            style: _emphasis(base, bold: true, italic: true, underline: true),
+        spans.addAll(
+          _parseMarkdown(
+            m.group(4)!,
+            _emphasis(base, bold: true, italic: true, underline: true),
           ),
         );
       } else if (m.group(5) != null || m.group(6) != null) {
-        final text = m.group(5) ?? m.group(6)!;
-        spans.add(
-          TextSpan(
-            text: text,
-            style: _emphasis(base, bold: true, underline: true),
+        spans.addAll(
+          _parseMarkdown(
+            m.group(5) ?? m.group(6)!,
+            _emphasis(base, bold: true, underline: true),
           ),
         );
       } else if (m.group(7) != null) {
@@ -1329,7 +1362,11 @@ class _DocumentText extends StatelessWidget {
         }
       }
 
-      final bullet = RegExp(r'^(\s*)[-•*◦○–—]\s+(.+)').firstMatch(line);
+      if (RegExp(r'^[-•*◦○–—]+$').hasMatch(line.trim())) {
+        continue;
+      }
+
+      final bullet = RegExp(r'^(\s*)(?:[-•*◦○–—]\s+)+(.+)').firstMatch(line);
       if (bullet != null) {
         final nested = bullet.group(1)!.replaceAll('\t', '  ').length >= 2;
         children.add(

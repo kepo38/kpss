@@ -18,10 +18,10 @@ import '../widgets/app_back_button.dart';
 import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/wrong_notebook/wrong_notebook_empty_state.dart';
-import '../widgets/wrong_notebook/wrong_notebook_guest_frost.dart';
 import '../widgets/wrong_notebook/wrong_notebook_header.dart';
 import '../widgets/wrong_notebook/wrong_notebook_practice_bar.dart';
 import '../widgets/wrong_notebook/wrong_notebook_question_card.dart';
+import '../widgets/wrong_notebook/wrong_notebook_remove_toast.dart';
 import '../widgets/wrong_notebook/wrong_notebook_stats_row.dart';
 import '../widgets/wrong_notebook/wrong_notebook_subject_filter.dart';
 import 'quiz_screen.dart';
@@ -45,6 +45,12 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     super.initState();
     FavoritesService.instance.initialize();
     unawaited(_hydrateMissingBodies());
+  }
+
+  @override
+  void dispose() {
+    WrongNotebookRemoveToast.hide();
+    super.dispose();
   }
 
   Future<void> _hydrateMissingBodies() async {
@@ -118,10 +124,9 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
     await ContentBankService.instance.removeWrongQuestion(question.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('«${QuestionStemContent.previewText(question.soruMetni)}» kaldırıldı.'),
-      ),
+    WrongNotebookRemoveToast.show(
+      context,
+      preview: QuestionStemContent.previewText(question.soruMetni),
     );
   }
 
@@ -391,7 +396,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
             leading: const AppBackButton(),
             title: const WrongNotebookHeaderTitle(),
             actions: [
-              if (allQuestions.isNotEmpty && !guestLocked)
+              if (allQuestions.isNotEmpty)
                 WrongNotebookHeaderPill(
                   label: 'Akıllı Tekrar',
                   icon: Icons.psychology_alt_outlined,
@@ -440,91 +445,73 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                             subjects.isNotEmpty ? subjects.first.$2 : null,
                       ),
                       const WrongNotebookInsightBanner(),
-                      Expanded(
-                        child: WrongNotebookGuestFrost(
-                          locked: guestLocked,
-                          onSignIn: () {
-                            unawaited(
-                              AccountLinkCard.prompt(
-                                context,
-                                title: 'Giriş yap',
-                                subtitle:
-                                    'Yanlış defterini açmak ve ilerlemeni kaydetmek için Google hesabını bağla.',
-                              ),
-                            );
-                          },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              WrongNotebookSubjectFilter(
-                                subjects: subjects,
-                                totalCount: allQuestions.length,
-                                selectedSubject: _subjectFilter,
-                                onChanged: (value) =>
-                                    setState(() => _subjectFilter = value),
-                              ),
-                              Expanded(
-                                child: questions.isEmpty
-                                    ? Center(
-                                        child: Text(
-                                          'Bu derste yanlış soru yok.',
-                                          style: TextStyle(
-                                            color: AppTheme.slate
-                                                .withValues(alpha: 0.6),
-                                          ),
-                                        ),
-                                      )
-                                    : ListView(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          16,
-                                          4,
-                                          16,
-                                          16,
-                                        ),
-                                        children: [
-                                          for (final entry
-                                              in grouped.entries) ...[
-                                            WrongNotebookSubjectHeader(
-                                              subject: entry.key,
-                                              count: entry.value.length,
-                                            ),
-                                            for (final q in entry.value)
-                                              WrongNotebookQuestionCard(
-                                                question: q,
-                                                isFavorite:
-                                                    favs.isFavorite(q.id),
-                                                similarLoading:
-                                                    _similarLoadingId == q.id,
-                                                showProBadge:
-                                                    !PremiumService
-                                                        .instance.isPremium,
-                                                onToggleFavorite: () =>
-                                                    _toggleFavorite(q.id),
-                                                onSimilar: () => _openSimilar(
-                                                  context,
-                                                  q,
-                                                ),
-                                                onTap: () => _openQuestion(
-                                                  context,
-                                                  q.id,
-                                                ),
-                                                onRemove: () =>
-                                                    _confirmRemoveQuestion(q),
-                                              ),
-                                          ],
-                                        ],
-                                      ),
-                              ),
-                              if (questions.isNotEmpty)
-                                WrongNotebookPracticeBar(
-                                  questionCount: questions.length,
-                                  onPracticeAll: () =>
-                                      _practiceAll(questions),
-                                ),
-                            ],
-                          ),
-                        ),
+                      WrongNotebookSubjectFilter(
+                        subjects: subjects,
+                        totalCount: allQuestions.length,
+                        selectedSubject: _subjectFilter,
+                        onChanged: (value) =>
+                            setState(() => _subjectFilter = value),
                       ),
+                      Expanded(
+                        child: questions.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Bu derste yanlış soru yok.',
+                                  style: TextStyle(
+                                    color: AppTheme.slate.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              )
+                            : ListView(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                children: [
+                                  for (final entry in grouped.entries) ...[
+                                    WrongNotebookSubjectHeader(
+                                      subject: entry.key,
+                                      count: entry.value.length,
+                                    ),
+                                    for (final q in entry.value)
+                                      WrongNotebookQuestionCard(
+                                        question: q,
+                                        isFavorite: favs.isFavorite(q.id),
+                                        similarLoading:
+                                            _similarLoadingId == q.id,
+                                        showProBadge:
+                                            !PremiumService.instance.isPremium,
+                                        frostStem: guestLocked,
+                                        onSignIn: () {
+                                          unawaited(
+                                            AccountLinkCard.prompt(
+                                              context,
+                                              title: 'Giriş yap',
+                                              subtitle:
+                                                  'Soru metnini görmek için Google hesabını bağla.',
+                                            ),
+                                          );
+                                        },
+                                        onToggleFavorite: () =>
+                                            _toggleFavorite(q.id),
+                                        onSimilar: () => _openSimilar(
+                                          context,
+                                          q,
+                                        ),
+                                        onTap: () => _openQuestion(
+                                          context,
+                                          q.id,
+                                        ),
+                                        onRemove: () =>
+                                            _confirmRemoveQuestion(q),
+                                      ),
+                                  ],
+                                ],
+                              ),
+                      ),
+                      if (questions.isNotEmpty)
+                        WrongNotebookPracticeBar(
+                          questionCount: questions.length,
+                          onPracticeAll: () => _practiceAll(questions),
+                        ),
                     ],
                   ),
           ),

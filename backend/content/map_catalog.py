@@ -12,6 +12,7 @@ MAP_CATALOG: dict[str, dict[str, Any]] = {
         "asset": "content/maps/turkiye_goller.png",
         "editor_asset": "content/maps/turkiye_goller_editor.png",
         "description": "Koordinatlı işaret ekleyerek göl veya bölge soruları.",
+        "paint": True,
         "source": "static",
         "builtin": True,
     },

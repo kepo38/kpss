@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import 'exam_text/exam_stem_view.dart';
 import 'cached_remote_image.dart';
 import 'formatted_text.dart';
+import 'watermark_widget.dart';
 
 /// Soru kökünde `[HARITA]` ile görseli metnin ortasına yerleştirir.
 class QuestionStemContent extends StatelessWidget {
@@ -14,6 +15,7 @@ class QuestionStemContent extends StatelessWidget {
   final String? imageUrl;
   final String? sekilKodu;
   final TextStyle? style;
+  final bool watermarkOnText;
 
   const QuestionStemContent({
     super.key,
@@ -21,6 +23,7 @@ class QuestionStemContent extends StatelessWidget {
     this.imageUrl,
     this.sekilKodu,
     this.style,
+    this.watermarkOnText = false,
   });
 
   static bool hasInlineImage(String stem) {
@@ -41,6 +44,12 @@ class QuestionStemContent extends StatelessWidget {
   bool get _hasSvg => sekilKodu != null && sekilKodu!.isNotEmpty;
   bool get _hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
+  Widget _stemText(String text) {
+    final view = ExamStemView(text: text);
+    if (!watermarkOnText) return view;
+    return WatermarkWidget(fitToChild: true, child: view);
+  }
+
   @override
   Widget build(BuildContext context) {
     final parts = stem.split(inlineImagePlaceholder);
@@ -50,7 +59,7 @@ class QuestionStemContent extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ExamStemView(text: stem),
+          _stemText(stem),
           if (_hasSvg) ...[
             const SizedBox(height: 16),
             _QuestionSvgFigure(svg: sekilKodu!),
@@ -69,7 +78,7 @@ class QuestionStemContent extends StatelessWidget {
         if (children.isNotEmpty) {
           children.add(const SizedBox(height: 12));
         }
-        children.add(ExamStemView(text: chunk));
+        children.add(_stemText(chunk));
       }
       if (i < parts.length - 1) {
         if (children.isNotEmpty) {
@@ -130,17 +139,14 @@ class _QuestionImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 320),
-        child: ColoredBox(
-          color: Colors.white,
-          child: CachedRemoteImage(
-            imageUrl: url,
-            width: double.infinity,
-            height: 220,
-            fit: BoxFit.contain,
-            semanticLabel: 'Soru haritası veya görseli',
-          ),
+      child: AspectRatio(
+        aspectRatio: 16 / 7,
+        child: CachedRemoteImage(
+          imageUrl: url,
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.contain,
+          semanticLabel: 'Soru haritası veya görseli',
         ),
       ),
     );

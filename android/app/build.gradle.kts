@@ -27,6 +27,10 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
+        // Play Store: emülatör x86_64 yok; kullanıcıya yalnızca telefon ABI.
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -46,6 +50,12 @@ android {
         checkReleaseBuilds = false
         abortOnError = false
         disable += "NullSafeMutableLiveData"
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 

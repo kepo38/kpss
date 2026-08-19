@@ -7,18 +7,20 @@ import '../theme/app_theme.dart';
 
 /// Soru kökünün arkasında tek 45° filigran (şıklar hariç).
 ///
-/// Tam ortalanmaz: metin sola hizalı olduğu için kısa satırların sağındaki
-/// boşluğa düşmesin diye marka metin tarafına (sola) yaslanır.
+/// [fitToChild] açıkken işaret, çocuk metin kutusunun boyutuna göre küçülür
+/// ve o metnin üzerine oturur (harita görselinin üstüne yayılmaz).
 class WatermarkWidget extends StatelessWidget {
   static const logoAsset = BrandConstants.watermarkAsset;
 
   final Widget child;
   final double opacity;
+  final bool fitToChild;
 
   const WatermarkWidget({
     super.key,
     required this.child,
     this.opacity = 0.26,
+    this.fitToChild = false,
   });
 
   @override
@@ -36,16 +38,21 @@ class WatermarkWidget extends StatelessWidget {
                     box.maxHeight <= 0) {
                   return const SizedBox.shrink();
                 }
+                final minSize = fitToChild ? 36.0 : 96.0;
+                final maxSize = fitToChild ? 120.0 : 148.0;
                 final size = math
                     .min(
-                      148.0,
-                      math.min(box.maxWidth * 0.48, box.maxHeight * 0.62),
+                      maxSize,
+                      math.min(
+                        box.maxWidth * (fitToChild ? 0.72 : 0.48),
+                        box.maxHeight * (fitToChild ? 0.92 : 0.62),
+                      ),
                     )
-                    .clamp(96.0, 148.0);
-                // LTR soru metni: sola yakın, dikeyde hafif yukarı — boş sağ
-                // alan ve alt boşluktan uzak.
+                    .clamp(minSize, maxSize);
                 return Align(
-                  alignment: const Alignment(-0.78, -0.22),
+                  alignment: fitToChild
+                      ? const Alignment(-0.42, 0.0)
+                      : const Alignment(-0.78, -0.22),
                   child: _LogoMark(size: size, opacity: opacity),
                 );
               },

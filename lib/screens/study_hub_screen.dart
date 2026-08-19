@@ -15,6 +15,7 @@ import '../widgets/exam_focus_panel.dart';
 import '../widgets/exam_pack_showcase.dart';
 import '../widgets/premium_header_button.dart';
 import '../widgets/savings_insight_banner.dart';
+import '../widgets/special_tests_entry.dart';
 import 'notes_screen.dart';
 import 'topic_detail_screen.dart';
 
@@ -160,7 +161,7 @@ class StudyHubScreen extends StatelessWidget {
                           crossAxisCount: 2,
                           mainAxisSpacing: 8,
                           crossAxisSpacing: 8,
-                          childAspectRatio: 1.12,
+                          childAspectRatio: 1.28,
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
@@ -195,6 +196,9 @@ class StudyHubScreen extends StatelessWidget {
                     ),
                     SliverToBoxAdapter(
                       child: ExamPackShowcase(kpssType: kpssType),
+                    ),
+                    SliverToBoxAdapter(
+                      child: SpecialTestsEntry(kpssType: kpssType),
                     ),
                     const SliverToBoxAdapter(child: SizedBox(height: 28)),
                   ],
@@ -456,13 +460,13 @@ class _SubjectTile extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(9, 9, 9, 8),
+                padding: const EdgeInsets.fromLTRB(9, 7, 9, 7),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 38,
-                      height: 38,
+                      width: 34,
+                      height: 34,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
@@ -477,7 +481,7 @@ class _SubjectTile extends StatelessWidget {
                         border: Border.all(color: neon.withValues(alpha: 0.65)),
                         boxShadow: SubjectNeonPalette.glow(neon, blur: 6),
                       ),
-                      child: Icon(icon, size: 20, color: neon),
+                      child: Icon(icon, size: 18, color: neon),
                     ),
                     const Spacer(),
                     Text(

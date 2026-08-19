@@ -30,6 +30,13 @@ def is_demo_mini_user(user) -> bool:
     )
 
 
+def attempt_counts_for_ranking(attempt) -> bool:
+    """En az bir işaretlenmiş cevap yoksa sıralamaya girmez."""
+    if attempt is None:
+        return False
+    return (attempt.correct or 0) > 0 or (attempt.wrong or 0) > 0
+
+
 def attempts_for_leaderboard(exam_date: date, kpss_type: str):
     from .models import DailyMiniExamAttempt
 
@@ -38,6 +45,7 @@ def attempts_for_leaderboard(exam_date: date, kpss_type: str):
             exam_date=exam_date,
             kpss_type=kpss_type,
         )
+        .exclude(correct=0, wrong=0)
         .exclude(user__email__startswith=DEMO_EMAIL_PREFIX)
         .exclude(user__google_sub__startswith=DEMO_GOOGLE_SUB_PREFIX)
         .select_related("user")

@@ -130,39 +130,7 @@
       <span class="hint">Geometri şekli için SVG kodunu elle yapıştırabilirsiniz. OCR tarama görseli uygulamaya gönderilmez.</span>
     </label>
 
-    <section class="map-editor-box" id="map-question-editor"
-             data-map-src="{% static 'content/maps/turkiye_goller.png' %}">
-      <div class="media-title">Harita sorusu</div>
-      <p class="media-hint">Şablonu seçin. Koordinatlı haritalarda tıklayarak I, II, III… işaretleri ekleyin; tematik haritalar hazır görsel olarak kullanılır. Soru metninde haritanın görüneceği yere <code>[HARITA]</code> yazın.</p>
-      <div class="map-editor-actions map-editor-actions-top">
-        <button type="button" class="btn btn-ghost" id="map-insert-placeholder">Metne [HARITA] ekle</button>
-      </div>
-      <label>Harita şablonu
-        <select name="map_template" id="map-template">
-          <option value="">Harita yok</option>
-          {% for map_id, map_title in map_template_choices %}
-          {% if map_id %}
-          <option value="{{ map_id }}" {% if question and question.map_template == map_id %}selected{% endif %}>{{ map_title }}</option>
-          {% endif %}
-          {% endfor %}
-        </select>
-      </label>
-      <input type="hidden" name="map_markers" id="map-markers" value="[]">
-      <div class="map-editor-body" id="map-editor-body" hidden>
-        <div class="map-canvas-wrap" id="map-canvas-wrap">
-          <img src="{% static 'content/maps/turkiye_goller_editor.png' %}"
-               alt="İl sınırlı ve isimli düzenleme haritası (Tuz Gölü ve Van Gölü)"
-               id="map-base-image" draggable="false">
-          <div class="map-marker-layer" id="map-marker-layer"></div>
-        </div>
-        <div class="map-editor-actions">
-          <button type="button" class="btn btn-primary" id="map-add-marker">İşaret ekle</button>
-          <button type="button" class="btn btn-ghost" id="map-clear-markers">Tümünü sil</button>
-          <span class="media-hint" id="map-editor-status"></span>
-        </div>
-        <div class="map-marker-controls" id="map-marker-controls"></div>
-      </div>
-    </section>
+    {% include "panel/_question_map_editor.html" %}
 
     <label>A
       <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}" class="js-rich">

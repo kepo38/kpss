@@ -1517,14 +1517,21 @@ class _QuizScreenState extends State<QuizScreen>
                               const SizedBox(height: 16),
                             ],
                             QuestionStemPanel(
-                              child: WatermarkWidget(
-                                opacity: 0.26,
-                                child: QuestionStemContent(
-                                  stem: _currentQuestion.soruMetni,
-                                  imageUrl: _currentQuestion.imageUrl,
-                                  sekilKodu: _currentQuestion.sekilKodu,
-                                ),
-                              ),
+                              child: (_currentQuestion.imageUrl ?? '').isNotEmpty
+                                  ? QuestionStemContent(
+                                      stem: _currentQuestion.soruMetni,
+                                      imageUrl: _currentQuestion.imageUrl,
+                                      sekilKodu: _currentQuestion.sekilKodu,
+                                      watermarkOnText: true,
+                                    )
+                                  : WatermarkWidget(
+                                      opacity: 0.26,
+                                      child: QuestionStemContent(
+                                        stem: _currentQuestion.soruMetni,
+                                        imageUrl: _currentQuestion.imageUrl,
+                                        sekilKodu: _currentQuestion.sekilKodu,
+                                      ),
+                                    ),
                             ),
                             const SizedBox(height: 20),
                             if (_showingSolution)

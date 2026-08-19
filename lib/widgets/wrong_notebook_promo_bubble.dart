@@ -13,7 +13,12 @@ import '../theme/app_theme.dart';
 
 /// Ana sayfa sol kenar — yanlış defteri balonu.
 class WrongNotebookPromoBubble extends StatefulWidget {
-  const WrongNotebookPromoBubble({super.key});
+  final bool homeVisible;
+
+  const WrongNotebookPromoBubble({
+    super.key,
+    this.homeVisible = true,
+  });
 
   @override
   State<WrongNotebookPromoBubble> createState() =>
@@ -34,6 +39,7 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
   void initState() {
     super.initState();
     unawaited(_loadRatio());
+    unawaited(AppConfigService.instance.refresh());
   }
 
   Future<void> _loadRatio() async {
@@ -104,7 +110,8 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
         final hasGoogle = auth.isSignedIn && !auth.isAnonymous;
         final hasCompletedTest =
             ContentBankService.instance.hasCompletedAnyTest;
-        if (!cfg.showWrongNotebookBubble ||
+        if (!widget.homeVisible ||
+            !cfg.showWrongNotebookBubble ||
             !_ratioLoaded ||
             !hasGoogle ||
             !hasCompletedTest) {
@@ -114,7 +121,7 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
         final bounds = _verticalBounds(context, _bubbleSize);
 
         return Positioned(
-          left: 2,
+          left: -16,
           top: bounds.y,
           child: _PromoBalloon(
             key: _balloonKey,

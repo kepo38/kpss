@@ -24,9 +24,45 @@
     }
   }
 
+  function fullyWrapped(text, mark) {
+    var t = String(text || "");
+    var n = mark.length;
+    if (t.length < n * 2) return false;
+    if (t.slice(0, n) !== mark || t.slice(-n) !== mark) return false;
+    return t.slice(n, t.length - n).indexOf(mark) === -1;
+  }
+
+  function isBoldUnderline(core) {
+    return /^\*\*__.+__\*\*$/.test(core) || /^__\*\*.+\*\*__$/.test(core);
+  }
+
+  function collapseNestedMarks(text) {
+    var src = String(text || "");
+    var prev;
+    do {
+      prev = src;
+      src = src.replace(/\*\*__\*\*([^*]+)\*\*__\*\*/g, "**__$1__**");
+      src = src.replace(/__\*\*__([^_]+)__\*\*__/g, "__**$1**__");
+      src = src.replace(/\*\*\s*\*\*([^*]+)\*\*\s*\*\*/g, "**$1**");
+      src = src.replace(/__\s*__([^_]+)__\s*__/g, "__$1__");
+      src = src.replace(/\*{4,}([^*\n]+)\*{4,}/g, "**$1**");
+      src = src.replace(/_{4,}([^_\n]+)_{4,}/g, "__$1__");
+    } while (src !== prev);
+    return src;
+  }
+
   function wrapMarkdown(text, bold, italic, underline) {
     var core = String(text || "").trim();
     if (!core) return "";
+    if (!italic && isBoldUnderline(core) && (bold || underline)) return core;
+    if (bold && /^__\*\*.+\*\*__$/.test(core)) return core;
+    if (underline && /^\*\*__.+__\*\*$/.test(core)) return core;
+    if (bold && fullyWrapped(core, "**")) core = core.slice(2, -2).trim();
+    if (underline && fullyWrapped(core, "__")) core = core.slice(2, -2).trim();
+    if (italic && fullyWrapped(core, "*") && !fullyWrapped(core, "**")) {
+      core = core.slice(1, -1).trim();
+    }
+    if (bold && underline && !italic) return "**__" + core + "__**";
     if (bold && italic) core = "***" + core + "***";
     else if (bold) core = "**" + core + "**";
     else if (italic) core = "*" + core + "*";
@@ -96,6 +132,8 @@
         }
       });
       head = head.replace(/\n+/g, " ").trim();
+      head = head.replace(/^[-•*◦○–—]\s+/, "");
+      if (!head) return nested;
       return "  ".repeat(depth) + "- " + head + "\n" + nested;
     }
     if (tag === "UL" || tag === "OL") {
@@ -108,7 +146,9 @@
     var bold =
       tag === "STRONG" ||
       tag === "B" ||
-      /font-weight\s*:\s*(bold|[6-9]00)/.test(style) ||
+      /font-weight\s*:\s*(bold|bolder|[6-9]00)/.test(style) ||
+      /mso-bidi-font-weight\s*:\s*bold/.test(style) ||
+      /mso-ansi-font-weight\s*:\s*bold/.test(style) ||
       /\b(bold|font-bold|font-semibold|fw-bold|fw-semibold)\b/.test(cls);
     var italic =
       tag === "EM" ||
@@ -117,7 +157,9 @@
       /\b(italic|font-italic)\b/.test(cls);
     var underline =
       tag === "U" ||
-      /text-decoration\s*:[^;]*underline/.test(style) ||
+      /text-decoration(?:-line)?\s*:[^;]*underline/.test(style) ||
+      /text-underline\s*:\s*single/.test(style) ||
+      /mso-text-underline/.test(style) ||
       /\b(underline|font-underline)\b/.test(cls);
     var color = parseTextColor(style);
 
@@ -171,9 +213,62 @@
     return dollars + commands * 2;
   }
 
+  function extractClipboardHtml(html) {
+    var src = String(html || "");
+    var frag = src.match(/<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i);
+    if (frag) return frag[1];
+    var trimmed = src.replace(/^\s+/, "");
+    if (/^Version:1\.0/i.test(trimmed) || /StartHTML:/i.test(src)) {
+      var start = src.match(/StartHTML:(\d+)/i);
+      var end = src.match(/EndHTML:(\d+)/i);
+      if (start && end) {
+        var from = parseInt(start[1], 10);
+        var to = parseInt(end[1], 10);
+        if (from < to && to <= src.length) return src.slice(from, to);
+      }
+      var htmlTag = src.search(/<html[\s>]/i);
+      if (htmlTag >= 0) return src.slice(htmlTag);
+    }
+    return src;
+  }
+
+  function htmlLooksRich(html) {
+    var src = String(html || "");
+    return (
+      /<(strong|b|em|i|u)\b/i.test(src) ||
+      /font-weight\s*:\s*(bold|bolder|[6-9]00)/i.test(src) ||
+      /mso-(?:bidi|ansi)-font-weight\s*:\s*bold/i.test(src) ||
+      /text-decoration(?:-line)?\s*:[^;"']*underline/i.test(src) ||
+      /text-underline\s*:\s*single/i.test(src)
+    );
+  }
+
+  function markdownLooksRich(text) {
+    return /(\*\*|__|\{green\}|\{red\}|\{blue\})/.test(String(text || ""));
+  }
+
+  function collapseBulletPrefixes(text) {
+    return String(text || "")
+      .replace(/^(?:\s*[-•*◦○–—]\s+){2,}/gm, "- ")
+      .replace(/^\s*[-•*◦○–—]\s*$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function alignListToPlain(fromHtml, fromPlain) {
+    var html = collapseBulletPrefixes(fromHtml);
+    var plainList = (String(fromPlain || "").match(/^\s*[-•*]\s+/gm) || []).length;
+    var htmlList = (html.match(/^\s*[-•*]\s+/gm) || []).length;
+    if (htmlList > 0 && plainList === 0) {
+      return html.replace(/^\s*[-•*◦○–—]\s+/gm, "").trim();
+    }
+    return html;
+  }
+
   function htmlClipboardToText(html) {
     try {
-      var doc = new DOMParser().parseFromString(html, "text/html");
+      var payload = extractClipboardHtml(html);
+      var doc = new DOMParser().parseFromString(payload, "text/html");
       var body = doc.body;
       if (!body) return "";
       replaceClipboardMath(body);
@@ -182,7 +277,7 @@
         .replace(/[ \t]+\n/g, "\n")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
-      return normalizePasteText(text);
+      return collapseBulletPrefixes(collapseNestedMarks(normalizePasteText(text)));
     } catch (e) {
       return "";
     }
@@ -191,17 +286,27 @@
   function structureScore(text) {
     var src = String(text || "");
     var bolds = (src.match(/\*\*/g) || []).length;
+    var unders = (src.match(/__/g) || []).length;
     var breaks = (src.match(/\n/g) || []).length;
     var bullets = (src.match(/^\s*[-•]/gm) || []).length;
     var heads = (src.match(/^## /gm) || []).length;
-    return bolds * 3 + breaks + bullets * 2 + heads * 4;
+    return bolds * 3 + unders * 3 + breaks + bullets * 2 + heads * 4;
   }
 
   function choosePasteText(plain, html) {
-    var fromPlain = normalizePasteText(plain || "");
+    var fromPlain = collapseBulletPrefixes(
+      collapseNestedMarks(normalizePasteText(plain || ""))
+    );
     var fromHtml = html ? htmlClipboardToText(html) : "";
+    if (fromHtml) fromHtml = alignListToPlain(fromHtml, fromPlain);
     if (!fromHtml) return fromPlain;
-    if (!fromPlain) return fromHtml;
+    if (!fromPlain) return collapseBulletPrefixes(fromHtml);
+    var htmlRich = htmlLooksRich(html);
+    var plainMd = markdownLooksRich(fromPlain);
+    var htmlMd = markdownLooksRich(fromHtml);
+    if (htmlRich && htmlMd && !plainMd) return fromHtml;
+    if (plainMd && !htmlMd) return fromPlain;
+    if (htmlRich && htmlMd) return fromHtml;
     if (structureScore(fromHtml) >= structureScore(fromPlain)) {
       return fromHtml;
     }
@@ -356,4 +461,10 @@
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll("textarea.js-rich, input.js-rich").forEach(buildToolbar);
   });
+
+  window.KpssRichFormat = {
+    htmlClipboardToText: htmlClipboardToText,
+    choosePasteText: choosePasteText,
+    extractClipboardHtml: extractClipboardHtml,
+  };
 })();

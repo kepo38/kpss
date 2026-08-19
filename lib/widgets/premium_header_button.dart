@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import 'premium_pro_mascot.dart';
 import 'scale_button.dart';
 
-/// Üst bar premium CTA — maskot solda, pati pill’in üstünde.
+/// Üst bar premium CTA — kompakt pill (maskot yok).
 class PremiumHeaderButton extends StatelessWidget {
   final bool isPremium;
   final VoidCallback? onTap;
@@ -15,9 +14,6 @@ class PremiumHeaderButton extends StatelessWidget {
     this.onTap,
   });
 
-  static const _mascotHeight = 48.0;
-  static const _pillInset = 36.0;
-
   @override
   Widget build(BuildContext context) {
     if (isPremium) {
@@ -25,33 +21,7 @@ class PremiumHeaderButton extends StatelessWidget {
     }
     return ScaleButton(
       onPressed: onTap,
-      child: SizedBox(
-        height: _mascotHeight,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.centerLeft,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(
-                left: _pillInset,
-                top: 10,
-                bottom: 8,
-              ),
-              child: _ProPill(),
-            ),
-            const Positioned(
-              left: 0,
-              bottom: 1,
-              child: IgnorePointer(
-                child: PremiumProMascot(
-                  height: _mascotHeight,
-                  layer: PremiumMascotLayer.bodyOnly,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: const _ProPill(),
     );
   }
 }

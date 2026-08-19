@@ -174,7 +174,7 @@ def _render_base(
     if len(selected_lakes) != 2:
         raise RuntimeError("Lake Tuz and Lake Van were not both found.")
 
-    image = Image.new("RGB", (WIDTH * SCALE, HEIGHT * SCALE), "#ffffff")
+    image = Image.new("RGBA", (WIDTH * SCALE, HEIGHT * SCALE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     _draw_feature(
         draw,
@@ -214,14 +214,14 @@ def _render_base(
 def main() -> None:
     MAPS_DIR.mkdir(parents=True, exist_ok=True)
     clean = _render_base(include_province_borders=False)
-    clean.save(OUTPUT, format="PNG", optimize=True)
+    clean.save(OUTPUT, format="PNG")
     print(f"Generated {OUTPUT} ({WIDTH}x{HEIGHT})")
 
     editor = _render_base(
         include_province_borders=True,
         include_province_labels=True,
     )
-    editor.save(OUTPUT_EDITOR, format="PNG", optimize=True)
+    editor.save(OUTPUT_EDITOR, format="PNG")
     print(f"Generated {OUTPUT_EDITOR} ({WIDTH}x{HEIGHT})")
 
 

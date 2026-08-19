@@ -212,7 +212,6 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.auto_awesome_rounded,
@@ -220,12 +219,14 @@ class _HeroCard extends StatelessWidget {
                   color: AppTheme.champagne.withValues(alpha: 0.9),
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  'Doğru çözseniz bile listeden düşmez',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: on.withValues(alpha: 0.72),
+                Expanded(
+                  child: Text(
+                    'Yanlış defteriyle deneme oluşturabilirsin',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: on.withValues(alpha: 0.72),
+                    ),
                   ),
                 ),
               ],

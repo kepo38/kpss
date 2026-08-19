@@ -317,6 +317,8 @@ def _map_templates_for_editor() -> dict[str, dict[str, str]]:
             editor_asset = entry.get("editor_asset")
             if editor_asset:
                 item["editor_asset"] = static(editor_asset)
+        if entry.get("paint"):
+            item["paint"] = True
         result[map_id] = item
     return result
 

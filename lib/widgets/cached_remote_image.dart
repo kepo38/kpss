@@ -27,6 +27,7 @@ class CachedRemoteImage extends StatelessWidget {
       width: width,
       height: height,
       fit: fit,
+      filterQuality: FilterQuality.high,
       fadeInDuration: const Duration(milliseconds: 180),
       placeholder: (_, __) => const _ImageShimmer(),
       errorWidget: (_, __, ___) => const _ImagePlaceholder(),

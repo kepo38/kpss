@@ -287,7 +287,7 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                               PremiumService.instance.isPremium;
                           if (isPremium) return const SizedBox.shrink();
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 8),
                             child: _PdfUpsellRow(
                               onTap: () => Navigator.of(context).push<void>(
                                 MaterialPageRoute<void>(
@@ -302,16 +302,21 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                       FilledButton(
                         onPressed: () => Navigator.pop(context),
                         style: FilledButton.styleFrom(
+                          elevation: 0,
                           backgroundColor: AppTheme.champagne,
                           foregroundColor: AppTheme.ink,
-                          minimumSize: const Size.fromHeight(48),
+                          minimumSize: const Size.fromHeight(40),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(11),
                           ),
                         ),
                         child: const Text(
                           'Devam Et',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13.5,
+                          ),
                         ),
                       ),
                     ],
@@ -339,9 +344,9 @@ class _PdfUpsellRow extends StatelessWidget {
       onPressed: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -356,9 +361,9 @@ class _PdfUpsellRow extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.neonGold.withValues(alpha: 0.2),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: AppTheme.neonGold.withValues(alpha: 0.16),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
@@ -367,16 +372,16 @@ class _PdfUpsellRow extends StatelessWidget {
             const Icon(
               Icons.picture_as_pdf_rounded,
               color: AppTheme.ink,
-              size: 22,
+              size: 18,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             const Expanded(
               child: Text(
                 'Bu ayın yanlış çözümleri',
                 style: TextStyle(
                   fontFamily: 'serif',
-                  fontSize: 14,
-                  height: 1.25,
+                  fontSize: 13,
+                  height: 1.2,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.ink,
                 ),
@@ -384,15 +389,15 @@ class _PdfUpsellRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: AppTheme.ink,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(7),
               ),
               child: Text(
                 '$priceTl TL',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.champagneLight,
                 ),

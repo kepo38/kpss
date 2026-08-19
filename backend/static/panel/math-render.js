@@ -84,7 +84,10 @@
     src = src.replace(/:(?!\n)(?=\d+\.\s)/g, ":\n");
     src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
     src = src.replace(/(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)/g, "$1\n");
-    src = src.replace(/(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)/g, "\n");
+    var romanCount = (src.match(/\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s/g) || []).length;
+    if (romanCount >= 2) {
+      src = src.replace(/(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)/g, "\n");
+    }
     src = src.replace(/§§M(\d+)§§\s*(?=\*\*[a-zçğıöşüâîû])/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
@@ -134,8 +137,23 @@
   }
 
   /** Renk etiketleri olmadan kalın / italik / altı çizili. */
+  function collapseNestedMarks(text) {
+    var src = String(text || "");
+    var prev;
+    do {
+      prev = src;
+      src = src.replace(/\*\*__\*\*([^*]+)\*\*__\*\*/g, "**__$1__**");
+      src = src.replace(/__\*\*__([^_]+)__\*\*__/g, "__**$1**__");
+      src = src.replace(/\*\*\s*\*\*([^*]+)\*\*\s*\*\*/g, "**$1**");
+      src = src.replace(/__\s*__([^_]+)__\s*__/g, "__$1__");
+      src = src.replace(/\*{4,}([^*\n]+)\*{4,}/g, "**$1**");
+      src = src.replace(/_{4,}([^_\n]+)_{4,}/g, "__$1__");
+    } while (src !== prev);
+    return src;
+  }
+
   function mdMarks(text) {
-    var html = escapeHtml(text)
+    var html = escapeHtml(collapseNestedMarks(text))
       .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong class=\"preview-bold\"><em>$1</em></strong></u>")
       .replace(/\*\*__(.+?)__\*\*/g, "<strong class=\"preview-bold\"><u>$1</u></strong>")
       .replace(/__\*\*(.+?)\*\*__/g, "<u><strong class=\"preview-bold\">$1</strong></u>")
@@ -150,6 +168,19 @@
     return String(html || "")
       .replace(/\bnegatif\b/gi, '<span class="text-danger-vurgu">$&</span>')
       .replace(/\bpozitif\b/gi, '<span class="text-success-vurgu">$&</span>');
+  }
+
+  function restoreHolders(html, holders) {
+    var out = String(html || "");
+    if (!holders.length) return out;
+    var guard = 0;
+    while (/§§C\d+§§/.test(out) && guard++ < 40) {
+      out = out.replace(/§§C(\d+)§§/g, function (_, idx) {
+        var item = holders[Number(idx)];
+        return item && item.html != null ? item.html : "";
+      });
+    }
+    return out;
   }
 
   /**
@@ -167,21 +198,13 @@
       function (_, color, inner) {
         var idx = holders.length;
         holders.push({
-          color: color,
-          html: mdInline(inner),
+          html:
+            '<span class="rich-' + color + '">' + mdInline(inner) + "</span>",
         });
         return "§§C" + idx + "§§";
       }
     );
-    var html = mdMarks(protectedSrc);
-    if (!holders.length) return html;
-    return html.replace(/§§C(\d+)§§/g, function (_, idx) {
-      var item = holders[Number(idx)];
-      if (!item) return "";
-      return (
-        '<span class="rich-' + item.color + '">' + item.html + "</span>"
-      );
-    });
+    return restoreHolders(mdMarks(protectedSrc), holders);
   }
 
   function replaceHlineWithColoredRule(tex) {
@@ -266,11 +289,7 @@
       last = m.index + m[0].length;
     }
     out += mdInline(src.slice(last));
-    if (!holders.length) return out;
-    return out.replace(/§§C(\d+)§§/g, function (_, idx) {
-      var item = holders[Number(idx)];
-      return item ? item.html : "";
-    });
+    return restoreHolders(out, holders);
   }
 
   /** Şık metni — kalın/italik/altı çizili yok, yalnızca matematik. */
@@ -349,7 +368,11 @@
         return;
       }
 
-      var bullet = line.match(/^(\s*)[-•*◦○–—]\s+(.+)/);
+      if (/^[-•*◦○–—]+$/.test(trimmed)) {
+        return;
+      }
+
+      var bullet = line.match(/^(\s*)(?:[-•*◦○–—]\s+)+(.+)/);
       if (bullet) {
         var deep = bullet[1].replace(/\t/g, "  ").length >= 2;
         if (!inList) {

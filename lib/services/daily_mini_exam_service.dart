@@ -57,14 +57,17 @@ class DailyMiniExamService extends ChangeNotifier {
   DailyMiniRankTrend get rankTrend => _rankTrend;
   DailyMiniExamSnapshot? get remote => _remote;
   bool get rankingLocked =>
-      _rankingLocked || _remote?.myAttempt != null;
+      _rankedAttempt(_remote?.myAttempt) != null ||
+      (_rankingLocked && _rankedAttempt(_localAttempt) != null);
   bool get rankRevealActive => _rankRevealActive;
   bool get rankRevealCountdownVisible =>
       _rankRevealActive && _rankRevealSecondsLeft > 0;
   int get rankRevealSecondsLeft => _rankRevealSecondsLeft;
   bool get rankRevealCelebrated => _rankRevealCelebrated;
   bool get formallyFinished => _formallyFinished;
-  bool get hasSubmittedRanking => rankingLocked || _pendingRankingSubmit;
+  bool get hasSubmittedRanking =>
+      rankingLocked ||
+      (_pendingRankingSubmit && _rankedAttempt(_localAttempt) != null);
   bool get completed => hasSubmittedRanking;
 
   /// Misafir yalnızca ilk gün katılır; sonraki günlerde profil girişi gerekir.
@@ -75,10 +78,17 @@ class DailyMiniExamService extends ChangeNotifier {
     if (first == null || first.isEmpty) return false;
     return first != isoDate(window.examDate);
   }
+
+  static DailyMiniAttempt? _rankedAttempt(DailyMiniAttempt? attempt) {
+    if (attempt == null || !attempt.countsTowardRanking) return null;
+    return attempt;
+  }
+
   DailyMiniAttempt? get attempt {
-    if (_remote?.myAttempt != null) return _remote!.myAttempt;
+    final remote = _rankedAttempt(_remote?.myAttempt);
+    if (remote != null) return remote;
     if (_pendingRankingSubmit || _rankingLocked || _completed) {
-      return _localAttempt;
+      return _rankedAttempt(_localAttempt);
     }
     return null;
   }
@@ -334,9 +344,10 @@ class DailyMiniExamService extends ChangeNotifier {
           if (_remote!.questionIds.isNotEmpty && !_completed) {
             _questionIds = _remote!.questionIds;
           }
-          if (_remote!.myAttempt != null) {
+          final rankedRemote = _rankedAttempt(_remote!.myAttempt);
+          if (rankedRemote != null) {
             _completed = true;
-            _localAttempt = _remote!.myAttempt;
+            _localAttempt = rankedRemote;
             _rankingLocked = true;
             _pendingRankingSubmit = false;
           } else if (!_pendingRankingSubmit) {
@@ -483,6 +494,16 @@ class DailyMiniExamService extends ChangeNotifier {
       return;
     }
 
+    final answered = answers.any((a) => a != null && a.isNotEmpty);
+    if (!answered) {
+      await saveProgress(
+        answers: answers,
+        currentIndex: _currentIndex,
+        elapsed: result.duration,
+      );
+      return;
+    }
+
     _completed = true;
     _answers = List<String?>.from(answers);
     _elapsedSeconds = result.duration.inSeconds;
@@ -551,7 +572,7 @@ class DailyMiniExamService extends ChangeNotifier {
   }
 
   Future<void> _retryPendingRankingSubmitIfNeeded() async {
-    if (!_pendingRankingSubmit || _localAttempt == null || rankingLocked) {
+    if (!_pendingRankingSubmit || _rankedAttempt(_localAttempt) == null || rankingLocked) {
       return;
     }
     if (_questionIds.isEmpty) return;
@@ -802,19 +823,10 @@ class DailyMiniExamService extends ChangeNotifier {
 
   Future<void> _migrateLegacyPrefsIfNeeded(SharedPreferences prefs) async {
     final pairs = <String, String>{
-      DailyMiniExamConstants.prefsState:
-          _scopedKey(DailyMiniExamConstants.prefsState),
-      DailyMiniExamConstants.prefsRankSnapshot:
-          _scopedKey(DailyMiniExamConstants.prefsRankSnapshot),
       DailyMiniExamConstants.prefsMonthlyWrongs:
           _scopedKey(DailyMiniExamConstants.prefsMonthlyWrongs),
       DailyMiniExamConstants.prefsGuestFirstDate:
           _scopedKey(DailyMiniExamConstants.prefsGuestFirstDate),
-      _kRankingFlagDate: _scopedKey(_kRankingFlagDate),
-      DailyMiniExamConstants.prefsRankingLocked:
-          _scopedKey(DailyMiniExamConstants.prefsRankingLocked),
-      DailyMiniExamConstants.prefsPendingRankingSubmit:
-          _scopedKey(DailyMiniExamConstants.prefsPendingRankingSubmit),
     };
     for (final entry in pairs.entries) {
       if (prefs.containsKey(entry.value)) continue;

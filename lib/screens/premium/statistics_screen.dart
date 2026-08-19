@@ -57,13 +57,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         foregroundColor: embedded ? AppTheme.ink : null,
         leading: embedded ? null : const AppBackButton(),
         automaticallyImplyLeading: !embedded,
+        centerTitle: embedded,
         title: embedded
-            ? const Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: PuanHesaplamaButton(compact: true),
+            ? Builder(
+                builder: (context) {
+                  final w = MediaQuery.sizeOf(context).width;
+                  final buttonW = (w * 0.56).clamp(196.0, 248.0);
+                  return SizedBox(
+                    width: buttonW,
+                    child: const PuanHesaplamaButton(compact: true),
+                  );
+                },
               )
             : const Text('Deneme Analizi'),
-        titleSpacing: embedded ? 8 : null,
+        titleSpacing: embedded ? 0 : null,
         toolbarHeight: embedded ? 64 : null,
         bottom: TabBar(
           controller: _tabController,

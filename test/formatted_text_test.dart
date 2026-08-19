@@ -271,6 +271,12 @@ void main() {
     expect(gluedQuestion, contains('\n**ifadelerinden'));
     expect(
       FormattedText.restoreCollapsedBreaks(
+        '- **Linyit** III. Jeolojik Zaman\'da (Tersiyer) oluşmuş kahverengi bir kömür türüdür.',
+      ),
+      isNot(contains('\nIII.')),
+    );
+    expect(
+      FormattedText.restoreCollapsedBreaks(
         r'{red}$x \cdot y = 48$ durumu için:{/red}',
       ),
       isNot(contains('\ndurumu')),

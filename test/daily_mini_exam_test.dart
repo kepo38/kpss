@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kpss_akademi/models/daily_mini_exam_models.dart';
 import 'package:kpss_akademi/utils/daily_mini_exam_logic.dart';
 
 void main() {
@@ -101,6 +102,27 @@ void main() {
       expect(ids.where((id) => id.startsWith('c_')), hasLength(5));
       expect(ids.where((id) => id.startsWith('v_')), hasLength(5));
       expect(ids.where((id) => id.startsWith('tr_')), hasLength(5));
+    });
+  });
+
+  group('attempt ranking', () {
+    test('boş deneme sıralamaya girmez', () {
+      const empty = DailyMiniAttempt(
+        correct: 0,
+        wrong: 0,
+        blank: 20,
+        total: 20,
+        durationSeconds: 5,
+      );
+      const answered = DailyMiniAttempt(
+        correct: 0,
+        wrong: 1,
+        blank: 19,
+        total: 20,
+        durationSeconds: 40,
+      );
+      expect(empty.countsTowardRanking, isFalse);
+      expect(answered.countsTowardRanking, isTrue);
     });
   });
 }

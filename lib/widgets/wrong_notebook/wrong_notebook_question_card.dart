@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/question_model.dart';
 import '../../theme/app_theme.dart';
 import '../question_stem_content.dart';
+import 'wrong_notebook_guest_frost.dart';
 import 'wrong_notebook_utils.dart';
 
 class WrongNotebookSubjectHeader extends StatelessWidget {
@@ -78,10 +79,12 @@ class WrongNotebookQuestionCard extends StatelessWidget {
   final bool isFavorite;
   final bool similarLoading;
   final bool showProBadge;
+  final bool frostStem;
   final VoidCallback onToggleFavorite;
   final VoidCallback onSimilar;
   final VoidCallback onTap;
   final VoidCallback onRemove;
+  final VoidCallback? onSignIn;
 
   const WrongNotebookQuestionCard({
     super.key,
@@ -89,10 +92,12 @@ class WrongNotebookQuestionCard extends StatelessWidget {
     required this.isFavorite,
     required this.similarLoading,
     required this.showProBadge,
+    this.frostStem = false,
     required this.onToggleFavorite,
     required this.onSimilar,
     required this.onTap,
     required this.onRemove,
+    this.onSignIn,
   });
 
   @override
@@ -106,7 +111,7 @@ class WrongNotebookQuestionCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: frostStem ? (onSignIn ?? onTap) : onTap,
           borderRadius: BorderRadius.circular(16),
           child: Ink(
             decoration: BoxDecoration(
@@ -150,38 +155,45 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              QuestionStemContent.previewText(
-                                question.soruMetni,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: on,
-                                fontWeight: FontWeight.w600,
-                                height: 1.35,
-                                fontSize: 14,
+                            WrongNotebookGuestFrost(
+                              locked: frostStem,
+                              child: Text(
+                                QuestionStemContent.previewText(
+                                  question.soruMetni,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: on,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 8),
                             Row(
                               children: [
+                                Expanded(
+                                  child: Text(
+                                    'SORUYA TEKRAR GÖZ AT',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: AppTheme.mutedOnPage(context)
+                                          .withValues(alpha: 0.7),
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 _SimilarChip(
                                   loading: similarLoading,
                                   locked: showProBadge,
                                   onTap: similarLoading ? null : onSimilar,
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'SORUYA TEKRAR GÖZ AT',
-                              style: TextStyle(
-                                color: AppTheme.mutedOnPage(context)
-                                    .withValues(alpha: 0.7),
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w500,
-                              ),
                             ),
                           ],
                         ),

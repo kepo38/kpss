@@ -31,6 +31,7 @@ from .models import (
     TopicTestCompletion,
 )
 from .revision import get_content_version
+from .special_tests import build_special_tests_payload
 from .test_grouping import order_questions_keeping_scenarios
 from .serializers import (
     AnnouncementSerializer,
@@ -912,6 +913,7 @@ class DailyMiniExamView(APIView):
 
     def _payload(self, request, kpss_type: str) -> dict:
         from .daily_mini_exam import (
+            attempt_counts_for_ranking,
             get_or_create_today_exam,
             guest_login_required,
             is_exam_open,
@@ -932,7 +934,7 @@ class DailyMiniExamView(APIView):
                 exam_date=exam.exam_date,
                 kpss_type=kpss_type,
             ).first()
-            if attempt is not None:
+            if attempt is not None and attempt_counts_for_ranking(attempt):
                 my_rank, _ = rank_for_user(
                     exam.exam_date, kpss_type, user.pk
                 )
@@ -990,6 +992,7 @@ class DailyMiniExamView(APIView):
         from .daily_mini_exam import (
             OPENS_HOUR,
             QUESTION_COUNT,
+            attempt_counts_for_ranking,
             get_or_create_today_exam,
             guest_login_required,
             is_exam_open,
@@ -1026,12 +1029,15 @@ class DailyMiniExamView(APIView):
                 status=409,
             )
 
-        if DailyMiniExamAttempt.objects.filter(
+        existing = DailyMiniExamAttempt.objects.filter(
             user=user,
             exam_date=exam.exam_date,
             kpss_type=kpss_type,
-        ).exists():
+        ).first()
+        if existing is not None and attempt_counts_for_ranking(existing):
             return Response(self._payload(request, kpss_type), status=200)
+        if existing is not None:
+            existing.delete()
 
         raw_answers = request.data.get("answers") or {}
         if not isinstance(raw_answers, dict):
@@ -1067,6 +1073,12 @@ class DailyMiniExamView(APIView):
             duration_seconds = max(0, int(duration or 0))
         except (TypeError, ValueError):
             duration_seconds = 0
+
+        if correct + wrong <= 0:
+            return Response(
+                {"detail": "Sıralamaya girmek için en az bir soru işaretleyin."},
+                status=400,
+            )
 
         DailyMiniExamAttempt.objects.create(
             user=user,
@@ -1256,3 +1268,13 @@ class ExamPackExamQuestionsView(APIView):
                 ).data,
             }
         )
+
+
+class SpecialTestsView(APIView):
+    """Harita vb. sanal özel test kategorileri — konu testlerini kirletmez."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response(build_special_tests_payload())

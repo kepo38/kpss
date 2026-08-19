@@ -10,6 +10,11 @@ class Subject(models.Model):
     name = models.CharField(max_length=120)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    requires_premium = models.BooleanField(
+        default=False,
+        verbose_name="Premium",
+        help_text="Açıkken bu ders premium olarak işaretlenir.",
+    )
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -35,6 +40,11 @@ class Topic(models.Model):
     )
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    requires_premium = models.BooleanField(
+        default=False,
+        verbose_name="Premium",
+        help_text="Açıkken bu konu premium olarak işaretlenir.",
+    )
     questions_per_test = models.PositiveIntegerField(default=20)
     time_limit_minutes = models.PositiveIntegerField(
         default=0, help_text="0 = süresiz"
@@ -163,7 +173,7 @@ class Question(models.Model):
     map_markers = models.JSONField(
         default=list,
         blank=True,
-        help_text="Yüzde koordinatlı harita işaretleri.",
+        help_text="Harita işaretleri (elips/daire) ve boyalı iller.",
     )
     option_a = models.CharField(max_length=500)
     option_b = models.CharField(max_length=500)

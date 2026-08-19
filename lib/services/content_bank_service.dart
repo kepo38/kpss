@@ -12,6 +12,7 @@ import '../models/question_model.dart';
 import '../utils/daily_mission_copy.dart';
 import '../widgets/countdown_widget.dart';
 import 'user_savings_insight_service.dart';
+import 'favorites_service.dart';
 
 /// Öğrenci tarafı soru bankası, konu testleri ve istatistikler.
 /// İçerik üretimi Django web panelindedir; mobil yalnızca yayın paketini okur.
@@ -530,7 +531,10 @@ class ContentBankService extends ChangeNotifier {
     final now = DateTime.now();
     return _attempts.where((a) {
       if (!countsTowardDailyHomework(a)) return false;
-      if (!topicIds.contains(a.topicId)) return false;
+      final inSubject = topicIds.contains(a.topicId);
+      final mapSpecial = subjectId == 'cografya' &&
+          a.testId.startsWith('special_map_cografya');
+      if (!inSubject && !mapSpecial) return false;
       final d = a.completedAt.toLocal();
       return d.year == now.year && d.month == now.month && d.day == now.day;
     }).length;
@@ -668,7 +672,9 @@ class ContentBankService extends ChangeNotifier {
   Set<String> get wrongQuestionIds => Set.unmodifiable(_visibleWrongQuestionIds);
 
   int get wrongQuestionCount => _visibleWrongQuestionIds.length;
-  bool get hasCompletedAnyTest => _solvedQuestionIds.isNotEmpty;
+  bool get hasCompletedAnyTest =>
+      _solvedQuestionIds.isNotEmpty ||
+      _attempts.any(countsTowardDailyHomework);
 
   /// Liste ve sayaç yalnızca yerelde gövdesi olan yanlışları gösterir.
   Set<String> get _visibleWrongQuestionIds {
@@ -739,6 +745,7 @@ class ContentBankService extends ChangeNotifier {
     await Future.wait([
       _persistWrongQuestions(),
       _persistWrongQuestionBodies(),
+      FavoritesService.instance.remove(questionId),
     ]);
     notifyListeners();
   }

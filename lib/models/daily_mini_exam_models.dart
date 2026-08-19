@@ -55,6 +55,9 @@ class DailyMiniAttempt {
     this.rank,
   });
 
+  /// Boş gönderimler sıralamaya girmez.
+  bool get countsTowardRanking => correct > 0 || wrong > 0;
+
   factory DailyMiniAttempt.fromJson(Map<String, dynamic> json) {
     return DailyMiniAttempt(
       correct: (json['correct'] as num?)?.toInt() ?? 0,

@@ -169,7 +169,7 @@ class _MainShellState extends State<MainShell> {
               ),
             ],
           ),
-          if (_index == 0) const WrongNotebookPromoBubble(),
+          WrongNotebookPromoBubble(homeVisible: _index == 0),
         ],
       ),
       bottomNavigationBar: _PremiumBottomBar(

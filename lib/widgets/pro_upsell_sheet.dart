@@ -122,7 +122,7 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                   const Text('👑', style: TextStyle(fontSize: 36, height: 1)),
                   const SizedBox(height: 10),
                   const Text(
-                    'Pro ile benzer sorular',
+                    'BENZER SORULAR',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'serif',
@@ -133,8 +133,7 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Yanlış yaptığın soruların benzerlerini karşına getirelim. '
-                    'Sınav öncesi eksik konu bırakma!',
+                    'Yanlışlarını daha iyi analiz et',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14.5,

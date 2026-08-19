@@ -67,6 +67,8 @@ class ApiConfig {
     return base.replace(queryParameters: {'exam_type': examTypeId});
   }
 
+  static Uri specialTestsUri() => Uri.parse('$baseUrl/api/v1/special-tests/');
+
   static Uri examPackDetailUri(String packId) => Uri.parse(
         '$baseUrl/api/v1/exam-packs/${Uri.encodeComponent(packId)}/',
       );
