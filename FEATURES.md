@@ -20,6 +20,21 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+### 19 Ağustos 2026 — işlenen davranış (bu commit)
+
+| Alan | Ne değişti | Dosyalar |
+|---|---|---|
+| **Açılış splash** | Üstte HEDEF KAMU, ortada 657 `app_icon`, altta «Ataman Gerçekleşiyor» + kayan çizgi (3,5 sn) | `boot_splash_screen.dart` |
+| **Yanlış defteri balonu** | Yalnızca **Google hesabı** + **en az 1 konu testi bitmiş** kullanıcıda; panel açıkken. Sol yaslı; YANLIŞ→DEFTERİM 3D; teal çerçeve | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
+| **Yanlış defteri UI** | Header alt başlığı («X soru · Y ders») yok; en çok yanlış derste kırmızı adet rozeti; kart: konu chip sol üst, kalp+sil sağ üst; metin «İstediğiniz zaman silebilirsiniz»; karttan onaylı silme | `wrong_questions_screen.dart`, `wrong_notebook_*` |
+| **Misafir yanlış defteri** | Gelişim’den girince yanlışlar **buzlu**; tıklanamaz; ortada **GİRİŞ YAP** (Google bağlama). Boş defter: eski boş durum | `wrong_notebook_guest_frost.dart` |
+| **Puan Hesaplama** | Gelişim’den kaldırıldı. Deneme sekmesi AppBar başlığı kompakt **PUAN HESAPLAMA** (eski «Deneme» + `+` yok; FAB «Deneme Ekle» durur) | `analytics_hub_screen.dart`, `statistics_screen.dart`, `puan_hesaplama_button.dart` |
+| **Puan ekranı etiketleri** | **GY-Net** / **GK-Net** (üstte puan; net ayrı) | `puan_hesaplama_screen.dart` |
+| **Quiz sonuç** | Konu adı üstte; motive satır; +XP ve seri chip; soru başı ortalama süre **NET** kutusunun üstünde | `quiz_screen.dart`, `shareable_result_card.dart`, `gamification_service.dart` |
+| **Günün denemesi CTA** | Metin «Denemeye Başla / Sıralamanı Gör»; sağda 657 `app_icon` daireyi doldurur (buton boyutu/punto değişmez) | `daily_mini_exam_cta.dart` |
+| **EN BAŞARILILAR** | Liste kayar; altta sabit **Bu ayın yanlış çözümleri** (ücretsiz) + **Devam Et** | `daily_mini_exam_result_screen.dart` |
+| **Google giriş** | «credential-already-in-use» olunca mevcut credential ile giriş; beklemede **Giriş Yapılıyor…** overlay | `auth_service.dart`, `login_screen.dart` |
+
 ---
 
 ## İçindekiler
@@ -41,11 +56,11 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
 | **Ana sekme kabuğu** | Alt menü: Ana Sayfa, Dersler, Gelişim, Deneme; üstte profil | `lib/screens/main_shell.dart` |
-| **Yanlış defteri balonu** | Koyu teal iç zemin; parlak **YANLIŞ** → **DEFTERİM** 3D metin; mavi-yeşil premium çerçeve; sağ üst X; **sol**-orta (~%34) | `lib/widgets/wrong_notebook_promo_bubble.dart` |
+| **Yanlış defteri balonu** | Yalnızca Google + en az 1 bitmiş konu testi; koyu teal zemin; **YANLIŞ** → **DEFTERİM** 3D; mavi-yeşil çerçeve; sağ üst X; sola yaslı | `lib/widgets/wrong_notebook_promo_bubble.dart` |
 | **Genişletilmiş ana sayfa** | “Daha fazla” menüsü: modül listesi, görevler, araçlar, premium modüller | `lib/screens/home_screen.dart`, `lib/widgets/app_shell_top_bar.dart` |
 | **Giriş yönlendirme** | Sınav seçilmemişse hemen onboarding → seçimden sonra «Ataman Gerçekleşiyor» (**3,5 sn**) → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart`, `lib/screens/exam_track_onboarding_screen.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
-| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda «Ataman Gerçekleşiyor» (**3,5 sn**). Sınav seçimi `exam_track_chosen_v1` prefs ile | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
+| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: üstte HEDEF KAMU, ortada 657 logosu, altta «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
 | **Dikey ekran kilidi** | Tüm cihazlarda yalnızca portrait | `lib/services/orientation_policy.dart`, `android/.../AndroidManifest.xml` |
 | **Web önizleme çerçevesi** | Masaüstü web’de telefon boyutunda kart | `lib/main.dart` |
 
@@ -69,7 +84,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Ana Sayfa sekmesi** | Günün mini denemesi, günlük görevler, tasarruf banner’ı, sınav odağı | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (teal ton, Pro altın değil) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler sekmesi** | 2 sütunlu ders ızgarası (tüm dersler görünür); kartta sadece soru sayısı + ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
-| **Gelişim sekmesi alt CTA** | En altta premium tarzı **PUAN HESAPLAMA** butonu → `PuanHesaplamaScreen` (GY/GK net → tahmini P3) | `lib/widgets/puan_hesaplama_button.dart`, `lib/screens/puan_hesaplama_screen.dart`, `lib/services/kpss_score_calculator_service.dart` | Ücretsiz |
+| **Gelişim sekmesi** | Genel doğruluk, yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
 | **Konu detayı** | İstatistik, ders kartları, test listesi, teste devam/başla | `lib/screens/topic_detail_screen.dart` | Günlük kota |
 | **Ders okuyucu** | Konuya özel bilgi kartları (markdown / zengin metin) | `lib/screens/lesson_reader_screen.dart` | Ücretsiz |
@@ -97,7 +112,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; en az **5 konu testi** bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 test |
 | **Çözüm kilidi** | Tam çözüm önce gizli; reklam veya Premium ile açılır | `quiz_screen.dart`, `lib/services/ad_manager.dart` | Reklam / Premium |
 | **Ses ve titreşim** | Doğru/yanlış geri bildirimi | `lib/services/answer_feedback_service.dart` | Ücretsiz |
-| **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma | `lib/widgets/shareable_result_card.dart` | Ücretsiz |
+| **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma; sonuç panelinde konu adı en üstte, motive mesajı, kazandığı XP ve seri; soru başı ortalama süre NET kutusunun üstünde | `lib/widgets/shareable_result_card.dart`, `lib/screens/quiz_screen.dart` | Ücretsiz |
 | **Filigran** | Ücretsiz planda marka filigranı | `lib/widgets/watermark_widget.dart` | Premium’da gizli |
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium / kampanya bypass |
 | **Pro Üyelik üst bar CTA** | Maskot (el yok) + kompakt pill; üst barda kırpılmadan hizalı | `lib/widgets/premium_header_button.dart`, `lib/widgets/premium_pro_mascot.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
@@ -121,7 +136,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Günlük görev merkezi** | Ders bazlı günlük ilerleme çubukları (Türkçe, Mat, Tarih, Coğrafya, Vatandaşlık) | `lib/widgets/daily_mission_center.dart` | Ücretsiz |
-| **Günün mini denemesi** | 20 soruluk günlük deneme; kürsü paylaşımı PNG + metin (ortada siyah daire gölge içinde soluk Hedef Kamu logosu); sıra açılışı öncesi **Heyecan Dorukta!** + sayaç 4’te **İŞTE SIRALAMAN**; sonra **BUGÜNKÜ SIRALAMAN**; 00:00–06:00 arası kürsüde dünün liderleri; `seed_daily_mini_demo` kayıtları API’de kürsüye dahil edilmez | `lib/widgets/daily_mini_exam/`, `lib/screens/quiz_screen.dart`, `lib/services/daily_mini_exam_service.dart`, `backend/content/views.py`, `backend/content/daily_mini_exam.py` | Ücretsiz (misafir: ilk gün) |
+| **Günün mini denemesi** | 20 soru; CTA «Denemeye Başla / Sıralamanı Gör» + 657 logo daireyi doldurur; kürsü PNG paylaşımı (ortada soluk Hedef Kamu); **Heyecan Dorukta!** → sayaç 4’te **İŞTE SIRALAMAN** → **BUGÜNKÜ SIRALAMAN**; 00:00–06:00 dünün liderleri; demo seed kürsüde yok; **EN BAŞARILILAR** altta sabit **Bu ayın yanlış çözümleri** + **Devam Et** | `lib/widgets/daily_mini_exam/`, `lib/screens/quiz_screen.dart`, `lib/screens/daily_mini_exam_result_screen.dart`, `lib/services/daily_mini_exam_service.dart`, `backend/content/views.py`, `backend/content/daily_mini_exam.py` | Ücretsiz (misafir: ilk gün) |
 | **Deneme paketleri vitrini** | Dersler sekmesi **en altında**; yumuşak yatay kaydırma; ortalanmış başlık | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart`, `GET /api/v1/exam-packs/` | Ücretsiz vitrin |
 | **Mini deneme PDF upsell** | Sonuç sonrası Premium yönlendirmesi (aylık yanlış varsa) | `daily_mini_exam_result_screen.dart` | Upsell |
 | **Tasarruf içgörüsü** | Ücretsiz testlerin tahmini TL değeri; 20 test kilometre taşı | `lib/widgets/savings_insight_banner.dart`, `lib/services/user_savings_insight_service.dart` | Ücretsiz |
@@ -133,7 +148,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Akıllı tekrar** | Günlük 15 soruluk aralıklı tekrar seti (yanlışlar → vadesi gelen → zayıf konular) | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
-| **Yanlış defteri** | Konu testlerinden yanlış cevaplar; karttan **kaldır** (onaylı); istatistik kartları (en çok yanlış: ders adı + adet), ders filtresi, kart listesi; üst bar yalnızca «Akıllı Tekrar»; alt «Tüm yanlışları çöz» barı | `lib/screens/wrong_questions_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/services/content_bank_service.dart` | Ücretsiz |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; karttan onaylı **kaldır**; «İstediğiniz zaman silebilirsiniz»; en çok yanlış derste kırmızı adet; kartta konu chip + kalp/sil; üstte yalnızca «Akıllı Tekrar»; alt «Tüm yanlışları çöz». **Misafir:** sorular buzlu, ortada **GİRİŞ YAP** | `lib/screens/wrong_questions_screen.dart`, `lib/widgets/wrong_notebook/` (incl. `wrong_notebook_guest_frost.dart`) | Ücretsiz; misafir buzlu |
 | **Benzer sorular** | Embedding tabanlı benzer soru seti (API) | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; ana CTA «Derslerden test çöz» (eski «X dersinden 1 test çöz» kaldırıldı) | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
@@ -143,7 +158,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Gelişim sekmesi** | Genel doğruluk, yatay kaydırmalı ders kartları + ders sayısı kadar nokta göstergesi, çalışma kasası kısayolları | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
+| **Gelişim sekmesi** | Genel doğruluk, yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
 | **Favorilerim** | Kayıtlı soru ID’leri; orijinal test bağlamında açma | `lib/screens/favorites_screen.dart` | Ücretsiz |
@@ -156,7 +171,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Deneme sekmesi** | Alt menüden deneme analitiği; **en üstte PUAN HESAPLAMA** CTA (Gelişim ile aynı) | `lib/screens/premium/statistics_screen.dart`, `lib/widgets/puan_hesaplama_button.dart` (MainShell içinde) | Sekmeden **ücretsiz**¹ |
+| **Deneme sekmesi** | AppBar başlığı kompakt **PUAN HESAPLAMA** (`+` yok); FAB ile deneme ekleme | `lib/screens/premium/statistics_screen.dart`, `lib/widgets/puan_hesaplama_button.dart` | Sekmeden **ücretsiz**¹ |
+| **Puan Hesaplama** | GY/GK net ve puan; etiketler **GY-Net** / **GK-Net** | `lib/screens/puan_hesaplama_screen.dart` | Ücretsiz |
 | **Genel bakış** | Haftalık özet, net gelişim grafiği, GK/GY ayrımı | `lib/widgets/statistics_overview_tab.dart`, `lib/widgets/net_development_chart.dart` | Bkz. ¹ |
 | **Yayınevleri** | Yayınevine göre performans karşılaştırma | `lib/widgets/statistics_publishers_tab.dart` | Bkz. ¹ |
 | **Denemeler listesi** | Manuel deneme ekleme / silme | `lib/widgets/statistics_exams_tab.dart` | Bkz. ¹ |
@@ -234,7 +250,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 |---|---|---|
 | **Yerel misafir oturumu** | Çevrimdışı öncelikli yer tutucu kullanıcı | `lib/services/auth_service.dart` |
 | **Anonim backend oturumu** | Firebase anonim + Django `AppUser` token | `auth_service.dart`, `backend/content/auth.py` |
-| **Google giriş / bağlama** | ID token → `POST /api/v1/auth/google/` | `auth_service.dart` |
+| **Google giriş / bağlama** | ID token → `POST /api/v1/auth/google/`; hesap zaten bağlıysa `signInWithCredential`; beklemede **Giriş Yapılıyor…** | `auth_service.dart`, `login_screen.dart` |
 | **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad (haftada en fazla 1 değişiklik) | `backend/content/views.py` |
 | **Ağ güvenliği engeli** | VPN/DNS/reklam engelleyici tespiti → uygulama kilitlenir | `lib/services/network_security_service.dart`, `lib/screens/security_warning_modal.dart` |
 
@@ -432,7 +448,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | 12 saat reklamsız (3 reklam) | | ✓ | Bypass | Bypass |
 | Günün mini denemesi | ✓ (reklamsız oturum) | | ✓ | ✓ |
 | Akıllı tekrar | ✓ | | | |
-| Yanlış defteri listesi | ✓ | | | |
+| Yanlış defteri listesi | ✓ (misafir: buzlu + GİRİŞ YAP) | | | |
 | Benzer sorular | | | ✓ | ✓ |
 | Favoriler ve notlar | ✓ | | | |
 | Gelişim merkezi | ✓ | | | |

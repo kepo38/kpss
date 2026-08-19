@@ -64,6 +64,13 @@ Ana sayfa / hub ekranlarını şişirme; parçalar `lib/widgets/` altında:
 
 Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine gömme.
 
+## Anayasa (onaysız sapma yok)
+
+- Kullanıcının söylediği iş tam olarak o iş; başka ekran/layout/metin/akış değiştirme.
+- `README.md` veya `FEATURES.md` ile çelişen davranış uydurma; README’yi kullanıcı istemeden değiştirme.
+- İstekte olmayan bir değişiklik gerekirse **önce onay iste**; onay olmadan uygulama.
+- Her değişiklik mevcut mimari, klasör, API, state ve reklam kurallarıyla **sistem bütünüyle tutarlı** olsun; paralel ikinci yol / yeni paket / yeni klasör açma.
+
 ## Davranış
 
 - Tüm dosyayı yeniden yazma; sadece değişen blok

@@ -57,18 +57,14 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         foregroundColor: embedded ? AppTheme.ink : null,
         leading: embedded ? null : const AppBackButton(),
         automaticallyImplyLeading: !embedded,
-        title: Text(
-          embedded ? 'Deneme' : 'Deneme Analizi',
-          style: embedded
-              ? const TextStyle(
-                  fontFamily: 'serif',
-                  fontWeight: FontWeight.w600,
-                  fontSize: 24,
-                  color: AppTheme.ink,
-                )
-              : null,
-        ),
-        toolbarHeight: embedded ? 56 : null,
+        title: embedded
+            ? const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: PuanHesaplamaButton(compact: true),
+              )
+            : const Text('Deneme Analizi'),
+        titleSpacing: embedded ? 8 : null,
+        toolbarHeight: embedded ? 64 : null,
         bottom: TabBar(
           controller: _tabController,
           labelColor: embedded ? AppTheme.ink : null,
@@ -81,21 +77,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
             Tab(text: 'Denemeler'),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: 'Deneme ekle',
-            onPressed: _openAddExam,
-          ),
-        ],
+        actions: const [],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(16, embedded ? 8 : 12, 16, 8),
-            child: const PuanHesaplamaButton(),
-          ),
           Expanded(
             child: TabBarView(
               controller: _tabController,

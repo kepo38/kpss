@@ -36,23 +36,26 @@ class DailyMiniExamResultScreen extends StatelessWidget {
         final showRank = rank != null && rank > 0 && participantCount > 0;
 
         return Scaffold(
-      backgroundColor: AppTheme.ink,
-      appBar: AppBar(
-        backgroundColor: AppTheme.ink,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Günün Sıralaması',
-          style: TextStyle(
-            fontFamily: 'serif',
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
+          backgroundColor: AppTheme.ink,
+          appBar: AppBar(
+            backgroundColor: AppTheme.ink,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            title: const Text(
+              'Günün Sıralaması',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+              ),
+            ),
           ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(22, 8, 22, 40),
-        children: [
+          body: Column(
+            children: [
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
+                  children: [
           Text(
             'BUGÜNKÜ SKOR',
             textAlign: TextAlign.center,
@@ -265,44 +268,58 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                   ),
                 ),
               ),
-          const SizedBox(height: 22),
-          ValueListenableBuilder<bool>(
-            valueListenable: PlayBillingService.instance.premiumNotifier,
-            builder: (context, billingPremium, _) {
-              final isPremium =
-                  billingPremium || PremiumService.instance.isPremium;
-              if (isPremium) return const SizedBox.shrink();
-              return Column(
-                children: [
-                  _PdfUpsellRow(
-                    onTap: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PremiumPaywallScreen(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              );
-            },
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.champagne,
-              foregroundColor: AppTheme.ink,
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              'Tamam',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
+          const SizedBox(height: 8),
         ],
-      ),
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ValueListenableBuilder<bool>(
+                        valueListenable:
+                            PlayBillingService.instance.premiumNotifier,
+                        builder: (context, billingPremium, _) {
+                          final isPremium = billingPremium ||
+                              PremiumService.instance.isPremium;
+                          if (isPremium) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _PdfUpsellRow(
+                              onTap: () => Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const PremiumPaywallScreen(),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.champagne,
+                          foregroundColor: AppTheme.ink,
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Devam Et',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

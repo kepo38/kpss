@@ -8,6 +8,7 @@ import '../screens/wrong_questions_screen.dart';
 import '../services/ad_manager.dart';
 import '../services/app_config_service.dart';
 import '../services/auth_service.dart';
+import '../services/content_bank_service.dart';
 import '../theme/app_theme.dart';
 
 /// Ana sayfa sol kenar — yanlış defteri balonu.
@@ -95,17 +96,25 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
       listenable: Listenable.merge([
         AppConfigService.instance,
         AuthService.instance,
+        ContentBankService.instance,
       ]),
       builder: (context, _) {
         final cfg = AppConfigService.instance;
-        if (!cfg.showWrongNotebookBubble || !_ratioLoaded) {
+        final auth = AuthService.instance;
+        final hasGoogle = auth.isSignedIn && !auth.isAnonymous;
+        final hasCompletedTest =
+            ContentBankService.instance.hasCompletedAnyTest;
+        if (!cfg.showWrongNotebookBubble ||
+            !_ratioLoaded ||
+            !hasGoogle ||
+            !hasCompletedTest) {
           return const SizedBox.shrink();
         }
 
         final bounds = _verticalBounds(context, _bubbleSize);
 
         return Positioned(
-          left: 6,
+          left: 2,
           top: bounds.y,
           child: _PromoBalloon(
             key: _balloonKey,
@@ -461,26 +470,24 @@ class _Bubble3DSequentialLabel extends StatelessWidget {
         ..rotateX(-0.1 + holdWobble)
         ..rotateY(0.06 + tilt * 0.35),
       child: SizedBox(
-        width: 54,
-        height: 54,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        width: 66,
+        height: 58,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _Bubble3DLine(
+              text: line1,
+              reveal: line1T,
+            ),
+            if (line2T > 0) ...[
+              SizedBox(height: 1 + line2T),
               _Bubble3DLine(
-                text: line1,
-                reveal: line1T,
+                text: line2,
+                reveal: line2T,
               ),
-              if (line2T > 0) ...[
-                SizedBox(height: 1 + line2T),
-                _Bubble3DLine(
-                  text: line2,
-                  reveal: line2T,
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -498,9 +505,9 @@ class _Bubble3DLine extends StatelessWidget {
 
   static const _baseStyle = TextStyle(
     fontFamily: 'serif',
-    fontSize: 10.5,
+    fontSize: 8.5,
     height: 1.0,
-    letterSpacing: 0.45,
+    letterSpacing: 0.2,
     fontWeight: FontWeight.w900,
   );
 

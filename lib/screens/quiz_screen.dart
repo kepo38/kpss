@@ -15,6 +15,7 @@ import '../services/answer_feedback_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/daily_mini_exam_service.dart';
 import '../services/favorites_service.dart';
+import '../services/gamification_service.dart';
 import '../services/auth_service.dart';
 import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
@@ -313,6 +314,17 @@ class _QuizScreenState extends State<QuizScreen>
         : widget.questions.first.konuAdi.trim();
     if (topic.isNotEmpty) return topic;
     return widget.title.trim().isEmpty ? 'Test Sonucu' : widget.title;
+  }
+
+  String _emotionalFeedback(QuizResult result) {
+    final pct = result.accuracy;
+    if (pct >= 0.9) {
+      return 'Muazzam! Kamuya bir adım daha yaklaştın.';
+    }
+    if (pct >= 0.5) {
+      return 'Güzel ilerleme, eksikleri kapatma zamanı.';
+    }
+    return 'Asla pes etme. Yanlışlar en büyük öğretmendir.';
   }
 
   int get _visibleAttemptCount =>
@@ -995,29 +1007,76 @@ class _QuizScreenState extends State<QuizScreen>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final gamification = GamificationService.instance;
+            final gainedXp = gamification.xpForCompletedTest(
+              correct: result.correct,
+              wrong: result.wrong,
+              duration: result.duration,
+            );
+            final streak = gamification.previewStreakAfterTest();
+
             return AlertDialog(
               backgroundColor: AppTheme.inkSoft,
               insetPadding: const EdgeInsets.symmetric(
                 horizontal: 20,
                 vertical: 24,
               ),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              title: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  _resultHeading,
-                  maxLines: 1,
-                  softWrap: false,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.champagne,
+              title: SizedBox(
+                width: double.infinity,
+                child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _resultHeading,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                      color: AppTheme.champagneLight,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _emotionalFeedback(result),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ResultRewardChip(
+                          icon: Icons.bolt_rounded,
+                          label: '+$gainedXp XP',
+                          color: AppTheme.neonEdge,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _ResultRewardChip(
+                          icon: Icons.local_fire_department_rounded,
+                          label: '$streak gün seri',
+                          color: const Color(0xFFFB923C),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -1030,15 +1089,6 @@ class _QuizScreenState extends State<QuizScreen>
                           testTitle: widget.title,
                           result: result,
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Soru başı ort. '
-                      '${QuizResult.formatDuration(result.averageQuestionDuration)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.45),
                       ),
                     ),
                   ],
@@ -2011,3 +2061,46 @@ class _OptionTile extends StatelessWidget {
 }
 
 enum _DailyMiniExitChoice { stay, submitRanking, saveOnly }
+
+class _ResultRewardChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _ResultRewardChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

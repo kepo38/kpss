@@ -1,11 +1,10 @@
-import 'dart:math' as math;
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
+import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
 import 'brand_mark.dart';
 
@@ -76,26 +75,26 @@ class _BootSplashScreenState extends State<BootSplashScreen>
               ),
             ),
           ),
-          Center(
-            child: AnimatedBuilder(
-              animation: _ctrl,
-              builder: (context, child) {
-                final pulse = 0.88 + 0.12 * math.sin(_ctrl.value * math.pi * 2);
-                return Opacity(
-                  opacity: pulse.clamp(0.82, 1.0),
-                  child: child,
-                );
-              },
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  BrandMark(
+                  const SizedBox(height: 12),
+                  const BrandMark(
                     dark: true,
-                    logoSize: 64,
+                    logoSize: 56,
                     alignment: CrossAxisAlignment.center,
                   ),
-                  const SizedBox(height: 24),
+                  const Spacer(),
+                  Image.asset(
+                    BrandConstants.appIconAsset,
+                    width: 168,
+                    height: 168,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                  const Spacer(),
                   const Text(
                     'Ataman Gerçekleşiyor',
                     textAlign: TextAlign.center,
@@ -110,6 +109,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                   ),
                   const SizedBox(height: 20),
                   _PremiumSlidingLine(progress: _ctrl),
+                  const SizedBox(height: 28),
                 ],
               ),
             ),

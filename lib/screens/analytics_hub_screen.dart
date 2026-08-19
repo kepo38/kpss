@@ -14,7 +14,6 @@ import '../widgets/account_link_card.dart';
 import '../widgets/analytics_study_vault.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
-import '../widgets/puan_hesaplama_button.dart';
 import '../widgets/scale_button.dart';
 import 'study_hub_screen.dart';
 import 'subject_analytics_detail_screen.dart';
@@ -161,8 +160,6 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   subjects: subjects,
                   kpssType: widget.kpssType,
                 ),
-                const SizedBox(height: 14),
-                const PuanHesaplamaButton(),
               ],
             ),
           ),

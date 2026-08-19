@@ -668,6 +668,7 @@ class ContentBankService extends ChangeNotifier {
   Set<String> get wrongQuestionIds => Set.unmodifiable(_visibleWrongQuestionIds);
 
   int get wrongQuestionCount => _visibleWrongQuestionIds.length;
+  bool get hasCompletedAnyTest => _solvedQuestionIds.isNotEmpty;
 
   /// Liste ve sayaç yalnızca yerelde gövdesi olan yanlışları gösterir.
   Set<String> get _visibleWrongQuestionIds {

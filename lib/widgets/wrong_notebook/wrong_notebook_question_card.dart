@@ -137,6 +137,19 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Row(
+                              children: [
+                                _TopicChip(label: question.konuAdi),
+                                const Spacer(),
+                                _FavoriteButton(
+                                  isFavorite: isFavorite,
+                                  onTap: onToggleFavorite,
+                                ),
+                                const SizedBox(width: 6),
+                                _RemoveButton(onTap: onRemove),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
                             Text(
                               QuestionStemContent.previewText(
                                 question.soruMetni,
@@ -153,20 +166,11 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                _TopicChip(label: question.konuAdi),
-                                const Spacer(),
                                 _SimilarChip(
                                   loading: similarLoading,
                                   locked: showProBadge,
                                   onTap: similarLoading ? null : onSimilar,
                                 ),
-                                const SizedBox(width: 6),
-                                _FavoriteButton(
-                                  isFavorite: isFavorite,
-                                  onTap: onToggleFavorite,
-                                ),
-                                const SizedBox(width: 6),
-                                _RemoveButton(onTap: onRemove),
                               ],
                             ),
                             const SizedBox(height: 6),

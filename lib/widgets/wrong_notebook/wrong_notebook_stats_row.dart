@@ -217,7 +217,7 @@ class WrongNotebookInsightBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 'Bilinçli tekrar için sorular listede kalır. '
-                'Doğru çöseniz bile otomatik silinmez.',
+                'İstediğiniz zaman silebilirsiniz.',
                 style: TextStyle(
                   fontSize: 11.5,
                   height: 1.35,

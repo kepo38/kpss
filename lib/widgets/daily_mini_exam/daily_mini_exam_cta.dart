@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../constants/brand_constants.dart';
 import '../../constants/daily_mini_exam_constants.dart';
 import '../../theme/app_theme.dart';
 
@@ -294,7 +293,6 @@ class _CtaPremiumMedallion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logoSize = size * 0.5;
     return Container(
       width: size,
       height: size,
@@ -330,40 +328,16 @@ class _CtaPremiumMedallion extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: EdgeInsets.all(size * 0.12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                AppTheme.ink.withValues(alpha: 0.1),
-                AppTheme.ink.withValues(alpha: 0.04),
-              ],
-            ),
-            border: Border.all(
-              color: AppTheme.ink.withValues(alpha: 0.12),
-              width: 0.8,
-            ),
-          ),
-          child: Center(
-            child: Image.asset(
-              BrandConstants.logoAsset,
-              width: logoSize,
-              height: logoSize,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Image.asset(
-                BrandConstants.watermarkAsset,
-                width: logoSize,
-                height: logoSize,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.emoji_events_rounded,
-                  size: logoSize * 0.9,
-                  color: AppTheme.ink,
-                ),
-              ),
-            ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/app_icon.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Icon(
+            Icons.emoji_events_rounded,
+            size: size * 0.45,
+            color: AppTheme.ink,
           ),
         ),
       ),

@@ -313,9 +313,10 @@ class AuthService extends ChangeNotifier {
       var idToken = googleAuth.idToken;
       final accessToken = googleAuth.accessToken;
 
+      OAuthCredential? credential;
       try {
         if (accessToken != null || idToken != null) {
-          final credential = GoogleAuthProvider.credential(
+          credential = GoogleAuthProvider.credential(
             accessToken: accessToken,
             idToken: idToken,
           );
@@ -336,10 +337,20 @@ class AuthService extends ChangeNotifier {
         final msg = e.toString();
         if (msg.contains('credential-already-in-use') ||
             msg.contains('email-already-in-use')) {
-          _lastError =
-              'Bu Google hesabı zaten kayıtlı. O hesapla giriş yapın.';
-          return false;
-        }
+          try {
+            final cred2 =
+                await FirebaseAuth.instance.signInWithCredential(credential!);
+            final fbToken = await cred2.user?.getIdToken(true);
+            if (fbToken != null && fbToken.isNotEmpty) {
+              idToken = fbToken;
+            }
+          } catch (e2) {
+            debugPrint('FirebaseAuth fallback signIn: $e2');
+            _lastError =
+                'Google hesabı bağlanamadı. Tekrar deneyin.';
+            return false;
+          }
+        } else
         if (!isAnonymous) {
           debugPrint('FirebaseAuth atlandı: $e');
         } else {
