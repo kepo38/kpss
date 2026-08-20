@@ -36,7 +36,7 @@ class ExamOptionView extends StatelessWidget {
       FormattedText.wrapBareLatex(FormattedText.stripMarkup(text)),
       examLayout: true,
       examWrap: true,
-      textAlign: TextAlign.start,
+      textAlign: TextAlign.center,
       style: ExamTypography.option(color: Colors.white),
     );
   }

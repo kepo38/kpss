@@ -105,8 +105,9 @@ class _MainShellState extends State<MainShell> {
   }
 
   Future<void> _openMore() async {
-    await AdManager.instance.onPageTransition();
     if (!mounted) return;
+    // Stüdyo hub — geçiş reklamı yok (hemen açılsın).
+    AdManager.instance.skipNextPageTransition();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => HomeScreen(user: widget.user),

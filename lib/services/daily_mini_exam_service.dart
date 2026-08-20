@@ -54,6 +54,7 @@ class DailyMiniExamService extends ChangeNotifier {
   String _scopedKey(String base) => '${base}_$_userScopeId';
 
   bool get isInitialized => _initialized;
+  KpssType get kpssType => _kpssType;
   DailyMiniRankTrend get rankTrend => _rankTrend;
   DailyMiniExamSnapshot? get remote => _remote;
   bool get rankingLocked =>

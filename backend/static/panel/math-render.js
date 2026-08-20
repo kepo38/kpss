@@ -56,6 +56,13 @@
       return looksLikeMath(inner) ? src : inner;
     }
     if (/\$|\\\(|\\\[/.test(src)) return src;
+    // Şık: -1/2, 3/4 → $-\frac{1}{2}$ / $\frac{3}{4}$
+    var slash = src.match(/^(-?)(\d+)\s*\/\s*(\d+)$/);
+    if (slash) {
+      return slash[1]
+        ? "$-\\frac{" + slash[2] + "}{" + slash[3] + "}$"
+        : "$\\frac{" + slash[2] + "}{" + slash[3] + "}$";
+    }
     if (looksLikeMath(src)) return "$" + src + "$";
     return src;
   }
@@ -283,13 +290,12 @@
       .replace(/\*\*(.+?)\*\*/g, "<strong class=\"preview-bold\">$1</strong>")
       .replace(/__(.+?)__/g, "<u>$1</u>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>");
-    return emphasizeSignWords(html);
+    // Sınav metninde otomatik negatif/pozitif renk yok.
+    return html;
   }
 
   function emphasizeSignWords(html) {
-    return String(html || "")
-      .replace(/\bnegatif\b/gi, '<span class="text-danger-vurgu">$&</span>')
-      .replace(/\bpozitif\b/gi, '<span class="text-success-vurgu">$&</span>');
+    return String(html || "");
   }
 
   function restoreHolders(html, holders) {

@@ -124,50 +124,31 @@ class _SplashAppIcon extends StatelessWidget {
   const _SplashAppIcon();
 
   static const _size = 220.0;
-  static const _glow = 220.0;
 
   @override
   Widget build(BuildContext context) {
+    // İkon dairenin tamamını doldurur; arkada ayrı siyah gölge halkası yok.
     return SizedBox(
-      width: _glow,
-      height: _glow,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: _glow,
-            height: _glow,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  Colors.black.withValues(alpha: 0.22),
-                  Colors.black.withValues(alpha: 0.10),
-                  AppTheme.ink.withValues(alpha: 0.0),
-                ],
-                stops: const [0.0, 0.55, 1.0],
-              ),
-            ),
-          ),
-          ClipOval(
-            child: ColorFiltered(
+      width: _size,
+      height: _size,
+      child: ClipOval(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: AppTheme.ink),
+            ColorFiltered(
               colorFilter: ColorFilter.mode(
-                const Color(0xFF7D8B94).withValues(alpha: 0.72),
+                const Color(0xFF9AA6B0).withValues(alpha: 0.88),
                 BlendMode.modulate,
               ),
-              child: Opacity(
-                opacity: 0.62,
-                child: Image.asset(
-                  BrandConstants.appIconAsset,
-                  width: _size,
-                  height: _size,
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.high,
-                ),
+              child: Image.asset(
+                BrandConstants.appIconAsset,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

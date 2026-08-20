@@ -123,9 +123,11 @@ class FormattedText extends StatelessWidget {
   }
 
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
+    final size = base.fontSize ?? 16;
     return ExamTypography.mathFrom(
       base.copyWith(
-        fontSize: base.fontSize ?? 16,
+        fontSize: display ? size * 1.18 : size,
+        height: display ? 1.28 : base.height,
         color: base.color,
       ),
     );
@@ -370,38 +372,40 @@ class FormattedText extends StatelessWidget {
     return t;
   }
 
-  /// Harf/`**` bitişikse araya boşluk koy.
+  /// Harf/`**` bitişikse araya boşluk koy (span DIŞI; içerik dokunulmaz).
   static String _ensureMarkdownExteriorSpaces(String text) {
     if (text.isEmpty) return text;
     var src = text;
     final holders = <String>[];
+    String hold(String raw) {
+      holders.add(raw);
+      return '§§E${holders.length - 1}§§';
+    }
+
+    // Math ve markdown span'larını koru; boşluk yalnızca dışarıda eklenir.
     src = src.replaceAllMapped(
       RegExp(r'\$\$[\s\S]+?\$\$|\$[^$\n]+\$'),
-      (m) {
-        holders.add(m.group(0)!);
-        return '§§M${holders.length - 1}§§';
-      },
+      (m) => hold(m.group(0)!),
     );
+    src = src.replaceAllMapped(
+      RegExp(r'\*\*[\s\S]+?\*\*|__[\s\S]+?__|(?<!\*)\*(?!\*)[^*\n]+?(?<!\*)\*(?!\*)'),
+      (m) => hold(m.group(0)!),
+    );
+
     const letter =
-        r"0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû";
+        r"0-9A-Za-zÀ-ÖØ-öø-ÿĀ-ſĞğİıŞşÜüÇç";
+    // letter + placeholder / placeholder + letter
     src = src.replaceAllMapped(
-      RegExp('([$letter\'’])(\\*\\*)(?!\\*)'),
+      RegExp('([$letter\'’])(§§E\\d+§§)'),
       (m) => '${m.group(1)} ${m.group(2)}',
     );
     src = src.replaceAllMapped(
-      RegExp('([$letter\'’])(__)(?!_)'),
+      RegExp('(§§E\\d+§§)([$letter])'),
       (m) => '${m.group(1)} ${m.group(2)}',
     );
+
     src = src.replaceAllMapped(
-      RegExp('(\\*\\*)(?!\\*)([$letter])'),
-      (m) => '${m.group(1)} ${m.group(2)}',
-    );
-    src = src.replaceAllMapped(
-      RegExp('(__)(?!_)([$letter])'),
-      (m) => '${m.group(1)} ${m.group(2)}',
-    );
-    src = src.replaceAllMapped(
-      RegExp(r'§§M(\d+)§§'),
+      RegExp(r'§§E(\d+)§§'),
       (m) {
         final i = int.tryParse(m.group(1)!) ?? -1;
         if (i < 0 || i >= holders.length) return m.group(0)!;
@@ -411,7 +415,6 @@ class FormattedText extends StatelessWidget {
     return src;
   }
 
-  /// Satır kırığı ile bölünmüş **…** bloklarını birleştirir.
   static String _repairSplitBoldLines(String text) {
     return text.replaceAllMapped(
       RegExp(r'\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*'),
@@ -465,39 +468,15 @@ class FormattedText extends StatelessWidget {
     text = _tightenMarkdownMarkers(text);
     text = _ensureMarkdownExteriorSpaces(text);
     text = _repairSplitBoldLines(text);
-    text = emphasizeSignWords(text);
-    // Bozuk satır kırığından kalan yalnız ** / __ satırlarını temizle.
+    // Sınav metninde otomatik negatif/pozitif renk yok.
     text = text.replaceAll(RegExp(r'^\s*\*\*\s*$', multiLine: true), '');
     text = text.replaceAll(RegExp(r'^\s*__\s*$', multiLine: true), '');
 
     return text;
   }
 
-  static String emphasizeSignWords(String input) {
-    if (input.isEmpty) return input;
-    var src = input;
-    final holders = <String>[];
-    src = src.replaceAllMapped(
-      RegExp(r'\{(green|red|blue)\}([\s\S]+?)\{\/\1\}'),
-      (m) {
-        holders.add(m.group(0)!);
-        return '§§C${holders.length - 1}§§';
-      },
-    );
-    src = src.replaceAllMapped(
-      RegExp(r'\bnegatif\b', caseSensitive: false),
-      (m) => '{red}${m.group(0)}{/red}',
-    );
-    src = src.replaceAllMapped(
-      RegExp(r'\bpozitif\b', caseSensitive: false),
-      (m) => '{green}${m.group(0)}{/green}',
-    );
-    return src.replaceAllMapped(RegExp(r'§§C(\d+)§§'), (m) {
-      final i = int.tryParse(m.group(1)!) ?? -1;
-      if (i < 0 || i >= holders.length) return m.group(0)!;
-      return holders[i];
-    });
-  }
+  /// Eski API uyumu — sınav gövdesinde işaret rengi uygulanmaz.
+  static String emphasizeSignWords(String input) => input;
 
   static String stripMarkup(String input) {
     var text = normalizeMarkup(input);
@@ -566,6 +545,17 @@ class FormattedText extends StatelessWidget {
     }
     if (src.contains(r'$') || src.contains(r'\(') || src.contains(r'\[')) {
       return src;
+    }
+    // Şık: -1/2, 3/4 → $-\frac{1}{2}$ / $\frac{3}{4}$
+    final slashFrac = RegExp(r'^(-?)(\d+)\s*/\s*(\d+)$').firstMatch(src);
+    if (slashFrac != null) {
+      final sign = slashFrac.group(1)!;
+      final num = slashFrac.group(2)!;
+      final den = slashFrac.group(3)!;
+      if (sign.isEmpty) {
+        return '\$\\frac{$num}{$den}\$';
+      }
+      return '\$-\\frac{$num}{$den}\$';
     }
     if (looksLikeMath(src)) return '\$${src}\$';
     return src;
@@ -906,18 +896,18 @@ class FormattedText extends StatelessWidget {
       if (m.start > i) {
         spans.addAll(_parseMarkdown(input.substring(i, m.start), base));
       }
-      final tex = prepareTex((m.group(1) ?? m.group(2) ?? '').trim());
-      if (tex.isNotEmpty) {
+      final raw = (m.group(1) ?? m.group(2) ?? '').trim();
+      if (raw.isNotEmpty) {
         final isBlock = m.group(1) != null;
         final display =
-            forceDisplayMath || usesDisplayMath(tex);
+            forceDisplayMath || isBlock || usesDisplayMath(raw);
         spans.add(
           WidgetSpan(
             alignment: isBlock && display
                 ? PlaceholderAlignment.middle
                 : PlaceholderAlignment.baseline,
             baseline: TextBaseline.alphabetic,
-            child: buildMathWidget(tex, base: base, display: display),
+            child: buildMathWidget(raw, base: base, display: display),
           ),
         );
       }
@@ -1350,12 +1340,15 @@ class _DocumentText extends StatelessWidget {
           if (!maxW.isFinite || maxW <= 0) {
             maxW = MediaQuery.sizeOf(context).width - 48;
           }
-          return SizedBox(
-            width: maxW,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.center,
-              child: widget,
+          return Align(
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxW),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: widget,
+              ),
             ),
           );
         },
@@ -1394,8 +1387,8 @@ class _DocumentText extends StatelessWidget {
       if (RegExp(r'^\$\$[\s\S]+\$\$$').hasMatch(trimmed)) return true;
       final displayInline = RegExp(r'^\$([^$\n]+)\$$').firstMatch(trimmed);
       if (displayInline != null) {
-        final tex = FormattedText.prepareTex(displayInline.group(1)!.trim());
-        if (FormattedText.usesDisplayMath(tex)) return true;
+        final raw = displayInline.group(1)!.trim();
+        if (FormattedText.usesDisplayMath(raw)) return true;
       }
       if (RegExp(r'^(---|\*\*\*|___)$').hasMatch(trimmed)) return true;
       if (RegExp(r'^#{1,3}\s+').hasMatch(trimmed)) return true;
@@ -1441,12 +1434,12 @@ class _DocumentText extends StatelessWidget {
       final displayInline =
           RegExp(r'^\$([^$\n]+)\$$').firstMatch(trimmed);
       if (displayInline != null) {
-        final tex = FormattedText.prepareTex(displayInline.group(1)!.trim());
-        if (FormattedText.usesDisplayMath(tex)) {
+        final raw = displayInline.group(1)!.trim();
+        if (FormattedText.usesDisplayMath(raw)) {
           children.add(
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _displayMathBlock(tex),
+              child: _displayMathBlock(FormattedText.prepareTex(raw)),
             ),
           );
           continue;

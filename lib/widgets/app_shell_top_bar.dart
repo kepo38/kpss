@@ -49,7 +49,7 @@ class AppShellTopBar extends StatelessWidget {
                       onTap: onMoreTap,
                       behavior: HitTestBehavior.opaque,
                       child: const Tooltip(
-                        message: 'Ana sayfa',
+                        message: 'Stüdyo',
                         child: BrandMark.topBar(),
                       ),
                     ),
@@ -69,19 +69,32 @@ class AppShellTopBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    IconButton(
-                      tooltip: 'Daha fazla',
-                      onPressed: onMoreTap,
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                      icon: Icon(
-                        Icons.apps_outlined,
-                        color: AppTheme.mutedOnPage(context),
-                        size: 22,
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onMoreTap,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Tooltip(
+                          message: 'Stüdyo · Araçlar',
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppTheme.champagne.withValues(alpha: 0.55),
+                              ),
+                              color: AppTheme.champagne.withValues(alpha: 0.12),
+                            ),
+                            child: Icon(
+                              Icons.apps_rounded,
+                              color: AppTheme.isDark(context)
+                                  ? AppTheme.champagneLight
+                                  : const Color(0xFF8F6E32),
+                              size: 20,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     PremiumHeaderButton(

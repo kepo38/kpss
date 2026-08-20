@@ -2165,6 +2165,7 @@ class _OptionTile extends StatelessWidget {
               boxShadow: glow,
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 CircleAvatar(
                   radius: 14,

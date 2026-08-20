@@ -1,9 +1,29 @@
 @echo off
 setlocal EnableExtensions
-title Hedef Kamu - APK derle ve yukle
+title Hedef Kamu - APK + Django
 goto :main
 
 :: ===================== alt rutinler =====================
+
+:restart_django
+echo.
+echo [.] Django sunucusu yeniden baslatiliyor ^(port 8000^)...
+:: Dinleyen process'i kapat (eski runserver)
+for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":8000" ^| findstr "LISTENING"') do (
+  echo     Eski PID %%P kapatiliyor...
+  taskkill /F /PID %%P >nul 2>&1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+timeout /t 1 /nobreak >nul
+
+if not exist "D:\HEDEFKAMU\basla.bat" (
+  echo [!] basla.bat bulunamadi - Django baslatilamadi.
+  goto :eof
+)
+:: Ayri pencerede migrate + runserver (bu script durmasin)
+start "Hedef Kamu - Django Panel" /D "D:\HEDEFKAMU" cmd /k "call basla.bat"
+echo [OK] Django yeni pencerede acildi: http://127.0.0.1:8000/panel/
+goto :eof
 
 :resolve_device
 set "SERIAL="
@@ -117,7 +137,7 @@ if /I not "%~dp0"=="D:\HEDEFKAMU\" (
 
 echo.
 echo  ============================================================
-echo   Hedef Kamu - guncel RELEASE APK derle + telefona kur
+echo   Hedef Kamu - RELEASE APK derle/kur + Django yeniden baslat
 echo  ============================================================
 echo.
 echo   Telefon USB bagli, USB hata ayiklama acik olsun.
@@ -125,11 +145,13 @@ echo   "USB uzerinden yukleme" / Install via USB acik olsun.
 echo   Ekranda izin penceresi cikarsa Tamam deyin.
 echo.
 echo   Akis: derle -^> eski uygulamayi SIL -^> yeni APK kur -^> ac
+echo         -^> Django ^(basla.bat^) ayri pencerede yeniden baslar
 echo   Derleme 3-8 dk surebilir; pencereyi kapatmayin.
 echo.
 echo   Proje: %CD%
 echo   GRADLE_USER_HOME: %GRADLE_USER_HOME%
 echo   PUB_CACHE: %PUB_CACHE%
+echo   Surum: 1.0.1+2  ^(telefonda bu surum gorunmeli^)
 echo.
 
 where flutter >nul 2>&1
@@ -283,7 +305,10 @@ if errorlevel 1 (
 
 echo.
 echo [OK] Eski uygulama silindi, guncel APK kuruldu ve acildi.
+echo     Beklenen surum: 1.0.1 (versionCode 2)
+echo     Dogrula: Ayarlar ^> Uygulamalar ^> Hedef Kamu ^> Surum
 echo.
+call :restart_django
 goto :done
 
 :fail
@@ -291,6 +316,8 @@ set "EXITCODE=1"
 echo.
 echo --- Islem basarisiz. Yukaridaki [HATA] satirina bakin. ---
 echo.
+echo [.] APK adimi basarisiz olsa da Django yeniden baslatiliyor...
+call :restart_django
 
 :done
 echo.

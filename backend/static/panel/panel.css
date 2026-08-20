@@ -718,7 +718,7 @@ h2 {
 }
 .quiz-mock-opt {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 11px 12px;
   border-radius: 12px;
@@ -755,8 +755,7 @@ h2 {
   line-height: 1.35;
   font-weight: 400;
   color: #fff;
-  padding-top: 2px;
-  text-align: left;
+  text-align: center;
   overflow-wrap: break-word;
   word-break: normal;
   hyphens: none;
@@ -880,23 +879,25 @@ h2 {
 .quiz-mock-opt-text .katex-display {
   font-family: var(--exam-math);
   font-style: italic;
-  font-size: 1em;
+  font-size: 1.05em;
   margin: 0;
   display: inline;
-  text-align: left;
+  text-align: center;
 }
 .quiz-mock-stem .katex-display,
 .quiz-mock-solution .body .katex-display {
-  margin: 0.35em 0;
+  margin: 0.45em 0;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
+  font-size: 1.18em;
+  text-align: center;
 }
 
 .quiz-mock-stem .math-block,
 .quiz-mock-solution .body .math-block {
   text-align: center;
-  margin: 0.45em 0;
+  margin: 0.5em 0;
   overflow-x: auto;
   max-width: 100%;
 }

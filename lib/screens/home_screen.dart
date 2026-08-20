@@ -49,7 +49,8 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _enter = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 520),
+      duration: const Duration(milliseconds: 420),
+      value: 1.0, // Stüdyo içeriği hemen görünsün (boş ekran riski yok)
     );
     _fadeEarly = CurvedAnimation(
       parent: _enter,
@@ -73,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _enter.forward();
       _bindServicesAfterAnimationFrame();
     });
   }

@@ -304,8 +304,23 @@ void main() {
     );
     expect(FormattedText.wrapBareLatex('-1'), '-1');
     expect(FormattedText.wrapBareLatex('-2'), '-2');
+    expect(FormattedText.wrapBareLatex('-1/2'), r'$-\frac{1}{2}$');
+    expect(FormattedText.wrapBareLatex('-3/2'), r'$-\frac{3}{2}$');
+    expect(FormattedText.wrapBareLatex('1/4'), r'$\frac{1}{4}$');
+    expect(FormattedText.wrapBareLatex('3 / 4'), r'$\frac{3}{4}$');
     expect(FormattedText.wrapBareLatex(r'$Yalnız I$'), 'Yalnız I');
     expect(FormattedText.wrapBareLatex('I ve II'), 'I ve II');
+  });
+
+  test('emphasizeSignWords is no-op for exam stems', () {
+    expect(
+      FormattedText.emphasizeSignWords('x negatif bir gerçek sayı'),
+      'x negatif bir gerçek sayı',
+    );
+    expect(
+      FormattedText.normalizeMarkup('x negatif bir gerçek sayı'),
+      isNot(contains('{red}')),
+    );
   });
 
   test('replaceHlineWithColoredRule converts hline to colored rule row', () {
