@@ -131,6 +131,26 @@ class ManualQuestionService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateAnnotations({
+    required String id,
+    String? annotationJson,
+  }) async {
+    await initialize();
+    final current = _itemById(id);
+    if (current == null) return;
+    final cleaned = annotationJson?.trim();
+    final updated = current.copyWith(
+      annotationJson: cleaned,
+      clearAnnotation: cleaned == null || cleaned.isEmpty || cleaned == '[]',
+      updatedAt: DateTime.now(),
+    );
+    await LocalDatabase.instance.upsertManualWrongQuestion(updated);
+    final idx = _items.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    _items[idx] = updated;
+    notifyListeners();
+  }
+
   Future<void> remove(String id) async {
     await initialize();
     final item = _itemById(id);

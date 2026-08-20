@@ -6,7 +6,7 @@ class StorageConstants {
   static const int retentionDays = 365;
 
   static const String dbName = 'kpss_akademi.db';
-  static const int dbVersion = 3;
+  static const int dbVersion = 4;
 
   static const String tablePracticeExams = 'practice_exams';
   static const String tableWrongNotebook = 'wrong_notebook';

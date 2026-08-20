@@ -9,6 +9,7 @@ import '../screens/premium/focus_mode_screen.dart';
 import '../screens/premium/statistics_screen.dart';
 import '../screens/study_and_solve_screen.dart';
 import '../screens/wrong_questions_screen.dart';
+import '../theme/app_theme.dart';
 import 'home_module_row.dart';
 
 const _mikroOgrenmeScreen = StudyAndSolveScreen(
@@ -47,18 +48,21 @@ class HomeToolsModuleList extends StatelessWidget {
           icon: Icons.menu_book_outlined,
           title: 'Mikro Öğrenme',
           subtitle: 'Kısa anlatım, hızlı pekiştirme',
+          tint: const Color(0xFF5EEAD4),
           onTap: () => onNavigate(_mikroOgrenmeScreen),
         ),
         HomeModuleRow(
           icon: Icons.favorite_border,
           title: 'Favorilerim',
           subtitle: 'İşaretlediğin sorular',
+          tint: const Color(0xFFE879A9),
           onTap: () => onNavigate(const FavoritesScreen()),
         ),
         HomeModuleRow(
           icon: Icons.note_alt_outlined,
           title: 'Yanlış Defteri',
           subtitle: 'Testlerde yanlış yaptığın sorular',
+          tint: const Color(0xFFF87171),
           onTap: () => onNavigate(const WrongQuestionsScreen()),
         ),
         HomeModuleRow(
@@ -66,6 +70,7 @@ class HomeToolsModuleList extends StatelessWidget {
           title: 'Odak · Pomodoro',
           subtitle: 'İdeal 25 dk · derin çalışma',
           accent: true,
+          tint: const Color(0xFFFBBF24),
           onTap: () => onNavigatePremium(() => const FocusModeScreen()),
         ),
         HomeModuleRow(
@@ -73,18 +78,21 @@ class HomeToolsModuleList extends StatelessWidget {
           title: 'Performans',
           subtitle: 'Ders bazlı performans özeti',
           accent: true,
+          tint: const Color(0xFF60A5FA),
           onTap: () => onNavigate(AnalyticsHubScreen(kpssType: kpssType)),
         ),
         HomeModuleRow(
           icon: Icons.analytics_outlined,
           title: 'Deneme Analizi',
           subtitle: 'GK/GY, yayın evi, haftalık özet',
+          tint: const Color(0xFFA78BFA),
           onTap: () => onNavigatePremium(() => const StatisticsScreen()),
         ),
         HomeModuleRow(
           icon: Icons.newspaper_outlined,
           title: 'Güncel Bilgiler',
           subtitle: 'Sınava özel gelişmeler',
+          tint: const Color(0xFF34D399),
           onTap: () => onNavigate(const CurrentInfoScreen()),
         ),
         HomeModuleRow(
@@ -92,6 +100,7 @@ class HomeToolsModuleList extends StatelessWidget {
           title: 'Rozetler',
           subtitle: 'XP, seri, günlük hedef',
           accent: true,
+          tint: AppTheme.champagne,
           onTap: () => onNavigate(const BadgesScreen()),
         ),
       ],

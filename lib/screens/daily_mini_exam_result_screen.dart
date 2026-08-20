@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/savings_constants.dart';
 import '../screens/premium/premium_paywall_screen.dart';
-import '../screens/daily_mini_rewards_screen.dart';
 import '../services/daily_mini_exam_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/daily_mini_exam_logic.dart';
+import '../widgets/daily_mini_exam/daily_mini_odul_button.dart';
 import '../widgets/frosted_email.dart';
 import '../widgets/scale_button.dart';
 
@@ -51,20 +51,12 @@ class DailyMiniExamResultScreen extends StatelessWidget {
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const DailyMiniRewardsScreen(),
-                    ),
-                  );
-                },
-                child: const Text(
-                  'ÖDÜL',
-                  style: TextStyle(
-                    color: AppTheme.champagneLight,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Center(
+                  child: DailyMiniOdulButton(
+                    size: 44,
+                    onPressed: () => showDailyMiniOdulInfoCard(context),
                   ),
                 ),
               ),

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'scale_button.dart';
 
-/// Stüdyo hub modül satırı — ink zemin, champagne vurgu.
+/// Stüdyo hub modül satırı — renkli ikon kutusu + ink zemin.
 class HomeModuleRow extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -12,6 +12,7 @@ class HomeModuleRow extends StatelessWidget {
   final bool locked;
   final bool accent;
   final bool premiumTone;
+  final Color? tint;
 
   const HomeModuleRow({
     super.key,
@@ -22,14 +23,17 @@ class HomeModuleRow extends StatelessWidget {
     this.locked = false,
     this.accent = false,
     this.premiumTone = false,
+    this.tint,
   });
 
   @override
   Widget build(BuildContext context) {
     final gold = premiumTone || locked;
-    final iconColor = gold ? AppTheme.champagneLight : const Color(0xFFB8C0CC);
-    final titleColor = Colors.white.withValues(alpha: 0.94);
-    final subColor = Colors.white.withValues(alpha: 0.48);
+    final tintColor = tint ??
+        (gold ? AppTheme.champagne : AppTheme.neonEdge);
+    final iconColor = gold ? AppTheme.champagneLight : tintColor;
+    final titleColor = Colors.white.withValues(alpha: 0.96);
+    final subColor = Colors.white.withValues(alpha: 0.52);
 
     return ScaleButton(
       onPressed: onTap,
@@ -43,56 +47,53 @@ class HomeModuleRow extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: gold
                 ? [
-                    const Color(0xFF1A2438),
-                    const Color(0xFF141C2C),
-                    const Color(0xFF101824),
+                    Color.lerp(const Color(0xFF1A2438), tintColor, 0.12)!,
+                    const Color(0xFF121A28),
                   ]
                 : [
-                    const Color(0xFF161E2E),
-                    const Color(0xFF121A28),
+                    Color.lerp(const Color(0xFF182234), tintColor, 0.14)!,
+                    const Color(0xFF101824),
                   ],
           ),
           border: Border.all(
             color: gold
-                ? AppTheme.champagne.withValues(alpha: 0.38)
-                : Colors.white.withValues(alpha: 0.08),
-            width: 1,
+                ? AppTheme.champagne.withValues(alpha: 0.42)
+                : tintColor.withValues(alpha: 0.28),
+            width: 1.05,
           ),
           boxShadow: [
             BoxShadow(
-              color: gold
-                  ? AppTheme.champagne.withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.22),
-              blurRadius: gold ? 16 : 10,
-              offset: const Offset(0, 6),
+              color: tintColor.withValues(alpha: gold ? 0.14 : 0.1),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
             ),
           ],
         ),
         child: Row(
           children: [
             Container(
-              width: 46,
-              height: 46,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(14),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: gold
-                      ? [
-                          AppTheme.champagne.withValues(alpha: 0.28),
-                          AppTheme.champagne.withValues(alpha: 0.08),
-                        ]
-                      : [
-                          Colors.white.withValues(alpha: 0.1),
-                          Colors.white.withValues(alpha: 0.03),
-                        ],
+                  colors: [
+                    tintColor.withValues(alpha: 0.42),
+                    tintColor.withValues(alpha: 0.12),
+                  ],
                 ),
                 border: Border.all(
-                  color: gold
-                      ? AppTheme.champagne.withValues(alpha: 0.45)
-                      : Colors.white.withValues(alpha: 0.1),
+                  color: tintColor.withValues(alpha: 0.55),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: tintColor.withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
               child: Icon(icon, size: 22, color: iconColor),
             ),
@@ -161,9 +162,7 @@ class HomeModuleRow extends StatelessWidget {
             Icon(
               Icons.arrow_forward_ios_rounded,
               size: 13,
-              color: gold
-                  ? AppTheme.champagne.withValues(alpha: 0.7)
-                  : Colors.white.withValues(alpha: 0.28),
+              color: tintColor.withValues(alpha: 0.75),
             ),
           ],
         ),

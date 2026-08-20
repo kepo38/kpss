@@ -45,6 +45,7 @@ class QuizDrawingOverlay extends StatefulWidget {
   final List<QuizStroke> strokes;
   final ValueChanged<QuizStroke> onStrokeComplete;
   final VoidCallback onClear;
+  final VoidCallback? onUndo;
   final double scrollOffset;
 
   const QuizDrawingOverlay({
@@ -52,6 +53,7 @@ class QuizDrawingOverlay extends StatefulWidget {
     required this.strokes,
     required this.onStrokeComplete,
     required this.onClear,
+    this.onUndo,
     this.scrollOffset = 0,
   });
 
@@ -261,6 +263,19 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                           : Colors.white.withValues(alpha: 0.98),
                     ),
                   ),
+                  if (widget.onUndo != null) ...[
+                    const SizedBox(width: 4),
+                    _ToolButton(
+                      selected: false,
+                      tooltip: 'Son çizimi geri al',
+                      onTap: widget.onUndo!,
+                      child: Icon(
+                        Icons.undo_rounded,
+                        size: 22,
+                        color: Colors.white.withValues(alpha: 0.98),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 4),
                   _ToolButton(
                     selected: false,

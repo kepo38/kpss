@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
-import 'premium_header_button.dart';
 import 'scale_button.dart';
 
-/// Stüdyo hub hero — marka + kısa vaat + Pro CTA.
+/// Stüdyo hub hero — renkli ışık + üstte Premium’u keşfet.
 class HomeHeroSection extends StatelessWidget {
   final double topPad;
   final ValueNotifier<bool> isPremium;
@@ -28,38 +27,58 @@ class HomeHeroSection extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Positioned(
-          top: -80,
-          right: -50,
+          top: -90,
+          right: -40,
           child: IgnorePointer(
             child: Container(
-              width: 240,
-              height: 240,
+              width: 260,
+              height: 260,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    AppTheme.champagne.withValues(alpha: 0.22),
-                    AppTheme.champagne.withValues(alpha: 0.05),
+                    AppTheme.champagne.withValues(alpha: 0.32),
+                    const Color(0xFFE8A87C).withValues(alpha: 0.12),
                     Colors.transparent,
                   ],
-                  stops: const [0, 0.42, 1],
+                  stops: const [0, 0.45, 1],
                 ),
               ),
             ),
           ),
         ),
         Positioned(
-          top: 120,
-          left: -70,
+          top: 40,
+          left: -90,
           child: IgnorePointer(
             child: Container(
-              width: 200,
-              height: 200,
+              width: 220,
+              height: 220,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    const Color(0xFF2A3A58).withValues(alpha: 0.55),
+                    AppTheme.neonEdge.withValues(alpha: 0.28),
+                    AppTheme.neonEdge.withValues(alpha: 0.06),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 160,
+          right: 40,
+          child: IgnorePointer(
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFFE879A9).withValues(alpha: 0.2),
                     Colors.transparent,
                   ],
                 ),
@@ -68,7 +87,7 @@ class HomeHeroSection extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(8, topPad + 2, 16, 20),
+          padding: EdgeInsets.fromLTRB(8, topPad + 2, 12, 22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -89,16 +108,101 @@ class HomeHeroSection extends StatelessWidget {
                     ValueListenableBuilder<bool>(
                       valueListenable: isPremium,
                       builder: (context, premium, _) {
-                        return PremiumHeaderButton(
-                          isPremium: premium,
-                          onTap: premium ? null : onPremiumTap,
+                        if (premium) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 11,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppTheme.champagne.withValues(alpha: 0.5),
+                              ),
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppTheme.champagne.withValues(alpha: 0.22),
+                                  AppTheme.champagne.withValues(alpha: 0.08),
+                                ],
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.verified_rounded,
+                                  size: 15,
+                                  color: AppTheme.champagneLight,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Premium',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.champagneLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return ScaleButton(
+                          onPressed: onPremiumTap,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFFFFF4DE),
+                                  Color(0xFFE8C878),
+                                  AppTheme.champagne,
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.champagne.withValues(
+                                    alpha: 0.42,
+                                  ),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.workspace_premium_rounded,
+                                  size: 16,
+                                  color: AppTheme.ink,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Premium’u keşfet',
+                                  style: TextStyle(
+                                    fontFamily: 'serif',
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.ink,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
                       },
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 22),
               FadeTransition(
                 opacity: fadeEarly,
                 child: Padding(
@@ -106,124 +210,48 @@ class HomeHeroSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        BrandConstants.appName.toUpperCase(),
-                        style: TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 3.2,
-                          color: AppTheme.champagne.withValues(alpha: 0.9),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppTheme.neonEdge.withValues(alpha: 0.45),
+                          ),
+                          color: AppTheme.neonEdge.withValues(alpha: 0.12),
+                        ),
+                        child: Text(
+                          BrandConstants.appName.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2.4,
+                            color: AppTheme.neonEdge.withValues(alpha: 0.95),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       const Text(
                         'Stüdyo',
                         style: TextStyle(
                           fontFamily: 'serif',
-                          fontSize: 40,
+                          fontSize: 44,
                           fontWeight: FontWeight.w700,
-                          height: 1.02,
-                          letterSpacing: -1.2,
+                          height: 1.0,
+                          letterSpacing: -1.4,
                           color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Çalışma araçları ve Premium özellikler tek yerde.',
+                        'Çalışma araçları ve Premium özellikler — tek parlak hub.',
                         style: TextStyle(
-                          fontSize: 14.5,
+                          fontSize: 15,
                           height: 1.4,
-                          color: Colors.white.withValues(alpha: 0.58),
+                          color: Colors.white.withValues(alpha: 0.68),
                         ),
-                      ),
-                      const SizedBox(height: 18),
-                      ValueListenableBuilder<bool>(
-                        valueListenable: isPremium,
-                        builder: (context, premium, _) {
-                          if (premium) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 9,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: AppTheme.champagne.withValues(alpha: 0.4),
-                                ),
-                                color: AppTheme.champagne.withValues(alpha: 0.1),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.verified_rounded,
-                                    size: 16,
-                                    color: AppTheme.champagneLight,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Premium aktif',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.champagneLight,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                          return ScaleButton(
-                            onPressed: onPremiumTap,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFE8D5A8),
-                                    AppTheme.champagne,
-                                    Color(0xFFA88445),
-                                  ],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.champagne.withValues(
-                                      alpha: 0.35,
-                                    ),
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 6),
-                                  ),
-                                ],
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.workspace_premium_rounded,
-                                    size: 18,
-                                    color: AppTheme.ink,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Premium’u keşfet',
-                                    style: TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.ink,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
                       ),
                     ],
                   ),

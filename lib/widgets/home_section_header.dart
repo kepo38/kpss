@@ -7,16 +7,19 @@ class HomeSectionHeader extends StatelessWidget {
   final String title;
   final String? eyebrow;
   final Widget? trailing;
+  final Color? accent;
 
   const HomeSectionHeader(
     this.title, {
     super.key,
     this.eyebrow,
     this.trailing,
+    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = accent ?? AppTheme.champagne;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -25,14 +28,27 @@ class HomeSectionHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (eyebrow != null && eyebrow!.isNotEmpty) ...[
-                Text(
-                  eyebrow!.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                    color: AppTheme.champagne.withValues(alpha: 0.75),
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(99),
+                        color: accentColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      eyebrow!.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                        color: accentColor.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
               ],

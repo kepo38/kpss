@@ -7,6 +7,8 @@ class ManualQuestionModel {
   final String? subject;
   final String? topic;
   final String? note;
+  /// Normalize edilmiş çizim JSON (kalem notları).
+  final String? annotationJson;
   final ManualQuestionStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -18,6 +20,7 @@ class ManualQuestionModel {
     this.subject,
     this.topic,
     this.note,
+    this.annotationJson,
     this.status = ManualQuestionStatus.fresh,
     required this.createdAt,
     required this.updatedAt,
@@ -37,6 +40,11 @@ class ManualQuestionModel {
 
   bool get hasNote => noteText.isNotEmpty;
 
+  bool get hasAnnotation {
+    final raw = annotationJson?.trim() ?? '';
+    return raw.isNotEmpty && raw != '[]';
+  }
+
   ManualQuestionModel copyWith({
     String? id,
     String? userId,
@@ -47,6 +55,8 @@ class ManualQuestionModel {
     bool clearTopic = false,
     String? note,
     bool clearNote = false,
+    String? annotationJson,
+    bool clearAnnotation = false,
     ManualQuestionStatus? status,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -58,6 +68,8 @@ class ManualQuestionModel {
       subject: clearSubject ? null : (subject ?? this.subject),
       topic: clearTopic ? null : (topic ?? this.topic),
       note: clearNote ? null : (note ?? this.note),
+      annotationJson:
+          clearAnnotation ? null : (annotationJson ?? this.annotationJson),
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

@@ -16,17 +16,6 @@ class WrongNotebookEmptyState extends StatelessWidget {
     this.kpssType = KpssType.lisans,
   });
 
-  Future<void> _openSubject(BuildContext context, KpssSubject subject) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SubjectTopicsScreen(
-          kpssType: kpssType,
-          subject: subject,
-        ),
-      ),
-    );
-  }
-
   Future<void> _openStudyHub(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -63,21 +52,6 @@ class WrongNotebookEmptyState extends StatelessWidget {
                 label: 'Derslerden test çöz',
                 subtitle: 'Yanlış yaptığın sorular otomatik burada toplanır',
                 onTap: () => _openStudyHub(context),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => _openSubject(context, suggested),
-              style: TextButton.styleFrom(
-                foregroundColor: AppTheme.champagne,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              ),
-              child: Text(
-                '${suggested.name} dersine git',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
-                ),
               ),
             ),
           ],

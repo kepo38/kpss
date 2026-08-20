@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// Normal testte defterdeki soru açılınca 3 sn ortada premium toast.
+/// Normal testte defterdeki soru açılınca 1 sn gecikmeyle ortada premium toast.
 class QuizWrongNotebookBanner extends StatelessWidget {
   final bool visible;
 
@@ -16,11 +16,11 @@ class QuizWrongNotebookBanner extends StatelessWidget {
     return IgnorePointer(
       child: AnimatedOpacity(
         opacity: visible ? 1 : 0,
-        duration: const Duration(milliseconds: 280),
+        duration: const Duration(milliseconds: 520),
         curve: Curves.easeOutCubic,
         child: AnimatedScale(
           scale: visible ? 1 : 0.94,
-          duration: const Duration(milliseconds: 280),
+          duration: const Duration(milliseconds: 520),
           curve: Curves.easeOutCubic,
           child: Align(
             alignment: Alignment.center,
@@ -103,7 +103,7 @@ class QuizWrongNotebookBanner extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Daha önce yanlış işaretledin',
+                          'Daha önce yanlış yapmıştın',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 11,

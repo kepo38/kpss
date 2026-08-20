@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../constants/daily_mini_exam_constants.dart';
 import '../../models/quiz_result.dart';
-import '../../screens/daily_mini_exam_result_screen.dart';
 import '../../screens/daily_mini_rewards_screen.dart';
 import '../../screens/profile_screen.dart';
 import '../../screens/quiz_screen.dart';
@@ -20,6 +19,7 @@ import 'daily_mini_exam_header.dart';
 import 'daily_mini_exam_leaderboard.dart';
 import 'daily_mini_exam_podium_share.dart';
 import 'daily_mini_exam_subjects.dart';
+import 'daily_mini_odul_button.dart';
 
 /// Ana sayfa kahraman kartı — günün 20 soruluk ücretsiz mini denemesi.
 class DailyMiniExamCard extends StatefulWidget {
@@ -145,14 +145,8 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
   }
 
   Future<void> _openResult() async {
-    final service = DailyMiniExamService.instance;
-    final attempt = service.attempt;
-    if (attempt == null) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const DailyMiniExamResultScreen(),
-      ),
-    );
+    // Günlük kürsü kartta zaten var; EN BAŞARILILAR → hafta/ay ödül sıralaması.
+    await _openRewards();
   }
 
   Future<void> _openRewards() async {
@@ -161,6 +155,10 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
         builder: (_) => const DailyMiniRewardsScreen(),
       ),
     );
+  }
+
+  Future<void> _openOdulInfo() async {
+    await showDailyMiniOdulInfoCard(context);
   }
 
   Future<void> _startOrResume() async {
@@ -424,34 +422,11 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const DailyMiniExamHeader(),
-                          const SizedBox(height: 6),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: _openRewards,
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.champagneLight,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 0,
-                                ),
-                              ),
-                              icon: const Icon(Icons.emoji_events_outlined, size: 16),
-                              label: const Text(
-                                'ÖDÜL',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                            ),
-                          ),
                           if (!submittedRanking) ...[
                             const SizedBox(height: 10),
                             const DailyMiniExamSubjectMix(),
                             if (service.leaderboard.isNotEmpty) ...[
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 22),
                               DailyMiniExamLeaderboardPreview(
                                 leaders: service.leaderboard,
                                 participantCount: service.podiumParticipantCount,
@@ -463,6 +438,18 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                                 footer: service.showingYesterdayPodium
                                     ? 'Yeni deneme ${DailyMiniExamConstants.opensClock}\'de açılır.'
                                     : 'Denemeyi bitirince sıralamana burada yer verilir.',
+                                onOdul: _openOdulInfo,
+                              ),
+                            ] else ...[
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: DailyMiniOdulHangBadge(
+                                    onPressed: _openOdulInfo,
+                                  ),
+                                ),
                               ),
                             ],
                             const SizedBox(height: 14),
@@ -480,7 +467,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                           ] else if (attempt != null) ...[
                             const SizedBox(height: 10),
                             const DailyMiniExamSubjectMix(),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 22),
                             DailyMiniExamCompletedLeaderboard(
                               shareBoundaryKey: _podiumShareKey,
                               rank: rank,
@@ -491,6 +478,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                               trend: service.rankTrend,
                               onShare: _shareRank,
                               onDetails: _openResult,
+                              onOdul: _openOdulInfo,
                               shareEnabled: service.canShareRank,
                             ),
                             if (service.canResumeQuiz && _window.isOpen) ...[

@@ -7,6 +7,7 @@ import '../../services/daily_mini_exam_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/daily_mini_exam_logic.dart';
 import 'daily_mini_exam_rank_reveal.dart';
+import 'daily_mini_odul_button.dart';
 
 class DailyMiniExamCompletedPending extends StatelessWidget {
   final VoidCallback onRefresh;
@@ -64,6 +65,7 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
   final int totalQuestions;
   final String headline;
   final String footer;
+  final VoidCallback? onOdul;
 
   const DailyMiniExamLeaderboardPreview({
     super.key,
@@ -72,6 +74,7 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
     required this.totalQuestions,
     this.headline = 'BUGÜNÜN KÜRSÜSÜ',
     this.footer = 'Denemeyi bitirince sıralamana burada yer verilir.',
+    this.onOdul,
   });
 
   @override
@@ -79,6 +82,7 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
     final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
 
     return _LeaderboardShell(
+      onOdul: onOdul,
       child: Column(
         children: [
           Row(
@@ -96,6 +100,7 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 44),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -145,6 +150,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
   final DailyMiniRankTrend trend;
   final VoidCallback onShare;
   final VoidCallback onDetails;
+  final VoidCallback onOdul;
   final GlobalKey shareBoundaryKey;
   final bool shareEnabled;
 
@@ -157,6 +163,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
     required this.trend,
     required this.onShare,
     required this.onDetails,
+    required this.onOdul,
     required this.shareBoundaryKey,
     this.shareEnabled = false,
   });
@@ -166,6 +173,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
     final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
 
     return _LeaderboardShell(
+      onOdul: onOdul,
       child: Column(
         children: [
           Stack(
@@ -199,6 +207,21 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                                 ),
                               ),
                             ),
+                            IconButton(
+                              onPressed: shareEnabled ? onShare : null,
+                              tooltip: 'Sıralamanı paylaş',
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
+                              ),
+                              icon: const Icon(
+                                Icons.ios_share_rounded,
+                                size: 18,
+                                color: AppTheme.champagneLight,
+                              ),
+                            ),
                             const SizedBox(width: 36),
                           ],
                         ),
@@ -217,20 +240,6 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                       ],
                     ),
                   ],
-                ),
-              ),
-              Positioned(
-                top: 0,
-                right: 0,
-                child: IconButton(
-                  onPressed: shareEnabled ? onShare : null,
-                  tooltip: 'Sıralamanı paylaş',
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(
-                    Icons.ios_share_rounded,
-                    size: 18,
-                    color: AppTheme.champagneLight,
-                  ),
                 ),
               ),
             ],
@@ -256,37 +265,50 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
 
 class _LeaderboardShell extends StatelessWidget {
   final Widget child;
+  final VoidCallback? onOdul;
 
-  const _LeaderboardShell({required this.child});
+  const _LeaderboardShell({required this.child, this.onOdul});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFE8C878).withValues(alpha: 0.68),
-          width: 1.15,
-        ),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF3D3218),
-            Color(0xFF261F0F),
-            Color(0xFF151107),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.neonGold.withValues(alpha: 0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFE8C878).withValues(alpha: 0.68),
+              width: 1.15,
+            ),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF3D3218),
+                Color(0xFF261F0F),
+                Color(0xFF151107),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.neonGold.withValues(alpha: 0.22),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: child,
+          child: child,
+        ),
+        if (onOdul != null)
+          Positioned(
+            top: -22,
+            right: 14,
+            child: DailyMiniOdulHangBadge(onPressed: onOdul!),
+          ),
+      ],
     );
   }
 }

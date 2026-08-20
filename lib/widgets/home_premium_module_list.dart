@@ -7,6 +7,7 @@ import '../screens/premium/leaderboard_screen.dart';
 import '../screens/premium/offline_pack_screen.dart';
 import '../screens/premium/task_management_screen.dart';
 import '../screens/premium/topic_tracking_screen.dart';
+import '../theme/app_theme.dart';
 import 'home_module_row.dart';
 
 /// Stüdyo Premium suite listesi.
@@ -37,6 +38,7 @@ class HomePremiumModuleList extends StatelessWidget {
               : 'Yalnızca yıllık Premium',
           locked: !canOffline,
           premiumTone: true,
+          tint: AppTheme.champagne,
           onTap: () => onNavigate(const OfflinePackScreen()),
         ),
         HomeModuleRow(
@@ -45,6 +47,7 @@ class HomePremiumModuleList extends StatelessWidget {
           subtitle: 'Müfredat ilerlemeni işaretle',
           locked: !isPremium,
           premiumTone: true,
+          tint: const Color(0xFF5EEAD4),
           onTap: () => onNavigatePremium(
             () => TopicTrackingScreen(kpssType: kpssType),
           ),
@@ -55,6 +58,7 @@ class HomePremiumModuleList extends StatelessWidget {
           subtitle: 'Haftalık plan ve öncelikler',
           locked: !isPremium,
           premiumTone: true,
+          tint: const Color(0xFF60A5FA),
           onTap: () => onNavigatePremium(() => const TaskManagementScreen()),
         ),
         HomeModuleRow(
@@ -63,6 +67,7 @@ class HomePremiumModuleList extends StatelessWidget {
           subtitle: 'Cihazlar arası senkron',
           locked: !isPremium,
           premiumTone: true,
+          tint: const Color(0xFFA78BFA),
           onTap: () => onNavigatePremium(() => const CloudSyncScreen()),
         ),
         HomeModuleRow(
@@ -71,6 +76,7 @@ class HomePremiumModuleList extends StatelessWidget {
           subtitle: 'Haftalık ve aylık doğru',
           locked: !isPremium,
           premiumTone: true,
+          tint: const Color(0xFFFBBF24),
           onTap: () => onNavigatePremium(() => const LeaderboardScreen()),
         ),
       ],

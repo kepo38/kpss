@@ -69,37 +69,58 @@ class AppShellTopBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    PremiumHeaderButton(
+                      isPremium: premium,
+                      onTap: premium ? null : onPremiumTap,
+                    ),
+                    const SizedBox(width: 8),
                     Material(
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: onMoreTap,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(999),
                         child: Tooltip(
-                          message: 'Stüdyo · Araçlar',
+                          message: 'Stüdyo · Araçlar & Premium',
                           child: Container(
-                            margin: const EdgeInsets.only(right: 6),
-                            padding: const EdgeInsets.all(7),
+                            width: 36,
+                            height: 36,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: AppTheme.champagne.withValues(alpha: 0.55),
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: AppTheme.isDark(context)
+                                    ? const [
+                                        Color(0xFF2A3548),
+                                        Color(0xFF1A2436),
+                                      ]
+                                    : const [
+                                        Color(0xFFFFF8EE),
+                                        Color(0xFFF0E0BC),
+                                      ],
                               ),
-                              color: AppTheme.champagne.withValues(alpha: 0.12),
+                              border: Border.all(
+                                color: AppTheme.champagne.withValues(alpha: 0.65),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.champagne.withValues(alpha: 0.28),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: Icon(
-                              Icons.apps_rounded,
+                              Icons.auto_awesome_rounded,
+                              size: 18,
                               color: AppTheme.isDark(context)
                                   ? AppTheme.champagneLight
                                   : const Color(0xFF8F6E32),
-                              size: 20,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    PremiumHeaderButton(
-                      isPremium: premium,
-                      onTap: premium ? null : onPremiumTap,
                     ),
                   ],
                 );

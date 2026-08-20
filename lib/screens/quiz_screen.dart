@@ -121,6 +121,7 @@ class _QuizScreenState extends State<QuizScreen>
   bool _noteCardOpen = false;
   bool _showWrongNotebookHint = false;
   Timer? _wrongNotebookHintTimer;
+  Timer? _wrongNotebookHintDelayTimer;
   static const _maxStrokesPerQuestion = 80;
   final ScrollController _scrollController = ScrollController();
 
@@ -209,6 +210,7 @@ class _QuizScreenState extends State<QuizScreen>
   void dispose() {
     ContentBankService.instance.removeListener(_onContentBankUpdated);
     _wrongNotebookHintTimer?.cancel();
+    _wrongNotebookHintDelayTimer?.cancel();
     _ticker?.cancel();
     _flashCtrl.dispose();
     _scrollController.dispose();
@@ -257,14 +259,20 @@ class _QuizScreenState extends State<QuizScreen>
 
   void _refreshWrongNotebookHint() {
     _wrongNotebookHintTimer?.cancel();
+    _wrongNotebookHintDelayTimer?.cancel();
+    _showWrongNotebookHint = false;
     final hide = widget.fromWrongNotebook || widget.suppressWrongNotebookHint;
     final inNotebook = !hide &&
         ContentBankService.instance.isInWrongNotebook(_currentQuestion.id);
-    _showWrongNotebookHint = inNotebook;
     if (!inNotebook) return;
-    _wrongNotebookHintTimer = Timer(const Duration(seconds: 3), () {
+    // Soru geldikten 1 sn sonra yumuşak görünüm.
+    _wrongNotebookHintDelayTimer = Timer(const Duration(seconds: 1), () {
       if (!mounted) return;
-      setState(() => _showWrongNotebookHint = false);
+      setState(() => _showWrongNotebookHint = true);
+      _wrongNotebookHintTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        setState(() => _showWrongNotebookHint = false);
+      });
     });
   }
 

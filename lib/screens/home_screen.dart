@@ -139,14 +139,15 @@ class _HomeScreenState extends State<HomeScreen>
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
+              Color(0xFF1C2A44),
               Color(0xFF152038),
               AppTheme.ink,
-              Color(0xFF090E18),
+              Color(0xFF0A101C),
             ],
-            stops: [0.0, 0.42, 1.0],
+            stops: [0.0, 0.28, 0.62, 1.0],
           ),
         ),
         child: CustomScrollView(
@@ -169,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: const HomeSectionHeader(
                     'Çalışma araçları',
                     eyebrow: 'Ücretsiz',
+                    accent: Color(0xFF5EEAD4),
                   ),
                 ),
               ),
@@ -198,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen>
                       return HomeSectionHeader(
                         'Premium suite',
                         eyebrow: premium ? 'Dahil' : 'Kilidi aç',
+                        accent: AppTheme.champagne,
                         trailing: Icon(
                           premium
                               ? Icons.verified_rounded
@@ -240,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen>
                     icon: Icons.person_outline_rounded,
                     title: 'Profil',
                     subtitle: 'Hesap · ${BrandConstants.appName}',
+                    tint: const Color(0xFF94A3B8),
                     onTap: () => _navigateTo(ProfileScreen(user: widget.user)),
                   ),
                 ),

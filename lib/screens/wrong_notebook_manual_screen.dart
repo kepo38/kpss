@@ -9,6 +9,7 @@ import '../services/kpss_preference_service.dart';
 import '../services/manual_question_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
+import '../widgets/wrong_notebook/manual_question_annotate_viewer.dart';
 import '../widgets/wrong_notebook/wrong_notebook_header.dart';
 import '../widgets/wrong_notebook/wrong_notebook_manual_card.dart';
 import '../widgets/wrong_notebook/wrong_notebook_manual_meta_sheet.dart';
@@ -233,37 +234,8 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
     await ManualQuestionService.instance.remove(item.id);
   }
 
-  void _openImage(String imagePath) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return Dialog.fullscreen(
-          child: Stack(
-            children: [
-              Center(
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 4,
-                  child: Image.file(File(imagePath)),
-                ),
-              ),
-              SafeArea(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+  void _openImage(ManualQuestionModel item) {
+    unawaited(ManualQuestionAnnotateViewer.open(context, item));
   }
 
   @override
@@ -372,8 +344,7 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
                                 for (final item in entry.value)
                                   WrongNotebookManualCard(
                                     item: item,
-                                    onTapImage: () =>
-                                        _openImage(item.imagePath),
+                                    onTapImage: () => _openImage(item),
                                     onRemove: () => _confirmRemove(item),
                                     onStatusChanged: (status) {
                                       unawaited(

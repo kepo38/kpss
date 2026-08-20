@@ -167,12 +167,19 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
             const SizedBox(height: 24),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.05),
+                    Colors.white.withValues(alpha: 0.02),
+                  ],
                 ),
               ),
               child: Column(
@@ -194,8 +201,8 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                       borderRadius: BorderRadius.circular(12),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 4,
+                          vertical: 14,
+                          horizontal: 2,
                         ),
                         child: Row(
                           children: [
@@ -207,8 +214,9 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                                     'Konuyu öğren',
                                     style: TextStyle(
                                       fontFamily: 'serif',
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.3,
                                       color: Colors.white,
                                     ),
                                   ),
@@ -216,18 +224,35 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                                   Text(
                                     learnSubtitle,
                                     style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white.withValues(alpha: 0.45),
+                                      fontSize: 12.5,
+                                      color: Colors.white.withValues(alpha: 0.48),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            Icon(
-                              Icons.menu_book_outlined,
-                              color: canOpenLessons
-                                  ? AppTheme.neonEdge.withValues(alpha: 0.8)
-                                  : Colors.white.withValues(alpha: 0.25),
+                            Container(
+                              width: 40,
+                              height: 40,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: canOpenLessons
+                                    ? AppTheme.champagne.withValues(alpha: 0.14)
+                                    : Colors.white.withValues(alpha: 0.04),
+                                border: Border.all(
+                                  color: canOpenLessons
+                                      ? AppTheme.champagne.withValues(alpha: 0.45)
+                                      : Colors.white.withValues(alpha: 0.1),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.menu_book_rounded,
+                                size: 20,
+                                color: canOpenLessons
+                                    ? AppTheme.champagneLight
+                                    : Colors.white.withValues(alpha: 0.25),
+                              ),
                             ),
                           ],
                         ),
@@ -235,8 +260,17 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                     ),
                   ),
                   if (summaryCards.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    TopicSummarySwipeDeck(cards: summaryCards),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Divider(
+                        height: 1,
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    TopicSummarySwipeDeck(
+                      cards: summaryCards,
+                      embedded: true,
+                    ),
                   ],
                 ],
               ),

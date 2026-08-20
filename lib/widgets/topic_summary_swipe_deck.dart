@@ -8,10 +8,13 @@ import 'favorite_heart_button.dart';
 /// Konu detayında Tinder tarzı özet kart destesi.
 class TopicSummarySwipeDeck extends StatefulWidget {
   final List<TopicSummaryCardModel> cards;
+  /// true: Konuyu öğren bölümünün içinde — ayrı büyük başlık yok.
+  final bool embedded;
 
   const TopicSummarySwipeDeck({
     super.key,
     required this.cards,
+    this.embedded = false,
   });
 
   @override
@@ -73,28 +76,66 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text(
-                  'Özet kartlar',
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+            if (widget.embedded)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(99),
+                        color: AppTheme.champagne,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ÖZET',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        letterSpacing: 1.6,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.champagne.withValues(alpha: 0.95),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${_queue.length} / ${widget.cards.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.45),
+                      ),
+                    ),
+                  ],
                 ),
-                const Spacer(),
-                Text(
-                  '${_queue.length} kart',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withValues(alpha: 0.45),
-                  ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Özet kartlar',
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${_queue.length} kart',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.45),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
+              ),
             SizedBox(
               height: 248,
               child: GestureDetector(
@@ -331,23 +372,30 @@ class SummaryCardFace extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 10, 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppTheme.inkSoft,
-            AppTheme.ink.withValues(alpha: 0.92),
+            Color(0xFF243048),
+            Color(0xFF162033),
+            Color(0xFF0E1524),
           ],
         ),
         border: Border.all(
-          color: AppTheme.champagne.withValues(alpha: 0.35),
+          color: AppTheme.champagne.withValues(alpha: 0.42),
+          width: 1.15,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.28),
+            color: AppTheme.champagne.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -357,47 +405,101 @@ class SummaryCardFace extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(99),
-                  color: AppTheme.champagne.withValues(alpha: 0.16),
-                ),
-                child: Text(
-                  card.kindLabel,
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.champagneLight,
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.champagne.withValues(alpha: 0.28),
+                          AppTheme.champagne.withValues(alpha: 0.1),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: AppTheme.champagne.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _kindIcon(card.kind),
+                          size: 12,
+                          color: AppTheme.champagneLight,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          card.kindLabel.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.7,
+                            color: AppTheme.champagneLight,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const Spacer(),
               if (showHeart)
                 ListenableBuilder(
                   listenable: SummaryCardProgressService.instance,
                   builder: (context, _) {
-                    return FavoriteHeartButton(
-                      isFavorite: SummaryCardProgressService.instance
-                          .isFavorite(card.id),
-                      onToggle: () async {
-                        await SummaryCardProgressService.instance
-                            .toggleFavorite(card.id);
-                      },
+                    final fav = SummaryCardProgressService.instance
+                        .isFavorite(card.id);
+                    return Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.06),
+                        border: Border.all(
+                          color: fav
+                              ? const Color(0xFFF87171).withValues(alpha: 0.55)
+                              : Colors.white.withValues(alpha: 0.14),
+                        ),
+                      ),
+                      child: FavoriteHeartButton(
+                        isFavorite: fav,
+                        onToggle: () async {
+                          await SummaryCardProgressService.instance
+                              .toggleFavorite(card.id);
+                        },
+                      ),
                     );
                   },
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.champagne.withValues(alpha: 0.45),
+                  AppTheme.champagne.withValues(alpha: 0.05),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
           Text(
             card.title,
             style: const TextStyle(
               fontFamily: 'serif',
-              fontSize: 20,
+              fontSize: 21,
+              height: 1.15,
               fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
               color: Colors.white,
             ),
           ),
@@ -421,7 +523,7 @@ class SummaryCardFace extends StatelessWidget {
               card.body,
               style: TextStyle(
                 fontSize: 14.5,
-                height: 1.4,
+                height: 1.42,
                 color: Colors.white.withValues(alpha: 0.78),
               ),
             ),
@@ -430,4 +532,10 @@ class SummaryCardFace extends StatelessWidget {
       ),
     );
   }
+
+  static IconData _kindIcon(SummaryCardKind kind) => switch (kind) {
+        SummaryCardKind.formula => Icons.functions_rounded,
+        SummaryCardKind.tip => Icons.lightbulb_outline_rounded,
+        SummaryCardKind.osym => Icons.school_outlined,
+      };
 }

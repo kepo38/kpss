@@ -92,6 +92,12 @@ class LocalDatabase {
     if (oldVersion < 3) {
       await _createManualWrongQuestionsTable(db);
     }
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE ${StorageConstants.tableManualWrongQuestions} '
+        'ADD COLUMN annotation_json TEXT',
+      );
+    }
   }
 
   Future<void> _createStudyNotesTable(Database db) => db.execute('''
@@ -114,6 +120,7 @@ class LocalDatabase {
       subject TEXT,
       topic TEXT,
       note TEXT,
+      annotation_json TEXT,
       status TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -578,6 +585,7 @@ class LocalDatabase {
         'subject': item.subject,
         'topic': item.topic,
         'note': item.note,
+        'annotation_json': item.annotationJson,
         'status': item.status.name,
         'created_at': item.createdAt.toIso8601String(),
         'updated_at': item.updatedAt.toIso8601String(),
@@ -591,6 +599,7 @@ class LocalDatabase {
       subject: row['subject'] as String?,
       topic: row['topic'] as String?,
       note: row['note'] as String?,
+      annotationJson: row['annotation_json'] as String?,
       status: ManualQuestionStatus.values.byName(row['status']! as String),
       createdAt: DateTime.parse(row['created_at']! as String),
       updatedAt: DateTime.parse(row['updated_at']! as String),

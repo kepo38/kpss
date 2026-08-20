@@ -127,28 +127,50 @@ class _SplashAppIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // İkon dairenin tamamını doldurur; arkada ayrı siyah gölge halkası yok.
+    // app_icon, siyah daire gölgenin içinde ortalı ve tam kaplar (soluk).
     return SizedBox(
       width: _size,
       height: _size,
-      child: ClipOval(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            const ColoredBox(color: AppTheme.ink),
-            ColorFiltered(
-              colorFilter: ColorFilter.mode(
-                const Color(0xFF9AA6B0).withValues(alpha: 0.88),
-                BlendMode.modulate,
-              ),
-              child: Image.asset(
-                BrandConstants.appIconAsset,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.high,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: _size,
+            height: _size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF05070C),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  blurRadius: 32,
+                  spreadRadius: 4,
+                ),
+              ],
+            ),
+          ),
+          ClipOval(
+            child: SizedBox(
+              width: _size,
+              height: _size,
+              child: ColorFiltered(
+                colorFilter: ColorFilter.mode(
+                  const Color(0xFF7D8B94).withValues(alpha: 0.72),
+                  BlendMode.modulate,
+                ),
+                child: Opacity(
+                  opacity: 0.68,
+                  child: Image.asset(
+                    BrandConstants.appIconAsset,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
