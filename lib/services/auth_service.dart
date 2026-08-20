@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
+import 'content_bank_service.dart';
 import 'daily_mini_exam_service.dart';
 import '../models/user_model.dart';
 import 'ad_manager.dart';
@@ -16,7 +17,10 @@ import 'app_preferences.dart';
 import 'database_service.dart';
 import 'play_billing_service.dart';
 import 'premium_service.dart';
+import 'manual_question_service.dart';
 import 'question_rating_service.dart';
+import 'question_note_service.dart';
+import 'summary_card_progress_service.dart';
 
 /// Firebase anonim oturum + isteğe bağlı Google hesabı bağlama.
 class AuthService extends ChangeNotifier {
@@ -117,6 +121,7 @@ class AuthService extends ChangeNotifier {
     _lastError = hint;
     await _persist();
     notifyListeners();
+    _notifyUserScopedServices();
     return true;
   }
 
@@ -346,12 +351,10 @@ class AuthService extends ChangeNotifier {
             }
           } catch (e2) {
             debugPrint('FirebaseAuth fallback signIn: $e2');
-            _lastError =
-                'Google hesabı bağlanamadı. Tekrar deneyin.';
+            _lastError = 'Google hesabı bağlanamadı. Tekrar deneyin.';
             return false;
           }
-        } else
-        if (!isAnonymous) {
+        } else if (!isAnonymous) {
           debugPrint('FirebaseAuth atlandı: $e');
         } else {
           _lastError = 'Google hesabı bağlanamadı. Tekrar deneyin.';
@@ -369,13 +372,13 @@ class AuthService extends ChangeNotifier {
       return _exchangeWithBackend(
         idToken: idToken,
         accessToken: accessToken,
+        displayName: googleUser.displayName,
       );
     } catch (e) {
       debugPrint('Google giriş: $e');
       final msg = e.toString();
       if (msg.contains('ApiException: 10') || msg.contains('sign_in_failed')) {
-        _lastError =
-            'Google girişi yapılandırılmamış (SHA-1 / OAuth). '
+        _lastError = 'Google girişi yapılandırılmamış (SHA-1 / OAuth). '
             'Güncel google-services.json ile uygulamayi-yukle.bat çalıştırın. '
             'Detay: GOOGLE_GIRIS.md';
       } else if (msg.contains('SocketException') ||
@@ -397,8 +400,10 @@ class AuthService extends ChangeNotifier {
   Future<bool> _exchangeWithBackend({
     String? idToken,
     String? accessToken,
+    String? displayName,
   }) async {
     try {
+      final trimmedName = displayName?.trim();
       final res = await http
           .post(
             ApiConfig.authGoogleUri(),
@@ -410,6 +415,8 @@ class AuthService extends ChangeNotifier {
               if (idToken != null && idToken.isNotEmpty) 'id_token': idToken,
               if (accessToken != null && accessToken.isNotEmpty)
                 'access_token': accessToken,
+              if (trimmedName != null && trimmedName.isNotEmpty)
+                'display_name': trimmedName,
             }),
           )
           .timeout(const Duration(seconds: 5));
@@ -442,7 +449,7 @@ class AuthService extends ChangeNotifier {
       await _persist();
       _syncPremiumSideEffects();
       notifyListeners();
-      unawaited(DailyMiniExamService.instance.onAuthSessionChanged());
+      _notifyUserScopedServices();
       return true;
     } catch (e) {
       debugPrint('Auth exchange: $e');
@@ -470,7 +477,7 @@ class AuthService extends ChangeNotifier {
     await _clearLocal();
     notifyListeners();
     await ensureAnonymousSession();
-    unawaited(DailyMiniExamService.instance.onAuthSessionChanged());
+    _notifyUserScopedServices();
   }
 
   Future<void> _persist() async {
@@ -499,5 +506,13 @@ class AuthService extends ChangeNotifier {
     if (!PlayBillingService.instance.premiumNotifier.value) {
       AdManager.instance.setPremium(PremiumService.instance.isPremium);
     }
+  }
+
+  void _notifyUserScopedServices() {
+    unawaited(ContentBankService.instance.onUserSessionChanged());
+    unawaited(ManualQuestionService.instance.onUserSessionChanged());
+    unawaited(QuestionNoteService.instance.onUserSessionChanged());
+    unawaited(SummaryCardProgressService.instance.onUserSessionChanged());
+    unawaited(DailyMiniExamService.instance.onAuthSessionChanged());
   }
 }

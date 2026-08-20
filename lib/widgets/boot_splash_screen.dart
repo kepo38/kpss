@@ -81,14 +81,20 @@ class _BootSplashScreenState extends State<BootSplashScreen>
               child: Column(
                 children: [
                   const Spacer(flex: 3),
-                  const BrandMark(
-                    dark: true,
-                    logoSize: 56,
-                    alignment: CrossAxisAlignment.center,
+                  Transform.translate(
+                    offset: const Offset(0, -40),
+                    child: const BrandMark(
+                      dark: true,
+                      showLogo: false,
+                      logoSize: 56,
+                      alignment: CrossAxisAlignment.center,
+                      line1FontSize: 26,
+                      line2FontSize: 14,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   const _SplashAppIcon(),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 52),
                   const Text(
                     'Ataman Gerçekleşiyor',
                     textAlign: TextAlign.center,
@@ -103,7 +109,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                   ),
                   const SizedBox(height: 12),
                   _PremiumSlidingLine(progress: _ctrl),
-                  const Spacer(flex: 2),
+                  const Spacer(flex: 1),
                 ],
               ),
             ),

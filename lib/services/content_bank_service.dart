@@ -12,6 +12,7 @@ import '../models/question_model.dart';
 import '../utils/daily_mission_copy.dart';
 import '../widgets/countdown_widget.dart';
 import 'user_savings_insight_service.dart';
+import 'auth_service.dart';
 import 'favorites_service.dart';
 
 /// Öğrenci tarafı soru bankası, konu testleri ve istatistikler.
@@ -27,8 +28,13 @@ class ContentBankService extends ChangeNotifier {
   static const _kWrongQuestions = 'content_wrong_question_ids';
   /// Yanlış defteri soru gövdeleri — katalog/oturum temizlenince kaybolmasın.
   static const _kWrongQuestionBodies = 'content_wrong_question_bodies';
+  /// Yanlış defterinde gösterilecek işaretlenmiş şık (soruId → A–E).
+  static const _kWrongQuestionSelections = 'content_wrong_question_selections';
+  /// Bitmiş testte yanlış kalan sorular — sonradan doğru cevap istatistiğe yazılmaz.
+  static const _kStatLockedWrongQuestions = 'content_stat_locked_wrong_questions';
   static const _kQuestions = 'content_questions';
   static const _kLessons = 'content_lessons';
+  static const _kSummaryCards = 'content_summary_cards';
   static const _kPackVersion = 'content_pack_version';
   static const _kDailyAdBonuses = 'content_daily_ad_test_bonuses';
   static const _kCatalogSubjects = 'content_catalog_subjects';
@@ -51,8 +57,13 @@ class ContentBankService extends ChangeNotifier {
   final List<TestAttemptModel> _attempts = [];
   final List<QuestionModel> _questions = [];
   final List<TopicLessonModel> _lessons = [];
+  final List<TopicSummaryCardModel> _summaryCards = [];
   final Set<String> _solvedQuestionIds = {};
   final Set<String> _wrongQuestionIds = {};
+  final Map<String, String> _wrongQuestionSelections = {};
+  final Set<String> _statLockedWrongQuestions = {};
+  final Set<String> _cachedWrongBodyIds = {};
+  String? _activeUserScopeId;
   final Map<String, int> _dailyAdBonuses = {};
   int? _packVersion;
   bool _loaded = false;
@@ -73,6 +84,83 @@ class ContentBankService extends ChangeNotifier {
 
   int get cachedQuestionCount => _questions.length;
   int get cachedTestCount => _tests.where((t) => t.published).length;
+
+  String get _userScopeId => AuthService.instance.user?.id ?? 'unknown';
+
+  String _scopedKey(String base) => '${base}_$_userScopeId';
+
+  /// Google / misafir oturumu değişince yanlış defteri verisini yeniden yükle.
+  Future<void> onUserSessionChanged() async {
+    if (!_loaded) {
+      await initialize();
+      return;
+    }
+    final scope = _userScopeId;
+    if (_activeUserScopeId == scope) return;
+    _dropCachedWrongBodies();
+    final prefs = await SharedPreferences.getInstance();
+    await _migrateLegacyWrongNotebookKeys(prefs);
+    _loadUserWrongNotebookFromPrefs(prefs);
+    notifyListeners();
+  }
+
+  void _dropCachedWrongBodies() {
+    if (_cachedWrongBodyIds.isEmpty) return;
+    _questions.removeWhere((q) => _cachedWrongBodyIds.contains(q.id));
+    _cachedWrongBodyIds.clear();
+  }
+
+  Future<void> _migrateLegacyWrongNotebookKeys(SharedPreferences prefs) async {
+    final pairs = [
+      (_kWrongQuestions, _scopedKey(_kWrongQuestions)),
+      (_kWrongQuestionBodies, _scopedKey(_kWrongQuestionBodies)),
+      (_kWrongQuestionSelections, _scopedKey(_kWrongQuestionSelections)),
+      (_kStatLockedWrongQuestions, _scopedKey(_kStatLockedWrongQuestions)),
+    ];
+    for (final pair in pairs) {
+      final legacy = pair.$1;
+      final scoped = pair.$2;
+      if (prefs.containsKey(scoped) || !prefs.containsKey(legacy)) continue;
+      final value = prefs.getString(legacy);
+      if (value != null && value.isNotEmpty) {
+        await prefs.setString(scoped, value);
+      }
+      await prefs.remove(legacy);
+    }
+  }
+
+  void _loadUserWrongNotebookFromPrefs(SharedPreferences prefs) {
+    _wrongQuestionIds.clear();
+    _wrongQuestionSelections.clear();
+    _statLockedWrongQuestions.clear();
+
+    final wrongRaw = prefs.getString(_scopedKey(_kWrongQuestions));
+    if (wrongRaw != null) {
+      final list = jsonDecode(wrongRaw) as List<dynamic>;
+      _wrongQuestionIds.addAll(list.map((e) => e.toString()));
+    }
+
+    final wrongSelRaw = prefs.getString(_scopedKey(_kWrongQuestionSelections));
+    if (wrongSelRaw != null) {
+      final map = jsonDecode(wrongSelRaw) as Map<String, dynamic>;
+      _wrongQuestionSelections.addAll(
+        map.map((k, v) => MapEntry(k, v.toString())),
+      );
+    }
+
+    final statLockedRaw =
+        prefs.getString(_scopedKey(_kStatLockedWrongQuestions));
+    if (statLockedRaw != null) {
+      final list = jsonDecode(statLockedRaw) as List<dynamic>;
+      _statLockedWrongQuestions.addAll(list.map((e) => e.toString()));
+    }
+
+    _pruneSampleSeedProgress();
+    _mergeWrongQuestionBodies(
+      prefs.getString(_scopedKey(_kWrongQuestionBodies)),
+    );
+    _activeUserScopeId = _userScopeId;
+  }
 
   Future<void> initialize() async {
     if (_loaded) return;
@@ -122,14 +210,6 @@ class ContentBankService extends ChangeNotifier {
         ..addAll(list.map((e) => e.toString()));
     }
 
-    final wrongRaw = prefs.getString(_kWrongQuestions);
-    if (wrongRaw != null) {
-      final list = jsonDecode(wrongRaw) as List<dynamic>;
-      _wrongQuestionIds
-        ..clear()
-        ..addAll(list.map((e) => e.toString()));
-    }
-
     _loadDailyAdBonuses(prefs.getString(_kDailyAdBonuses));
 
     final questionsRaw = prefs.getString(_kQuestions);
@@ -153,6 +233,20 @@ class ContentBankService extends ChangeNotifier {
           list.map(
             (e) =>
                 TopicLessonModel.fromJson(Map<String, dynamic>.from(e as Map)),
+          ),
+        );
+    }
+
+    final summaryRaw = prefs.getString(_kSummaryCards);
+    if (summaryRaw != null) {
+      final list = jsonDecode(summaryRaw) as List<dynamic>;
+      _summaryCards
+        ..clear()
+        ..addAll(
+          list.map(
+            (e) => TopicSummaryCardModel.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
           ),
         );
     }
@@ -181,10 +275,9 @@ class ContentBankService extends ChangeNotifier {
       _questions.removeWhere((q) => _sampleSeedQuestionIds.contains(q.id));
     }
 
-    // Katalog/oturum sonrası kaybolan yanlış gövdelerini geri yükle.
-    final restoredBodies = _mergeWrongQuestionBodies(
-      prefs.getString(_kWrongQuestionBodies),
-    );
+    await _migrateLegacyWrongNotebookKeys(prefs);
+    _loadUserWrongNotebookFromPrefs(prefs);
+    final restoredBodies = _cachedWrongBodyIds.isNotEmpty;
 
     KpssCurriculum.loadCatalogFromJsonString(
       prefs.getString(_kCatalogSubjects),
@@ -248,6 +341,9 @@ class ContentBankService extends ChangeNotifier {
         _questions[idx] = q;
       } else {
         _questions.add(q);
+        if (_wrongQuestionIds.contains(q.id)) {
+          _cachedWrongBodyIds.add(q.id);
+        }
       }
       if (_wrongQuestionIds.contains(q.id)) touchedWrong = true;
     }
@@ -313,6 +409,13 @@ class ContentBankService extends ChangeNotifier {
           (e) => TopicLessonModel.fromJson(Map<String, dynamic>.from(e as Map)),
         )
         .toList();
+    final parserSummary = (pack['summaryCards'] as List<dynamic>? ?? const [])
+        .map(
+          (e) => TopicSummaryCardModel.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
 
     _tests
       ..clear()
@@ -325,6 +428,9 @@ class ContentBankService extends ChangeNotifier {
     _lessons
       ..clear()
       ..addAll(parserLessons);
+    _summaryCards
+      ..clear()
+      ..addAll(parserSummary);
 
     final version = pack['version'];
     if (version is int) {
@@ -468,6 +574,26 @@ class ContentBankService extends ChangeNotifier {
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   }
 
+  List<TopicSummaryCardModel> summaryCardsForTopic(String topicId) {
+    return _summaryCards.where((c) => c.topicId == topicId).toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  }
+
+  TopicSummaryCardModel? summaryCardById(String id) {
+    for (final c in _summaryCards) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  List<TopicSummaryCardModel> summaryCardsByIds(Iterable<String> ids) {
+    final map = {for (final c in _summaryCards) c.id: c};
+    return [
+      for (final id in ids)
+        if (map[id] != null) map[id]!,
+    ];
+  }
+
   List<QuestionModel> questionsForTopic(KpssType type, String topicId) {
     final topic = KpssCurriculum.findTopic(type, topicId);
     if (topic == null) return const [];
@@ -493,6 +619,7 @@ class ContentBankService extends ChangeNotifier {
     TestAttemptModel attempt, {
     List<String> questionIds = const [],
     List<String> wrongQuestionIds = const [],
+    List<String?> selectedAnswers = const [],
   }) async {
     _attempts.add(attempt);
     final futures = <Future<void>>[_persistAttempts()];
@@ -502,8 +629,12 @@ class ContentBankService extends ChangeNotifier {
     }
     if (wrongQuestionIds.isNotEmpty) {
       _wrongQuestionIds.addAll(wrongQuestionIds);
+      _mergeWrongSelections(questionIds, wrongQuestionIds, selectedAnswers);
+      _statLockedWrongQuestions.addAll(wrongQuestionIds);
       futures.add(_persistWrongQuestions());
       futures.add(_persistWrongQuestionBodies());
+      futures.add(_persistWrongSelections());
+      futures.add(_persistStatLockedWrongQuestions());
     }
     await Future.wait(futures);
     notifyListeners();
@@ -672,8 +803,14 @@ class ContentBankService extends ChangeNotifier {
   Set<String> get wrongQuestionIds => Set.unmodifiable(_visibleWrongQuestionIds);
 
   int get wrongQuestionCount => _visibleWrongQuestionIds.length;
+
+  /// Normal testte «defterde kayıtlı» uyarısı — gövde cache’inden bağımsız ID kontrolü.
+  bool isInWrongNotebook(String questionId) {
+    if (_sampleSeedQuestionIds.contains(questionId)) return false;
+    return _wrongQuestionIds.contains(questionId);
+  }
+
   bool get hasCompletedAnyTest =>
-      _solvedQuestionIds.isNotEmpty ||
       _attempts.any(countsTowardDailyHomework);
 
   /// Liste ve sayaç yalnızca yerelde gövdesi olan yanlışları gösterir.
@@ -742,24 +879,59 @@ class ContentBankService extends ChangeNotifier {
 
   Future<void> removeWrongQuestion(String questionId) async {
     if (!_wrongQuestionIds.remove(questionId)) return;
+    _wrongQuestionSelections.remove(questionId);
     await Future.wait([
       _persistWrongQuestions(),
       _persistWrongQuestionBodies(),
+      _persistWrongSelections(),
       FavoritesService.instance.remove(questionId),
     ]);
     notifyListeners();
+  }
+
+  String? wrongSelectionFor(String questionId) =>
+      _wrongQuestionSelections[questionId];
+
+  bool isStatLockedForQuestion(String questionId) =>
+      _statLockedWrongQuestions.contains(questionId);
+
+  Set<String> get statLockedWrongQuestionIds =>
+      Set.unmodifiable(_statLockedWrongQuestions);
+
+  void _mergeWrongSelections(
+    List<String> questionIds,
+    List<String> wrongQuestionIds,
+    List<String?> selectedAnswers,
+  ) {
+    if (questionIds.isEmpty ||
+        selectedAnswers.isEmpty ||
+        questionIds.length != selectedAnswers.length) {
+      return;
+    }
+    for (var i = 0; i < questionIds.length; i++) {
+      final id = questionIds[i];
+      if (!wrongQuestionIds.contains(id)) continue;
+      final selected = selectedAnswers[i]?.trim().toUpperCase() ?? '';
+      if (RegExp(r'^[A-E]$').hasMatch(selected)) {
+        _wrongQuestionSelections[id] = selected;
+      }
+    }
   }
 
   /// Yanlış listesine ekle; doğru çözülse bile listeden düşmez.
   Future<void> updateAnswerOutcomes({
     List<String> wrongQuestionIds = const [],
     List<String> correctQuestionIds = const [],
+    List<String> questionIds = const [],
+    List<String?> selectedAnswers = const [],
   }) async {
     final futures = <Future<void>>[];
     if (wrongQuestionIds.isNotEmpty) {
       _wrongQuestionIds.addAll(wrongQuestionIds);
+      _mergeWrongSelections(questionIds, wrongQuestionIds, selectedAnswers);
       futures.add(_persistWrongQuestions());
       futures.add(_persistWrongQuestionBodies());
+      futures.add(_persistWrongSelections());
     }
     if (correctQuestionIds.isNotEmpty || wrongQuestionIds.isNotEmpty) {
       _solvedQuestionIds
@@ -897,6 +1069,7 @@ class ContentBankService extends ChangeNotifier {
       _persistWrongQuestionBodies(),
       if (!skipQuestions && _fullQuestionBankPersisted) _persistQuestions(),
       _persistLessons(),
+      _persistSummaryCards(),
       _persistDailyAdBonuses(),
       _persistCatalogSubjects(),
     ]);
@@ -944,23 +1117,46 @@ class ContentBankService extends ChangeNotifier {
 
   Future<void> _persistWrongQuestions() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kWrongQuestions,
-      jsonEncode(_wrongQuestionIds.toList()),
-    );
+    final key = _scopedKey(_kWrongQuestions);
+    if (_wrongQuestionIds.isEmpty) {
+      await prefs.remove(key);
+      return;
+    }
+    await prefs.setString(key, jsonEncode(_wrongQuestionIds.toList()));
+  }
+
+  Future<void> _persistWrongSelections() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _scopedKey(_kWrongQuestionSelections);
+    if (_wrongQuestionSelections.isEmpty) {
+      await prefs.remove(key);
+      return;
+    }
+    await prefs.setString(key, jsonEncode(_wrongQuestionSelections));
+  }
+
+  Future<void> _persistStatLockedWrongQuestions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _scopedKey(_kStatLockedWrongQuestions);
+    if (_statLockedWrongQuestions.isEmpty) {
+      await prefs.remove(key);
+      return;
+    }
+    await prefs.setString(key, jsonEncode(_statLockedWrongQuestions.toList()));
   }
 
   Future<void> _persistWrongQuestionBodies() async {
     final prefs = await SharedPreferences.getInstance();
+    final key = _scopedKey(_kWrongQuestionBodies);
     final bodies = _questions
         .where((q) => _wrongQuestionIds.contains(q.id))
         .where((q) => !_sampleSeedQuestionIds.contains(q.id))
         .map((q) => q.toJson())
         .toList();
     if (bodies.isEmpty) {
-      await prefs.remove(_kWrongQuestionBodies);
+      await prefs.remove(key);
     } else {
-      await prefs.setString(_kWrongQuestionBodies, jsonEncode(bodies));
+      await prefs.setString(key, jsonEncode(bodies));
     }
   }
 
@@ -984,6 +1180,14 @@ class ContentBankService extends ChangeNotifier {
     await prefs.setString(
       _kLessons,
       jsonEncode(_lessons.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  Future<void> _persistSummaryCards() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kSummaryCards,
+      jsonEncode(_summaryCards.map((e) => e.toJson()).toList()),
     );
   }
 

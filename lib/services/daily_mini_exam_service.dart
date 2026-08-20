@@ -541,6 +541,7 @@ class DailyMiniExamService extends ChangeNotifier {
         ...result.wrongQuestionIds,
       ],
       wrongQuestionIds: result.wrongQuestionIds,
+      selectedAnswers: result.selectedAnswers,
     );
 
     await GamificationService.instance.recordTestCompleted(

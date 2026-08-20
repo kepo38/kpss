@@ -15,8 +15,9 @@
     width: 4.5,
     height: 3.5,
     rotation: 0,
-    color: "#ef4444",
+    color: "#c026d3",
     labelSide: "right",
+    showLabel: false,
   };
   var DEFAULT_CIRCLE = {
     shape: "circle",
@@ -25,8 +26,26 @@
     width: 2.6,
     height: 2.6,
     rotation: 0,
+    color: "#c026d3",
+    labelSide: "right",
+    showLabel: false,
+  };
+  var DEFAULT_LINE = {
+    shape: "line",
+    x: 42,
+    y: 16,
+    x2: 50,
+    y2: 84,
+    width: 0.5,
+    height: 0,
+    rotation: 0,
     color: "#ef4444",
     labelSide: "right",
+    showLabel: true,
+    label: "",
+    startLabel: "",
+    endLabel: "",
+    labelCustom: false,
   };
   var DEFAULT_FILL_COLOR = "#111827";
 
@@ -58,11 +77,59 @@
   }
 
   function normalizeMarker(marker) {
+    if (marker && marker.shape === "line") {
+      return {
+        shape: "line",
+        x: fixed(clamp(marker && marker.x, 0, 100)),
+        y: fixed(clamp(marker && marker.y, 0, 100)),
+        x2: fixed(clamp(marker && marker.x2 != null ? marker.x2 : 50, 0, 100)),
+        y2: fixed(clamp(marker && marker.y2 != null ? marker.y2 : 80, 0, 100)),
+        width: fixed(clamp(marker && marker.width ? marker.width : 0.5, 0.4, 4)),
+        height: 0,
+        rotation: 0,
+        color: /^#[0-9a-f]{6}$/i.test((marker && marker.color) || "")
+          ? marker.color
+          : DEFAULT_LINE.color,
+        labelSide: "right",
+        showLabel: marker && Object.prototype.hasOwnProperty.call(marker, "showLabel")
+          ? marker.showLabel !== false
+          : Boolean(
+              String(
+                (marker && (marker.label || marker.startLabel || marker.endLabel)) || ""
+              ).trim()
+            ),
+        label: String((marker && marker.label) || "").trim().slice(0, 80),
+        startLabel: String((marker && marker.startLabel) || "").trim().slice(0, 40),
+        endLabel: String((marker && marker.endLabel) || "").trim().slice(0, 40),
+        labelCustom: Boolean(marker && marker.labelCustom),
+      };
+    }
+    if (marker && marker.shape === "city-label") {
+      return {
+        shape: "city-label",
+        x: fixed(clamp(marker && marker.x, 0, 100)),
+        y: fixed(clamp(marker && marker.y, 0, 100)),
+        width: 0,
+        height: 0,
+        rotation: 0,
+        color: "#111827",
+        labelSide: "right",
+        showLabel: marker && Object.prototype.hasOwnProperty.call(marker, "showLabel")
+          ? marker.showLabel !== false
+          : Boolean(String((marker && marker.label) || "").trim()),
+        label: String((marker && marker.label) || "").trim().slice(0, 40),
+        labelCustom: Boolean(marker && marker.labelCustom),
+      };
+    }
     var shape = marker && marker.shape === "circle" ? "circle" : "ellipse";
     var width = fixed(clamp(marker && marker.width ? marker.width : (shape === "circle" ? 2.6 : 4.5), 1, 15));
     var height = fixed(clamp(marker && marker.height ? marker.height : (shape === "circle" ? 2.6 : 3.5), 1, 15));
     if (shape === "circle") {
       height = width;
+    }
+    var showLabel = true;
+    if (marker && Object.prototype.hasOwnProperty.call(marker, "showLabel")) {
+      showLabel = marker.showLabel !== false;
     }
     return {
       shape: shape,
@@ -73,10 +140,11 @@
       rotation: shape === "circle" ? 0 : Math.round(clamp(marker && marker.rotation, 0, 179)),
       color: /^#[0-9a-f]{6}$/i.test((marker && marker.color) || "")
         ? marker.color
-        : DEFAULT_MARKER.color,
+        : DEFAULT_ELLIPSE.color,
       labelSide: ["left", "right", "top", "bottom"].includes(marker && marker.labelSide)
         ? marker.labelSide
         : "right",
+      showLabel: showLabel,
     };
   }
 
@@ -96,15 +164,28 @@
     var hidden = document.getElementById("map-markers");
     var body = document.getElementById("map-editor-body");
     var wrap = document.getElementById("map-canvas-wrap");
+    var fitPlane = document.getElementById("map-fit-plane");
     var layer = document.getElementById("map-marker-layer");
     var baseImage = document.getElementById("map-base-image");
     var previewImage = document.createElement("img");
     previewImage.src = root.dataset.mapSrc || baseImage.src;
     var controls = document.getElementById("map-marker-controls");
+    var expandButton = document.getElementById("map-zoom-expand");
     var addButton = document.getElementById("map-add-marker");
     var addCircleButton = document.getElementById("map-add-circle");
+    var addLineButton = document.getElementById("map-add-line");
+    var addSpokeButton = document.getElementById("map-add-spoke");
+    var addCityLabelButton = document.getElementById("map-add-city-label");
+    var cityLabelsButton = document.getElementById("map-city-labels-toggle");
+    var lineCountWrap = document.getElementById("map-line-count-wrap");
+    var lineCountInput = document.getElementById("map-line-count");
+    var lineCountOk = document.getElementById("map-line-count-ok");
+    var lineWidthWrap = document.getElementById("map-line-width-wrap");
+    var lineWidthInput = document.getElementById("map-line-width");
+    var lineWidthVal = document.getElementById("map-line-width-val");
     var clearButton = document.getElementById("map-clear-markers");
     var insertPlaceholderButton = document.getElementById("map-insert-placeholder");
+    var insertStatus = document.getElementById("map-insert-status");
     var stemField = document.getElementById("question-stem");
     var status = document.getElementById("map-editor-status");
     var initialData = document.getElementById("map-markers-data");
@@ -118,6 +199,15 @@
     var fills = [];
     var provinces = [];
     var paintMode = false;
+    var lineMode = false;
+    var spokeMode = false;
+    var cityLabelMode = false;
+    var ellipseMode = false;
+    var lineDraft = null;
+    var lineSpokeLeft = 0;
+    var lineAwaitCount = false;
+    var lineWidth = 0.5;
+    var cityLabelsOn = true;
     var fillColor = DEFAULT_FILL_COLOR;
     var selected = -1;
     var drag = null;
@@ -147,6 +237,57 @@
       fills = [];
     }
     markers = markers.slice(0, MAX_MARKERS);
+    var loadedLines = markers.filter(function (marker) {
+      return marker.shape === "line" || marker.shape === "city-label";
+    });
+    if (loadedLines.length) {
+      cityLabelsOn = loadedLines.some(function (marker) {
+        return marker.showLabel !== false;
+      });
+    }
+
+    function mapPlane() {
+      return fitPlane || wrap;
+    }
+
+    function syncFitPlane() {
+      if (!fitPlane || !wrap || !baseImage) return;
+      var cs = window.getComputedStyle(wrap);
+      var padL = parseFloat(cs.paddingLeft) || 0;
+      var padT = parseFloat(cs.paddingTop) || 0;
+      var padR = parseFloat(cs.paddingRight) || 0;
+      var padB = parseFloat(cs.paddingBottom) || 0;
+      var contentW = Math.max(0, wrap.clientWidth - padL - padR);
+      var contentH = Math.max(0, wrap.clientHeight - padT - padB);
+      var nw = baseImage.naturalWidth;
+      var nh = baseImage.naturalHeight;
+      var w = contentW;
+      var h = contentH;
+      var x = padL;
+      var y = padT;
+      if (nw > 0 && nh > 0 && contentW > 0 && contentH > 0) {
+        var scale = Math.min(contentW / nw, contentH / nh);
+        w = nw * scale;
+        h = nh * scale;
+        x = padL + (contentW - w) / 2;
+        y = padT + (contentH - h) / 2;
+      }
+      fitPlane.style.left = x + "px";
+      fitPlane.style.top = y + "px";
+      fitPlane.style.width = w + "px";
+      fitPlane.style.height = h + "px";
+    }
+
+    function eventToMapPercent(event, clampOutside) {
+      var rect = mapPlane().getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      var x = ((event.clientX - rect.left) / rect.width) * 100;
+      var y = ((event.clientY - rect.top) / rect.height) * 100;
+      if (!clampOutside && (x < -0.8 || x > 100.8 || y < -0.8 || y > 100.8)) {
+        return null;
+      }
+      return { x: fixed(clamp(x, 0, 100)), y: fixed(clamp(y, 0, 100)) };
+    }
 
     function currentTemplate() {
       return mapTemplates[template.value] || null;
@@ -197,11 +338,27 @@
       var parts = [];
       if (fills.length) parts.push(fills.length + " il boyalı");
       if (markers.length) parts.push(markers.length + " işaret");
-      status.textContent = parts.length
-        ? parts.join(" · ")
-        : paintMode
-          ? "İl boyamak için haritaya tıklayın"
-          : "Haritaya tıklayarak işaret ekleyin";
+      if (spokeMode && !lineDraft) {
+        status.textContent = "Merkezi tıklayın";
+      } else if (spokeMode && lineAwaitCount) {
+        status.textContent = "Kaç doğru çizilecek?";
+      } else if (spokeMode && lineDraft && lineSpokeLeft > 0) {
+        status.textContent = "Hedef ili tıklayın (kalan: " + lineSpokeLeft + ")";
+      } else if (lineMode && !lineDraft) {
+        status.textContent = "Doğrunun başlangıcını tıklayın";
+      } else if (lineMode && lineDraft) {
+        status.textContent = "Doğrunun bitişini tıklayın";
+      } else if (cityLabelMode) {
+        status.textContent = "İli tıklayın — adı doğru/ışın etiketi gibi görünsün";
+      } else if (ellipseMode) {
+        status.textContent = "Elips koymak için haritaya tıklayın";
+      } else {
+        status.textContent = parts.length
+          ? parts.join(" · ")
+          : paintMode
+            ? "İl boyamak için haritaya tıklayın"
+            : "Bir araç seçin";
+      }
     }
 
     function renderFills() {
@@ -233,6 +390,96 @@
       return null;
     }
 
+    function cityAt(x, y) {
+      var hit = hitProvince(x, y);
+      return hit && hit.name ? hit.name : "";
+    }
+
+    function lineEndNames(marker) {
+      var startName = String(marker.startLabel || "").trim();
+      var endName = String(marker.endLabel || "").trim();
+      if (startName || endName) return { start: startName, end: endName };
+      var parts = String(marker.label || "")
+        .split("·")
+        .map(function (part) {
+          return part.trim();
+        })
+        .filter(Boolean);
+      if (!parts.length) {
+        return { start: cityAt(marker.x, marker.y), end: cityAt(marker.x2, marker.y2) };
+      }
+      if (parts.length === 1) return { start: "", end: parts[0] };
+      return { start: parts[0], end: parts[parts.length - 1] };
+    }
+
+    function syncLineLabel(marker) {
+      if (!marker || marker.shape !== "line") return;
+      var startName = cityAt(marker.x, marker.y);
+      var endName = cityAt(marker.x2, marker.y2);
+      marker.startLabel = startName;
+      if (!marker.labelCustom) marker.endLabel = endName;
+      else if (!marker.endLabel) marker.endLabel = endName;
+      marker.label = [marker.startLabel, marker.endLabel].filter(Boolean).join(" · ");
+    }
+
+    function syncCityLabel(marker) {
+      if (!marker || marker.shape !== "city-label" || marker.labelCustom) return;
+      marker.label = cityAt(marker.x, marker.y);
+    }
+
+    function setCityLabelsOn(on) {
+      cityLabelsOn = Boolean(on);
+      markers.forEach(function (marker) {
+        if (marker.shape === "line") {
+          marker.showLabel = cityLabelsOn;
+          if (cityLabelsOn) syncLineLabel(marker);
+        } else if (marker.shape === "city-label") {
+          marker.showLabel = cityLabelsOn;
+        }
+      });
+    }
+
+    function appendCityName(layerEl, name, x, y, extraClass) {
+      if (!name) return;
+      var el = document.createElement("span");
+      el.className = "map-line-city" + (extraClass ? " " + extraClass : "");
+      el.textContent = name;
+      el.style.left = clamp(x, 1, 99) + "%";
+      el.style.top = clamp(y, 1, 99) + "%";
+      layerEl.appendChild(el);
+    }
+
+    function appendSpokeLabel(layerEl, marker) {
+      if (!marker.showLabel) return;
+      var names = lineEndNames(marker);
+      if (!names.end) return;
+      var dx = marker.x2 - marker.x;
+      var dy = marker.y2 - marker.y;
+      var len = Math.sqrt(dx * dx + dy * dy) || 1;
+      appendCityName(
+        layerEl,
+        names.end,
+        marker.x2 + (dx / len) * 3.8,
+        marker.y2 + (dy / len) * 3.8
+      );
+    }
+
+    function appendHubLabels(layerEl) {
+      var hubs = {};
+      markers.forEach(function (marker) {
+        if (marker.shape !== "line" || !marker.showLabel) return;
+        var names = lineEndNames(marker);
+        var key = Number(marker.x).toFixed(1) + "," + Number(marker.y).toFixed(1);
+        if (names.start && !hubs[key]) {
+          hubs[key] = { name: names.start, x: marker.x, y: marker.y };
+        }
+      });
+      Object.keys(hubs).forEach(function (key) {
+        var hub = hubs[key];
+        appendCityName(layerEl, hub.name, hub.x, hub.y - 4.2, "is-hub");
+      });
+    }
+
     function toggleFill(provinceId) {
       var index = -1;
       for (var i = 0; i < fills.length; i++) {
@@ -255,7 +502,248 @@
       notify();
     }
 
+    function pinLabel(index) {
+      var n = 0;
+      var i;
+      for (i = 0; i <= index; i++) {
+        if (markers[i].shape !== "line" && markers[i].shape !== "city-label") n += 1;
+      }
+      return ROMAN[Math.max(0, n - 1)] || String(n);
+    }
+
+    function currentLineWidth() {
+      if (lineWidthInput) {
+        return fixed(clamp(lineWidthInput.value, 0.4, 4));
+      }
+      return lineWidth;
+    }
+
+    function lineStrokePx(marker) {
+      return Math.max(2, (mapPlane().clientWidth * (marker.width || 0.5)) / 100);
+    }
+
+    function lineHandle(marker, index, which) {
+      var handle = document.createElement("button");
+      handle.type = "button";
+      handle.className = "map-line-handle";
+      handle.style.left = (which === "end" ? marker.x2 : marker.x) + "%";
+      handle.style.top = (which === "end" ? marker.y2 : marker.y) + "%";
+      handle.style.backgroundColor = marker.color;
+      handle.setAttribute("aria-label", which === "end" ? "Bitiş noktası" : "Başlangıç noktası");
+      handle.addEventListener("click", function (event) {
+        event.stopPropagation();
+        selected = index;
+        render();
+      });
+      handle.addEventListener("pointerdown", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        selected = index;
+        suppressMapClick = true;
+        handle.setPointerCapture(event.pointerId);
+        drag = { type: "line-end", which: which, pointerId: event.pointerId, handle: handle };
+        renderControls();
+      });
+      handle.addEventListener("pointermove", function (event) {
+        if (!drag || drag.type !== "line-end" || drag.pointerId !== event.pointerId) return;
+        var pt = eventToMapPercent(event, true);
+        if (!pt) return;
+        var nx = pt.x;
+        var ny = pt.y;
+        if (which === "end") {
+          markers[index].x2 = nx;
+          markers[index].y2 = ny;
+        } else {
+          markers[index].x = nx;
+          markers[index].y = ny;
+        }
+        handle.style.left = nx + "%";
+        handle.style.top = ny + "%";
+        var svgLine = handle.parentNode && handle.parentNode.querySelector("line");
+        if (svgLine) {
+          svgLine.setAttribute(which === "end" ? "x2" : "x1", String(nx));
+          svgLine.setAttribute(which === "end" ? "y2" : "y1", String(ny));
+        }
+        serialize();
+        renderControls();
+        notify();
+      });
+      handle.addEventListener("pointerup", function () {
+        if (drag && drag.type === "line-end") {
+          drag = null;
+          syncLineLabel(markers[index]);
+          render();
+        }
+      });
+      handle.addEventListener("pointercancel", function () {
+        if (drag && drag.type === "line-end") drag = null;
+      });
+      return handle;
+    }
+
+    function lineHtml(marker, index) {
+      var group = document.createElement("div");
+      group.className = "map-line" + (selected === index ? " is-selected" : "");
+      group.dataset.index = String(index);
+      var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 100 100");
+      svg.setAttribute("preserveAspectRatio", "none");
+      svg.classList.add("map-line-svg");
+      var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(marker.x));
+      line.setAttribute("y1", String(marker.y));
+      line.setAttribute("x2", String(marker.x2));
+      line.setAttribute("y2", String(marker.y2));
+      line.setAttribute("stroke", marker.color);
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("vector-effect", "non-scaling-stroke");
+      line.setAttribute("stroke-width", String(lineStrokePx(marker)));
+      line.addEventListener("click", function (event) {
+        if (lineMode || spokeMode || cityLabelMode) return;
+        event.stopPropagation();
+        selected = index;
+        render();
+      });
+      svg.appendChild(line);
+      group.appendChild(svg);
+      group.appendChild(lineHandle(marker, index, "start"));
+      group.appendChild(lineHandle(marker, index, "end"));
+      return group;
+    }
+
+    function cityLabelHtml(marker, index) {
+      var node = document.createElement("button");
+      node.type = "button";
+      node.className =
+        "map-city-label-pin" + (selected === index ? " is-selected" : "");
+      node.dataset.index = String(index);
+      node.style.left = marker.x + "%";
+      node.style.top = marker.y + "%";
+      node.setAttribute("aria-label", (marker.label || "İl adı") + " etiketi");
+      var label = document.createElement("span");
+      label.className = "map-line-city is-standalone";
+      label.textContent = marker.showLabel !== false ? marker.label || "" : "";
+      node.appendChild(label);
+      node.addEventListener("click", function (event) {
+        if (lineMode || spokeMode || cityLabelMode) return;
+        event.stopPropagation();
+        selected = index;
+        render();
+      });
+      node.addEventListener("pointerdown", function (event) {
+        if (lineMode || spokeMode || cityLabelMode) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selected = index;
+        suppressMapClick = true;
+        node.setPointerCapture(event.pointerId);
+        drag = { type: "move", pointerId: event.pointerId, node: node };
+        renderControls();
+      });
+      node.addEventListener("pointermove", function (event) {
+        if (!drag || drag.type !== "move" || drag.pointerId !== event.pointerId) return;
+        var pt = eventToMapPercent(event, true);
+        if (!pt) return;
+        markers[index].x = pt.x;
+        markers[index].y = pt.y;
+        node.style.left = pt.x + "%";
+        node.style.top = pt.y + "%";
+        if (!markers[index].labelCustom) syncCityLabel(markers[index]);
+        label.textContent =
+          markers[index].showLabel !== false ? markers[index].label || "" : "";
+        serialize();
+        renderControls();
+        notify();
+      });
+      node.addEventListener("pointerup", function () {
+        if (drag && drag.type === "move") {
+          drag = null;
+          render();
+        }
+      });
+      node.addEventListener("pointercancel", function () {
+        if (drag && drag.type === "move") drag = null;
+      });
+      return node;
+    }
+
+    function appendResizeHandles(node, marker, index, shapeEl) {
+      function bindHandle(handle, axis) {
+        handle.title = axis === "e" ? "Genişlik" : axis === "s" ? "Yükseklik" : "Boyut";
+        handle.addEventListener("pointerdown", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          selected = index;
+          suppressMapClick = true;
+          handle.setPointerCapture(event.pointerId);
+          var plane = mapPlane().getBoundingClientRect();
+          drag = {
+            type: "resize",
+            axis: axis,
+            pointerId: event.pointerId,
+            node: node,
+            shape: shapeEl,
+            startX: event.clientX,
+            startY: event.clientY,
+            startWidth: markers[index].width,
+            startHeight: markers[index].height,
+            planeWidth: plane.width,
+            planeHeight: plane.height,
+          };
+          renderControls();
+        });
+        handle.addEventListener("pointermove", function (event) {
+          if (!drag || drag.type !== "resize" || drag.pointerId !== event.pointerId) return;
+          var dx = ((event.clientX - drag.startX) / drag.planeWidth) * 100;
+          var dy = ((event.clientY - drag.startY) / drag.planeHeight) * 100;
+          if (drag.axis === "e" || drag.axis === "se") {
+            markers[index].width = fixed(clamp(drag.startWidth + dx * 2, 1, 15));
+          }
+          if (drag.axis === "s" || drag.axis === "se") {
+            markers[index].height = fixed(clamp(drag.startHeight + dy * 2, 1, 15));
+          }
+          if (marker.shape === "circle") {
+            var next = Math.max(markers[index].width, markers[index].height);
+            markers[index].width = next;
+            markers[index].height = next;
+          }
+          node.style.width = markers[index].width + "%";
+          if (marker.shape === "circle") {
+            node.style.height = "";
+          } else {
+            node.style.height = markers[index].height + "%";
+          }
+          serialize();
+          notify();
+        });
+        handle.addEventListener("pointerup", function () {
+          if (drag && drag.type === "resize") drag = null;
+          renderControls();
+        });
+        handle.addEventListener("pointercancel", function () {
+          if (drag && drag.type === "resize") drag = null;
+          renderControls();
+        });
+        node.appendChild(handle);
+      }
+
+      if (marker.shape === "circle") {
+        var corner = document.createElement("span");
+        corner.className = "map-marker-resize-handle is-se";
+        bindHandle(corner, "se");
+        return;
+      }
+      var east = document.createElement("span");
+      east.className = "map-marker-resize-handle is-e";
+      bindHandle(east, "e");
+      var south = document.createElement("span");
+      south.className = "map-marker-resize-handle is-s";
+      bindHandle(south, "s");
+    }
+
     function markerHtml(marker, index) {
+      if (marker.shape === "line") return lineHtml(marker, index);
+      if (marker.shape === "city-label") return cityLabelHtml(marker, index);
       var node = document.createElement("button");
       node.type = "button";
       node.className =
@@ -274,7 +762,7 @@
         node.style.aspectRatio = "";
       }
       node.style.backgroundColor = "transparent";
-      node.setAttribute("aria-label", ROMAN[index] + " numaralı işaret");
+      node.setAttribute("aria-label", pinLabel(index) + " numaralı işaret");
 
       var shape = document.createElement("span");
       shape.className = "map-marker-shape";
@@ -283,10 +771,16 @@
         marker.shape === "circle" ? "none" : "rotate(" + (marker.rotation || 0) + "deg)";
       node.appendChild(shape);
 
-      var label = document.createElement("span");
-      label.className = "map-marker-label is-" + marker.labelSide;
-      label.textContent = ROMAN[index];
-      node.appendChild(label);
+      if (marker.showLabel !== false) {
+        var label = document.createElement("span");
+        label.className = "map-marker-label is-" + marker.labelSide;
+        label.textContent = pinLabel(index);
+        node.appendChild(label);
+      }
+
+      if (selected === index) {
+        appendResizeHandles(node, marker, index, shape);
+      }
 
       if (marker.shape === "ellipse" && selected === index) {
         var arm = document.createElement("span");
@@ -306,9 +800,9 @@
         });
         handle.addEventListener("pointermove", function (event) {
           if (!drag || drag.type !== "rotate" || drag.pointerId !== event.pointerId) return;
-          var rect = wrap.getBoundingClientRect();
-          var cx = rect.left + (markers[index].x / 100) * rect.width;
-          var cy = rect.top + (markers[index].y / 100) * rect.height;
+          var plane = mapPlane().getBoundingClientRect();
+          var cx = plane.left + (markers[index].x / 100) * plane.width;
+          var cy = plane.top + (markers[index].y / 100) * plane.height;
           var degrees = (Math.atan2(event.clientY - cy, event.clientX - cx) * 180) / Math.PI + 90;
           markers[index].rotation = Math.round((degrees + 360) % 180);
           shape.style.transform = "rotate(" + markers[index].rotation + "deg)";
@@ -335,6 +829,7 @@
       });
       node.addEventListener("pointerdown", function (event) {
         if (event.target.closest(".map-marker-rotate-handle")) return;
+        if (event.target.closest(".map-marker-resize-handle")) return;
         event.preventDefault();
         event.stopPropagation();
         selected = index;
@@ -345,9 +840,10 @@
       });
       node.addEventListener("pointermove", function (event) {
         if (!drag || drag.type !== "move" || drag.pointerId !== event.pointerId) return;
-        var rect = wrap.getBoundingClientRect();
-        markers[index].x = fixed(clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100));
-        markers[index].y = fixed(clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100));
+        var pt = eventToMapPercent(event, true);
+        if (!pt) return;
+        markers[index].x = pt.x;
+        markers[index].y = pt.y;
         node.style.left = markers[index].x + "%";
         node.style.top = markers[index].y + "%";
         serialize();
@@ -401,7 +897,14 @@
         var head = document.createElement("div");
         head.className = "map-marker-card-head";
         var title = document.createElement("strong");
-        title.textContent = ROMAN[index] + ". işaret";
+        title.textContent =
+          marker.shape === "line"
+            ? "Doğru"
+            : marker.shape === "city-label"
+              ? "İl adı"
+              : marker.shape === "circle"
+                ? "Daire"
+                : "Elips";
         head.appendChild(title);
 
         var order = document.createElement("div");
@@ -442,6 +945,84 @@
 
         var grid = document.createElement("div");
         grid.className = "map-marker-grid";
+        if (marker.shape === "line") {
+          grid.appendChild(numberInput("X1 (%)", "x", marker, index, 0, 100, 0.01));
+          grid.appendChild(numberInput("Y1 (%)", "y", marker, index, 0, 100, 0.01));
+          grid.appendChild(numberInput("X2 (%)", "x2", marker, index, 0, 100, 0.01));
+          grid.appendChild(numberInput("Y2 (%)", "y2", marker, index, 0, 100, 0.01));
+          grid.appendChild(
+            numberInput("Kalınlık (%)", "width", marker, index, 0.4, 4, 0.1)
+          );
+          var cityCheck = document.createElement("label");
+          cityCheck.className = "map-line-city-check";
+          var cityBox = document.createElement("input");
+          cityBox.type = "checkbox";
+          cityBox.checked = marker.showLabel !== false;
+          cityBox.addEventListener("change", function () {
+            marker.showLabel = cityBox.checked;
+            cityLabelsOn = cityBox.checked;
+            if (marker.showLabel) syncLineLabel(marker);
+            selected = index;
+            render();
+          });
+          cityCheck.appendChild(cityBox);
+          cityCheck.appendChild(document.createTextNode(" Şehir adı"));
+          grid.appendChild(cityCheck);
+          var cityName = document.createElement("label");
+          cityName.textContent = "Hedef il";
+          var cityInput = document.createElement("input");
+          cityInput.type = "text";
+          cityInput.maxLength = 40;
+          cityInput.placeholder = "Otomatik";
+          cityInput.value = marker.endLabel || "";
+          cityInput.addEventListener("input", function () {
+            marker.endLabel = cityInput.value.trim().slice(0, 40);
+            marker.labelCustom = marker.endLabel.length > 0;
+            if (!marker.labelCustom) syncLineLabel(marker);
+            else marker.label = [marker.startLabel, marker.endLabel].filter(Boolean).join(" · ");
+            selected = index;
+            renderMarkers();
+            serialize();
+            notify();
+          });
+          cityName.appendChild(cityInput);
+          grid.appendChild(cityName);
+        } else if (marker.shape === "city-label") {
+          grid.appendChild(numberInput("X (%)", "x", marker, index, 0, 100, 0.01));
+          grid.appendChild(numberInput("Y (%)", "y", marker, index, 0, 100, 0.01));
+          var cityLabelCheck = document.createElement("label");
+          cityLabelCheck.className = "map-line-city-check";
+          var cityLabelBox = document.createElement("input");
+          cityLabelBox.type = "checkbox";
+          cityLabelBox.checked = marker.showLabel !== false;
+          cityLabelBox.addEventListener("change", function () {
+            marker.showLabel = cityLabelBox.checked;
+            cityLabelsOn = cityLabelBox.checked;
+            selected = index;
+            render();
+          });
+          cityLabelCheck.appendChild(cityLabelBox);
+          cityLabelCheck.appendChild(document.createTextNode(" Göster"));
+          grid.appendChild(cityLabelCheck);
+          var cityLabelName = document.createElement("label");
+          cityLabelName.textContent = "İl adı";
+          var cityLabelInput = document.createElement("input");
+          cityLabelInput.type = "text";
+          cityLabelInput.maxLength = 40;
+          cityLabelInput.placeholder = "Otomatik";
+          cityLabelInput.value = marker.label || "";
+          cityLabelInput.addEventListener("input", function () {
+            marker.label = cityLabelInput.value.trim().slice(0, 40);
+            marker.labelCustom = marker.label.length > 0;
+            if (!marker.labelCustom) syncCityLabel(marker);
+            selected = index;
+            renderMarkers();
+            serialize();
+            notify();
+          });
+          cityLabelName.appendChild(cityLabelInput);
+          grid.appendChild(cityLabelName);
+        } else {
         grid.appendChild(numberInput("X (%)", "x", marker, index, 0, 100, 0.01));
         grid.appendChild(numberInput("Y (%)", "y", marker, index, 0, 100, 0.01));
         grid.appendChild(
@@ -505,9 +1086,10 @@
           rotLabel.appendChild(rotInput);
           var rotHint = document.createElement("span");
           rotHint.className = "hint";
-          rotHint.textContent = "Haritada yeşil tutamacı sürükleyin";
+          rotHint.textContent = "Haritada yeşil tutaçla döndür; kenar tutaçlarıyla boyutlandır";
           rotLabel.appendChild(rotHint);
           grid.appendChild(rotLabel);
+        }
         }
 
         var colorLabel = document.createElement("label");
@@ -524,6 +1106,23 @@
         colorLabel.appendChild(color);
         grid.appendChild(colorLabel);
 
+        if (marker.shape === "ellipse" || marker.shape === "circle") {
+        var romanCheck = document.createElement("label");
+        romanCheck.className = "map-line-city-check";
+        var romanBox = document.createElement("input");
+        romanBox.type = "checkbox";
+        romanBox.checked = marker.showLabel !== false;
+        romanBox.addEventListener("change", function () {
+          marker.showLabel = romanBox.checked;
+          selected = index;
+          render();
+        });
+        romanCheck.appendChild(romanBox);
+        romanCheck.appendChild(document.createTextNode(" Romen numarası"));
+        grid.appendChild(romanCheck);
+        }
+
+        if ((marker.shape === "ellipse" || marker.shape === "circle") && marker.showLabel !== false) {
         var sideLabel = document.createElement("label");
         sideLabel.textContent = "Numara yönü";
         var side = document.createElement("select");
@@ -547,6 +1146,7 @@
         });
         sideLabel.appendChild(side);
         grid.appendChild(sideLabel);
+        }
         card.appendChild(grid);
         controls.appendChild(card);
       });
@@ -554,9 +1154,20 @@
 
     function renderMarkers() {
       layer.innerHTML = "";
+      if (lineDraft) {
+        var draft = document.createElement("span");
+        draft.className = "map-line-handle is-draft";
+        draft.style.left = lineDraft.x + "%";
+        draft.style.top = lineDraft.y + "%";
+        layer.appendChild(draft);
+      }
       markers.forEach(function (marker, index) {
         layer.appendChild(markerHtml(marker, index));
       });
+      markers.forEach(function (marker) {
+        if (marker.shape === "line") appendSpokeLabel(layer, marker);
+      });
+      appendHubLabels(layer);
     }
 
     function notify() {
@@ -565,20 +1176,32 @@
 
     function render() {
       body.hidden = !mapActive();
+      syncFitPlane();
       if (staticMode()) {
         selected = -1;
         markers = [];
         fills = [];
         paintMode = false;
+        lineMode = false;
+        spokeMode = false;
+        cityLabelMode = false;
+        ellipseMode = false;
+        resetLineDraw();
         layer.innerHTML = "";
         if (fillLayer) fillLayer.innerHTML = "";
         controls.innerHTML = "";
         if (addButton) addButton.hidden = true;
         if (addCircleButton) addCircleButton.hidden = true;
+        if (addLineButton) addLineButton.hidden = true;
+        if (addSpokeButton) addSpokeButton.hidden = true;
+        if (addCityLabelButton) addCityLabelButton.hidden = true;
+        if (cityLabelsButton) cityLabelsButton.hidden = true;
+        if (lineWidthWrap) lineWidthWrap.hidden = true;
+        if (lineCountWrap) lineCountWrap.hidden = true;
         if (clearButton) clearButton.hidden = true;
         if (paintButton) paintButton.hidden = true;
         if (fillColorWrap) fillColorWrap.hidden = true;
-        wrap.classList.remove("is-paint");
+        wrap.classList.remove("is-paint", "is-line");
         applyTemplateAssets();
         serialize();
         status.textContent = "Tematik harita — işaret eklenmez.";
@@ -587,6 +1210,40 @@
       }
       if (addButton) addButton.hidden = false;
       if (addCircleButton) addCircleButton.hidden = false;
+      if (addLineButton) addLineButton.hidden = false;
+      if (addSpokeButton) addSpokeButton.hidden = false;
+      if (addCityLabelButton) addCityLabelButton.hidden = false;
+      var hasLine = markers.some(function (marker) {
+        return marker.shape === "line" || marker.shape === "city-label";
+      });
+      var drawingLine = lineMode || spokeMode || cityLabelMode;
+      if (cityLabelsButton) {
+        cityLabelsButton.hidden = !(drawingLine || hasLine);
+        cityLabelsButton.textContent = cityLabelsOn ? "Şehir adları: açık" : "Şehir adları: gizli";
+        cityLabelsButton.classList.toggle("btn-primary", cityLabelsOn);
+        cityLabelsButton.classList.toggle("btn-ghost", !cityLabelsOn);
+        cityLabelsButton.setAttribute("aria-pressed", cityLabelsOn ? "true" : "false");
+      }
+      if (lineWidthWrap) {
+        var selectedLine =
+          selected >= 0 && markers[selected] && markers[selected].shape === "line";
+        lineWidthWrap.hidden = !(drawingLine || selectedLine);
+        if (selectedLine && lineWidthInput) {
+          lineWidthInput.value = String(markers[selected].width);
+          if (lineWidthVal) lineWidthVal.textContent = String(markers[selected].width);
+        }
+      }
+      if (lineCountWrap) {
+        lineCountWrap.hidden = !lineAwaitCount;
+        if (lineAwaitCount && lineCountInput) {
+          var maxN = Math.max(1, remainingLineSlots());
+          lineCountInput.max = String(maxN);
+          var current = parseInt(lineCountInput.value, 10);
+          if (!current || current < 1) current = Math.min(3, maxN);
+          if (current > maxN) current = maxN;
+          lineCountInput.value = String(current);
+        }
+      }
       if (clearButton) clearButton.hidden = false;
       if (paintButton) paintButton.hidden = !paintEnabled();
       if (fillColorWrap) fillColorWrap.hidden = !paintEnabled();
@@ -599,6 +1256,23 @@
         paintButton.classList.toggle("btn-ghost", !paintMode);
       }
       wrap.classList.toggle("is-paint", paintMode && paintEnabled());
+      wrap.classList.toggle("is-line", lineMode || spokeMode || cityLabelMode);
+      if (addLineButton) {
+        addLineButton.classList.toggle("btn-primary", lineMode);
+        addLineButton.classList.toggle("btn-ghost", !lineMode);
+      }
+      if (addSpokeButton) {
+        addSpokeButton.classList.toggle("btn-primary", spokeMode);
+        addSpokeButton.classList.toggle("btn-ghost", !spokeMode);
+      }
+      if (addCityLabelButton) {
+        addCityLabelButton.classList.toggle("btn-primary", cityLabelMode);
+        addCityLabelButton.classList.toggle("btn-ghost", !cityLabelMode);
+      }
+      if (addButton) {
+        addButton.classList.toggle("btn-primary", ellipseMode);
+        addButton.classList.toggle("btn-ghost", !ellipseMode);
+      }
       if (!markerMode()) {
         selected = -1;
         markers = [];
@@ -611,18 +1285,63 @@
       renderControls();
       serialize();
       notify();
+      if (root.classList.contains("is-expanded")) {
+        requestAnimationFrame(layoutAfterExpand);
+      }
+    }
+
+    function remainingLineSlots() {
+      return Math.max(0, MAX_MARKERS - markers.length);
+    }
+
+    function resetLineDraw() {
+      lineDraft = null;
+      lineSpokeLeft = 0;
+      lineAwaitCount = false;
+    }
+
+    function stopLineModes() {
+      lineMode = false;
+      spokeMode = false;
+      cityLabelMode = false;
+      ellipseMode = false;
+      resetLineDraw();
+    }
+
+    function confirmLineCount() {
+      if (!spokeMode || !lineDraft || !lineAwaitCount) return;
+      var maxN = remainingLineSlots();
+      if (maxN < 1) {
+        stopLineModes();
+        render();
+        return;
+      }
+      var n = parseInt(lineCountInput && lineCountInput.value, 10);
+      if (!n || n < 1) n = 1;
+      if (n > maxN) n = maxN;
+      if (lineCountInput) lineCountInput.value = String(n);
+      lineSpokeLeft = n;
+      lineAwaitCount = false;
+      render();
     }
 
     function addMarker(x, y, preset) {
       if (!enabled() || markers.length >= MAX_MARKERS) return;
-      markers.push(
-        normalizeMarker(
-          Object.assign({}, preset || DEFAULT_ELLIPSE, {
-            x: fixed(clamp(x, 0, 100)),
-            y: fixed(clamp(y, 0, 100)),
-          })
-        )
+      var next = normalizeMarker(
+        Object.assign({}, preset || DEFAULT_ELLIPSE, {
+          x: fixed(clamp(x, 0, 100)),
+          y: fixed(clamp(y, 0, 100)),
+        })
       );
+      if (next.shape === "line") {
+        if (!preset || preset.showLabel == null) next.showLabel = cityLabelsOn;
+        syncLineLabel(next);
+      }
+      if (next.shape === "city-label") {
+        if (!preset || preset.showLabel == null) next.showLabel = cityLabelsOn;
+        syncCityLabel(next);
+      }
+      markers.push(next);
       selected = markers.length - 1;
       render();
     }
@@ -649,25 +1368,198 @@
         suppressMapClick = false;
         return;
       }
-      if (!enabled() || event.target.closest(".map-marker")) return;
-      var rect = wrap.getBoundingClientRect();
-      var x = ((event.clientX - rect.left) / rect.width) * 100;
-      var y = ((event.clientY - rect.top) / rect.height) * 100;
+      if (!enabled() || event.target.closest(".map-marker, .map-line-handle, .map-city-label-pin")) return;
+      if (!lineMode && !spokeMode && event.target.closest(".map-line")) return;
+      var pt = eventToMapPercent(event);
+      if (!pt) return;
+      var x = pt.x;
+      var y = pt.y;
       if (paintMode && paintEnabled()) {
         var hit = hitProvince(x, y);
         if (hit) toggleFill(hit.id);
         return;
       }
-      addMarker(x, y);
+      if (lineMode) {
+        if (!lineDraft) {
+          if (remainingLineSlots() < 1) return;
+          lineDraft = { x: fixed(clamp(x, 0, 100)), y: fixed(clamp(y, 0, 100)) };
+          render();
+          return;
+        }
+        var lineStart = lineDraft;
+        lineDraft = null;
+        addMarker(lineStart.x, lineStart.y, {
+          shape: "line",
+          x: lineStart.x,
+          y: lineStart.y,
+          x2: x,
+          y2: y,
+          width: currentLineWidth(),
+          color: "#ef4444",
+          showLabel: cityLabelsOn,
+        });
+        return;
+      }
+      if (spokeMode) {
+        if (lineAwaitCount) return;
+        if (!lineDraft) {
+          if (remainingLineSlots() < 1) return;
+          lineDraft = { x: fixed(clamp(x, 0, 100)), y: fixed(clamp(y, 0, 100)) };
+          lineAwaitCount = true;
+          lineSpokeLeft = 0;
+          render();
+          if (lineCountInput) {
+            lineCountInput.focus();
+            lineCountInput.select();
+          }
+          return;
+        }
+        if (lineSpokeLeft < 1) return;
+        var hub = lineDraft;
+        lineSpokeLeft -= 1;
+        addMarker(hub.x, hub.y, {
+          shape: "line",
+          x: hub.x,
+          y: hub.y,
+          x2: x,
+          y2: y,
+          width: currentLineWidth(),
+          color: "#ef4444",
+          showLabel: cityLabelsOn,
+        });
+        if (lineSpokeLeft < 1) {
+          stopLineModes();
+          render();
+        }
+        return;
+      }
+      if (cityLabelMode) {
+        var province = hitProvince(x, y);
+        if (!province) return;
+        addMarker(x, y, {
+          shape: "city-label",
+          label: province.name,
+          showLabel: cityLabelsOn,
+        });
+        return;
+      }
+      if (ellipseMode) {
+        addMarker(x, y, DEFAULT_ELLIPSE);
+      }
     });
 
     template.addEventListener("change", render);
+    function layoutAfterExpand() {
+      syncFitPlane();
+      renderMarkers();
+    }
+    function setExpanded(on) {
+      root.classList.toggle("is-expanded", on);
+      document.body.classList.toggle("map-editor-expanded", on);
+      if (expandButton) {
+        expandButton.textContent = on ? "%100" : "%170";
+        expandButton.classList.toggle("btn-primary", on);
+        expandButton.classList.toggle("btn-ghost", !on);
+        expandButton.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+      layoutAfterExpand();
+      requestAnimationFrame(layoutAfterExpand);
+    }
+    if (expandButton) {
+      expandButton.addEventListener("click", function () {
+        setExpanded(!root.classList.contains("is-expanded"));
+      });
+    }
+    document.addEventListener("keydown", function (event) {
+      if (
+        event.key === "Escape" &&
+        ((lineMode && lineDraft) ||
+          (spokeMode && (lineDraft || lineAwaitCount || lineSpokeLeft)))
+      ) {
+        if (spokeMode) stopLineModes();
+        else resetLineDraw();
+        render();
+        return;
+      }
+      if (event.key === "Escape" && root.classList.contains("is-expanded")) {
+        setExpanded(false);
+      }
+    });
     addButton.addEventListener("click", function () {
-      addMarker(50 + markers.length * 2, 50, DEFAULT_ELLIPSE);
+      if (!enabled()) return;
+      var next = !ellipseMode;
+      stopLineModes();
+      ellipseMode = next;
+      if (ellipseMode) paintMode = false;
+      render();
     });
     if (addCircleButton) {
       addCircleButton.addEventListener("click", function () {
+        stopLineModes();
+        paintMode = false;
         addMarker(50 + markers.length * 2, 48, DEFAULT_CIRCLE);
+      });
+    }
+    if (addLineButton) {
+      addLineButton.addEventListener("click", function () {
+        if (!enabled()) return;
+        var next = !lineMode;
+        stopLineModes();
+        lineMode = next;
+        if (lineMode) paintMode = false;
+        render();
+      });
+    }
+    if (addSpokeButton) {
+      addSpokeButton.addEventListener("click", function () {
+        if (!enabled()) return;
+        var next = !spokeMode;
+        stopLineModes();
+        spokeMode = next;
+        if (spokeMode) paintMode = false;
+        render();
+      });
+    }
+    if (addCityLabelButton) {
+      addCityLabelButton.addEventListener("click", function () {
+        if (!enabled()) return;
+        var next = !cityLabelMode;
+        stopLineModes();
+        cityLabelMode = next;
+        if (cityLabelMode) paintMode = false;
+        render();
+      });
+    }
+    if (cityLabelsButton) {
+      cityLabelsButton.addEventListener("click", function () {
+        if (!enabled()) return;
+        setCityLabelsOn(!cityLabelsOn);
+        render();
+      });
+    }
+    if (lineCountOk) {
+      lineCountOk.addEventListener("click", function () {
+        confirmLineCount();
+      });
+    }
+    if (lineCountInput) {
+      lineCountInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          confirmLineCount();
+        }
+      });
+    }
+    if (lineWidthInput) {
+      lineWidthInput.addEventListener("input", function () {
+        lineWidth = currentLineWidth();
+        if (lineWidthVal) lineWidthVal.textContent = String(lineWidth);
+        if (selected >= 0 && markers[selected] && markers[selected].shape === "line") {
+          markers[selected].width = lineWidth;
+          renderMarkers();
+          serialize();
+          notify();
+        }
       });
     }
     clearButton.addEventListener("click", function () {
@@ -680,6 +1572,9 @@
       paintButton.addEventListener("click", function () {
         if (!paintEnabled()) return;
         paintMode = !paintMode;
+        if (paintMode) {
+          stopLineModes();
+        }
         render();
       });
     }
@@ -688,41 +1583,102 @@
         fillColor = fillColorInput.value || DEFAULT_FILL_COLOR;
       });
     }
-    if (insertPlaceholderButton && stemField) {
+    if (insertPlaceholderButton) {
       insertPlaceholderButton.addEventListener("click", function () {
-        var start = stemField.selectionStart;
-        var end = stemField.selectionEnd;
-        var value = stemField.value || "";
-        if (value.indexOf(MAP_PLACEHOLDER) !== -1) {
-          status.textContent = "Metinde zaten [HARITA] var.";
+        var el =
+          document.getElementById("question-stem") ||
+          document.querySelector('textarea[name="stem"]');
+        var note = insertStatus || status;
+        if (!el) {
+          if (note) note.textContent = "Soru metni alanı bulunamadı.";
           return;
         }
-        var insert = (start > 0 && value[start - 1] !== "\n" ? "\n\n" : "") +
-          MAP_PLACEHOLDER +
-          (end < value.length && value[end] !== "\n" ? "\n\n" : "");
-        stemField.value = value.slice(0, start) + insert + value.slice(end);
-        stemField.dispatchEvent(new Event("input", { bubbles: true }));
-        var cursor = start + insert.length;
-        stemField.focus();
-        stemField.setSelectionRange(cursor, cursor);
-        status.textContent = "[HARITA] soru metnine eklendi.";
+        var value = el.value || "";
+        var found = value.indexOf(MAP_PLACEHOLDER);
+        function say(msg) {
+          if (note) note.textContent = msg;
+          if (status && status !== note) status.textContent = msg;
+        }
+        if (found !== -1) {
+          el.focus();
+          try {
+            el.setSelectionRange(found, found + MAP_PLACEHOLDER.length);
+          } catch (_) {}
+          say("Metinde zaten [HARITA] var.");
+          if (window.KpssQuestionPreview) window.KpssQuestionPreview.sync();
+          return;
+        }
+        var start = typeof el.selectionStart === "number" ? el.selectionStart : value.length;
+        var end = typeof el.selectionEnd === "number" ? el.selectionEnd : start;
+        var before = value.slice(0, start);
+        var after = value.slice(end);
+        var padBefore =
+          before && !/\n\n$/.test(before)
+            ? before.slice(-1) === "\n"
+              ? "\n"
+              : "\n\n"
+            : "";
+        var padAfter =
+          after && !/^\n\n/.test(after)
+            ? after.charAt(0) === "\n"
+              ? "\n"
+              : "\n\n"
+            : after
+              ? ""
+              : "\n";
+        var insert = padBefore + MAP_PLACEHOLDER + padAfter;
+        el.value = before + insert + after;
+        var cursor = before.length + insert.length;
+        el.focus();
+        try {
+          el.setSelectionRange(cursor, cursor);
+        } catch (_) {}
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        if (window.KpssQuestionPreview) window.KpssQuestionPreview.sync();
+        notify();
+        say(
+          mapActive()
+            ? "[HARITA] soru metnine eklendi."
+            : "[HARITA] eklendi. Haritanın görünmesi için şablon seçin."
+        );
       });
     }
-    baseImage.addEventListener("load", notify);
+    baseImage.addEventListener("load", function () {
+      syncFitPlane();
+      renderMarkers();
+      notify();
+    });
     previewImage.addEventListener("load", notify);
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () {
+        syncFitPlane();
+        if (drag) return;
+        renderMarkers();
+      }).observe(wrap);
+    } else {
+      window.addEventListener("resize", function () {
+        syncFitPlane();
+        if (drag) return;
+        renderMarkers();
+      });
+    }
 
     function previewImageSrc() {
       if (staticMode()) {
         var entry = currentTemplate();
         return entry && entry.asset ? entry.asset : "";
       }
-      if (!enabled()) return "";
+      if (!mapActive()) return "";
       var source = previewImage;
-      if (!source.complete || !source.naturalWidth) return "";
+      if (!source.complete || !source.naturalWidth) {
+        return source.src || (baseImage && baseImage.src) || "";
+      }
       var canvas = document.createElement("canvas");
       canvas.width = source.naturalWidth;
       canvas.height = source.naturalHeight;
       var ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
       var byId = {};
       provinces.forEach(function (province) {
@@ -776,7 +1732,36 @@
         }
       }
 
+      var previewLines = [];
+      var previewCityLabels = [];
       markers.forEach(function (marker, index) {
+        if (marker.shape === "line") {
+          var x1 = (marker.x / 100) * canvas.width;
+          var y1 = (marker.y / 100) * canvas.height;
+          var x2 = (marker.x2 / 100) * canvas.width;
+          var y2 = (marker.y2 / 100) * canvas.height;
+          var thick = Math.max(2, (marker.width / 100) * canvas.width);
+          ctx.strokeStyle = marker.color;
+          ctx.lineWidth = thick;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.fillStyle = marker.color;
+          ctx.beginPath();
+          ctx.arc(x1, y1, thick * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x2, y2, thick * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+          previewLines.push(marker);
+          return;
+        }
+        if (marker.shape === "city-label") {
+          previewCityLabels.push(marker);
+          return;
+        }
         var cx = (marker.x / 100) * canvas.width;
         var cy = (marker.y / 100) * canvas.height;
         var rx = (marker.width / 100) * canvas.width / 2;
@@ -789,13 +1774,11 @@
         ctx.ellipse(cx, cy, rx, ry, rot, 0, Math.PI * 2);
         ctx.fillStyle = marker.color;
         ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#7f1d1d";
-        ctx.stroke();
+        if (marker.showLabel === false) return;
 
         var aabbW = Math.abs(rx * 2 * Math.cos(rot)) + Math.abs(ry * 2 * Math.sin(rot));
         var aabbH = Math.abs(rx * 2 * Math.sin(rot)) + Math.abs(ry * 2 * Math.cos(rot));
-        var label = ROMAN[index];
+        var label = pinLabel(index);
         var measureW = romanWidth(label);
         var gap = Math.max(14, canvas.width * 0.01);
         var tx = cx + aabbW / 2 + gap;
@@ -814,6 +1797,52 @@
         ctx.fillStyle = "#111827";
         drawRoman(label, tx, ty);
       });
+      (function drawPreviewLineCities() {
+        var cityPx = Math.max(22, Math.round(canvas.width * 0.022));
+        var extra = canvas.width * 0.038;
+        var hubs = {};
+        function drawCity(name, px, py) {
+          if (!name) return;
+          ctx.font = "700 " + cityPx + "px Arial, Helvetica, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.lineWidth = Math.max(3, Math.round(canvas.width * 0.003));
+          ctx.strokeStyle = "#ffffff";
+          ctx.fillStyle = "#111827";
+          ctx.strokeText(name, px, py);
+          ctx.fillText(name, px, py);
+        }
+        previewLines.forEach(function (marker) {
+          if (marker.showLabel === false) return;
+          var names = lineEndNames(marker);
+          var x1 = (marker.x / 100) * canvas.width;
+          var y1 = (marker.y / 100) * canvas.height;
+          var x2 = (marker.x2 / 100) * canvas.width;
+          var y2 = (marker.y2 / 100) * canvas.height;
+          var key = Number(marker.x).toFixed(1) + "," + Number(marker.y).toFixed(1);
+          if (names.start && !hubs[key]) {
+            hubs[key] = { name: names.start, x: x1, y: y1 - canvas.height * 0.045 };
+          }
+          if (!names.end) return;
+          var dx = x2 - x1;
+          var dy = y2 - y1;
+          var len = Math.sqrt(dx * dx + dy * dy) || 1;
+          drawCity(names.end, x2 + (dx / len) * extra, y2 + (dy / len) * extra);
+        });
+        Object.keys(hubs).forEach(function (key) {
+          drawCity(hubs[key].name, hubs[key].x, hubs[key].y);
+        });
+        previewCityLabels.forEach(function (marker) {
+          if (marker.showLabel === false || !marker.label) return;
+          drawCity(
+            marker.label,
+            (marker.x / 100) * canvas.width,
+            (marker.y / 100) * canvas.height
+          );
+        });
+        ctx.textAlign = "start";
+        ctx.font = "700 " + romanPx + "px Arial, Helvetica, sans-serif";
+      })();
       return canvas.toDataURL("image/png");
     }
 
@@ -833,7 +1862,12 @@
         })
         .then(function (data) {
           provinces = data.provinces || [];
+          markers.forEach(syncLineLabel);
+          markers.forEach(syncCityLabel);
           renderFills();
+          renderMarkers();
+          renderControls();
+          serialize();
           notify();
         })
         .catch(function () {

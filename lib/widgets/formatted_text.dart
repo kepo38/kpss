@@ -349,6 +349,12 @@ class FormattedText extends StatelessWidget {
         .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
         .replaceAll('＊', '*')
         .replaceAll('＿', '_')
+        .replaceAll(RegExp(r'\$\\(?:long)?rightarrow\$'), '→')
+        .replaceAll(r'$\to$', '→')
+        .replaceAllMapped(
+          RegExp(r'[ \t]*->[ \t]*'),
+          (_) => ' → ',
+        )
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
         .replaceAll(RegExp(r'</p\s*>', caseSensitive: false), '\n\n')
         .replaceAll(RegExp(r'<p\b[^>]*>', caseSensitive: false), '')

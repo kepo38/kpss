@@ -134,7 +134,9 @@ class QuestionFetchService {
       if (body is! Map) return const [];
       final parsed = _parseQuestions(body['questions']);
       _rememberSession(parsed);
-      return parsed;
+      return parsed
+          .where((q) => q.id != questionId)
+          .toList(growable: false);
     } catch (e) {
       debugPrint('Similar questions fetch ($questionId): $e');
       return const [];

@@ -28,4 +28,27 @@ void main() {
     expect(find.text(BrandConstants.brandLine2), findsOneWidget);
     expect(find.byType(WatermarkWidget), findsOneWidget);
   });
+
+  testWidgets('overlay watermark still shows brand on top of a child',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WatermarkWidget(
+            overlay: true,
+            fitToChild: true,
+            child: Container(
+              height: 200,
+              width: 360,
+              color: const Color(0xFFE8EEF4),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(BrandConstants.brandLine1), findsOneWidget);
+    expect(find.text(BrandConstants.brandLine2), findsOneWidget);
+  });
 }

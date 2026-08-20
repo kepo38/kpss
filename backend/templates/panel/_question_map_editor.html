@@ -3,9 +3,10 @@
          data-map-src="{% static 'content/maps/turkiye_goller.png' %}"
          data-provinces-src="{% static 'content/maps/turkiye_iller.json' %}">
   <div class="media-title">Harita sorusu</div>
-  <p class="media-hint">Şablonu seçin. <strong>İl boya</strong> ile haritadaki ili boya kutusu gibi doldurun (aynı rengi komşu illere basınca bölge birleşir). Elips/daire işaret; elipsi yeşil tutaçla döndürün. Soru metninde haritanın yerine <code>[HARITA]</code> yazın.</p>
+  <p class="media-hint">Şablonu seçin. <strong>İl boya</strong> ile ili doldurun. <strong>Elips ekle</strong> ile numarasız elips (kenar tutaçları boyut, yeşil tutaç dönüş); <strong>Doğru çiz</strong> iki tıklama; <strong>Işın çiz</strong> merkez + hedefler; <strong>İl adı</strong> ile tek başına kalın şehir etiketi. <strong>Şehir adları</strong> ile göster/gizle. Soru metninde <code>[HARITA]</code> yazın.</p>
   <div class="map-editor-actions map-editor-actions-top">
     <button type="button" class="btn btn-ghost" id="map-insert-placeholder">Metne [HARITA] ekle</button>
+    <span class="media-hint" id="map-insert-status"></span>
   </div>
   <label>Harita şablonu
     <select name="map_template" id="map-template">
@@ -23,8 +24,10 @@
       <img src="{% static 'content/maps/turkiye_goller_editor.png' %}"
            alt="İl sınırlı ve isimli düzenleme haritası (Tuz Gölü ve Van Gölü)"
            id="map-base-image" draggable="false">
-      <svg class="map-fill-layer" id="map-fill-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="map-marker-layer" id="map-marker-layer"></div>
+      <div class="map-fit-plane" id="map-fit-plane">
+        <svg class="map-fill-layer" id="map-fill-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="map-marker-layer" id="map-marker-layer"></div>
+      </div>
     </div>
     <div class="map-editor-actions">
       <button type="button" class="btn btn-ghost" id="map-paint-toggle">İl boya</button>
@@ -32,8 +35,23 @@
         Boya rengi
         <input type="color" id="map-fill-color" value="#111827">
       </label>
-      <button type="button" class="btn btn-primary" id="map-add-marker">Elips ekle</button>
+      <button type="button" class="btn btn-ghost" id="map-zoom-expand">%170</button>
+      <button type="button" class="btn btn-ghost" id="map-add-marker">Elips ekle</button>
       <button type="button" class="btn btn-ghost" id="map-add-circle">Daire ekle</button>
+      <button type="button" class="btn btn-ghost" id="map-add-line">Doğru çiz</button>
+      <button type="button" class="btn btn-ghost" id="map-add-spoke">Işın çiz</button>
+      <button type="button" class="btn btn-ghost" id="map-add-city-label">İl adı</button>
+      <label class="map-line-count" id="map-line-count-wrap" hidden>
+        Kaç doğru?
+        <input type="number" id="map-line-count" min="1" max="12" value="3" step="1">
+        <button type="button" class="btn btn-primary" id="map-line-count-ok">Tamam</button>
+      </label>
+      <button type="button" class="btn btn-ghost" id="map-city-labels-toggle" hidden aria-pressed="true">Şehir adları: açık</button>
+      <label class="map-line-width" id="map-line-width-wrap" hidden>
+        Kalınlık
+        <input type="range" id="map-line-width" min="0.4" max="4" step="0.1" value="0.5">
+        <span id="map-line-width-val">0.5</span>
+      </label>
       <button type="button" class="btn btn-ghost" id="map-clear-markers">Tümünü sil</button>
       <span class="media-hint" id="map-editor-status"></span>
     </div>

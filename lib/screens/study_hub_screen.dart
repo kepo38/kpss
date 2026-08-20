@@ -362,24 +362,22 @@ class _MyNotesButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF5EEAD4);
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(2),
-        splashColor: accent.withValues(alpha: 0.12),
-        highlightColor: accent.withValues(alpha: 0.06),
+        splashColor: Colors.black.withValues(alpha: 0.08),
+        highlightColor: Colors.black.withValues(alpha: 0.04),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            color: const Color(0xFF121E2C),
-            border: Border.all(
-              color: accent.withValues(alpha: 0.42),
-              width: 1,
+            borderRadius: BorderRadius.all(Radius.circular(2)),
+            color: Color(0xFFF3F0EA),
+            border: Border.fromBorderSide(
+              BorderSide(color: Color(0xFFD8D2C8), width: 1),
             ),
           ),
-          child: const Padding(
+          child: Padding(
             padding: EdgeInsets.fromLTRB(10, 7, 10, 7),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -387,7 +385,7 @@ class _MyNotesButton extends StatelessWidget {
                 Icon(
                   Icons.sticky_note_2_outlined,
                   size: 14,
-                  color: Color(0xFF99F6E4),
+                  color: Colors.black,
                 ),
                 SizedBox(width: 6),
                 Text(
@@ -398,7 +396,7 @@ class _MyNotesButton extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.1,
                     height: 1,
-                    color: Color(0xFFE8FAF8),
+                    color: Colors.black,
                   ),
                 ),
               ],

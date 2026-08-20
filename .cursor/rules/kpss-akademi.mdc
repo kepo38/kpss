@@ -64,12 +64,22 @@ Ana sayfa / hub ekranlarını şişirme; parçalar `lib/widgets/` altında:
 
 Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine gömme.
 
+## Dosya ayrımı (konu ayrı, dosya ayrı)
+
+Ayrı iş = ayrı dosya. Harita, tablo/eşleştirme şıkları, yapıştırma, önizleme, reklam gibi **farklı değişim türlerini** aynı büyük dosyaya yığma. Yeni dosya mevcut ağaçta olsun (`lib/widgets/…`, `backend/static/panel/…`); kökte rastgele klasör / ikinci mimari yok.
+
+- Büyük dosyayı (`question-preview.js`, `panel.css`, `quiz_screen.dart`, `home_screen.dart`, `models.py` …) yalnızca **ince çağrı / 1–2 satır bağlama** için aç; asıl kural ve stil kendi dosyasında kalsın.
+- Değişiklik yaparken o konunun dosyasını oku; dev dosyanın tamamını bağlama (token + hata yüzeyi).
+- Aynı işi ikinci kopya olarak başka dosyada tekrar yazma; tek kaynak, diğerleri çağırır.
+
+Örnek: eşleştirme şıkları → `option-table.js` + `option-table.css` + `option_column_layout.dart`; önizleme yalnızca `KpssOptionTable.apply`.
+
 ## Anayasa (onaysız sapma yok)
 
 - Kullanıcının söylediği iş tam olarak o iş; başka ekran/layout/metin/akış değiştirme.
 - `README.md` veya `FEATURES.md` ile çelişen davranış uydurma; README’yi kullanıcı istemeden değiştirme.
 - İstekte olmayan bir değişiklik gerekirse **önce onay iste**; onay olmadan uygulama.
-- Her değişiklik mevcut mimari, klasör, API, state ve reklam kurallarıyla **sistem bütünüyle tutarlı** olsun; paralel ikinci yol / yeni paket / yeni klasör açma.
+- Her değişiklik mevcut mimari, klasör, API, state ve reklam kurallarıyla **sistem bütünüyle tutarlı** olsun; paralel ikinci yol / yeni paket / kökte yeni klasör açma.
 
 ## Davranış
 

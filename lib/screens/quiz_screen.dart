@@ -21,6 +21,7 @@ import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
 import '../services/question_error_report_service.dart';
 import '../services/question_attempt_service.dart';
+import '../services/question_note_service.dart';
 import '../services/question_rating_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/exam_typography.dart';
@@ -30,12 +31,16 @@ import '../widgets/brand_mark.dart';
 import '../widgets/favorite_heart_button.dart';
 import '../widgets/exam_text/exam_option_view.dart';
 import '../widgets/exam_text/exam_solution_view.dart';
+import '../widgets/exam_text/option_column_layout.dart';
 import '../widgets/formatted_text.dart';
 import '../widgets/question_error_report_button.dart';
 import '../widgets/question_rating_bar.dart';
 import '../widgets/osym_badge.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/quiz_drawing_overlay.dart';
+import '../widgets/quiz_question_note_card.dart';
+import '../widgets/quiz_take_note_button.dart';
+import '../widgets/quiz_wrong_notebook_banner.dart';
 import '../widgets/shareable_result_card.dart';
 import '../widgets/watermark_widget.dart';
 
@@ -49,6 +54,12 @@ class QuizScreen extends StatefulWidget {
   final Duration initialElapsed;
   final QuizResumeMeta? resumeMeta;
   final bool skipResultDialog;
+
+  /// Yanlış Defterim kartından tek soru inceleme — süre/1/1 yok, not alınır.
+  final bool fromWrongNotebook;
+
+  /// Defter pratiği gibi oturumlarda «defterde kayıtlı» uyarısını basma.
+  final bool suppressWrongNotebookHint;
 
   /// Günün Denemesi gibi tanıtım oturumları — çözüm/banner/bitiş reklamı yok.
   final bool adFreeExperience;
@@ -70,6 +81,8 @@ class QuizScreen extends StatefulWidget {
     this.initialElapsed = Duration.zero,
     this.resumeMeta,
     this.skipResultDialog = false,
+    this.fromWrongNotebook = false,
+    this.suppressWrongNotebookHint = false,
     this.adFreeExperience = false,
     this.dailyMiniRankingMode = false,
     this.statisticsTestId,
@@ -105,6 +118,9 @@ class _QuizScreenState extends State<QuizScreen>
   final Map<String, QuestionAttemptSummary> _attemptSummaries = {};
   final Map<String, List<QuizStroke>> _drawings = {};
   bool _drawingEnabled = false;
+  bool _noteCardOpen = false;
+  bool _showWrongNotebookHint = false;
+  Timer? _wrongNotebookHintTimer;
   static const _maxStrokesPerQuestion = 80;
   final ScrollController _scrollController = ScrollController();
 
@@ -143,7 +159,7 @@ class _QuizScreenState extends State<QuizScreen>
       _displayDuration = elapsed;
     }
     // Devam edilen oturumda mevcut soru cevaplıysa süre bekletilir.
-    _timerPaused = _selectedAnswer != null;
+    _timerPaused = _selectedAnswer != null || widget.fromWrongNotebook;
     _flashCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 520),
@@ -153,6 +169,7 @@ class _QuizScreenState extends State<QuizScreen>
       TweenSequenceItem(tween: Tween(begin: 0.42, end: 0), weight: 82),
     ]).animate(CurvedAnimation(parent: _flashCtrl, curve: Curves.easeOut));
     FavoritesService.instance.initialize();
+    QuestionNoteService.instance.initialize();
     AnswerFeedbackService.instance.ensureReady();
     AdManager.instance.startTestSession(
       adFreeExperience: widget.adFreeExperience,
@@ -161,10 +178,37 @@ class _QuizScreenState extends State<QuizScreen>
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
     unawaited(_persistProgress());
+    ContentBankService.instance.addListener(_onContentBankUpdated);
+    unawaited(_bootstrapWrongNotebookHint());
+  }
+
+  Future<void> _bootstrapWrongNotebookHint() async {
+    await ContentBankService.instance.initialize();
+    if (!mounted) return;
+    _syncWrongNotebookHint(rebuild: true);
+  }
+
+  void _onContentBankUpdated() {
+    if (!mounted ||
+        widget.fromWrongNotebook ||
+        widget.suppressWrongNotebookHint) {
+      return;
+    }
+    _syncWrongNotebookHint(rebuild: true);
+  }
+
+  void _syncWrongNotebookHint({bool rebuild = false}) {
+    final wasVisible = _showWrongNotebookHint;
+    _refreshWrongNotebookHint();
+    if (rebuild && wasVisible != _showWrongNotebookHint && mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    ContentBankService.instance.removeListener(_onContentBankUpdated);
+    _wrongNotebookHintTimer?.cancel();
     _ticker?.cancel();
     _flashCtrl.dispose();
     _scrollController.dispose();
@@ -201,11 +245,38 @@ class _QuizScreenState extends State<QuizScreen>
 
   /// Cevapsız soruda süre akar; cevaplı soruda bekler (açıklama okurken yanmaz).
   void _syncTimerForCurrentQuestion() {
+    if (widget.fromWrongNotebook) {
+      _pauseTimer();
+      return;
+    }
     if (_selectedAnswer != null) {
       _pauseTimer();
     } else {
       _resumeTimer();
     }
+  }
+
+  void _refreshWrongNotebookHint() {
+    _wrongNotebookHintTimer?.cancel();
+    final hide = widget.fromWrongNotebook || widget.suppressWrongNotebookHint;
+    final inNotebook = !hide &&
+        ContentBankService.instance.isInWrongNotebook(_currentQuestion.id);
+    _showWrongNotebookHint = inNotebook;
+    if (!inNotebook) return;
+    _wrongNotebookHintTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      setState(() => _showWrongNotebookHint = false);
+    });
+  }
+
+  void _openQuestionNote() {
+    if (_isFinishing) return;
+    setState(() => _noteCardOpen = true);
+  }
+
+  Future<void> _saveQuestionNote(String text) async {
+    await QuestionNoteService.instance.save(_currentQuestion.id, text);
+    if (mounted) setState(() {});
   }
 
   Future<void> _persistProgress() async {
@@ -254,6 +325,9 @@ class _QuizScreenState extends State<QuizScreen>
     final testId = widget.statisticsTestId;
     if (testId == null || testId.isEmpty) return;
     final questionId = _currentQuestion.id;
+    if (ContentBankService.instance.isStatLockedForQuestion(questionId)) {
+      return;
+    }
     final summary = await QuestionAttemptService.instance.submitQuestion(
       testId: testId,
       questionId: questionId,
@@ -433,6 +507,9 @@ class _QuizScreenState extends State<QuizScreen>
 
   Future<bool> _onWillPop() async {
     _answers[_currentIndex] = _selectedAnswer;
+    if (widget.fromWrongNotebook) {
+      return true;
+    }
     await _persistProgress();
     if (!mounted) return false;
 
@@ -607,6 +684,15 @@ class _QuizScreenState extends State<QuizScreen>
     return result ?? false;
   }
 
+  void _exitWrongNotebook() {
+    if (_isFinishing || !mounted) return;
+    _isFinishing = true;
+    _drawingEnabled = false;
+    _ticker?.cancel();
+    AdManager.instance.endTestSession();
+    Navigator.of(context).pop();
+  }
+
   void _popWithResult({
     required bool completed,
     bool submitDailyMiniRanking = false,
@@ -642,6 +728,7 @@ class _QuizScreenState extends State<QuizScreen>
       _resetRatingState();
       _resetErrorReportState();
       _syncTimerForCurrentQuestion();
+      _refreshWrongNotebookHint();
     });
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
@@ -759,6 +846,8 @@ class _QuizScreenState extends State<QuizScreen>
           content: Text(
             QuestionErrorReportService.testsRequiredWarning(
               completed: completed,
+              required:
+                  QuestionErrorReportService.instance.minTestsRequiredNow,
             ),
           ),
         ),
@@ -913,11 +1002,16 @@ class _QuizScreenState extends State<QuizScreen>
         _resetRatingState();
         _resetErrorReportState();
         _syncTimerForCurrentQuestion();
+        _refreshWrongNotebookHint();
       });
       unawaited(_persistProgress());
       if (_selectedAnswer != null) unawaited(_loadRating());
       unawaited(_loadErrorReportState());
     } else {
+      if (widget.fromWrongNotebook) {
+        _exitWrongNotebook();
+        return;
+      }
       unawaited(_requestFinish());
     }
   }
@@ -991,6 +1085,7 @@ class _QuizScreenState extends State<QuizScreen>
       _resetRatingState();
       _resetErrorReportState();
       _syncTimerForCurrentQuestion();
+      _refreshWrongNotebookHint();
     });
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
@@ -1248,7 +1343,11 @@ class _QuizScreenState extends State<QuizScreen>
                   Expanded(
                     child: isLast
                         ? FilledButton(
-                            onPressed: canAdvance ? _nextQuestion : null,
+                            onPressed: canAdvance
+                                ? (widget.fromWrongNotebook
+                                    ? _exitWrongNotebook
+                                    : _nextQuestion)
+                                : null,
                             style: FilledButton.styleFrom(
                               backgroundColor: AppTheme.champagne,
                               foregroundColor: AppTheme.ink,
@@ -1267,8 +1366,8 @@ class _QuizScreenState extends State<QuizScreen>
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            child: const Text(
-                              'Bitir',
+                            child: Text(
+                              widget.fromWrongNotebook ? 'Çıkış' : 'Bitir',
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1325,6 +1424,10 @@ class _QuizScreenState extends State<QuizScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
+        if (widget.fromWrongNotebook) {
+          _exitWrongNotebook();
+          return;
+        }
         final shouldPop = await _onWillPop();
         if (shouldPop && context.mounted) {
           _popWithResult(completed: false);
@@ -1338,6 +1441,10 @@ class _QuizScreenState extends State<QuizScreen>
           centerTitle: false,
           titleSpacing: 8,
           leading: AppBackButton(onPressed: () async {
+            if (widget.fromWrongNotebook) {
+              _exitWrongNotebook();
+              return;
+            }
             final shouldPop = await _onWillPop();
             if (shouldPop && mounted) {
               _popWithResult(completed: false);
@@ -1426,11 +1533,22 @@ class _QuizScreenState extends State<QuizScreen>
                   durationText: _formatDuration(_displayDuration),
                   isCountdown: _isCountdown,
                   urgent: urgent,
-                  questionLabel:
-                      'Soru ${_currentIndex + 1} / ${widget.questions.length}',
+                  showTimer: !widget.fromWrongNotebook,
+                  questionLabel: widget.fromWrongNotebook
+                      ? null
+                      : 'Soru ${_currentIndex + 1} / ${widget.questions.length}',
                   difficultyLabel: _difficultyLabel(),
+                  difficultyOnRight: widget.fromWrongNotebook,
                   attemptLabel: '$_visibleAttemptCount kişi cevapladı',
+                  leading: widget.fromWrongNotebook
+                      ? QuizTakeNoteButton(
+                          hasNote: QuestionNoteService.instance
+                              .hasNote(_currentQuestion.id),
+                          onTap: _openQuestionNote,
+                        )
+                      : null,
                 ),
+                if (!widget.fromWrongNotebook) ...[
                 SizedBox(
                   height: 40,
                   child: ListView.separated(
@@ -1496,6 +1614,7 @@ class _QuizScreenState extends State<QuizScreen>
                     ],
                   ),
                 ),
+                ],
                 const SizedBox(height: 8),
                 Expanded(
                   child: Stack(
@@ -1542,7 +1661,8 @@ class _QuizScreenState extends State<QuizScreen>
                                 unlocking: _solutionUnlocking,
                                 onUnlockFull: _unlockFullSolution,
                               )
-                            else
+                            else ...[
+                              ..._matchingOptionHeaders(_currentQuestion),
                               ..._currentQuestion.siklar.entries.map(
                                 (entry) {
                                   final selected =
@@ -1570,6 +1690,7 @@ class _QuizScreenState extends State<QuizScreen>
                                   );
                                 },
                               ),
+                            ],
                             if (_selectedAnswer != null &&
                                 AuthService.instance.isSignedIn &&
                                 QuestionRatingService.canRate(
@@ -1655,11 +1776,31 @@ class _QuizScreenState extends State<QuizScreen>
                 },
               ),
             ),
+            QuizWrongNotebookBanner(visible: _showWrongNotebookHint),
+            if (_noteCardOpen)
+              QuizQuestionNoteCard(
+                initialText: QuestionNoteService.instance
+                    .noteFor(_currentQuestion.id),
+                onSave: (text) => unawaited(_saveQuestionNote(text)),
+                onClose: () => setState(() => _noteCardOpen = false),
+              ),
           ],
         ),
         bottomNavigationBar: _buildBottomActions(),
       ),
     );
+  }
+
+  List<Widget> _matchingOptionHeaders(QuestionModel question) {
+    final n = OptionColumnLayout.alignedCount(question.siklar.values);
+    if (n == null) return const [];
+    final labels = OptionColumnLayout.headersFor(
+      question.soruMetni,
+      question.siklar.values,
+      n,
+    );
+    if (labels == null || labels.isEmpty) return const [];
+    return [OptionColumnHeader(labels: labels)];
   }
 
   Widget _legendDot(Color color, String label) {

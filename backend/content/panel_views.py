@@ -30,14 +30,18 @@ from .models import (
     ExamPack,
     MapTemplate,
     OcrIngestLog,
+    PromoCode,
     Question,
     QuestionErrorReport,
     QuestionScenario,
     Subject,
     Topic,
     TopicLesson,
+    TopicSummaryCard,
     TopicTest,
     get_mobile_ui_config,
+    normalize_promo_code,
+    SUMMARY_CARD_KIND_CHOICES,
 )
 from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
@@ -843,6 +847,12 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                         require_options=bool(
                             option_a and option_b and option_c
                         ),
+                        stem=stem,
+                        option_a=option_a,
+                        option_b=option_b,
+                        option_c=option_c,
+                        option_d=option_d,
+                        option_e=option_e,
                     )
                     _log_ocr_ingest(
                         request,
@@ -1073,6 +1083,12 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             and (opts.get("B") or "").strip()
             and (opts.get("C") or "").strip()
         ),
+        stem=result.stem or "",
+        option_a=opts.get("A", ""),
+        option_b=opts.get("B", ""),
+        option_c=opts.get("C", ""),
+        option_d=opts.get("D", ""),
+        option_e=opts.get("E", ""),
     )
     _log_ocr_ingest(
         request,
@@ -1353,10 +1369,11 @@ def panel_topic(
     topic = get_object_or_404(
         Topic.objects.select_related("subject"), pk=topic_id
     )
-    if tab not in {"lessons", "questions", "tests", "scenarios"}:
+    if tab not in {"lessons", "summary", "questions", "tests", "scenarios"}:
         tab = "lessons"
 
     lessons = topic.lessons.order_by("sort_order", "id")
+    summary_cards = topic.summary_cards.order_by("sort_order", "id")
     questions = topic.questions.select_related("scenario").order_by("-updated_at")
     tests = topic.tests.prefetch_related("questions").order_by("-created_at")
     scenarios = topic.question_scenarios.annotate(
@@ -1372,6 +1389,7 @@ def panel_topic(
             "subject": topic.subject,
             "tab": tab,
             "lessons": lessons,
+            "summary_cards": summary_cards,
             "questions": questions,
             "questions_published_count": questions_published_count,
             "tests": tests,
@@ -1433,6 +1451,65 @@ def panel_lesson_delete(request: HttpRequest, lesson_id: int) -> HttpResponse:
     topic_id = lesson.topic_id
     lesson.delete()
     return redirect("panel_topic", topic_id=topic_id, tab="lessons")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_summary_card_edit(
+    request: HttpRequest, topic_id: int, card_id: int | None = None
+) -> HttpResponse:
+    topic = get_object_or_404(Topic, pk=topic_id)
+    card = (
+        get_object_or_404(TopicSummaryCard, pk=card_id, topic=topic)
+        if card_id
+        else None
+    )
+
+    if request.method == "POST":
+        title = (request.POST.get("title") or "").strip()
+        body = (request.POST.get("body") or "").strip()
+        kind = (request.POST.get("kind") or "tip").strip()
+        if kind not in {c[0] for c in SUMMARY_CARD_KIND_CHOICES}:
+            kind = "tip"
+        sort_order = int(request.POST.get("sort_order") or 0)
+        is_published = request.POST.get("is_published") == "on"
+        if not title or not body:
+            messages.error(request, "Başlık ve özet zorunlu.")
+        else:
+            if card is None:
+                card = TopicSummaryCard(topic=topic, public_id=_pid("sum"))
+            card.title = title
+            card.body = body
+            card.kind = kind
+            card.sort_order = sort_order
+            card.is_published = is_published
+            card.save()
+            messages.success(request, "Özet kart kaydedildi.")
+            return redirect("panel_topic", topic_id=topic.id, tab="summary")
+
+    return render(
+        request,
+        "panel/summary_card_form.html",
+        {
+            "topic": topic,
+            "subject": topic.subject,
+            "card": card,
+            "kind_choices": SUMMARY_CARD_KIND_CHOICES,
+            "page_title": "Özet kart" if card else "Yeni özet kart",
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_summary_card_delete(request: HttpRequest, card_id: int) -> HttpResponse:
+    card = get_object_or_404(TopicSummaryCard, pk=card_id)
+    topic_id = card.topic_id
+    card.delete()
+    messages.success(request, "Özet kart silindi.")
+    return redirect("panel_topic", topic_id=topic_id, tab="summary")
 
 
 @login_required
@@ -1615,6 +1692,12 @@ def panel_question_edit(
             require_options=bool(
                 question.option_a and question.option_b and question.option_c
             ),
+            stem=question.stem,
+            option_a=question.option_a,
+            option_b=question.option_b,
+            option_c=question.option_c,
+            option_d=question.option_d,
+            option_e=question.option_e,
         )
         if dup and not force_duplicate:
             info = duplicate_payload(dup, match)
@@ -2038,7 +2121,14 @@ def _send_and_redirect(request: HttpRequest, item: Announcement) -> HttpResponse
 @staff_required
 def panel_users(request: HttpRequest) -> HttpResponse:
     q = (request.GET.get("q") or "").strip()
+    scope = (request.GET.get("scope") or "all").strip().lower()
+    if scope not in {"all", "guest", "account"}:
+        scope = "all"
     users = AppUser.objects.all().order_by("-last_login_at", "-created_at")
+    if scope == "guest":
+        users = users.filter(is_anonymous=True)
+    elif scope == "account":
+        users = users.filter(is_anonymous=False)
     if q:
         from django.db.models import Q
 
@@ -2049,6 +2139,7 @@ def panel_users(request: HttpRequest) -> HttpResponse:
         )
     paginator = Paginator(users, 40)
     page = paginator.get_page(request.GET.get("page") or 1)
+    guest_count = AppUser.objects.filter(is_anonymous=True).count()
     return render(
         request,
         "panel/users.html",
@@ -2056,8 +2147,62 @@ def panel_users(request: HttpRequest) -> HttpResponse:
             "page_title": "Kullanıcılar",
             "page_obj": page,
             "query": q,
+            "scope": scope,
+            "guest_count": guest_count,
         },
     )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_user_bulk_delete(request: HttpRequest) -> HttpResponse:
+    """Seçili uygulama kullanıcılarını toplu sil."""
+    raw_ids = request.POST.getlist("ids")
+    ids: list[int] = []
+    for raw in raw_ids:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    next_q = (request.POST.get("return_q") or "").strip()
+    next_scope = (request.POST.get("return_scope") or "all").strip()
+    url = reverse("panel_users")
+    params = []
+    if next_q:
+        params.append(f"q={next_q}")
+    if next_scope and next_scope != "all":
+        params.append(f"scope={next_scope}")
+    if params:
+        url = f"{url}?{'&'.join(params)}"
+
+    if not ids:
+        messages.warning(request, "Silmek için en az bir kullanıcı seçin.")
+        return redirect(url)
+
+    qs = AppUser.objects.filter(pk__in=ids)
+    count = qs.count()
+    if count:
+        qs.delete()
+        messages.success(request, f"{count} kullanıcı silindi.")
+    else:
+        messages.warning(request, "Seçilen kullanıcılar bulunamadı.")
+    return redirect(url)
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_user_purge_guests(request: HttpRequest) -> HttpResponse:
+    """Tüm misafir (anonim) AppUser kayıtlarını sil."""
+    qs = AppUser.objects.filter(is_anonymous=True)
+    count = qs.count()
+    if count:
+        qs.delete()
+        messages.success(request, f"{count} misafir kullanıcı silindi.")
+    else:
+        messages.info(request, "Silinecek misafir kullanıcı yok.")
+    return redirect("panel_users")
 
 
 @login_required
@@ -2095,6 +2240,120 @@ def panel_user_revoke_premium(request: HttpRequest, user_id: int) -> HttpRespons
     if next_q:
         url = f"{url}?q={next_q}"
     return redirect(url)
+
+
+def _parse_panel_datetime(raw: str):
+    from django.utils.dateparse import parse_datetime
+
+    value = (raw or "").strip()
+    if not value:
+        return None
+    # datetime-local → "2026-08-20T14:30"
+    if "T" in value and len(value) == 16:
+        value = f"{value}:00"
+    return parse_datetime(value)
+
+
+def _promo_from_post(request: HttpRequest, item: PromoCode | None) -> PromoCode:
+    obj = item or PromoCode()
+    obj.code = normalize_promo_code(request.POST.get("code") or "")
+    obj.title = (request.POST.get("title") or "").strip()[:120]
+    try:
+        obj.max_redemptions = max(1, int(request.POST.get("max_redemptions") or 1))
+    except (TypeError, ValueError):
+        obj.max_redemptions = 1
+    try:
+        obj.premium_duration_days = max(
+            1, int(request.POST.get("premium_duration_days") or 1)
+        )
+    except (TypeError, ValueError):
+        obj.premium_duration_days = 1
+    obj.valid_from = _parse_panel_datetime(request.POST.get("valid_from") or "")
+    obj.valid_until = _parse_panel_datetime(request.POST.get("valid_until") or "")
+    obj.is_active = request.POST.get("is_active") == "on"
+    return obj
+
+
+@login_required
+@staff_required
+def panel_promo_list(request: HttpRequest) -> HttpResponse:
+    items = (
+        PromoCode.objects.annotate(used_count=Count("redemptions"))
+        .order_by("-created_at")
+    )
+    return render(
+        request,
+        "panel/promo_codes.html",
+        {
+            "page_title": "Promosyon kodları",
+            "promos": items,
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_promo_edit(
+    request: HttpRequest, promo_id: int | None = None
+) -> HttpResponse:
+    item = get_object_or_404(PromoCode, pk=promo_id) if promo_id else None
+    if request.method == "POST":
+        obj = _promo_from_post(request, item)
+        if not obj.code:
+            messages.error(request, "Kod gerekli.")
+            item = obj
+        elif not obj.valid_until:
+            messages.error(request, "Geçerlilik bitişi gerekli.")
+            item = obj
+        elif (
+            PromoCode.objects.filter(code=obj.code)
+            .exclude(pk=obj.pk or 0)
+            .exists()
+        ):
+            messages.error(request, "Bu kod zaten kayıtlı.")
+            item = obj
+        else:
+            try:
+                obj.save()
+            except Exception as exc:  # noqa: BLE001
+                messages.error(request, f"Kaydedilemedi: {exc}")
+                item = obj
+            else:
+                messages.success(request, f"{obj.code} kaydedildi.")
+                return redirect("panel_promo_list")
+
+    return render(
+        request,
+        "panel/promo_code_form.html",
+        {
+            "page_title": "Promosyon düzenle" if promo_id else "Yeni promosyon kodu",
+            "promo": item,
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_promo_delete(request: HttpRequest, promo_id: int) -> HttpResponse:
+    item = get_object_or_404(PromoCode, pk=promo_id)
+    code = item.code
+    item.delete()
+    messages.success(request, f"{code} silindi.")
+    return redirect("panel_promo_list")
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_promo_toggle(request: HttpRequest, promo_id: int) -> HttpResponse:
+    item = get_object_or_404(PromoCode, pk=promo_id)
+    item.is_active = not item.is_active
+    item.save(update_fields=["is_active", "updated_at"])
+    state = "aktif" if item.is_active else "pasif"
+    messages.success(request, f"{item.code} artık {state}.")
+    return redirect("panel_promo_list")
 
 
 @login_required

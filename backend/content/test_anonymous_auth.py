@@ -46,3 +46,24 @@ class AnonymousAuthTests(TestCase):
         self.assertFalse(linked.is_anonymous)
         self.assertEqual(linked.email, "student@example.com")
         self.assertEqual(linked.display_name, "Öğrenci")
+
+    def test_anonymous_upgrade_without_name_replaces_misafir(self):
+        anon = upsert_firebase_user(
+            {
+                "sub": "linked-uid-2",
+                "email": "",
+                "is_anonymous": True,
+            }
+        )
+        self.assertEqual(anon.display_name, "Misafir")
+        linked = upsert_firebase_user(
+            {
+                "sub": "linked-uid-2",
+                "email": "betul@gmail.com",
+                "name": "",
+                "picture": "",
+                "is_anonymous": False,
+            }
+        )
+        self.assertEqual(anon.pk, linked.pk)
+        self.assertEqual(linked.display_name, "betul")

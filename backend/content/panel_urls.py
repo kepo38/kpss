@@ -97,6 +97,21 @@ urlpatterns = [
         name="panel_lesson_delete",
     ),
     path(
+        "konu/<int:topic_id>/ozet/yeni/",
+        panel_views.panel_summary_card_edit,
+        name="panel_summary_card_new",
+    ),
+    path(
+        "konu/<int:topic_id>/ozet/<int:card_id>/",
+        panel_views.panel_summary_card_edit,
+        name="panel_summary_card_edit",
+    ),
+    path(
+        "ozet/<int:card_id>/sil/",
+        panel_views.panel_summary_card_delete,
+        name="panel_summary_card_delete",
+    ),
+    path(
         "konu/<int:topic_id>/soru/yeni/",
         panel_views.panel_question_edit,
         name="panel_question_new",
@@ -248,6 +263,16 @@ urlpatterns = [
     ),
     path("kullanicilar/", panel_views.panel_users, name="panel_users"),
     path(
+        "kullanicilar/toplu-sil/",
+        panel_views.panel_user_bulk_delete,
+        name="panel_user_bulk_delete",
+    ),
+    path(
+        "kullanicilar/misafirleri-temizle/",
+        panel_views.panel_user_purge_guests,
+        name="panel_user_purge_guests",
+    ),
+    path(
         "kullanici/<int:user_id>/premium/",
         panel_views.panel_user_grant_premium,
         name="panel_user_grant_premium",
@@ -256,6 +281,27 @@ urlpatterns = [
         "kullanici/<int:user_id>/premium/kaldir/",
         panel_views.panel_user_revoke_premium,
         name="panel_user_revoke_premium",
+    ),
+    path("promosyon/", panel_views.panel_promo_list, name="panel_promo_list"),
+    path(
+        "promosyon/yeni/",
+        panel_views.panel_promo_edit,
+        name="panel_promo_new",
+    ),
+    path(
+        "promosyon/<int:promo_id>/",
+        panel_views.panel_promo_edit,
+        name="panel_promo_edit",
+    ),
+    path(
+        "promosyon/<int:promo_id>/sil/",
+        panel_views.panel_promo_delete,
+        name="panel_promo_delete",
+    ),
+    path(
+        "promosyon/<int:promo_id>/toggle/",
+        panel_views.panel_promo_toggle,
+        name="panel_promo_toggle",
     ),
     path(
         "konu/<int:topic_id>/",

@@ -9,17 +9,24 @@ class WrongNotebookSubjectFilter extends StatelessWidget {
   final String? selectedSubject;
   final ValueChanged<String?> onChanged;
 
+  final int minSubjectsToShow;
+  final Color? defaultAccent;
+
   const WrongNotebookSubjectFilter({
     super.key,
     required this.subjects,
     required this.totalCount,
     required this.selectedSubject,
     required this.onChanged,
+    this.minSubjectsToShow = 2,
+    this.defaultAccent,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (subjects.length <= 1) return const SizedBox.shrink();
+    if (subjects.length < minSubjectsToShow) return const SizedBox.shrink();
+
+    final accent = defaultAccent ?? AppTheme.champagne;
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -30,7 +37,7 @@ class WrongNotebookSubjectFilter extends StatelessWidget {
             label: 'Tümü',
             count: totalCount,
             selected: selectedSubject == null,
-            accent: AppTheme.champagne,
+            accent: accent,
             onTap: () => onChanged(null),
           ),
           const SizedBox(width: 8),

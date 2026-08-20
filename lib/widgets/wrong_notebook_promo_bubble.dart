@@ -108,13 +108,15 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
         final cfg = AppConfigService.instance;
         final auth = AuthService.instance;
         final hasGoogle = auth.isSignedIn && !auth.isAnonymous;
-        final hasCompletedTest =
-            ContentBankService.instance.hasCompletedAnyTest;
+        final bank = ContentBankService.instance;
+        final hasCompletedTest = bank.hasCompletedAnyTest;
+        final hasWrongQuestions = bank.wrongQuestionCount > 0;
         if (!widget.homeVisible ||
             !cfg.showWrongNotebookBubble ||
             !_ratioLoaded ||
             !hasGoogle ||
-            !hasCompletedTest) {
+            !hasCompletedTest ||
+            !hasWrongQuestions) {
           return const SizedBox.shrink();
         }
 

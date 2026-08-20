@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicTest, UserMessage
+from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicSummaryCard, TopicTest, UserMessage
 from .models import ExamPack, ExamPackExam
 from .test_grouping import (
     interleave_osym_questions,
@@ -200,6 +200,29 @@ class TopicLessonSerializer(serializers.ModelSerializer):
         return url
 
 
+class TopicSummaryCardSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="public_id")
+    topicId = serializers.CharField(source="topic.slug")
+    subjectId = serializers.CharField(source="topic.subject.slug")
+    subjectName = serializers.CharField(source="topic.subject.name")
+    topicName = serializers.CharField(source="topic.name")
+    sortOrder = serializers.IntegerField(source="sort_order")
+
+    class Meta:
+        model = TopicSummaryCard
+        fields = (
+            "id",
+            "topicId",
+            "subjectId",
+            "subjectName",
+            "topicName",
+            "kind",
+            "title",
+            "body",
+            "sortOrder",
+        )
+
+
 class ContentPackSerializer(serializers.Serializer):
     """Mobil uygulamanın indirdiği yayın paketi."""
 
@@ -209,6 +232,7 @@ class ContentPackSerializer(serializers.Serializer):
     questions = QuestionSerializer(many=True)
     tests = TopicTestSerializer(many=True)
     lessons = TopicLessonSerializer(many=True)
+    summaryCards = TopicSummaryCardSerializer(many=True)
 
 
 class ContentCatalogSerializer(serializers.Serializer):
@@ -219,6 +243,7 @@ class ContentCatalogSerializer(serializers.Serializer):
     subjects = SubjectSerializer(many=True)
     tests = TopicTestSerializer(many=True)
     lessons = TopicLessonSerializer(many=True)
+    summaryCards = TopicSummaryCardSerializer(many=True)
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):

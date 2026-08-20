@@ -14,6 +14,7 @@ import 'ad_free_campaign_service.dart';
 /// - Her 3 sayfa geçişinde bir kapatılabilir interstitial
 /// - Ödüllü video ile çözüm kilidi (test bitene kadar önbellekte)
 /// - isPremium == true → tüm reklamlar bypass
+/// - 12 saat kampanya → yalnızca banner; çözüm/kota/interstitial durur
 class AdManager {
   AdManager._();
   static final AdManager instance = AdManager._();
@@ -34,9 +35,10 @@ class AdManager {
   bool get isPremium => _isPremium;
   bool get isInTestSession => _isInTestSession;
   bool get isAdFreeActive => AdFreeCampaignService.instance.isAdFreeActive;
-  bool get _suppressAds =>
-      _isPremium || kIsWeb || AdFreeCampaignService.instance.isAdFreeActive;
-  BannerAd? get bannerAd => _suppressAds ? null : _bannerAd;
+  bool get _bypassAllAds => _isPremium || kIsWeb;
+  bool get _suppressBanners =>
+      _bypassAllAds || AdFreeCampaignService.instance.isAdFreeActive;
+  BannerAd? get bannerAd => _suppressBanners ? null : _bannerAd;
 
   void setPremium(bool value) {
     _isPremium = value;
@@ -46,7 +48,7 @@ class AdManager {
   }
 
   Future<void> initialize() async {
-    if (_suppressAds) return;
+    if (_bypassAllAds) return;
     await MobileAds.instance.initialize();
     _loadInterstitial();
     _loadRewarded();
@@ -63,7 +65,7 @@ class AdManager {
     _isInTestSession = true;
     _adFreeTestSession = adFreeExperience;
     _unlockedSolutionIds.clear();
-    if (_suppressAds || adFreeExperience) return;
+    if (_suppressBanners || adFreeExperience) return;
     _loadBanner();
   }
 
@@ -72,13 +74,12 @@ class AdManager {
     _isInTestSession = false;
     _adFreeTestSession = false;
     _unlockedSolutionIds.clear();
-    _bannerAd?.dispose();
-    _bannerAd = null;
+    _disposeBanner();
   }
 
   /// Sayfa geçişlerinde sayaç — her 3'te bir interstitial.
   Future<void> onPageTransition({VoidCallback? onAdDismissed}) async {
-    if (_suppressAds || _isInTestSession) return;
+    if (_bypassAllAds || _isInTestSession) return;
 
     if (_skipNextPageTransition) {
       _skipNextPageTransition = false;
@@ -95,13 +96,13 @@ class AdManager {
 
   /// 12 saat reklamsız kampanya — ana sayfa progress bar.
   Future<bool> requestCampaignRewardedAd() async {
-    if (_suppressAds) return false;
+    if (_bypassAllAds || isAdFreeActive) return false;
     final earned = await _showRewardedVideo();
     if (!earned) return false;
 
     await AdFreeCampaignService.instance.onRewardedAdCompleted();
     if (AdFreeCampaignService.instance.isAdFreeActive) {
-      _disposeAllAds();
+      _disposeBanner();
     }
     return true;
   }
@@ -120,12 +121,12 @@ class AdManager {
 
   /// Günlük test hakkı bittiğinde +1 test için ödüllü video (~30 sn).
   Future<bool> requestDailyTestBonus() async {
-    if (_suppressAds) return false;
+    if (_bypassAllAds) return false;
     return _showRewardedVideo();
   }
 
   Future<bool> _showRewardedVideo() async {
-    if (_suppressAds) return false;
+    if (_bypassAllAds) return false;
 
     final cachedAd = _rewardedAd;
     if (cachedAd != null) {
@@ -199,7 +200,7 @@ class AdManager {
 
   /// Test bitişinde (Bitir) premium olmayan kullanıcılara tam ekran reklam.
   Future<void> showTestCompletionInterstitial() async {
-    if (_suppressAds || _adFreeTestSession) return;
+    if (_bypassAllAds || _adFreeTestSession) return;
 
     final ad = _interstitialAd;
     if (ad == null) {
@@ -240,7 +241,7 @@ class AdManager {
   }
 
   void _loadBanner() {
-    if (_suppressAds) return;
+    if (_suppressBanners) return;
     _bannerAd?.dispose();
     _bannerAd = BannerAd(
       adUnitId: AdConstants.bannerAdUnitId,
@@ -253,7 +254,7 @@ class AdManager {
   }
 
   void _loadInterstitial() {
-    if (_suppressAds) return;
+    if (_bypassAllAds) return;
     InterstitialAd.load(
       adUnitId: AdConstants.interstitialAdUnitId,
       request: const AdRequest(),
@@ -268,7 +269,7 @@ class AdManager {
   }
 
   void _loadRewarded() {
-    if (_suppressAds) return;
+    if (_bypassAllAds) return;
     RewardedAd.load(
       adUnitId: AdConstants.rewardedAdUnitId,
       request: const AdRequest(),
@@ -306,9 +307,13 @@ class AdManager {
     await ad.show();
   }
 
-  void _disposeAllAds() {
+  void _disposeBanner() {
     _bannerAd?.dispose();
     _bannerAd = null;
+  }
+
+  void _disposeAllAds() {
+    _disposeBanner();
     _interstitialAd?.dispose();
     _interstitialAd = null;
     _rewardedAd?.dispose();

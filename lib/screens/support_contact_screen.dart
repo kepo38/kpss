@@ -95,28 +95,6 @@ class SupportContactScreen extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             _ContactButton(onTap: () => _contact(context)),
-            const SizedBox(height: 16),
-            Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: _gold.withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Text(
-                  SupportContactService.supportEmail,
-                  style: TextStyle(
-                    fontSize: 13,
-                    letterSpacing: 0.15,
-                    color: _gold.withValues(alpha: 0.95),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),

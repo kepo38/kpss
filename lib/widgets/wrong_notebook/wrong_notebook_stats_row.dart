@@ -24,40 +24,56 @@ class WrongNotebookStatsRow extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _StatCard(
-              icon: Icons.format_list_numbered_rounded,
-              value: '$questionCount',
-              label: 'Toplam yanlış',
-              on: on,
-              muted: muted,
-              card: card,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.format_list_numbered_rounded,
+                  value: '$questionCount',
+                  label: 'Toplam yanlış',
+                  on: on,
+                  muted: muted,
+                  card: card,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.category_outlined,
+                  value: '$subjectCount',
+                  label: 'Ders',
+                  on: on,
+                  muted: muted,
+                  card: card,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.trending_up_rounded,
+                  value: topSubject ?? '—',
+                  label: 'En çok yanlış yapılan ders',
+                  cornerBadge: topSubjectCount?.toString(),
+                  on: on,
+                  muted: muted,
+                  card: card,
+                  compactValue: true,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _StatCard(
-              icon: Icons.category_outlined,
-              value: '$subjectCount',
-              label: 'Ders',
-              on: on,
-              muted: muted,
-              card: card,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _StatCard(
-              icon: Icons.trending_up_rounded,
-              value: topSubject ?? '—',
-              label: 'En çok yanlış yapılan ders',
-              cornerBadge: topSubjectCount?.toString(),
-              on: on,
-              muted: muted,
-              card: card,
-              compactValue: true,
+          const SizedBox(height: 8),
+          Text(
+            'UYGULAMADAKİ KONU TESTLERİNE GÖRE ANALİZ YAPILMAKTADIR',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.35,
+              height: 1.25,
+              color: muted.withValues(alpha: 0.78),
             ),
           ),
         ],
@@ -169,65 +185,6 @@ class _StatCard extends StatelessWidget {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class WrongNotebookInsightBanner extends StatelessWidget {
-  const WrongNotebookInsightBanner({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final on = AppTheme.onPage(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          gradient: LinearGradient(
-            colors: [
-              AppTheme.ink.withValues(alpha: 0.04),
-              AppTheme.champagne.withValues(alpha: 0.08),
-            ],
-          ),
-          border: Border.all(
-            color: AppTheme.champagne.withValues(alpha: 0.22),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.champagne.withValues(alpha: 0.16),
-              ),
-              child: Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 16,
-                color: on.withValues(alpha: 0.75),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Bilinçli tekrar için sorular listede kalır. '
-                'İstediğiniz zaman silebilirsiniz.',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.35,
-                  fontWeight: FontWeight.w500,
-                  color: on.withValues(alpha: 0.72),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

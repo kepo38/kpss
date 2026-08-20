@@ -1,8 +1,21 @@
+import java.io.File
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+}
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = sequenceOf(
+    file("key.properties"),
+    rootProject.file("key.properties"),
+).firstOrNull { it.exists() }
+if (keystorePropertiesFile != null) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -33,6 +46,25 @@ android {
         }
     }
 
+    signingConfigs {
+        val propsFile = keystorePropertiesFile
+        if (propsFile != null) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storePassword = keystoreProperties.getProperty("storePassword")
+                val storeFilePath = keystoreProperties.getProperty("storeFile")
+                    ?: error("key.properties içinde storeFile yok")
+                val fromProps = File(storeFilePath)
+                storeFile = if (fromProps.isAbsolute) {
+                    fromProps
+                } else {
+                    File(propsFile.parentFile, storeFilePath)
+                }
+            }
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             buildConfigField("boolean", "ALLOW_SCREENSHOTS", "true")
@@ -41,7 +73,11 @@ android {
             buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
         }
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystorePropertiesFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
         }
     }

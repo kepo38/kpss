@@ -62,5 +62,9 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Yanlış defterine soru fotoğrafı eklemek için kamera kullanılır.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Yanlış defterine soru fotoğrafı eklemek için galeri seçimi yapılır.</string>
 </dict>
 </plist>

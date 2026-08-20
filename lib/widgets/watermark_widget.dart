@@ -5,62 +5,64 @@ import 'package:flutter/material.dart';
 import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
 
-/// Soru kökünün arkasında tek 45° filigran (şıklar hariç).
+/// Soru kökünde tek 45° filigran (şıklar hariç).
 ///
-/// [fitToChild] açıkken işaret, çocuk metin kutusunun boyutuna göre küçülür
-/// ve o metnin üzerine oturur (harita görselinin üstüne yayılmaz).
+/// [fitToChild] açıkken işaret çocuk kutusuna göre küçülür.
+/// [overlay] açıkken işaret çocuğun üstüne biner (harita/görsel).
 class WatermarkWidget extends StatelessWidget {
   static const logoAsset = BrandConstants.watermarkAsset;
 
   final Widget child;
   final double opacity;
   final bool fitToChild;
+  final bool overlay;
 
   const WatermarkWidget({
     super.key,
     required this.child,
     this.opacity = 0.26,
     this.fitToChild = false,
+    this.overlay = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final mark = Positioned.fill(
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (context, box) {
+            if (!box.hasBoundedWidth ||
+                !box.hasBoundedHeight ||
+                box.maxWidth <= 0 ||
+                box.maxHeight <= 0) {
+              return const SizedBox.shrink();
+            }
+            final minSize = fitToChild ? 36.0 : 96.0;
+            final maxSize = fitToChild ? 120.0 : 148.0;
+            final size = math
+                .min(
+                  maxSize,
+                  math.min(
+                    box.maxWidth * (fitToChild ? 0.72 : 0.48),
+                    box.maxHeight * (fitToChild ? 0.92 : 0.62),
+                  ),
+                )
+                .clamp(minSize, maxSize);
+            return Align(
+              alignment: overlay
+                  ? Alignment.center
+                  : (fitToChild
+                      ? const Alignment(-0.42, 0.0)
+                      : const Alignment(-0.78, -0.22)),
+              child: _LogoMark(size: size, opacity: opacity),
+            );
+          },
+        ),
+      ),
+    );
     return Stack(
       clipBehavior: Clip.hardEdge,
-      children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: LayoutBuilder(
-              builder: (context, box) {
-                if (!box.hasBoundedWidth ||
-                    !box.hasBoundedHeight ||
-                    box.maxWidth <= 0 ||
-                    box.maxHeight <= 0) {
-                  return const SizedBox.shrink();
-                }
-                final minSize = fitToChild ? 36.0 : 96.0;
-                final maxSize = fitToChild ? 120.0 : 148.0;
-                final size = math
-                    .min(
-                      maxSize,
-                      math.min(
-                        box.maxWidth * (fitToChild ? 0.72 : 0.48),
-                        box.maxHeight * (fitToChild ? 0.92 : 0.62),
-                      ),
-                    )
-                    .clamp(minSize, maxSize);
-                return Align(
-                  alignment: fitToChild
-                      ? const Alignment(-0.42, 0.0)
-                      : const Alignment(-0.78, -0.22),
-                  child: _LogoMark(size: size, opacity: opacity),
-                );
-              },
-            ),
-          ),
-        ),
-        child,
-      ],
+      children: overlay ? [child, mark] : [mark, child],
     );
   }
 }

@@ -32,6 +32,7 @@ class PlayBillingService {
   String? _lastError;
   String? _activeProductId;
   bool _storeAvailable = false;
+  Future<void>? _hydrateCachedPremiumFuture;
 
   List<ProductDetails> get products => List.unmodifiable(_products);
   List<ProductDetails> get packProducts => List.unmodifiable(_packProducts);
@@ -70,10 +71,16 @@ class PlayBillingService {
         phases.first.priceAmountMicros < phases[1].priceAmountMicros;
   }
 
+  /// Play Store'a gitmeden yerel Premium önbelleğini yükler (VPN kapısı).
+  Future<void> hydrateCachedPremium() {
+    if (kIsWeb) return Future.value();
+    return _hydrateCachedPremiumFuture ??= _loadCachedPremium();
+  }
+
   Future<void> initialize() async {
     if (kIsWeb) return;
 
-    await _loadCachedPremium();
+    await hydrateCachedPremium();
     await _loadOwnedPacks();
 
     _storeAvailable = await _iap.isAvailable();

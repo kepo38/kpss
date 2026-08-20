@@ -72,6 +72,122 @@ class MapMarkerValidationTests(SimpleTestCase):
         self.assertEqual(result[1]["shape"], "ellipse")
         self.assertEqual(result[1]["rotation"], 90)
 
+    def test_normalizes_line_thickness_and_ends(self):
+        result = validate_map_markers(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "line",
+                    "x": 40,
+                    "y": 12,
+                    "x2": 55,
+                    "y2": 88,
+                    "width": 1.6,
+                    "color": "#ef4444",
+                }
+            ],
+        )
+        self.assertEqual(result[0]["shape"], "line")
+        self.assertEqual(result[0]["x2"], 55)
+        self.assertEqual(result[0]["width"], 1.6)
+        self.assertFalse(result[0]["showLabel"])
+
+    def test_line_can_hide_city_labels(self):
+        result = validate_map_markers(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "line",
+                    "x": 40,
+                    "y": 12,
+                    "x2": 55,
+                    "y2": 88,
+                    "width": 1.6,
+                    "showLabel": False,
+                    "label": "Ankara",
+                }
+            ],
+        )
+        self.assertFalse(result[0]["showLabel"])
+        self.assertEqual(result[0]["label"], "Ankara")
+
+    def test_line_autofills_city_name_on_adana(self):
+        result = validate_map_markers(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "line",
+                    "x": 53.0,
+                    "y": 81.5,
+                    "x2": 51.0,
+                    "y2": 83.0,
+                    "width": 1.2,
+                    "showLabel": True,
+                }
+            ],
+        )
+        self.assertIn("Adana", result[0]["label"])
+        self.assertEqual(result[0]["startLabel"], "Adana")
+        self.assertEqual(result[0]["endLabel"], "Adana")
+
+    def test_line_keeps_explicit_start_and_end_labels(self):
+        result = validate_map_markers(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "line",
+                    "x": 40,
+                    "y": 40,
+                    "x2": 60,
+                    "y2": 60,
+                    "width": 0.5,
+                    "showLabel": True,
+                    "startLabel": "Sivas",
+                    "endLabel": "İzmir",
+                }
+            ],
+        )
+        self.assertEqual(result[0]["startLabel"], "Sivas")
+        self.assertEqual(result[0]["endLabel"], "İzmir")
+        self.assertEqual(result[0]["label"], "Sivas · İzmir")
+
+    def test_normalizes_city_label_marker(self):
+        result = validate_map_markers(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "city-label",
+                    "x": 53.0,
+                    "y": 81.5,
+                    "label": "Adana",
+                }
+            ],
+        )
+        self.assertEqual(result[0]["shape"], "city-label")
+        self.assertEqual(result[0]["label"], "Adana")
+        self.assertTrue(result[0]["showLabel"])
+
+    def test_city_label_changes_render(self):
+        hidden = {
+            "shape": "city-label",
+            "x": 53.0,
+            "y": 81.5,
+            "label": "Adana",
+            "showLabel": False,
+        }
+        shown = dict(hidden, showLabel=True)
+        self.assertNotEqual(
+            render_map_question("turkiye_goller", [hidden]),
+            render_map_question("turkiye_goller", [shown]),
+        )
+
+    def test_rejects_line_thickness_out_of_range(self):
+        with self.assertRaises(ValidationError):
+            validate_map_markers(
+                "turkiye_goller",
+                [{"shape": "line", "x": 10, "y": 10, "x2": 20, "y2": 20, "width": 9}],
+            )
+
     def test_rejects_invalid_shape(self):
         invalid = [dict(VALID_MARKERS[0], shape="square")]
         with self.assertRaises(ValidationError):
@@ -123,7 +239,11 @@ class MapRendererTests(SimpleTestCase):
         with Image.open(BytesIO(raw)) as image:
             self.assertEqual(image.format, "PNG")
             self.assertEqual(image.size, (1600, 700))
-            self.assertEqual(image.convert("RGBA").getpixel((2, 2))[3], 0)
+            self.assertEqual(image.convert("RGBA").getpixel((2, 2))[3], 255)
+            paper = image.convert("RGBA").getpixel((2, 2))
+            self.assertGreater(paper[0], 230)
+            self.assertGreater(paper[1], 230)
+            self.assertGreater(paper[2], 230)
 
     def test_circle_is_round_not_map_aspect_ellipse(self):
         image = Image.new("RGBA", (1600, 700), (0, 0, 0, 0))
@@ -142,6 +262,51 @@ class MapRendererTests(SimpleTestCase):
         )
         self.assertAlmostEqual(box[2] - box[0], box[3] - box[1], delta=1)
         self.assertAlmostEqual(box[2] - box[0], 80, delta=1)
+
+    def test_draws_line_between_endpoints(self):
+        image = Image.new("RGBA", (1000, 500), (248, 250, 252, 255))
+        box = _draw_map_marker(
+            image,
+            {
+                "shape": "line",
+                "x": 20,
+                "y": 20,
+                "x2": 80,
+                "y2": 80,
+                "width": 1.5,
+                "color": "#ef4444",
+            },
+            stroke=2,
+        )
+        self.assertLess(box[0], box[2])
+        self.assertLess(box[1], box[3])
+
+    def test_city_labels_change_rendered_line(self):
+        hidden = {
+            "shape": "line",
+            "x": 52.2,
+            "y": 82.4,
+            "x2": 52.4,
+            "y2": 82.6,
+            "width": 1.4,
+            "color": "#ef4444",
+            "showLabel": False,
+        }
+        shown = dict(hidden, showLabel=True, label="Adana")
+        self.assertNotEqual(
+            render_map_question("turkiye_goller", [hidden]),
+            render_map_question("turkiye_goller", [shown]),
+        )
+
+    def test_ellipse_can_hide_roman_label(self):
+        hidden = dict(VALID_MARKERS[0], shape="ellipse", showLabel=False)
+        shown = dict(VALID_MARKERS[0], shape="ellipse", showLabel=True)
+        result = validate_map_markers("turkiye_goller", [hidden])
+        self.assertFalse(result[0]["showLabel"])
+        self.assertNotEqual(
+            render_map_question("turkiye_goller", [hidden]),
+            render_map_question("turkiye_goller", [shown]),
+        )
 
     def test_renders_rotated_ellipse_and_circle(self):
         markers = [

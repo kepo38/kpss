@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
 import 'content_bank_service.dart';
+import 'premium_service.dart';
 
 class QuestionErrorReportState {
   final bool reported;
@@ -65,15 +66,24 @@ class QuestionErrorReportService {
       QuestionErrorReportService._();
 
   static const minCompletedTests = 5;
+  static const minCompletedTestsPremium = 3;
   static const guestWarning =
       'Sadece giriş yapan kullanıcılar hata bildirimi yapabilir.';
 
+  static int minTestsRequiredFor({required bool isPremium}) =>
+      isPremium ? minCompletedTestsPremium : minCompletedTests;
+
+  int get minTestsRequiredNow =>
+      minTestsRequiredFor(isPremium: PremiumService.instance.isPremium);
+
   static String testsRequiredWarning({
     required int completed,
-    int required = minCompletedTests,
-  }) =>
-      'En az $required test bitirdikten sonra hata bildirimi yapabilirsiniz. '
-      '(Tamamlanan: $completed/$required)';
+    int? required,
+  }) {
+    final need = required ?? minCompletedTests;
+    return 'En az $need test bitirdikten sonra hata bildirimi yapabilirsiniz. '
+        '(Tamamlanan: $completed/$need)';
+  }
 
   final Map<String, QuestionErrorReportState> _cache = {};
   bool? _dailyLimitReached;
@@ -89,7 +99,7 @@ class QuestionErrorReportService {
   bool get dailyLimitReached => _dailyLimitReached == true;
 
   bool meetsLocalTestRequirement() =>
-      ContentBankService.instance.completedTopicTestCount >= minCompletedTests;
+      ContentBankService.instance.completedTopicTestCount >= minTestsRequiredNow;
 
   void clear() {
     _cache.clear();
@@ -129,6 +139,7 @@ class QuestionErrorReportService {
       throw QuestionErrorReportException(
         testsRequiredWarning(
           completed: ContentBankService.instance.completedTopicTestCount,
+          required: minTestsRequiredNow,
         ),
       );
     }
@@ -161,13 +172,26 @@ class QuestionErrorReportService {
       throw QuestionErrorReportException(message);
     }
     if (response.statusCode == 403) {
+      var completed = ContentBankService.instance.completedTopicTestCount;
+      var required = minTestsRequiredNow;
       var message = testsRequiredWarning(
-        completed: ContentBankService.instance.completedTopicTestCount,
+        completed: completed,
+        required: required,
       );
       try {
         final body = jsonDecode(utf8.decode(response.bodyBytes));
-        if (body is Map && body['detail'] != null) {
-          message = body['detail'].toString();
+        if (body is Map) {
+          if (body['detail'] != null) {
+            message = body['detail'].toString();
+          }
+          completed = (body['testsCompleted'] as num?)?.toInt() ?? completed;
+          required = (body['minTestsRequired'] as num?)?.toInt() ?? required;
+          if (body['detail'] == null) {
+            message = testsRequiredWarning(
+              completed: completed,
+              required: required,
+            );
+          }
         }
       } catch (_) {}
       throw QuestionErrorReportException(message);

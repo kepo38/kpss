@@ -443,6 +443,11 @@ class TopicTest(models.Model):
         Question, related_name="tests", blank=True
     )
     is_published = models.BooleanField(default=False)
+    requires_premium = models.BooleanField(
+        default=False,
+        verbose_name="Premium",
+        help_text="Açıkken bu test premium olarak işaretlenir.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -483,6 +488,45 @@ class TopicLesson(models.Model):
         ordering = ["sort_order", "id"]
         verbose_name = "Bilgi kartı"
         verbose_name_plural = "Bilgi kartları"
+
+    def __str__(self) -> str:
+        return f"{self.topic.name} · {self.title}"
+
+
+SUMMARY_CARD_KIND_CHOICES = (
+    ("formula", "Formül"),
+    ("tip", "Püf nokta"),
+    ("osym", "ÖSYM buradan sorar"),
+)
+
+
+class TopicSummaryCard(models.Model):
+    """Konu detayında kaydırılan kısa özet / formül kartı."""
+
+    public_id = models.CharField(max_length=64, unique=True)
+    topic = models.ForeignKey(
+        Topic, on_delete=models.CASCADE, related_name="summary_cards"
+    )
+    kind = models.CharField(
+        max_length=16,
+        choices=SUMMARY_CARD_KIND_CHOICES,
+        default="tip",
+        verbose_name="Tür",
+    )
+    title = models.CharField(max_length=160, verbose_name="Başlık")
+    body = models.TextField(
+        verbose_name="Özet",
+        help_text="Kısa formül, kural veya ÖSYM ipucu.",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "Özet konu kartı"
+        verbose_name_plural = "Özet konu kartları"
 
     def __str__(self) -> str:
         return f"{self.topic.name} · {self.title}"

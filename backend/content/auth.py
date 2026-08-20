@@ -19,6 +19,7 @@ from .push import _ensure_firebase_app, firebase_ready
 logger = logging.getLogger(__name__)
 
 GUEST_EMAIL_DOMAIN = "guest.hedefkamu.app"
+GUEST_DISPLAY_NAME = "Misafir"
 
 
 class AuthError(Exception):
@@ -39,6 +40,41 @@ def guest_email(sub: str) -> str:
 
 def is_guest_email(email: str) -> bool:
     return (email or "").endswith(f"@{GUEST_EMAIL_DOMAIN}")
+
+
+def is_guest_display_name(name: str) -> bool:
+    return (name or "").strip().casefold() == GUEST_DISPLAY_NAME.casefold()
+
+
+def resolve_display_name(
+    *,
+    name: str,
+    email: str,
+    current: str = "",
+) -> str:
+    """Kalıcı hesaba geçişte Misafir yer tutucusunu gerçek adla değiştir."""
+    cleaned_name = (name or "").strip()
+    if cleaned_name:
+        return cleaned_name
+    current = (current or "").strip()
+    if current and not is_guest_display_name(current):
+        return current
+    local = (email or "").split("@")[0].strip()
+    if local and not is_guest_email(email):
+        return local
+    return current or GUEST_DISPLAY_NAME
+
+
+def heal_guest_display_name(user: AppUser) -> bool:
+    """Misafir adı kalmış kalıcı hesabı e-posta önekine çeker."""
+    if user.is_anonymous or not is_guest_display_name(user.display_name):
+        return False
+    email = (user.email or "").strip()
+    if not email or is_guest_email(email):
+        return False
+    user.display_name = email.split("@")[0]
+    user.save(update_fields=["display_name", "updated_at"])
+    return True
 
 
 def verify_id_token(id_token: str) -> dict[str, Any]:
@@ -114,16 +150,36 @@ def resolve_google_claims(
     access_token: str = "",
 ) -> dict[str, Any]:
     """Önce id_token, yoksa access_token dene."""
+    claims: dict[str, Any] | None = None
     if (id_token or "").strip():
         try:
-            return verify_id_token(id_token)
+            claims = verify_id_token(id_token)
         except AuthError:
             if not (access_token or "").strip():
                 raise
             logger.info("id_token başarısız, access_token deneniyor")
-    if (access_token or "").strip():
-        return verify_access_token(access_token)
-    raise AuthError("Kimlik jetonu gerekli.")
+    if claims is None:
+        if (access_token or "").strip():
+            claims = verify_access_token(access_token)
+        else:
+            raise AuthError("Kimlik jetonu gerekli.")
+
+    if not claims.get("is_anonymous") and not (claims.get("name") or "").strip():
+        token = (access_token or "").strip()
+        if token:
+            try:
+                profile = verify_access_token(token)
+                if (profile.get("name") or "").strip():
+                    claims["name"] = profile["name"]
+                if not (claims.get("email") or "").strip() and profile.get("email"):
+                    claims["email"] = profile["email"]
+                if not (claims.get("picture") or "").strip() and profile.get(
+                    "picture"
+                ):
+                    claims["picture"] = profile["picture"]
+            except AuthError:
+                pass
+    return claims
 
 
 def _verify_google_tokeninfo(id_token: str) -> dict[str, Any]:
@@ -187,12 +243,11 @@ def upsert_firebase_user(claims: dict[str, Any]) -> AppUser:
             user.email = email
         user.photo_url = picture or user.photo_url
         user.is_anonymous = False
-        if name:
-            user.display_name = name
-        elif not (user.display_name or "").strip():
-            user.display_name = (
-                email.split("@")[0] if email else user.display_name
-            )
+        user.display_name = resolve_display_name(
+            name=name,
+            email=email or user.email,
+            current=user.display_name,
+        )
         user.save()
         return user
 
@@ -223,8 +278,11 @@ def upsert_firebase_user(claims: dict[str, Any]) -> AppUser:
         existing_email.is_anonymous = False
         existing_email.last_login_at = now
         existing_email.api_token = new_api_token()
-        if name and not (existing_email.display_name or "").strip():
-            existing_email.display_name = name
+        existing_email.display_name = resolve_display_name(
+            name=name,
+            email=email,
+            current=existing_email.display_name,
+        )
         existing_email.save()
         return existing_email
 

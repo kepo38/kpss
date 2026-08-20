@@ -657,6 +657,80 @@ class QuestionFingerprintTests(TestCase):
         )
         self.assertEqual(a, c)
 
+    def test_map_placeholder_does_not_change_fingerprint(self):
+        from content.question_fingerprint import content_fingerprint
+
+        opts = ("Sığla ağacı", "Garig", "Geven otu", "Ladin", "Alpin çayırlar")
+        without_map = content_fingerprint(
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n\nBuna göre hangisi beklenmez?",
+            *opts,
+        )
+        with_map = content_fingerprint(
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n\n[HARITA]\n\n"
+            "Buna göre hangisi beklenmez?",
+            *opts,
+        )
+        self.assertEqual(without_map, with_map)
+
+    def test_screenshot_text_matches_mapped_question(self):
+        from content.question_fingerprint import (
+            content_fingerprint,
+            find_duplicate_question,
+            stem_fingerprint,
+        )
+
+        stored_stem = (
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n\n[HARITA]\n\n"
+            "Buna göre, bu doğrultuda seyahat eden bir coğrafyacının "
+            "yolculuğu boyunca aşağıdaki bitki veya ağaç türlerinden "
+            "hangisiyle karşılaşması coğrafi şartlar gereği beklenmez?"
+        )
+        q = Question.objects.create(
+            topic=self.topic,
+            public_id="q_fp_map",
+            stem=stored_stem,
+            option_a="Sığla ağacı",
+            option_b="Garig toplulukları",
+            option_c="Geven otu",
+            option_d="Ladin",
+            option_e="Alpin çayırlar",
+        )
+        pasted = (
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n"
+            "(Not: Soru paneline eklerken, haritada Muğla'dan başlayıp "
+            "İç Anadolu üzerinden geçerek Kars'a uzanan yatay-diyagonal "
+            "bir ok çizgisi hayal edebilirsiniz).\n"
+            "Buna göre, bu doğrultuda seyahat eden bir coğrafyacının "
+            "yolculuğu boyunca aşağıdaki bitki veya ağaç türlerinden "
+            "hangisiyle karşılaşması coğrafi şartlar gereği beklenmez?"
+        )
+        c_hash = content_fingerprint(
+            pasted,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            q.option_e,
+        )
+        s_hash = stem_fingerprint(pasted)
+        dup, match = find_duplicate_question(
+            content_hash=c_hash,
+            stem_hash=s_hash,
+            require_options=True,
+            stem=pasted,
+            option_a=q.option_a,
+            option_b=q.option_b,
+            option_c=q.option_c,
+            option_d=q.option_d,
+            option_e=q.option_e,
+        )
+        self.assertEqual(dup.id, q.id)
+        self.assertEqual(match, "content")
+
     def test_quick_upload_blocks_duplicate_image(self):
         User = get_user_model()
         staff = User.objects.create_user(

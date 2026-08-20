@@ -1,6 +1,6 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-08-19  
+> **Son güncelleme:** 2026-08-20  
 > **Dart paketi:** `kpss_akademi`  
 > **Android applicationId (Play Store):** `com.hedefkamu.hedef_kamu`  
 > **Stack:** Flutter mobil + Django REST API + içerik paneli (`/panel/`) + Unfold admin (`/admin/`)
@@ -20,13 +20,87 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
-### 19 Ağustos 2026 — işlenen davranış (bu commit)
+### 20 Ağustos 2026 — işlenen ekleme ve değişiklikler (bu commit)
+
+Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **panel/API** güncellemelerinin ayrıntılı kaydı. Katalog satırları aşağıda ilgili bölümlerde de yansıtılmıştır.
+
+#### Mobil — özet konu kartları (yeni)
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Model** | Konuya bağlı kısa kart: `kind` = `formula` / `tip` / `osym`; başlık + gövde; sıralama; yayın bayrağı | `TopicSummaryCard` (`models.py`), migration `0041_topic_summary_card.py`, `TopicSummaryCardModel` (`content_models.dart`) |
+| **API** | `GET /pack/` ve `GET /catalog/` yanıtına `summaryCards` listesi; revizyon sinyali kart kaydında | `serializers.py`, `views.py`, `revision.py` |
+| **Panel CRUD** | Konu workspace sekmesi **Özet kartlar**; yeni/düzenle/sil; formül / püf / ÖSYM | `/panel/konu/<id>/summary/`, `/panel/konu/<id>/ozet/...`, `topic_workspace.html`, `summary_card_form.html`, `panel_summary_card_*` |
+| **Konu detayı destesi** | Test listesinin üstünde Tinder tarzı deste: kaydır / **Biliyorum** / **Unuttum**; kalp ile favori | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` |
+| **İlerleme** | Kullanıcıya özel bilinen / zayıf / favori ID’ler (SharedPreferences scope); oturum değişince yeniden yüklenir | `summary_card_progress_service.dart`, `auth_service.dart`, `main.dart` |
+| **Favorilerim** | İki sekme: **Soru Favorileri** · **Özet Kartlar**; özet tarafta filtre **Favoriler** / **Tekrar Et** | `favorites_screen.dart` |
+| **İçerik bankası** | Katalog/pack’ten `_summaryCards` yükleme, konu/ID sorguları, disk persist | `content_bank_service.dart` |
+| **Admin** | Unfold’da `TopicSummaryCard` kaydı | `admin.py` |
+
+#### Mobil — yanlış defteri ve notlar
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Header / Akıllı Tekrar** | Üst balon kaldırıldı; **Akıllı Tekrar** başlığın altında ortalanmış pill; istatistik alt yazısı: uygulama konu testlerine göre analiz | `wrong_notebook_header.dart`, `wrong_questions_screen.dart`, `wrong_notebook_stats_row.dart` |
+| **Kitaptaki yanlışlarım** | Pembe **KİTAPTAKİ YANLIŞLARIM** → ayrı ekran; **SORU EKLE** premium aksiyonu | `wrong_notebook_manual_screen.dart`, `wrong_notebook_manual_card.dart` |
+| **Manuel foto soru** | Kamera/galeri; meta sheet **YANLIŞ SORULARIM**; ders→konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini (galeriye düşmez); durum: Yeni / Tekrar Et / Çözüldü | `manual_question_model.dart`, `manual_question_service.dart`, `wrong_notebook_manual_meta_sheet.dart` |
+| **Defter inceleme** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış**; işaretli şık; **Not Al** + «KAYITLI KALIR»; normal testte «Daha önce» | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart` |
+| **Balon tetik** | Google + bitmiş konu testi + **defterde ≥1 yanlış**; Günün Denemesi / yarım test tetiklemez | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
+| **Benzer sorular** | Embedding sonucu: kaynak soru ve kök metni ≥%88 benzer kopyalar elenir | `embeddings.py`, `test_embeddings.py`, `QuestionFetchService` |
+
+#### Mobil — destek, güvenlik, kota, reklam
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **İletişime Geç** | `mailto` konu + gövde: sürüm, cihaz, OS, üyelik; ekranda e-posta chip yok; Android `queries` + iOS LSApplicationQueriesSchemes | `support_contact_service.dart`, `support_contact_screen.dart`, `AndroidManifest.xml`, `Info.plist` |
+| **Ağ güvenliği** | VPN/DNS engeli ücretsizde kilit; Play veya panel Premium süresince geçiş (`network_security_gate`) | `network_security_gate.dart`, `network_security_service.dart` |
+| **Günlük test kotası** | Kota dolunca şampanya çerçeveli diyalog | `daily_test_quota_dialog.dart` |
+| **Reklamsız kampanya** | 3 ödüllü → 12 saat yalnızca **quiz banner** kapalı; çözüm kilidi / kota / benzer / sınırsız test / offline / konu takibi / pomodoro **açılmaz** | `ad_free_campaign_service.dart`, `ad_manager.dart` |
+| **Filigran** | Ücretsiz ve Premium’da açık; haritalı/görselli soruda görsel üstüne de biner | `watermark_widget.dart`, `question_stem_content.dart` |
+
+#### Mobil — soru UI / ÖSYM şık tablosu
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Eşleştirme şıkları** | Panel: `option-table.js` + CSS (değerler sütun, etiket başlık, dikey çizgi yok). Mobil: `option_column_layout.dart` | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
+| **Yapıştırma** | Eşleştirme oku `->` / `\\rightarrow` → `→` | `rich-format.js` |
+
+#### Panel — menü, promosyon, kullanıcılar
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Sol menü** | Gruplar: İçerik · Deneme & sınav · Kullanıcı & satış · Kalite · Ayarlar | `base.html` |
+| **Promosyon CRUD** | Liste / yeni / düzenle / sil / aktif-pasif (günlük iş Admin’de değil panelde) | `/panel/promosyon/`, `promo_codes.html`, `promo_code_form.html`, `panel_promo_*` |
+| **Kullanıcılar** | Toplu sil, misafir filtresi, **Misafirleri temizle**; bir kerelik anonim misafir temizliği | `users.html`, `panel_views.py` |
+
+#### Panel — harita editörü (genişletme)
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **İl boya** | ÖSYM bölge boyama; komşu aynı renk birleşir | `map-question-editor.js`, `map_provinces.py` |
+| **Doğru / ışın / il adı** | İki tıklama doğru; ışın: merkez→adet→hedef iller; il adı etiketi; şehir adları açık/gizli | `map-question-editor.js`, `map_question_renderer.py` |
+| **Elips** | Varsayılan kapalı; tıklayarak koy; Romen varsayılan kapalı; tutaçlarla boyut + dönüş | `map-question-editor.js` |
+| **%170 düzenleme** | Tam ekran harita; araç çubuğu altta; Esc / %100 çıkış | `map-question.css` |
+| **PNG zemin** | Açık kâğıt zemin (koyu temada Romen okunur) | `map_question_renderer.py` |
+| **Mükerrer** | `[HARITA]` ve `(Not: …)` yok sayılır; aynı şıklar + benzer kök | `question_fingerprint.py` |
+
+#### Geliştirici araçları / build
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **uygulamayi-yukle.bat** | Release APK derle → eski paketi **uninstall** → install → aç; uzun derlemede net mesaj; JDK/Flutter/adb PATH | `uygulamayi-yukle.bat` |
+| **Play paket boyutu** | Release ABI: `armeabi-v7a` + `arm64-v8a`; native lib sıkıştırma; hedef ≤80 MB | `android/app/build.gradle.kts` |
+| **Anayasa kuralı** | Dosya ayrımı (harita / option-table / önizleme ayrı dosya); büyük dosyaya yalnızca bağlama | `.cursor/rules/kpss-akademi.mdc` |
+| **Testler** | Hata bildirimi, embedding benzerlik filtresi, anonim auth, watermark, kampanya, exam text parity | `test_error_report.py`, `test_embeddings.py`, `test_anonymous_auth.py`, `*_test.dart` |
+
+### 19 Ağustos 2026 — işlenen davranış (önceki commit)
 
 | Alan | Ne değişti | Dosyalar |
 |---|---|---|
-| **Açılış splash** | Ortada 657 `app_icon` gölge daireyi doldurur (soluk / solgun altın); üstte HEDEF KAMU, altta «Ataman Gerçekleşiyor» + kayan çizgi (3,5 sn) | `boot_splash_screen.dart` |
-| **Yanlış defteri balonu** | Yalnızca **Google hesabı** + **en az 1 konu testi bitmiş** kullanıcıda; panel açıkken. Giriş/test bitince uygulamayı kapatmadan görünür. Sol yaslı; YANLIŞ→DEFTERİM 3D; teal çerçeve | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
+| **Açılış splash** | Ortada 657 `app_icon` gölge daireyi doldurur (soluk / solgun altın); üstte HEDEF KAMU biraz yukarı (yan logo yok), altta «Ataman Gerçekleşiyor» + kayan çizgi ikonun biraz daha altında (3,5 sn) | `boot_splash_screen.dart` |
+| **Yanlış defteri balonu** | Yalnızca **Google hesabı** + **en az 1 konu testi bitmiş** + **defterde en az 1 yanlış** varken; panel açıkken. Günün Denemesi / yarım test tetiklemez. Sol yaslı; YANLIŞ→DEFTERİM 3D; teal çerçeve | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
 | **Yanlış defteri UI** | Header alt başlığı («X soru · Y ders») yok; en çok yanlış derste kırmızı adet rozeti; kart: konu chip sol üst, kalp+sil sağ üst; metin «İstediğiniz zaman silebilirsiniz»; karttan onaylı silme; silince alt SnackBar yok, ortada şampanya çerçeveli kutu (~3 sn): onay ikonu, «Defterden kaldırıldı», soru önizlemesi | `wrong_questions_screen.dart`, `wrong_notebook_*` |
+| **Defter soru notu** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış** (onaysız deftere dönüş); testte işaretlediği şık işaretli; normal testte aynı soru işaretsiz + mavi «Daha önce». Sağda seviye; solda **Not Al** + «KAYITLI KALIR». Bitmiş testte yanlış kalan sorular sonradan doğru cevaplansa istatistik güncellenmez | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart`, `content_bank_service.dart` |
 | **BENZER upsell** | Başlık **BENZER SORULAR**; alt metin «Yanlışlarını daha iyi analiz et» | `pro_upsell_sheet.dart` |
 | **Misafir yanlış defteri** | Yalnızca **soru metni** hafif buzlu (metin okunur); kalp, sil, BENZER açık. **GİRİŞ YAP** yok; karta dokununca giriş ister | `wrong_notebook_guest_frost.dart`, `wrong_notebook_question_card.dart` |
 | **Puan Hesaplama** | Gelişim’den kaldırıldı. Deneme sekmesi AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (eski «Deneme» + `+` yok; FAB «Deneme Ekle» durur) | `analytics_hub_screen.dart`, `statistics_screen.dart`, `puan_hesaplama_button.dart` |
@@ -58,11 +132,11 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
 | **Ana sekme kabuğu** | Alt menü: Ana Sayfa, Dersler, Gelişim, Deneme; üstte profil | `lib/screens/main_shell.dart` |
-| **Yanlış defteri balonu** | Yalnızca Google + en az 1 bitmiş konu testi; koyu teal zemin; **YANLIŞ** → **DEFTERİM** 3D; mavi-yeşil çerçeve; sağ üst X; sola yaslı (`left: -16`) | `lib/widgets/wrong_notebook_promo_bubble.dart` |
+| **Yanlış defteri balonu** | Yalnızca Google + en az 1 bitmiş konu testi + defterde yanlış varken; koyu teal zemin; **YANLIŞ** → **DEFTERİM** 3D; mavi-yeşil çerçeve; sağ üst X; sola yaslı (`left: -16`) | `lib/widgets/wrong_notebook_promo_bubble.dart` |
 | **Genişletilmiş ana sayfa** | “Daha fazla” menüsü: modül listesi, görevler, araçlar, premium modüller | `lib/screens/home_screen.dart`, `lib/widgets/app_shell_top_bar.dart` |
 | **Giriş yönlendirme** | Sınav seçilmemişse hemen onboarding → seçimden sonra «Ataman Gerçekleşiyor» (**3,5 sn**) → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart`, `lib/screens/exam_track_onboarding_screen.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
-| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: ortada 657 `app_icon` siyah daire gölgeyi doldurur; üstünde HEDEF KAMU, altında «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
+| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: ortada 657 `app_icon` siyah daire gölgeyi doldurur; üstünde HEDEF KAMU (yan logo yok), altında «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
 | **Dikey ekran kilidi** | Tüm cihazlarda yalnızca portrait | `lib/services/orientation_policy.dart`, `android/.../AndroidManifest.xml` |
 | **Web önizleme çerçevesi** | Masaüstü web’de telefon boyutunda kart | `lib/main.dart` |
 
@@ -84,18 +158,18 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Ana Sayfa sekmesi** | Günün mini denemesi, günlük görevler, tasarruf banner’ı, sınav odağı | `lib/screens/study_hub_screen.dart` | Ücretsiz |
-| **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (teal ton, Pro altın değil) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
+| **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (kırık beyaz zemin, siyah yazı) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler sekmesi** | 2 sütunlu ders ızgarası (daha alçak kartlar); kartta soru sayısı + ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Özel Testler** | Dersler altında ortalanmış, büyütülmüş 3D `ÖZEL TESTLER` butonu; ÖSYM Sordu tarzı ışıklı dönen çerçeve; kategori ızgarası (ilk: **HARİTALARLA COĞRAFYA**); Coğrafya `map_template` soruları 20’lik sanal testler | `special_tests_entry.dart`, `osym_badge.dart`, `special_tests_screen.dart`, `backend/content/special_tests.py` | Ücretsiz; Coğrafya günlük kota |
 | **Gelişim sekmesi** | Genel doğruluk (yalnızca **konu testleri**; günün mini denemesi 20 sorusu sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
-| **Konu detayı** | İstatistik, ders kartları, test listesi, teste devam/başla | `lib/screens/topic_detail_screen.dart` | Günlük kota |
+| **Konu detayı** | İstatistik, **özet kart destesi** (kaydır: Biliyorum/Unuttum + kalp), bilgi kartları, test listesi | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` | Günlük kota |
 | **Ders okuyucu** | Konuya özel bilgi kartları (markdown / zengin metin) | `lib/screens/lesson_reader_screen.dart` | Ücretsiz |
 | **Kaldığın yerden devam** | Yarım test kartı SharedPreferences’ta durur; uygulama kapanınca soru gövdesi RAM’de olmasa da kart kalır, devamda sorular API’den çekilir | `continue_study_card.dart`, `last_study_session_service.dart` | Ücretsiz |
 | **İçerik senkronu** | Yayınlanmış paket sürümü değişince indirme | `lib/services/content_sync_service.dart`, `lib/services/content_bank_service.dart` | Ağ gerekli |
 | **Müfredat ağacı** | Statik ders/konu yapısı + API katalog eşlemesi | `lib/data/kpss_curriculum.dart` | Ücretsiz |
 
-**Günlük test kotası (ücretsiz):** Her derste günde **1 test** (`ContentBankService.dailyFreeTestsPerSubject = 1`). Reklam izleyerek derse özel **+1 bonus test** (`AdRewardKind.dailyTestBonus`). Premium’da sınırsız.
+**Günlük test kotası (ücretsiz):** Her derste günde **1 test** (`ContentBankService.dailyFreeTestsPerSubject = 1`). Reklam izleyerek derse özel **+1 bonus test** (`AdRewardKind.dailyTestBonus`). Premium’da sınırsız. Kota dolunca şampanya çerçeveli diyalog (`daily_test_quota_dialog.dart`).
 
 | **Deneme paketleri vitrini** | Dersler sekmesi altında yatay paket kartları; yalnızca panelde **aktif** paketler; Play SKU ile kilit/açma; **Google girişi zorunlu** | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart` | IAP + Google |
 | **Deneme paketi detayı** | Alt deneme listesi → quiz; sorular 1000+ cevaplı orta zorluk; oturumda daha önce çözülen en fazla **%20**; bitince HEDEF KAMU kaydı | `lib/screens/exam_pack_detail_screen.dart`, `lib/services/exam_pack_analytics_bridge.dart`, `backend/content/exam_pack_personalize.py` | IAP + Google |
@@ -110,14 +184,14 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil | `lib/widgets/question_stem_content.dart`, `lib/widgets/formatted_text.dart` | Ücretsiz |
 | **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; her konuda testte mümkünse **4 ÖSYM** soru, **4 etiketsiz + 1 ÖSYM** sırası (etiketsiz yetmezse normal sıra) | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
 | **Çizim katmanı** | Soru alanında kalem / yeşil fosfor (geniş vurgu) / silgi; işaretler kaydırınca metinde kalır; kalem kapalıyken görünür; test bitince kaydedilmez | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
-| **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp) | `lib/widgets/favorite_heart_button.dart`, `lib/services/favorites_service.dart` | Ücretsiz |
+| **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp); **Favorilerim** sekmeli: Soru Favorileri + Özet Kartlar (Favori / Tekrar Et) | `favorite_heart_button.dart`, `favorites_service.dart`, `summary_card_progress_service.dart`, `favorites_screen.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
-| **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; en az **5 konu testi** bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 test |
+| **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; ücretsiz **5**, Premium **3** konu testi bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 / Premium + 3 |
 | **Çözüm kilidi** | Tam çözüm önce gizli; reklam veya Premium ile açılır | `quiz_screen.dart`, `lib/services/ad_manager.dart` | Reklam / Premium |
 | **Ses ve titreşim** | Doğru/yanlış geri bildirimi | `lib/services/answer_feedback_service.dart` | Ücretsiz |
 | **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma; sonuç panelinde konu adı en üstte, motive mesajı, kazandığı XP ve seri; soru başı ortalama süre NET kutusunun üstünde | `lib/widgets/shareable_result_card.dart`, `lib/screens/quiz_screen.dart` | Ücretsiz |
-| **Filigran** | Ücretsiz planda marka filigranı; haritalı soruda yalnızca soru metninin üzerine, metin kutusuna göre ölçeklenir | `lib/widgets/watermark_widget.dart`, `question_stem_content.dart` | Premium’da gizli |
-| **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium / kampanya bypass |
+| **Filigran** | Marka filigranı ücretsiz ve Premium’da; haritalı/görselli soruda metnin yanında görselin üstüne de biner | `lib/widgets/watermark_widget.dart`, `question_stem_content.dart` | Tüm planlar |
+| **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium veya 12s kampanya |
 | **Pro Üyelik üst bar CTA** | Kompakt pill (maskot yok); üst barda hizalı | `lib/widgets/premium_header_button.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
 
 **Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
@@ -130,7 +204,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
 | Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
 
-Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Tek satırlı şıklarda `examWrap: true` ile paneldeki gibi satır kırılımı korunur; punto küçültme (`FittedBox`) devre dışı kalır (`lib/widgets/exam_text/`).
+Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni soldan hizalı. Eşleştirme şıkları (`Şehir - Şehir - Şehir` veya `İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar`) `option-table.js`: değerler sütunda, etiketler başlıkta.
 
 ---
 
@@ -151,8 +225,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Akıllı tekrar** | Günlük 15 soruluk aralıklı tekrar seti (yanlışlar → vadesi gelen → zayıf konular) | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
-| **Yanlış defteri** | Konu testlerinden yanlışlar; karttan onaylı **kaldır** (ortada geçici premium kutu; favorideyse Favorilerim’den de düşer); «İstediğiniz zaman silebilirsiniz»; en çok yanlış derste kırmızı adet; kartta konu chip + kalp/sil; alt satırda «SORUYA TEKRAR GÖZ AT» sol, **BENZER** sağ; üstte yalnızca «Akıllı Tekrar»; alt «Tüm yanlışları çöz». **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; kalp/BENZER açık | `lib/screens/wrong_questions_screen.dart`, `lib/widgets/wrong_notebook/` (incl. `wrong_notebook_guest_frost.dart`) | Ücretsiz; misafir metin hafif buzlu |
-| **Benzer sorular** | Embedding tabanlı benzer soru seti (API) | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar` | **Premium** |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; **kullanıcı başına yerel** (SharedPreferences scope); karttan onaylı **kaldır**; karta tıklayınca inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte işaretsiz + «Daha önce»; bitmiş test yanlışları sonradan doğru cevaplansa istatistik değişmez. **Akıllı Tekrar** başlık altında; **Kitaptaki Yanlışlarım** pembe butonu ile manuel foto sorular ayrı ekranda (ders filtresi). **Manuel foto soru:** kamera/galeri ile eklenir; **YANLIŞ SORULARIM** formunda ders/konu müfredattan zorunlu seçilir (ders → konular); not opsiyonel; uygulama özel dizininde tutulur (galeriye düşmez), durum etiketi (**Yeni / Tekrar Et / Çözüldü**) değiştirilebilir. **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; kalp/BENZER açık | `lib/screens/wrong_questions_screen.dart`, `lib/screens/wrong_notebook_manual_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/widgets/quiz_take_note_button.dart`, `lib/services/question_note_service.dart`, `lib/services/content_bank_service.dart`, `lib/services/manual_question_service.dart` | Ücretsiz; misafir metin hafif buzlu |
+| **Benzer sorular** | Embedding tabanlı benzer soru seti (API); kaynak soru ve %88+ aynı kök metinli kopyalar hariç | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar`, `backend/content/embeddings.py` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; şampanya etiket «Yanlış defteriyle deneme oluşturabilirsin»; ana CTA «Derslerden test çöz» | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
 ---
@@ -164,7 +238,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
-| **Favorilerim** | Kayıtlı soru ID’leri; orijinal test bağlamında açma | `lib/screens/favorites_screen.dart` | Ücretsiz |
+| **Favorilerim** | Soru favorileri + özet kartlar (Favori / Tekrar Et); soru orijinal test bağlamında açılır | `favorites_screen.dart`, `summary_card_progress_service.dart` | Ücretsiz |
 | **Notlarım** | Ders etiketli çalışma notları (CRUD) | `lib/screens/notes_screen.dart`, `lib/services/notes_service.dart` | Ücretsiz |
 | **Hesap bağlama kartı** | Google bağlamadan önce uyarı | `lib/widgets/account_link_card.dart` | Ücretsiz |
 
@@ -232,7 +306,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Bildirim ayarları** | Sabah/akşam/haftalık aç-kapa (duyuru ve tasarruf sabit açık) | `lib/widgets/notification_settings_section.dart`, `lib/services/notification_preference_service.dart` |
 | **Duyurular** | Admin yayınları; **Okundu** yalnızca kullanıcı açınca. **İlk kurulumdan önceki** duyurular profil listesinde yok | `lib/screens/announcements_screen.dart`, `lib/services/announcement_service.dart` |
 | **Mesajlarım** | Doğrudan admin mesajları; **kurulumdan önceki** mesajlar profilde yok | `lib/screens/user_messages_screen.dart`, `lib/services/user_message_service.dart` |
-| **Destek ve İletişim** | Deneme paketi talepleri; soru hata bildirimi (uyarı kartı); e-posta ile destek (`hedefkamu@gmail.com`) | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
+| **Destek ve İletişim** | Deneme paketi talepleri; soru hata bildirimi (uyarı kartı); **İletişime Geç** ile destek e-postası (alıcı, konu, cihaz/sürüm/üyelik otomatik) — ekranda adres gösterilmez | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
 | **Çıkış** | Oturumu kapat (misafir değilse) | `profile_screen.dart` |
 
 ---
@@ -243,7 +317,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 |---|---|---|---|
 | **Mikro öğrenme** | Kısa ders + mini quiz | `lib/screens/study_and_solve_screen.dart` | **Demo içerik** |
 | **Güncel bilgiler** | Hikâye tarzı kartlar | `lib/screens/current_info_screen.dart` | **Yerel mock** |
-| **Reklamsız kampanya** | 3 ödüllü reklam → 12 saat reklamsız | `lib/widgets/ad_free_campaign_card.dart`, `lib/services/ad_free_campaign_service.dart` | Ödüllü reklam |
+| **Reklamsız kampanya** | 3 ödüllü reklam → 12 saat **quiz banner** yok; çözüm kilidi, günlük kota, benzer soru, sınırsız test, offline, konu takibi, pomodoro **açılmaz** | `lib/widgets/ad_free_campaign_card.dart`, `lib/services/ad_free_campaign_service.dart`, `lib/services/ad_manager.dart` | Ödüllü reklam |
 
 ---
 
@@ -255,7 +329,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Anonim backend oturumu** | Firebase anonim + Django `AppUser` token | `auth_service.dart`, `backend/content/auth.py` |
 | **Google giriş / bağlama** | ID token → `POST /api/v1/auth/google/`; hesap zaten bağlıysa `signInWithCredential`; beklemede **Giriş Yapılıyor…** | `auth_service.dart`, `login_screen.dart` |
 | **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad (haftada en fazla 1 değişiklik) | `backend/content/views.py` |
-| **Ağ güvenliği engeli** | VPN/DNS/reklam engelleyici tespiti → uygulama kilitlenir | `lib/services/network_security_service.dart`, `lib/screens/security_warning_modal.dart` |
+| **Ağ güvenliği engeli** | VPN/DNS/reklam engelleyici tespiti → ücretsiz kullanıcıda kilit; Play veya panel Premium süresince serbest | `lib/services/network_security_service.dart`, `lib/services/network_security_gate.dart`, `lib/screens/security_warning_modal.dart` |
+| **Ekran görüntüsü yasağı** | Android `FLAG_SECURE` — ücretsiz ve Premium’da yasak (debug / geliştirici cihazı hariç) | `android/app/src/main/kotlin/com/hedefkamu/hedef_kamu/MainActivity.kt` |
 
 ---
 
@@ -263,9 +338,9 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
-| **AdManager** | Merkezi reklam politikası: quiz banner, her 3 sayfa geçişinde interstitial, test ortasında interstitial yok | `lib/services/ad_manager.dart`, `lib/services/ad_constants.dart` |
+| **AdManager** | Quiz banner; geçiş interstitial; kampanya yalnızca banner kapatır | `lib/services/ad_manager.dart`, `lib/services/ad_constants.dart` |
 | **AdService** | UI katmanının tek giriş noktası (doğrudan AdMob widget’ı yok) | `lib/services/ad_service.dart` |
-| **Ödüllü reklam türleri** | `campaign` (12h reklamsız), `solutionUnlock`, `dailyTestBonus` | `ad_service.dart` |
+| **Ödüllü reklam türleri** | `campaign` (12s banner’sız), `solutionUnlock`, `dailyTestBonus` | `ad_service.dart` |
 | **Play Billing** | Abonelik, geri yükleme, Premium önbellek | `lib/services/play_billing_service.dart` |
 | **PremiumService** | Play Billing **veya** sunucu `isPremium` — tek doğruluk kaynağı | `lib/services/premium_service.dart` |
 
@@ -297,6 +372,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 Staff-only Django görünümleri: `backend/content/panel_views.py`, `backend/content/panel_urls.py`, şablonlar `backend/templates/panel/`, statik `backend/static/panel/`.
 
+Sol menü bölümleri: **İçerik** · **Deneme & sınav** · **Kullanıcı & satış** · **Kalite** · **Ayarlar**. Günlük işler panelde; Django Admin yalnızca gelişmiş işlemler için.
+
 ### Müfredat ve soru yönetimi
 
 | Özellik | URL / dosya |
@@ -305,16 +382,18 @@ Staff-only Django görünümleri: `backend/content/panel_views.py`, `backend/con
 | Ders → konu listesi | `/panel/ders/<id>/` |
 | Konu CRUD, sıralama, aktif/pasif | `/panel/konu/...` |
 | Konu kapasitesi (test gruplama) | `/panel/konu/<id>/kapasite/` |
-| Konu sekmeleri: dersler, sorular, testler, senaryolar | `/panel/konu/<id>/<tab>/` |
+| Konu sekmeleri: dersler, **özet kartlar**, sorular, testler, senaryolar | `/panel/konu/<id>/<tab>/` |
 | Bilgi kartı (ders) CRUD | `/panel/konu/<id>/bilgi/...` |
+| **Özet konu kartı** CRUD (formül / püf / ÖSYM) | `/panel/konu/<id>/ozet/...` |
 | Test CRUD, soru atama | `/panel/konu/<id>/test/...` |
 | Senaryo grupları (ortak paragraf) | `/panel/konu/<id>/grup/...` |
 | Soru CRUD (kök, A–E, çözüm, görsel, SVG, zorluk, ÖSYM) | `/panel/konu/<id>/soru/...` |
 | Soru kopyalama | `/panel/soru/<id>/kopyala/` |
 | Toplu soru silme | `/panel/konu/<id>/soru/toplu-sil/` |
 | **Uygulama önizlemesi** | Canlı mobil benzeri önizleme — `question-preview.js`, `math-render.js`, `rich-format.js` |
+| Tablo / eşleştirme şıkları | `A - B - C` veya `İnanç: …, Mağara: …, Termal: …`; başlık şıktan; dikey çizgi yok | `option-table.js`, `option-table.css` |
 | Biçim araç çubuğu | Kalın / italik / altı çizili / renk (K, I, A, G, R, M) |
-| Zengin yapıştırma | Word/Docs/sohbet HTML panosu `**` / `__` işaretine çevrilir (CF_HTML dahil); iç içe kalın ve kalın+altı çizili (`**__**kelime**__**`) tek işarete iner; kalın+altı çizili kelimeye renk (`**__{green}…{/green}__**`) önizleme ve uygulamada korunur; sohbet kopyasında çift madde işareti (`- -`) ve fazladan tire temizlenir | `rich-format.js` |
+| Zengin yapıştırma | Word/Docs/sohbet HTML panosu `**` / `__` işaretine çevrilir (CF_HTML dahil); iç içe kalın ve kalın+altı çizili (`**__**kelime**__**`) tek işarete iner; kalın+altı çizili kelimeye renk (`**__{green}…{/green}__**`) önizleme ve uygulamada korunur; sohbet kopyasında çift madde işareti (`- -`) ve fazladan tire temizlenir; eşleştirme oku `->` / `\\rightarrow` sınav `→` olur | `rich-format.js` |
 
 ### OCR ve soru alma
 
@@ -326,7 +405,7 @@ Staff-only Django görünümleri: `backend/content/panel_views.py`, `backend/con
 | Tesseract OCR | Türkçe, A–E ayrıştırma | `backend/content/ocr.py` |
 | Gemini Vision OCR | Matematik / LaTeX (Tesseract yedek) | `backend/content/ocr_gemini.py` |
 | OCR ingest log | Hash, pHash, durum, mükerrer | `OcrIngestLog`, `question_fingerprint.py` |
-| Mükerrer tespiti | İçerik + görsel parmak izi | `question_fingerprint.py` |
+| Mükerrer tespiti | İçerik + görsel parmak izi; `[HARITA]` ve `(Not: …)` editör notu yok sayılır; aynı şıklar + benzer kök de yakalanır | `question_fingerprint.py` |
 
 ### Harita soruları
 
@@ -336,10 +415,12 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 |---|---|---|
 | Şablon kütüphanesi | Sistem + yüklenen haritalar; koordinatlı işaret veya tematik (işaret yok) | `/panel/haritalar/`, `maps.html`, `map_catalog.py` |
 | İl boyama | Koordinatlı Türkiye haritasında **İl boya** ile ili tıklayıp doldurma (ÖSYM bölge boyama); komşu aynı renk birleşir | `_question_map_editor.html`, `map-question-editor.js`, `map_provinces.py`, `turkiye_iller.json` |
-| Soru formu editörü | Şablon seç, `[HARITA]` yerleştir, elips/daire koy; seçili işareti **Delete / Backspace** siler (metin alanındayken değil) | `_question_map_editor.html`, `map-question-editor.js` |
-| Elips | Seçilince yeşil tutaç; fareyle 0–179° dönüş; kartta derece alanı | `map-question-editor.js` |
+| Soru formu editörü | Şablon seç, `[HARITA]` yerleştir (düğme soru metnine yazar; şablon yoksa uyarı), elips/daire koy; seçili işareti **Delete / Backspace** siler | `_question_map_editor.html`, `map-question-editor.js` |
+| Elips | **Elips ekle** varsayılan kapalı; seçilince haritaya tıklayarak konur. Romen numarası varsayılan kapalı (karttan açılabilir). Seçilince kenar tutaçlarıyla boyut, yeşil tutaçla 0–179° dönüş | `map-question-editor.js` |
+| Doğru çizgisi | **Doğru çiz**: iki tıklama. **Işın çiz**: merkez → kaç doğru → hedef iller. **İl adı**: tıklanan il, doğru/ışın etiketiyle aynı kalın yazı (sürüklenebilir). **Şehir adları: açık/gizli** | `map-question-editor.js`, `map_question_renderer.py`, `map_provinces.py` |
 | Daire | Çap = harita genişliğinin %’si; kare kutu → tam daire (yükseklik % kullanılmaz) | `map-question-editor.js`, `map_question_renderer.py` |
-| Önizleme / kayıt PNG | Kara dolu; çerçeveye bağlı beyaz deniz şeffaf; Romen rakamları Arial/Helvetica | `map_question_renderer.py` |
+| Önizleme / kayıt PNG | Açık kâğıt zemin (deniz şeffaf olsa da koyu temada Romen okunur); Romen rakamları Arial/Helvetica | `map_question_renderer.py` |
+| %170 / büyük düzenleme | Harita tam ekran; araç çubuğu altta sabit. Doğru kartı haritayı küçültmez; `%100` veya Esc ile döner | `map-question-editor.js`, `map-question.css` |
 | Stil | Kütüphane kartları + editör | `map-question.css` |
 
 ### Şekiller (SVG)
@@ -360,8 +441,9 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 
 | Özellik | URL |
 |---|---|
-| Kullanıcı listesi | `/panel/kullanicilar/` |
+| Kullanıcı listesi (filtre, toplu sil, misafir temizle) | `/panel/kullanicilar/` |
 | Premium ver / kaldır | `/panel/kullanici/<id>/premium/` |
+| **Promosyon kodları** (liste / yeni / düzenle / sil / aktif-pasif) | `/panel/promosyon/` |
 | Duyuru CRUD + push gönder | `/panel/duyuru/...` |
 | Mobil arayüz (yanlış defteri balonu aç/kapa, metin) | `/panel/mobil-arayuz/` |
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
@@ -394,13 +476,13 @@ Panel URL’lerinde doğrudan UI yok; operasyonel/script ile çalışır.
 
 | Alan | Modeller / aksiyonlar |
 |---|---|
-| Müfredat | `Subject`, `Topic`, `TopicLesson`, `TopicTest` |
+| Müfredat | `Subject`, `Topic`, `TopicLesson`, `TopicSummaryCard`, `TopicTest` |
 | Sorular | `Question` — puan özeti, filtreler, toplu işlemler |
 | Haritalar | `MapTemplate` |
 | Puanlama / deneme | `QuestionRating`, `QuestionAttempt` (salt okunur) |
 | Hata bildirimleri | `QuestionErrorReport` |
 | OCR logları | `OcrIngestLog` |
-| Kullanıcılar | `AppUser` — premium ver/kaldır, mesaj gönder, engelle |
+| Kullanıcılar | `AppUser` — premium ver/kaldır, mesaj gönder, engelle; panelde seçimli **toplu sil**, misafir filtresi, **Misafirleri temizle** |
 | Mesajlar | `UserMessage` — push yeniden gönder |
 | Push | `DeviceToken` |
 | Mini deneme | `DailyMiniExam`, `DailyMiniExamAttempt` |
@@ -422,8 +504,8 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 |---|---|---|---|
 | `GET /health/` | Sağlık kontrolü | Hayır | — |
 | `GET /pack/version/` | İçerik paketi sürümü | Hayır | `ContentSyncService` |
-| `GET /pack/` | Tam yayın paketi | Hayır | `ContentSyncService` |
-| `GET /catalog/` | Hafif katalog meta | Hayır | `ContentBankService` |
+| `GET /pack/` | Tam yayın paketi (`summaryCards` dahil) | Hayır | `ContentSyncService` |
+| `GET /catalog/` | Hafif katalog meta (`summaryCards` dahil) | Hayır | `ContentBankService` |
 | `GET /curriculum/` | Müfredat yapısı | Hayır | — |
 | `GET /questions/?ids=` | ID ile soru gövdeleri | Hayır | `QuestionFetchService` |
 | `GET /questions/<id>/similar/` | Benzer sorular (limit 5) | Hayır | Yanlış defteri (Premium) |
@@ -458,15 +540,16 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | Ders başına 1 test/gün | ✓ | | | |
 | +1 bonus test/gün (derse özel) | | ✓ | | |
 | Sınırsız konu testi | | | ✓ | ✓ |
-| Quiz banner reklamı | ✓ | | Bypass | Bypass |
+| Quiz banner reklamı | ✓ | 12s kampanya | Bypass | Bypass |
 | Sayfa geçiş interstitial | ✓ | | Bypass | Bypass |
 | Çözüm kilidi açma | | ✓ | ✓ | ✓ |
-| 12 saat reklamsız (3 reklam) | | ✓ | Bypass | Bypass |
+| 12 saat banner’sız (3 reklam) | | ✓ | Bypass | Bypass |
 | Günün mini denemesi | ✓ (reklamsız oturum) | | ✓ | ✓ |
 | Akıllı tekrar | ✓ | | | |
 | Yanlış defteri listesi | ✓ (misafir: yalnızca soru metni hafif buzlu) | | | |
 | Benzer sorular | | | ✓ | ✓ |
 | Favoriler ve notlar | ✓ | | | |
+| Özet konu kartları (kaydır / favori / tekrar) | ✓ | | | |
 | Gelişim merkezi | ✓ | | | |
 | Deneme analizi | ✓ (sekme)¹ / Premium (ana menü) | | Pazarlama: ✓ | ✓ |
 | Deneme paketleri (IAP) | Google hesabı + satın alma | | Google hesabı + satın alma | Google hesabı + satın alma |
@@ -474,7 +557,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | Bulut senkron UI | | | ✓ (mock) | ✓ |
 | Sıralama | | | ✓ (demo) | ✓ |
 | Offline paket | | | | ✓ |
-| Filigran kaldırma | | | ✓ | ✓ |
+| Filigran | ✓ (tüm planlar) | | ✓ | ✓ |
 | Promosyon Premium | | | ✓ | ✓ |
 
 ---
@@ -483,7 +566,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 
 `backend/content/models.py`:
 
-- **Müfredat:** `Subject`, `Topic`, `TopicLesson`, `TopicTest`
+- **Müfredat:** `Subject`, `Topic`, `TopicLesson`, `TopicSummaryCard`, `TopicTest`
 - **İçerik:** `Question`, `QuestionScenario`, `MapTemplate`
 - **Kullanıcı:** `AppUser`, `DeviceToken`, `UserMessage`
 - **Etkileşim:** `QuestionRating`, `QuestionAttempt`, `QuestionErrorReport`
@@ -508,7 +591,16 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ---
 
-## Sürüm notu (2026-08-18)
+## Sürüm notu (2026-08-20)
+
+Bu sürümde öne çıkanlar (ayrıntı: [20 Ağustos 2026](#20-ağustos-2026--işlenen-ekleme-ve-değişiklikler-bu-commit)):
+
+- **Özet konu kartları:** panel CRUD + pack/catalog `summaryCards` + konu detayında kaydırma destesi + Favorilerim sekmeleri
+- **Yanlış defteri:** Kitaptaki yanlışlarım (manuel foto), defter notu, benzer soru kök kopya filtresi
+- **Panel:** menü grupları, promosyon CRUD, kullanıcı toplu/misafir temizleme, harita doğru/ışın/il adı, eşleştirme şık tablosu
+- **Destek mailto** cihaz/sürüm gövdesi; **reklamsız kampanya** yalnızca banner; **uygulamayi-yukle.bat** uninstall→install
+
+### Sürüm notu (2026-08-18)
 
 Bu sürümde dokümana eklenen son mobil/panel iyileştirmeler:
 

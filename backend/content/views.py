@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from .auth import (
     AuthError,
     get_user_from_request,
+    heal_guest_display_name,
     resolve_google_claims,
     upsert_firebase_user,
     user_to_dict,
@@ -27,6 +28,7 @@ from .models import (
     QuestionRating,
     Subject,
     TopicLesson,
+    TopicSummaryCard,
     TopicTest,
     TopicTestCompletion,
 )
@@ -83,6 +85,13 @@ class ContentPackView(APIView):
             .select_related("topic")
             .order_by("sort_order", "id")
         )
+        summary_cards = (
+            TopicSummaryCard.objects.filter(
+                is_published=True, topic__is_active=True
+            )
+            .select_related("topic", "topic__subject")
+            .order_by("sort_order", "id")
+        )
 
         payload = {
             "version": get_content_version(),
@@ -91,6 +100,7 @@ class ContentPackView(APIView):
             "questions": questions,
             "tests": tests,
             "lessons": lessons,
+            "summaryCards": summary_cards,
         }
         data = ContentPackSerializer(payload, context={"request": request}).data
         return Response(data)
@@ -119,12 +129,20 @@ class ContentCatalogView(APIView):
             .select_related("topic")
             .order_by("sort_order", "id")
         )
+        summary_cards = (
+            TopicSummaryCard.objects.filter(
+                is_published=True, topic__is_active=True
+            )
+            .select_related("topic", "topic__subject")
+            .order_by("sort_order", "id")
+        )
         payload = {
             "version": get_content_version(),
             "generatedAt": timezone.now(),
             "subjects": subjects_qs,
             "tests": tests,
             "lessons": lessons,
+            "summaryCards": summary_cards,
         }
         data = ContentCatalogSerializer(payload, context={"request": request}).data
         return Response(data)
@@ -470,11 +488,19 @@ class QuestionErrorReportThrottle(SimpleRateThrottle):
 
 
 MIN_COMPLETED_TESTS_FOR_ERROR_REPORT = 5
+MIN_COMPLETED_TESTS_FOR_ERROR_REPORT_PREMIUM = 3
 
 
-def _user_completed_topic_test_count(user) -> int:
+def _min_tests_for_error_report(user) -> int:
+    if user is not None and getattr(user, "premium_active", False):
+        return MIN_COMPLETED_TESTS_FOR_ERROR_REPORT_PREMIUM
+    return MIN_COMPLETED_TESTS_FOR_ERROR_REPORT
+
+
+def _user_completed_topic_test_count(user, min_required: int | None = None) -> int:
+    needed = min_required if min_required is not None else _min_tests_for_error_report(user)
     explicit = TopicTestCompletion.objects.filter(user=user).count()
-    if explicit >= MIN_COMPLETED_TESTS_FOR_ERROR_REPORT:
+    if explicit >= needed:
         return explicit
 
     completed = explicit
@@ -501,7 +527,7 @@ def _user_completed_topic_test_count(user) -> int:
         )
         if answered >= len(question_pks):
             completed += 1
-            if completed >= MIN_COMPLETED_TESTS_FOR_ERROR_REPORT:
+            if completed >= needed:
                 break
     return completed
 
@@ -512,8 +538,11 @@ def _error_report_payload(
     daily_limit_reached: bool,
     user=None,
 ) -> dict:
-    tests_completed = _user_completed_topic_test_count(user) if user else 0
-    tests_ok = tests_completed >= MIN_COMPLETED_TESTS_FOR_ERROR_REPORT
+    min_required = _min_tests_for_error_report(user)
+    tests_completed = (
+        _user_completed_topic_test_count(user, min_required) if user else 0
+    )
+    tests_ok = tests_completed >= min_required
     return {
         "reported": report is not None,
         "category": report.category if report else None,
@@ -521,7 +550,7 @@ def _error_report_payload(
         "createdAt": report.created_at.isoformat() if report else None,
         "dailyLimitReached": daily_limit_reached,
         "testsCompleted": tests_completed,
-        "minTestsRequired": MIN_COMPLETED_TESTS_FOR_ERROR_REPORT,
+        "minTestsRequired": min_required,
         "testsRequirementMet": tests_ok,
         "canReport": report is None and not daily_limit_reached and tests_ok,
     }
@@ -599,16 +628,17 @@ class QuestionErrorReportView(APIView):
                 )
             )
 
-        completed_count = _user_completed_topic_test_count(user)
-        if completed_count < MIN_COMPLETED_TESTS_FOR_ERROR_REPORT:
+        min_required = _min_tests_for_error_report(user)
+        completed_count = _user_completed_topic_test_count(user, min_required)
+        if completed_count < min_required:
             return Response(
                 {
                     "detail": (
-                        f"En az {MIN_COMPLETED_TESTS_FOR_ERROR_REPORT} test "
+                        f"En az {min_required} test "
                         "bitirmeden hata bildirimi yapamazsınız."
                     ),
                     "testsCompleted": completed_count,
-                    "minTestsRequired": MIN_COMPLETED_TESTS_FOR_ERROR_REPORT,
+                    "minTestsRequired": min_required,
                     "testsRequirementMet": False,
                     "reported": False,
                     "canReport": False,
@@ -743,6 +773,13 @@ class GoogleAuthView(APIView):
                 id_token=str(id_token),
                 access_token=str(access_token),
             )
+            client_name = str(
+                request.data.get("display_name")
+                or request.data.get("isim")
+                or ""
+            ).strip()
+            if client_name and not (claims.get("name") or "").strip():
+                claims["name"] = client_name
             user = upsert_firebase_user(claims)
         except AuthError as exc:
             return Response({"detail": exc.message}, status=exc.status)
@@ -767,6 +804,7 @@ class MeView(APIView):
         user = get_user_from_request(request)
         if user is None:
             return Response({"detail": "Oturum gerekli."}, status=401)
+        heal_guest_display_name(user)
         return Response(user_to_dict(user))
 
     def patch(self, request):

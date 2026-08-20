@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/practice_exam_model.dart';
 import '../models/study_note.dart';
+import '../models/manual_question_model.dart';
 import '../models/wrong_notebook_model.dart';
 import 'storage_constants.dart';
 
@@ -81,11 +82,15 @@ class LocalDatabase {
       'CREATE INDEX idx_notebook_olusturma ON ${StorageConstants.tableWrongNotebook}(olusturma_tarihi)',
     );
     await _createStudyNotesTable(db);
+    await _createManualWrongQuestionsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await _createStudyNotesTable(db);
+    }
+    if (oldVersion < 3) {
+      await _createManualWrongQuestionsTable(db);
     }
   }
 
@@ -101,6 +106,20 @@ class LocalDatabase {
     )
   ''');
 
+  Future<void> _createManualWrongQuestionsTable(Database db) => db.execute('''
+    CREATE TABLE ${StorageConstants.tableManualWrongQuestions} (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      image_path TEXT NOT NULL,
+      subject TEXT,
+      topic TEXT,
+      note TEXT,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
   DateTime get _retentionCutoff => DateTime.now().subtract(
         const Duration(days: StorageConstants.retentionDays),
       );
@@ -111,14 +130,19 @@ class LocalDatabase {
       final cutoff = _retentionCutoff;
       final exams = await _readWebExams();
       final notebook = await _readWebNotebook();
+      final manual = await _readWebManualWrongQuestions();
       final keptExams = exams.where((e) => !e.tarih.isBefore(cutoff)).toList();
       final keptNotebook =
           notebook.where((e) => !e.olusturmaTarihi.isBefore(cutoff)).toList();
+      final keptManual =
+          manual.where((e) => !e.createdAt.isBefore(cutoff)).toList();
       final deleted = (exams.length - keptExams.length) +
-          (notebook.length - keptNotebook.length);
+          (notebook.length - keptNotebook.length) +
+          (manual.length - keptManual.length);
       if (deleted > 0) {
         await _writeWebExams(keptExams);
         await _writeWebNotebook(keptNotebook);
+        await _writeWebManualWrongQuestions(keptManual);
       }
       return deleted;
     }
@@ -140,7 +164,13 @@ class LocalDatabase {
       whereArgs: [cutoff],
     );
 
-    return examsDeleted + notebookDeleted;
+    final manualDeleted = await db.delete(
+      StorageConstants.tableManualWrongQuestions,
+      where: 'created_at < ?',
+      whereArgs: [cutoff],
+    );
+
+    return examsDeleted + notebookDeleted + manualDeleted;
   }
 
   // ── Deneme sınavları ──────────────────────────────────────────────
@@ -321,6 +351,93 @@ class LocalDatabase {
     return (count ?? 0) == 0;
   }
 
+  // ── Manuel yanlış fotoğrafları ───────────────────────────────────────
+
+  Future<List<ManualQuestionModel>> getManualWrongQuestionsForUser(
+    String userId,
+  ) async {
+    if (kIsWeb) {
+      final all = await _readWebManualWrongQuestions();
+      final rows = all.where((e) => e.userId == userId).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return rows;
+    }
+
+    final db = _db!;
+    final rows = await db.query(
+      StorageConstants.tableManualWrongQuestions,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'created_at DESC',
+    );
+    return rows.map(_manualWrongFromRow).toList();
+  }
+
+  Future<void> upsertManualWrongQuestion(ManualQuestionModel item) async {
+    if (kIsWeb) {
+      final all = await _readWebManualWrongQuestions();
+      all.removeWhere((e) => e.id == item.id);
+      all.add(item);
+      await _writeWebManualWrongQuestions(all);
+      return;
+    }
+
+    final db = _db!;
+    await db.insert(
+      StorageConstants.tableManualWrongQuestions,
+      _manualWrongToRow(item),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteManualWrongQuestion(String id) async {
+    if (kIsWeb) {
+      final all = await _readWebManualWrongQuestions();
+      all.removeWhere((e) => e.id == id);
+      await _writeWebManualWrongQuestions(all);
+      return;
+    }
+
+    final db = _db!;
+    await db.delete(
+      StorageConstants.tableManualWrongQuestions,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> reassignManualWrongQuestionsUser({
+    required String fromUserId,
+    required String toUserId,
+  }) async {
+    if (fromUserId == toUserId) return;
+    if (kIsWeb) {
+      final all = await _readWebManualWrongQuestions();
+      var changed = false;
+      for (var i = 0; i < all.length; i++) {
+        final row = all[i];
+        if (row.userId != fromUserId) continue;
+        all[i] = row.copyWith(userId: toUserId, updatedAt: DateTime.now());
+        changed = true;
+      }
+      if (changed) {
+        await _writeWebManualWrongQuestions(all);
+      }
+      return;
+    }
+
+    final db = _db!;
+    await db.update(
+      StorageConstants.tableManualWrongQuestions,
+      {
+        'user_id': toUserId,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'user_id = ?',
+      whereArgs: [fromUserId],
+    );
+  }
+
   // ── Çalışma notları ───────────────────────────────────────────────
 
   Future<List<StudyNote>> getAllStudyNotes() async {
@@ -398,6 +515,24 @@ class LocalDatabase {
     await _prefs!.setString(StorageConstants.webNotebookKey, encoded);
   }
 
+  Future<List<ManualQuestionModel>> _readWebManualWrongQuestions() async {
+    final raw = _prefs!.getString(StorageConstants.webManualWrongQuestionsKey);
+    if (raw == null || raw.isEmpty) return [];
+    final list = jsonDecode(raw) as List<dynamic>;
+    return list
+        .map((item) =>
+            _manualWrongFromRow(Map<String, Object?>.from(item as Map)))
+        .toList();
+  }
+
+  Future<void> _writeWebManualWrongQuestions(
+    List<ManualQuestionModel> entries,
+  ) async {
+    final encoded = jsonEncode(entries.map(_manualWrongToRow).toList());
+    await _prefs!
+        .setString(StorageConstants.webManualWrongQuestionsKey, encoded);
+  }
+
   Map<String, Object?> _notebookToRow(WrongNotebookEntry entry) => {
         'id': entry.id,
         'ders_adi': entry.dersAdi,
@@ -433,6 +568,32 @@ class LocalDatabase {
       olusturmaTarihi: DateTime.parse(row['olusturma_tarihi']! as String),
       tekrarSayisi: row['tekrar_sayisi']! as int,
       arsivlendi: (row['arsivlendi']! as int) == 1,
+    );
+  }
+
+  Map<String, Object?> _manualWrongToRow(ManualQuestionModel item) => {
+        'id': item.id,
+        'user_id': item.userId,
+        'image_path': item.imagePath,
+        'subject': item.subject,
+        'topic': item.topic,
+        'note': item.note,
+        'status': item.status.name,
+        'created_at': item.createdAt.toIso8601String(),
+        'updated_at': item.updatedAt.toIso8601String(),
+      };
+
+  ManualQuestionModel _manualWrongFromRow(Map<String, Object?> row) {
+    return ManualQuestionModel(
+      id: row['id']! as String,
+      userId: row['user_id']! as String,
+      imagePath: row['image_path']! as String,
+      subject: row['subject'] as String?,
+      topic: row['topic'] as String?,
+      note: row['note'] as String?,
+      status: ManualQuestionStatus.values.byName(row['status']! as String),
+      createdAt: DateTime.parse(row['created_at']! as String),
+      updatedAt: DateTime.parse(row['updated_at']! as String),
     );
   }
 }

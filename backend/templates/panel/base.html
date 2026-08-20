@@ -9,7 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
-  <link rel="stylesheet" href="{% static 'panel/map-question.css' %}">
+  <link rel="stylesheet" href="{% static 'panel/option-table.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'panel/map-question.css' %}?v=10">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="{% static 'panel/math-render.js' %}"></script>
@@ -46,25 +47,34 @@
         </div>
 
         <div class="nav-section">
+          <p class="nav-label">Deneme &amp; sınav</p>
+          <a class="nav-link {% if url_name == 'panel_exam_type_list' or url_name == 'panel_exam_type_new' or url_name == 'panel_exam_type_edit' %}is-active{% endif %}" href="{% url 'panel_exam_type_list' %}">Sınavlar</a>
+          <a class="nav-link {% if url_name == 'panel_exam_distribution_list' or url_name == 'panel_exam_distribution_new' or url_name == 'panel_exam_distribution_edit' %}is-active{% endif %}" href="{% url 'panel_exam_distribution_list' %}">Deneme şablonu</a>
+          <a class="nav-link {% if url_name == 'panel_exam_pack_list' or url_name == 'panel_exam_pack_new' or url_name == 'panel_exam_pack_edit' or url_name == 'panel_exam_pack_toggle' %}is-active{% endif %}" href="{% url 'panel_exam_pack_list' %}">Deneme paketleri</a>
+        </div>
+
+        <div class="nav-section">
+          <p class="nav-label">Kullanıcı &amp; satış</p>
+          <a class="nav-link {% if url_name == 'panel_users' or url_name == 'panel_user_grant_premium' or url_name == 'panel_user_revoke_premium' or url_name == 'panel_user_bulk_delete' or url_name == 'panel_user_purge_guests' %}is-active{% endif %}" href="{% url 'panel_users' %}">Kullanıcılar</a>
+          <a class="nav-link {% if url_name == 'panel_promo_list' or url_name == 'panel_promo_new' or url_name == 'panel_promo_edit' or url_name == 'panel_promo_delete' or url_name == 'panel_promo_toggle' %}is-active{% endif %}" href="{% url 'panel_promo_list' %}">Promosyon kodları</a>
+        </div>
+
+        <div class="nav-section">
           <p class="nav-label">Kalite</p>
           <a class="nav-link {% if url_name == 'panel_error_reports' or url_name == 'panel_error_report_status' %}is-active{% endif %}" href="{% url 'panel_error_reports' %}">İncelenecek sorular</a>
           <a class="nav-link {% if url_name == 'panel_quality' %}is-active{% endif %}" href="{% url 'panel_quality' %}">Soru kalitesi</a>
         </div>
 
         <div class="nav-section">
-          <p class="nav-label">Sistem</p>
-          <a class="nav-link {% if url_name == 'panel_exam_type_list' or url_name == 'panel_exam_type_new' or url_name == 'panel_exam_type_edit' %}is-active{% endif %}" href="{% url 'panel_exam_type_list' %}">Sınavlar</a>
-          <a class="nav-link {% if url_name == 'panel_exam_distribution_list' or url_name == 'panel_exam_distribution_new' or url_name == 'panel_exam_distribution_edit' %}is-active{% endif %}" href="{% url 'panel_exam_distribution_list' %}">Deneme şablonu</a>
-          <a class="nav-link {% if url_name == 'panel_exam_pack_list' or url_name == 'panel_exam_pack_new' or url_name == 'panel_exam_pack_edit' or url_name == 'panel_exam_pack_toggle' %}is-active{% endif %}" href="{% url 'panel_exam_pack_list' %}">Deneme paketleri</a>
+          <p class="nav-label">Ayarlar</p>
           <a class="nav-link {% if url_name == 'panel_announcement_list' or url_name == 'panel_announcement_new' or url_name == 'panel_announcement_edit' %}is-active{% endif %}" href="{% url 'panel_announcement_list' %}">Duyurular</a>
           <a class="nav-link {% if url_name == 'panel_mobile_ui' %}is-active{% endif %}" href="{% url 'panel_mobile_ui' %}">Mobil arayüz</a>
-          <a class="nav-link {% if url_name == 'panel_users' or url_name == 'panel_user_grant_premium' or url_name == 'panel_user_revoke_premium' %}is-active{% endif %}" href="{% url 'panel_users' %}">Kullanıcılar</a>
         </div>
       </nav>
 
       <div class="sidebar-foot">
         <a class="nav-link nav-link-muted" href="/api/v1/pack/" target="_blank" rel="noopener">API paket</a>
-        <a class="nav-link nav-link-muted" href="/admin/">Django Admin</a>
+        <a class="nav-link nav-link-muted" href="/admin/" title="Gelişmiş işlemler — günlük işler için sol menüyü kullanın">Gelişmiş (Django Admin)</a>
         <a class="nav-link nav-link-muted" href="{% url 'admin:logout' %}">Çıkış</a>
       </div>
     </aside>

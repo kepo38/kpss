@@ -26,6 +26,7 @@
 
 <nav class="tabs">
   <a href="{% url 'panel_topic' topic.id 'lessons' %}" class="{% if tab == 'lessons' %}active{% endif %}">Bilgi</a>
+  <a href="{% url 'panel_topic' topic.id 'summary' %}" class="{% if tab == 'summary' %}active{% endif %}">Özet kartlar</a>
   <a href="{% url 'panel_topic' topic.id 'questions' %}" class="{% if tab == 'questions' %}active{% endif %}">Sorular</a>
   <a href="{% url 'panel_topic' topic.id 'scenarios' %}" class="{% if tab == 'scenarios' %}active{% endif %}">Olay grupları</a>
   <a href="{% url 'panel_topic' topic.id 'tests' %}" class="{% if tab == 'tests' %}active{% endif %}">Testler</a>
@@ -52,6 +53,31 @@
     </div>
     {% empty %}
     <div class="empty">Henüz bilgi kartı yok. Öğrencinin “Konuyu öğren” ekranı buradan beslenir.</div>
+    {% endfor %}
+  </div>
+
+{% elif tab == 'summary' %}
+  <div class="toolbar">
+    <strong>Özet konu kartları</strong>
+    <a class="btn btn-primary" href="{% url 'panel_summary_card_new' topic.id %}">Yeni özet kart</a>
+  </div>
+  <p class="lead" style="margin-top:0;">Mobilde konu detayında kaydırılan kısa formül / püf / ÖSYM kartları.</p>
+  <div class="list">
+    {% for card in summary_cards %}
+    <div class="row">
+      <div class="name">
+        <a href="{% url 'panel_summary_card_edit' topic.id card.id %}">{{ card.title }}</a>
+        <div class="hint">{{ card.get_kind_display }} · Sıra {{ card.sort_order }} · {{ card.body|truncatechars:90 }}</div>
+      </div>
+      {% if card.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_summary_card_edit' topic.id card.id %}">Düzenle</a>
+      <form method="post" action="{% url 'panel_summary_card_delete' card.id %}" onsubmit="return confirm('Silinsin mi?');">
+        {% csrf_token %}
+        <button class="btn btn-danger" type="submit">Sil</button>
+      </form>
+    </div>
+    {% empty %}
+    <div class="empty">Henüz özet kart yok. Formül ve püf noktalarını buradan ekleyin.</div>
     {% endfor %}
   </div>
 

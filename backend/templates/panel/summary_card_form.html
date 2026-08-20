@@ -1,0 +1,39 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
+  <a href="{% url 'panel_topic' topic.id 'summary' %}">{{ topic.name }}</a> /
+  Özet kart
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Kısa tutun — uygulama kaydırma kartında tek bakışta okunmalı.</p>
+
+<form class="form" method="post" style="max-width:640px;">
+  {% csrf_token %}
+  <label>Tür
+    <select name="kind">
+      {% for value, label in kind_choices %}
+      <option value="{{ value }}" {% if card.kind == value or not card and value == 'tip' %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Başlık
+    <input type="text" name="title" required maxlength="160" value="{{ card.title|default:'' }}" placeholder="Örn. Zincir kuralı">
+  </label>
+  <label>Özet
+    <textarea name="body" required rows="5" placeholder="Formül, kural veya ÖSYM ipucu…">{{ card.body|default:'' }}</textarea>
+  </label>
+  <label>Sıra
+    <input type="number" name="sort_order" value="{{ card.sort_order|default:0 }}">
+  </label>
+  <label class="check">
+    <input type="checkbox" name="is_published" {% if card.is_published %}checked{% endif %}>
+    Yayında
+  </label>
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'summary' %}">İptal</a>
+  </div>
+</form>
+{% endblock %}

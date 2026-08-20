@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_theme.dart';
 import 'exam_text/exam_stem_view.dart';
+import 'exam_text/option_column_layout.dart';
 import 'cached_remote_image.dart';
 import 'formatted_text.dart';
 import 'watermark_widget.dart';
@@ -33,7 +34,7 @@ class QuestionStemContent extends StatelessWidget {
   /// Liste önizlemelerinde yer tutucuyu ve biçim işaretlerini gizler.
   static String previewText(String stem) {
     return FormattedText.stripMarkup(
-      stem
+      OptionColumnLayout.visibleStem(stem)
           .replaceAll(inlineImagePlaceholder, ' ')
           .replaceAll(RegExp(r'[ \t]+\n'), '\n')
           .replaceAll(RegExp(r'\n{3,}'), '\n\n')
@@ -105,21 +106,25 @@ class _QuestionSvgFigure extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 320),
-        child: ColoredBox(
-          color: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: SvgPicture.string(
-              svg,
-              width: double.infinity,
-              fit: BoxFit.contain,
-              semanticsLabel: 'Geometri şekli',
-              placeholderBuilder: (context) => const AspectRatio(
-                aspectRatio: 4 / 3,
-                child: Center(
-                  child: CircularProgressIndicator(color: AppTheme.champagne),
+      child: WatermarkWidget(
+        overlay: true,
+        fitToChild: true,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: ColoredBox(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SvgPicture.string(
+                svg,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                semanticsLabel: 'Geometri şekli',
+                placeholderBuilder: (context) => const AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppTheme.champagne),
+                  ),
                 ),
               ),
             ),
@@ -139,14 +144,21 @@ class _QuestionImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-      child: AspectRatio(
-        aspectRatio: 16 / 7,
-        child: CachedRemoteImage(
-          imageUrl: url,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.contain,
-          semanticLabel: 'Soru haritası veya görseli',
+      child: WatermarkWidget(
+        overlay: true,
+        fitToChild: true,
+        child: ColoredBox(
+          color: const Color(0xFFF8FAFC),
+          child: AspectRatio(
+            aspectRatio: 16 / 7,
+            child: CachedRemoteImage(
+              imageUrl: url,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.contain,
+              semanticLabel: 'Soru haritası veya görseli',
+            ),
+          ),
         ),
       ),
     );

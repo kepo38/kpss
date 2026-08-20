@@ -105,6 +105,19 @@ class SimilarQuestionsApiTests(TestCase):
         self.assertNotIn(self.source.public_id, ids)
         self.assertIn("similarity", body["questions"][0])
 
+    def test_near_duplicate_copy_is_excluded(self):
+        dup = self._make(
+            "q_emb_dup",
+            "Paragrafta ana fikir hangisidir?",
+        )
+        self._set_vector(dup, [0.99, 0.1, 0.0])
+        from content.embeddings import similar_questions
+
+        scored = similar_questions(self.source, limit=5, threshold=0.5)
+        ids = [candidate.public_id for _, candidate in scored]
+        self.assertNotIn(dup.public_id, ids)
+        self.assertNotIn(self.source.public_id, ids)
+
     def test_unpublished_source_is_not_found(self):
         self.source.is_published = False
         self.source.save(update_fields=["is_published"])

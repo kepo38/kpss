@@ -26,15 +26,18 @@ import 'services/content_sync_service.dart';
 import 'services/database_bootstrap.dart';
 import 'services/database_service.dart';
 import 'services/favorites_service.dart';
+import 'services/summary_card_progress_service.dart';
 import 'services/gamification_service.dart';
 import 'services/last_study_session_service.dart';
 import 'services/local_database.dart';
 import 'services/notes_service.dart';
+import 'services/question_note_service.dart';
 import 'services/exam_catalog_service.dart';
 import 'services/kpss_preference_service.dart';
 import 'services/theme_preference_service.dart';
 import 'services/user_savings_insight_service.dart';
 import 'services/daily_mini_exam_service.dart';
+import 'services/network_security_gate.dart';
 import 'services/network_security_service.dart';
 import 'services/notification_preference_service.dart';
 import 'services/notification_service.dart';
@@ -65,6 +68,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   final NetworkSecurityService _networkSecurity = NetworkSecurityService();
   bool _isConnectionBlocked = false;
   bool _securityChecked = false;
+  bool _vpnModalShown = false;
 
   /// Auth hazır → hemen ana sayfa (ağır servisler arka planda).
   bool _bootReady = false;
@@ -80,6 +84,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AuthService.instance.addListener(_onAuthChanged);
+    PlayBillingService.instance.premiumNotifier
+        .addListener(_liftVpnLockIfPremium);
     // Varsayılan tercihler — ilk karede UI çizebilsin.
     final defaults = BootSnapshot.defaults();
     ThemePreferenceService.instance.applyBootSnapshot(defaults);
@@ -121,11 +127,14 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     AuthService.instance.removeListener(_onAuthChanged);
+    PlayBillingService.instance.premiumNotifier
+        .removeListener(_liftVpnLockIfPremium);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   void _onAuthChanged() {
+    _liftVpnLockIfPremium();
     if (!mounted || !_bootReady) return;
     final auth = AuthService.instance;
     final user = auth.user;
@@ -263,7 +272,9 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       await Future.wait([
         PracticeExamService.instance.initialize(),
         NotesService.instance.initialize(),
+        QuestionNoteService.instance.initialize(),
         FavoritesService.instance.initialize(),
+        SummaryCardProgressService.instance.initialize(),
         AdFreeCampaignService.instance.initialize(),
         SmartReviewService.instance.initialize(),
         OfflinePackService.instance.initialize(),
@@ -315,20 +326,35 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   }
 
   Future<void> _checkNetworkSecurity() async {
-    final unsafe = await _networkSecurity.hasUnsafeConnection();
+    final blocked = await NetworkSecurityGate.shouldBlock(_networkSecurity);
     if (!mounted) return;
     setState(() {
-      _isConnectionBlocked = unsafe;
+      _isConnectionBlocked = blocked;
       _securityChecked = true;
     });
-    if (unsafe) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final navigatorContext = AppNavigator.key.currentContext;
-        if (mounted && navigatorContext != null) {
-          showSecurityWarningModal(navigatorContext);
-        }
+    if (!blocked) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isConnectionBlocked || _vpnModalShown) return;
+      final navigatorContext = AppNavigator.key.currentContext;
+      if (navigatorContext == null) return;
+      _vpnModalShown = true;
+      showSecurityWarningModal(navigatorContext).whenComplete(() {
+        _vpnModalShown = false;
       });
+    });
+  }
+
+  void _liftVpnLockIfPremium() {
+    if (!NetworkSecurityGate.isPremiumExempt) return;
+    if (!_isConnectionBlocked && !_vpnModalShown) return;
+    if (mounted) {
+      setState(() => _isConnectionBlocked = false);
+    } else {
+      _isConnectionBlocked = false;
     }
+    if (!_vpnModalShown) return;
+    final nav = AppNavigator.key.currentState;
+    if (nav != null && nav.canPop()) nav.pop();
   }
 
   @override

@@ -30,6 +30,7 @@ from .models import (
     Subject,
     Topic,
     TopicLesson,
+    TopicSummaryCard,
     TopicTest,
     UserMessage,
 )
@@ -412,6 +413,22 @@ class TopicLessonAdmin(ModelAdmin):
     list_filter_sheet = False
 
 
+@admin.register(TopicSummaryCard)
+class TopicSummaryCardAdmin(ModelAdmin):
+    list_display = (
+        "title",
+        "kind",
+        "topic",
+        "sort_order",
+        "is_published",
+        "updated_at",
+    )
+    list_filter = ("kind", "is_published", "topic__subject")
+    search_fields = ("title", "public_id", "body")
+    autocomplete_fields = ("topic",)
+    list_filter_sheet = False
+
+
 @admin.register(TopicTest)
 class TopicTestAdmin(ModelAdmin):
     list_display = (
@@ -509,6 +526,7 @@ class AppUserAdmin(ModelAdmin):
     list_display = (
         "email",
         "display_name",
+        "is_anonymous",
         "is_premium",
         "premium_granted_at",
         "premium_expires_at",
@@ -516,7 +534,7 @@ class AppUserAdmin(ModelAdmin):
         "last_login_at",
         "created_at",
     )
-    list_filter = ("is_premium", "is_active")
+    list_filter = ("is_anonymous", "is_premium", "is_active")
     search_fields = ("email", "display_name", "google_sub")
     readonly_fields = (
         "google_sub",
@@ -525,6 +543,7 @@ class AppUserAdmin(ModelAdmin):
         "updated_at",
         "last_login_at",
         "premium_granted_at",
+        "is_anonymous",
     )
     fieldsets = (
         (
@@ -535,6 +554,7 @@ class AppUserAdmin(ModelAdmin):
                     "display_name",
                     "photo_url",
                     "google_sub",
+                    "is_anonymous",
                     "is_active",
                     "block_reason",
                 ),

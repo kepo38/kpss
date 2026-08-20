@@ -28,6 +28,8 @@ from .map_provinces import (
     DEFAULT_FILL_COLOR,
     MAX_FILLS,
     draw_province_fills,
+    line_endpoint_names,
+    province_at,
     province_ids,
 )
 
@@ -41,7 +43,7 @@ DEFAULT_COLOR = "#ef4444"
 
 ALLOWED_LABEL_SIDES = {"left", "right", "top", "bottom"}
 
-ALLOWED_SHAPES = {"ellipse", "circle", "fill"}
+ALLOWED_SHAPES = {"ellipse", "circle", "fill", "line", "city-label"}
 
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -129,6 +131,77 @@ def validate_map_markers(
         pin_count += 1
         if pin_count > MAX_MARKERS:
             raise ValidationError(f"En fazla {MAX_MARKERS} işaret eklenebilir.")
+        if shape == "line":
+            x1 = _number(raw.get("x"), f"{index}. doğru X1", 0, 100)
+            y1 = _number(raw.get("y"), f"{index}. doğru Y1", 0, 100)
+            x2 = _number(raw.get("x2"), f"{index}. doğru X2", 0, 100)
+            y2 = _number(raw.get("y2"), f"{index}. doğru Y2", 0, 100)
+            if "showLabel" in raw:
+                show_label = bool(raw.get("showLabel"))
+            else:
+                show_label = bool(
+                    str(raw.get("label") or raw.get("startLabel") or raw.get("endLabel") or "").strip()
+                )
+            start_label = str(raw.get("startLabel") or "").strip()[:40]
+            end_label = str(raw.get("endLabel") or "").strip()[:40]
+            label = str(raw.get("label") or "").strip()[:80]
+            auto_start, auto_end = line_endpoint_names(x1, y1, x2, y2)
+            if not start_label:
+                start_label = auto_start
+            if not end_label:
+                end_label = auto_end
+            if not label:
+                label = " · ".join(part for part in (start_label, end_label) if part)
+            normalized.append(
+                {
+                    "shape": "line",
+                    "x": x1,
+                    "y": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "width": _number(
+                        raw.get("width", 0.5), f"{index}. doğru kalınlığı", 0.4, 4
+                    ),
+                    "height": 0,
+                    "rotation": 0,
+                    "color": color.lower(),
+                    "labelSide": "right",
+                    "showLabel": show_label,
+                    "label": label,
+                    "startLabel": start_label,
+                    "endLabel": end_label,
+                }
+            )
+            continue
+        if shape == "city-label":
+            pin_count += 1
+            if pin_count > MAX_MARKERS:
+                raise ValidationError(f"En fazla {MAX_MARKERS} işaret eklenebilir.")
+            x = _number(raw.get("x"), f"{index}. il adı X", 0, 100)
+            y = _number(raw.get("y"), f"{index}. il adı Y", 0, 100)
+            if "showLabel" in raw:
+                show_label = bool(raw.get("showLabel"))
+            else:
+                show_label = bool(str(raw.get("label") or "").strip())
+            label = str(raw.get("label") or "").strip()[:40]
+            if not label:
+                hit = province_at(x, y)
+                label = str((hit or {}).get("name") or "").strip()[:40]
+            normalized.append(
+                {
+                    "shape": "city-label",
+                    "x": x,
+                    "y": y,
+                    "width": 0,
+                    "height": 0,
+                    "rotation": 0,
+                    "color": color.lower(),
+                    "labelSide": "right",
+                    "showLabel": show_label,
+                    "label": label,
+                }
+            )
+            continue
         label_side = str(raw.get("labelSide") or "right").strip()
         if label_side not in ALLOWED_LABEL_SIDES:
             raise ValidationError(f"{index}. etiket yönü geçersiz.")
@@ -151,6 +224,10 @@ def validate_map_markers(
             rotation = int(
                 _number(raw.get("rotation", 0), f"{index}. işaret dönüşü", 0, 179)
             )
+        if "showLabel" in raw:
+            show_label = bool(raw.get("showLabel"))
+        else:
+            show_label = True
         normalized.append(
             {
                 "x": _number(raw.get("x"), f"{index}. işaret X", 0, 100),
@@ -161,6 +238,7 @@ def validate_map_markers(
                 "shape": shape,
                 "color": color.lower(),
                 "labelSide": label_side,
+                "showLabel": show_label,
             }
         )
     return normalized
@@ -331,14 +409,20 @@ def _knockout_map_background(image: Image.Image) -> Image.Image:
     return image
 
 
+_MAP_PAPER = (248, 250, 252, 255)
+
+
+def _flatten_on_paper(image: Image.Image) -> Image.Image:
+    """Deniz şeffaf kalsın diye değil; koyu temada Romen etiket okunur kalsın."""
+    paper = Image.new("RGBA", image.size, _MAP_PAPER)
+    paper.alpha_composite(image.convert("RGBA"))
+    return paper
+
+
 def render_static_map(template: str) -> bytes:
-
-    image = _load_template_image(template)
-
+    image = _flatten_on_paper(_load_template_image(template))
     output = BytesIO()
-
     image.save(output, format="PNG")
-
     return output.getvalue()
 
 
@@ -362,7 +446,27 @@ def _draw_map_marker(
     shape = marker.get("shape") or "ellipse"
     rotation = int(marker.get("rotation") or 0) % 180
     fill = marker["color"]
-    outline = "#7f1d1d"
+    if shape == "line":
+        x1 = image.width * marker["x"] / 100
+        y1 = image.height * marker["y"] / 100
+        x2 = image.width * marker["x2"] / 100
+        y2 = image.height * marker["y2"] / 100
+        thickness = max(2, round(image.width * float(marker.get("width") or 0.5) / 100))
+        cap = max(thickness * 1.2, thickness + 2)
+        radius = cap / 2
+        draw = ImageDraw.Draw(image)
+        draw.line([(x1, y1), (x2, y2)], fill=fill, width=thickness)
+        for cx, cy in ((x1, y1), (x2, y2)):
+            draw.ellipse(
+                (cx - radius, cy - radius, cx + radius, cy + radius),
+                fill=fill,
+            )
+        return (
+            min(x1, x2) - radius,
+            min(y1, y2) - radius,
+            max(x1, x2) + radius,
+            max(y1, y2) + radius,
+        )
     if shape == "circle":
         diameter = image.width * marker["width"] / 100
         radius = diameter / 2
@@ -372,7 +476,7 @@ def _draw_map_marker(
             round(cx + radius),
             round(cy + radius),
         )
-        ImageDraw.Draw(image).ellipse(box, fill=fill, outline=outline, width=stroke)
+        ImageDraw.Draw(image).ellipse(box, fill=fill)
         return box
 
     width = image.width * marker["width"] / 100
@@ -384,7 +488,7 @@ def _draw_map_marker(
             round(cx + width / 2),
             round(cy + height / 2),
         )
-        ImageDraw.Draw(image).ellipse(box, fill=fill, outline=outline, width=stroke)
+        ImageDraw.Draw(image).ellipse(box, fill=fill)
         return box
 
     rad = math.radians(rotation)
@@ -403,8 +507,6 @@ def _draw_map_marker(
     od.ellipse(
         (ox - width / 2, oy - height / 2, ox + width / 2, oy + height / 2),
         fill=_hex_to_rgba(fill),
-        outline=_hex_to_rgba(outline),
-        width=stroke,
     )
     overlay = overlay.rotate(-rotation, resample=Image.BICUBIC, center=(ox, oy))
     image.paste(overlay, (round(cx - pad), round(cy - pad)), overlay)
@@ -414,6 +516,128 @@ def _draw_map_marker(
         round(box[2]),
         round(box[3]),
     )
+
+
+def _start_end_city(marker: dict[str, Any]) -> tuple[str, str]:
+    start = str(marker.get("startLabel") or "").strip()
+    end = str(marker.get("endLabel") or "").strip()
+    if start or end:
+        return start, end
+    parts = [
+        part.strip()
+        for part in str(marker.get("label") or "").replace(",", "·").split("·")
+        if part.strip()
+    ]
+    if not parts:
+        return line_endpoint_names(
+            float(marker["x"]),
+            float(marker["y"]),
+            float(marker["x2"]),
+            float(marker["y2"]),
+        )
+    if len(parts) == 1:
+        return "", parts[0]
+    return parts[0], parts[-1]
+
+
+def _clamp_label_xy(
+    x: float, y: float, width: int, height: int, pad: float
+) -> tuple[float, float]:
+    return (
+        min(width - pad, max(pad, x)),
+        min(height - pad, max(pad, y)),
+    )
+
+
+def _draw_named_city(
+    draw: ImageDraw.ImageDraw,
+    name: str,
+    xy: tuple[float, float],
+    *,
+    font: ImageFont.ImageFont,
+    stroke: int,
+) -> None:
+    box = draw.textbbox((0, 0), name, font=font, stroke_width=stroke)
+    tw, th = box[2] - box[0], box[3] - box[1]
+    draw.text(
+        (round(xy[0] - tw / 2), round(xy[1] - th / 2)),
+        name,
+        font=font,
+        fill="#111827",
+        stroke_width=stroke,
+        stroke_fill="#ffffff",
+    )
+
+
+def _draw_line_city_labels(image: Image.Image, lines: list[dict[str, Any]]) -> None:
+    visible = [item for item in lines if item.get("showLabel") is not False]
+    if not visible:
+        return
+    font = _font(max(22, round(image.width * 0.022)))
+    stroke = max(3, round(image.width * 0.003))
+    draw = ImageDraw.Draw(image)
+    pad = max(18, round(image.width * 0.02))
+    hubs: dict[tuple[float, float], tuple[str, float, float]] = {}
+    for marker in visible:
+        start_name, end_name = _start_end_city(marker)
+        x1 = image.width * marker["x"] / 100
+        y1 = image.height * marker["y"] / 100
+        x2 = image.width * marker["x2"] / 100
+        y2 = image.height * marker["y2"] / 100
+        key = (round(marker["x"], 1), round(marker["y"], 1))
+        if start_name and key not in hubs:
+            hubs[key] = (start_name, x1, y1 - image.height * 0.045)
+        if not end_name:
+            continue
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy) or 1
+        extra = image.width * 0.038
+        px = x2 + dx / length * extra
+        py = y2 + dy / length * extra
+        _draw_named_city(
+            draw,
+            end_name,
+            _clamp_label_xy(px, py, image.width, image.height, pad),
+            font=font,
+            stroke=stroke,
+        )
+    for name, hx, hy in hubs.values():
+        _draw_named_city(
+            draw,
+            name,
+            _clamp_label_xy(hx, hy, image.width, image.height, pad),
+            font=font,
+            stroke=stroke,
+        )
+
+
+def _draw_standalone_city_labels(
+    image: Image.Image, labels: list[dict[str, Any]]
+) -> None:
+    visible = [
+        item
+        for item in labels
+        if item.get("showLabel") is not False and str(item.get("label") or "").strip()
+    ]
+    if not visible:
+        return
+    font = _font(max(22, round(image.width * 0.022)))
+    stroke = max(3, round(image.width * 0.003))
+    draw = ImageDraw.Draw(image)
+    pad = max(18, round(image.width * 0.02))
+    for marker in visible:
+        name = str(marker.get("label") or "").strip()
+        if not name:
+            continue
+        px = image.width * marker["x"] / 100
+        py = image.height * marker["y"] / 100
+        _draw_named_city(
+            draw,
+            name,
+            _clamp_label_xy(px, py, image.width, image.height, pad),
+            font=font,
+            stroke=stroke,
+        )
 
 
 def render_marker_map(
@@ -442,19 +666,26 @@ def render_marker_map(
     pins = [item for item in markers if item.get("shape") != "fill"]
     draw_province_fills(image, fills)
 
-    for index, marker in enumerate(pins, start=1):
-
-        cx = image.width * marker["x"] / 100
-
-        cy = image.height * marker["y"] / 100
-
+    roman_index = 0
+    lines = []
+    city_labels = []
+    for marker in pins:
+        shape = marker.get("shape")
+        if shape == "line":
+            _draw_map_marker(image, marker, stroke=stroke)
+            lines.append(marker)
+            continue
+        if shape == "city-label":
+            city_labels.append(marker)
+            continue
         box = _draw_map_marker(image, marker, stroke=stroke)
-
+        if marker.get("showLabel") is False:
+            continue
+        roman_index += 1
+        cx = image.width * marker["x"] / 100
+        cy = image.height * marker["y"] / 100
         draw = ImageDraw.Draw(image)
-
-
-
-        label = _roman(index)
+        label = _roman(roman_index)
         label_width, label_height = _roman_label_size(
             draw, label, font, label_stroke
         )
@@ -487,8 +718,9 @@ def render_marker_map(
             stroke_fill="#ffffff",
         )
 
-
-
+    _draw_standalone_city_labels(image, city_labels)
+    _draw_line_city_labels(image, lines)
+    image = _flatten_on_paper(image)
     output = BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()

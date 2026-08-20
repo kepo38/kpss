@@ -11,6 +11,8 @@ class BrandMark extends StatelessWidget {
   final bool showLogo;
   final bool compact;
   final CrossAxisAlignment alignment;
+  final double? line1FontSize;
+  final double? line2FontSize;
 
   const BrandMark({
     super.key,
@@ -19,6 +21,8 @@ class BrandMark extends StatelessWidget {
     this.showLogo = true,
     this.compact = false,
     this.alignment = CrossAxisAlignment.start,
+    this.line1FontSize,
+    this.line2FontSize,
   });
 
   /// Üst bar — ortalanmış iki satır marka.
@@ -27,14 +31,18 @@ class BrandMark extends StatelessWidget {
         logoSize = 28,
         showLogo = false,
         compact = false,
-        alignment = CrossAxisAlignment.center;
+        alignment = CrossAxisAlignment.center,
+        line1FontSize = null,
+        line2FontSize = null;
 
   @override
   Widget build(BuildContext context) {
     final titleColor = dark ? Colors.white : AppTheme.onPage(context);
     final accentColor = dark ? AppTheme.champagneLight : AppTheme.champagne;
-    final line1Size = compact ? 13.0 : (alignment == CrossAxisAlignment.center ? 22.0 : 15.0);
-    final line2Size = compact ? 8.0 : (alignment == CrossAxisAlignment.center ? 12.0 : 9.0);
+    final line1Size = line1FontSize ??
+        (compact ? 13.0 : (alignment == CrossAxisAlignment.center ? 22.0 : 15.0));
+    final line2Size = line2FontSize ??
+        (compact ? 8.0 : (alignment == CrossAxisAlignment.center ? 12.0 : 9.0));
     final line2Spacing = alignment == CrossAxisAlignment.center ? 4.5 : (compact ? 2.8 : 3.2);
 
     return Row(
@@ -94,9 +102,12 @@ class QuizHeaderStrip extends StatelessWidget {
   final String durationText;
   final bool isCountdown;
   final bool urgent;
-  final String questionLabel;
+  final String? questionLabel;
   final String? difficultyLabel;
   final String? attemptLabel;
+  final Widget? leading;
+  final bool showTimer;
+  final bool difficultyOnRight;
 
   const QuizHeaderStrip({
     super.key,
@@ -104,9 +115,12 @@ class QuizHeaderStrip extends StatelessWidget {
     required this.durationText,
     required this.isCountdown,
     required this.urgent,
-    required this.questionLabel,
+    this.questionLabel,
     this.difficultyLabel,
     this.attemptLabel,
+    this.leading,
+    this.showTimer = true,
+    this.difficultyOnRight = false,
   });
 
   static const _lineHeight = 2.5;
@@ -163,22 +177,25 @@ class QuizHeaderStrip extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _timerRow(
-                        isCountdown: isCountdown,
-                        iconColor: iconColor,
-                        durationText: durationText,
-                        timeColor: timeColor,
-                      ),
-                      if (difficultyLabel != null) ...[
-                        const SizedBox(height: 6),
-                        _DifficultyBadge(label: difficultyLabel!),
+                  if (leading != null)
+                    leading!
+                  else if (showTimer)
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _timerRow(
+                          isCountdown: isCountdown,
+                          iconColor: iconColor,
+                          durationText: durationText,
+                          timeColor: timeColor,
+                        ),
+                        if (!difficultyOnRight && difficultyLabel != null) ...[
+                          const SizedBox(height: 6),
+                          _DifficultyBadge(label: difficultyLabel!),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
                   const Spacer(),
                   Padding(
                     padding: const EdgeInsets.only(right: 10),
@@ -186,17 +203,22 @@ class QuizHeaderStrip extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          questionLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.88),
+                        if (questionLabel != null)
+                          Text(
+                            questionLabel!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.88),
+                            ),
                           ),
-                        ),
+                        if (difficultyOnRight && difficultyLabel != null) ...[
+                          if (questionLabel != null) const SizedBox(height: 6),
+                          _DifficultyBadge(label: difficultyLabel!),
+                        ],
                         if (attemptLabel != null) ...[
                           const SizedBox(height: 6),
                           _AttemptChip(label: attemptLabel!),

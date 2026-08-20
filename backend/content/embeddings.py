@@ -17,12 +17,16 @@ from typing import Iterable
 
 from django.conf import settings
 
+from .question_fingerprint import stem_similarity
+
 logger = logging.getLogger(__name__)
 
 LOCAL_DIM = 64
 DEFAULT_LIMIT = 5
 DEFAULT_SIMILARITY_THRESHOLD = 0.75
 DEFAULT_SIMILAR_MAX_SCAN = 1200
+# Aynı sorunun farklı public_id ile kopyası — pratikte işe yaramaz.
+SIMILAR_STEM_EXCLUDE_RATIO = 0.88
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9ğüşıöçĞÜŞİÖÇ]+", re.UNICODE)
 
 
@@ -162,6 +166,8 @@ def similar_questions(
         .exclude(embedding=[])
         .select_related("topic", "topic__subject", "scenario")
     )
+    source_content_hash = (question.content_hash or "").strip()
+    source_stem_hash = (question.stem_hash or "").strip()
     scored: list[tuple[float, object]] = []
     same_subject = question.topic.subject_id if question.topic_id else None
     same_topic = question.topic_id
@@ -178,6 +184,18 @@ def similar_questions(
             scanned += 1
             vector = list(candidate.embedding or [])
             if not vector or len(vector) != len(source):
+                continue
+            if (
+                source_content_hash
+                and candidate.content_hash == source_content_hash
+            ):
+                continue
+            if source_stem_hash and candidate.stem_hash == source_stem_hash:
+                continue
+            if (
+                stem_similarity(question.stem, candidate.stem)
+                >= SIMILAR_STEM_EXCLUDE_RATIO
+            ):
                 continue
             score = cosine_similarity(source, vector)
             if same_topic and candidate.topic_id == same_topic:

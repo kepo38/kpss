@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
 import '../formatted_text.dart';
+import 'option_column_layout.dart';
 
 /// Soru kökü — panel önizlemesi ile aynı: 18pt, satır kırılımı, wrap.
 class ExamStemView extends StatelessWidget {
@@ -12,7 +13,7 @@ class ExamStemView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FormattedText(
-      text,
+      OptionColumnLayout.visibleStem(text),
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,

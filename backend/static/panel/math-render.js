@@ -67,6 +67,18 @@
   }
 
   /**
+   * Eşleştirme oku: Gemini KaTeX / ASCII `->` → sınav `→`.
+   */
+  function normalizeExamArrows(text) {
+    return String(text || "")
+      .replace(/\$\\(?:long)?rightarrow\$/g, "→")
+      .replace(/\$\\to\$/g, "→")
+      .replace(/\\(?:long)?rightarrow\b/g, "→")
+      .replace(/&#0*8594;|&rarr;/gi, "→")
+      .replace(/[ \t]*->[ \t]*/g, " → ");
+  }
+
+  /**
    * Sohbet kopyasında yutulan Enter'ları geri koy:
    * "...aynıdır ($a^b \\equiv a$).Verilen" → satır kırılır.
    */
@@ -256,7 +268,7 @@
   /** Metin içinde markdown + inline/display LaTeX. */
   function richInline(text) {
     if (!text) return "";
-    var src = normalizeLatex(String(text));
+    var src = normalizeExamArrows(normalizeLatex(String(text)));
     var holders = [];
     src = src.replace(
       /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g,
@@ -295,7 +307,7 @@
   /** Şık metni — kalın/italik/altı çizili yok, yalnızca matematik. */
   function plainInline(text) {
     if (!text) return "";
-    var src = wrapBareLatex(normalizeLatex(String(text)));
+    var src = wrapBareLatex(normalizeExamArrows(normalizeLatex(String(text))));
     var out = "";
     var re =
       /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
@@ -442,6 +454,7 @@
   global.KpssMathRender = {
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
+    normalizeExamArrows: normalizeExamArrows,
     restoreCollapsedBreaks: restoreCollapsedBreaks,
     wrapBareLatex: wrapBareLatex,
     forceDisplaySizeAll: forceDisplaySizeAll,

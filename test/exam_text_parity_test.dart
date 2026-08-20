@@ -4,6 +4,7 @@ import 'package:kpss_akademi/theme/exam_typography.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_option_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_solution_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_stem_view.dart';
+import 'package:kpss_akademi/widgets/exam_text/option_column_layout.dart';
 import 'package:kpss_akademi/widgets/formatted_text.dart';
 
 void main() {
@@ -82,5 +83,65 @@ void main() {
       ExamTypography.body(color: Colors.black),
     );
     expect(spans, isNotEmpty);
+  });
+
+  test('dash-separated options become three columns', () {
+    expect(
+      OptionColumnLayout.cellsOf(
+        'İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar',
+      ),
+      ['Şanlıurfa', 'Antalya', 'Afyonkarahisar'],
+    );
+    expect(
+      OptionColumnLayout.headersFromOptions([
+        'İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar',
+        'İnanç: Trabzon, Mağara: Konya, Termal: İzmir',
+      ], 3),
+      ['İnanç', 'Mağara', 'Termal'],
+    );
+    expect(
+      OptionColumnLayout.cellsOf('Şanlıurfa — Antalya — Afyonkarahisar'),
+      ['Şanlıurfa', 'Antalya', 'Afyonkarahisar'],
+    );
+    expect(
+      OptionColumnLayout.cellsOf('Şanlıurfa --- Antalya --- Afyonkarahisar'),
+      ['Şanlıurfa', 'Antalya', 'Afyonkarahisar'],
+    );
+    expect(
+      OptionColumnLayout.alignedCount([
+        'Şanlıurfa - Antalya - Afyonkarahisar',
+        'Konya - Mersin - Denizli',
+      ]),
+      3,
+    );
+    expect(
+      OptionColumnLayout.alignedCount([
+        'Şanlıurfa — Antalya — Afyonkarahisar',
+        'Trabzon — Konya — İzmir',
+        'Hatay — Edirne — Rize',
+        'Düz cümle şıkkı burada',
+      ]),
+      3,
+    );
+    expect(
+      OptionColumnLayout.headersFromStem(
+        'I. İnanç II. Mağara III. Termal turizmi',
+        3,
+      ),
+      ['İnanç', 'Mağara', 'Termal'],
+    );
+    expect(
+      OptionColumnLayout.headersFromStem(
+        'Soru metni\n<!--optcols:İnanç|Mağara|Termal-->',
+        3,
+      ),
+      ['İnanç', 'Mağara', 'Termal'],
+    );
+    expect(
+      OptionColumnLayout.visibleStem(
+        'Soru metni\n<!--optcols:İnanç|Mağara|Termal-->',
+      ),
+      'Soru metni',
+    );
   });
 }

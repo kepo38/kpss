@@ -19,10 +19,9 @@ import '../services/special_tests_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/daily_test_quota_dialog.dart';
 import '../widgets/premium_gate.dart';
 import 'quiz_screen.dart';
-
-enum _DailyQuotaAction { cancel, ad, premium }
 
 /// Özel Testler → Haritalarla Coğrafya.
 class SpecialMapGeographyScreen extends StatefulWidget {
@@ -145,63 +144,19 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
     final subjectName = subject?.name ?? 'Coğrafya';
 
     if (!mounted) return false;
-    final action = await showDialog<_DailyQuotaAction>(
+    final action = await showDailyTestQuotaDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.inkSoft,
-        title: const Text(
-          'Günlük test limiti',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          canWatchAd
-              ? '$subjectName dersinde bugünkü test hakkınızı kullandınız.\n\n'
-                  'Ücretsiz planda her dersten günde 1 test çözebilirsiniz. '
-                  '30 saniyelik reklam izleyerek +1 ek test hakkı kazanabilir '
-                  'veya Premium\'a geçebilirsiniz.'
-              : '$subjectName dersinde bugünkü test ve reklam bonusu '
-                  'hakkınızı kullandınız.\n\n'
-                  'Sınırsız test için Premium\'a geçin.',
-          style: TextStyle(
-            height: 1.45,
-            color: Colors.white.withValues(alpha: 0.75),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, _DailyQuotaAction.cancel),
-            child: const Text('Vazgeç'),
-          ),
-          if (canWatchAd)
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(context, _DailyQuotaAction.ad),
-              icon: const Icon(Icons.play_circle_outline, size: 18),
-              label: const Text('Reklam izle — +1 test hakkı kazan'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.neonEdge,
-                side:
-                    BorderSide(color: AppTheme.neonEdge.withValues(alpha: 0.6)),
-              ),
-            ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, _DailyQuotaAction.premium),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.champagne,
-              foregroundColor: AppTheme.ink,
-            ),
-            child: const Text('Premium'),
-          ),
-        ],
-      ),
+      subjectName: subjectName,
+      canWatchAd: canWatchAd,
     );
 
     switch (action) {
-      case _DailyQuotaAction.ad:
+      case DailyQuotaAction.ad:
         return _watchAdAndGrantBonus();
-      case _DailyQuotaAction.premium:
+      case DailyQuotaAction.premium:
         if (!mounted) return false;
         return PremiumGate.requirePremium(context);
-      case _DailyQuotaAction.cancel:
+      case DailyQuotaAction.cancel:
       case null:
         return false;
     }
@@ -273,6 +228,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
           testId: test.id,
           questionIds: result.questionIds,
           selectedAnswers: result.selectedAnswers,
+          excludeQuestionIds: _bank.statLockedWrongQuestionIds,
         ),
       );
       await _bank.recordAttempt(
@@ -293,6 +249,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
           ...result.wrongQuestionIds,
         ],
         wrongQuestionIds: result.wrongQuestionIds,
+        selectedAnswers: result.selectedAnswers,
       );
       unawaited(
         GamificationService.instance.recordTestCompleted(

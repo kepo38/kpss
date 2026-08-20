@@ -50,6 +50,7 @@ class QuestionAttemptService {
     required String testId,
     required List<String> questionIds,
     required List<String?> selectedAnswers,
+    Set<String> excludeQuestionIds = const {},
   }) async {
     final auth = AuthService.instance;
     if (!auth.hasPermanentAccount ||
@@ -60,9 +61,12 @@ class QuestionAttemptService {
 
     final answers = <String, String>{};
     for (var index = 0; index < questionIds.length; index++) {
+      final questionId = questionIds[index];
+      if (excludeQuestionIds.contains(questionId)) continue;
       final selected = selectedAnswers[index]?.trim().toUpperCase() ?? '';
-      if (selected.isNotEmpty) answers[questionIds[index]] = selected;
+      if (selected.isNotEmpty) answers[questionId] = selected;
     }
+    if (answers.isEmpty) return;
 
     try {
       await http

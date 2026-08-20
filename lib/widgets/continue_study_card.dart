@@ -120,6 +120,7 @@ class ContinueStudyCard extends StatelessWidget {
         ...result.wrongQuestionIds,
       ],
       wrongQuestionIds: result.wrongQuestionIds,
+      selectedAnswers: result.selectedAnswers,
     );
     await GamificationService.instance.recordTestCompleted(
       correct: result.correct,

@@ -18,7 +18,10 @@ import '../services/gamification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/daily_test_quota_dialog.dart';
 import '../widgets/premium_gate.dart';
+import '../widgets/topic_summary_swipe_deck.dart';
+import '../services/summary_card_progress_service.dart';
 import 'lesson_reader_screen.dart';
 import 'quiz_screen.dart';
 
@@ -48,6 +51,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
   void initState() {
     super.initState();
     _bank.addListener(_onBankChanged);
+    unawaited(SummaryCardProgressService.instance.initialize());
     unawaited(_refreshContent(showSuccess: false));
   }
 
@@ -89,6 +93,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final tests = _bank.testsForTopic(widget.kpssType, widget.topicId);
     final stats = _bank.topicStats(widget.topicId);
     final lessons = _bank.lessonsForTopic(widget.topicId);
+    final summaryCards = _bank.summaryCardsForTopic(widget.topicId);
     final progress =
         _bank.topicQuestionProgress(widget.kpssType, widget.topicId);
 
@@ -142,6 +147,10 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
               totalQuestions: progress.total,
             ),
             const SizedBox(height: 24),
+            if (summaryCards.isNotEmpty) ...[
+              TopicSummarySwipeDeck(cards: summaryCards),
+              const SizedBox(height: 24),
+            ],
             Material(
               color: Colors.transparent,
               child: InkWell(
@@ -327,63 +336,19 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final subjectName = subject?.name ?? 'Bu ders';
 
     if (!mounted) return false;
-    final action = await showDialog<_DailyQuotaAction>(
+    final action = await showDailyTestQuotaDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.inkSoft,
-        title: const Text(
-          'Günlük test limiti',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          canWatchAd
-              ? '$subjectName dersinde bugünkü test hakkınızı kullandınız.\n\n'
-                  'Ücretsiz planda her dersten günde 1 test çözebilirsiniz. '
-                  '30 saniyelik reklam izleyerek +1 ek test hakkı kazanabilir '
-                  'veya Premium\'a geçebilirsiniz.'
-              : '$subjectName dersinde bugünkü test ve reklam bonusu '
-                  'hakkınızı kullandınız.\n\n'
-                  'Sınırsız test için Premium\'a geçin.',
-          style: TextStyle(
-            height: 1.45,
-            color: Colors.white.withValues(alpha: 0.75),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, _DailyQuotaAction.cancel),
-            child: const Text('Vazgeç'),
-          ),
-          if (canWatchAd)
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(context, _DailyQuotaAction.ad),
-              icon: const Icon(Icons.play_circle_outline, size: 18),
-              label: const Text('Reklam izle — +1 test hakkı kazan'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.neonEdge,
-                side:
-                    BorderSide(color: AppTheme.neonEdge.withValues(alpha: 0.6)),
-              ),
-            ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, _DailyQuotaAction.premium),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.champagne,
-              foregroundColor: AppTheme.ink,
-            ),
-            child: const Text('Premium'),
-          ),
-        ],
-      ),
+      subjectName: subjectName,
+      canWatchAd: canWatchAd,
     );
 
     switch (action) {
-      case _DailyQuotaAction.ad:
+      case DailyQuotaAction.ad:
         return _watchAdAndGrantBonus();
-      case _DailyQuotaAction.premium:
+      case DailyQuotaAction.premium:
         if (!mounted) return false;
         return PremiumGate.requirePremium(context);
-      case _DailyQuotaAction.cancel:
+      case DailyQuotaAction.cancel:
       case null:
         return false;
     }
@@ -453,6 +418,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           testId: test.id,
           questionIds: result.questionIds,
           selectedAnswers: result.selectedAnswers,
+          excludeQuestionIds: _bank.statLockedWrongQuestionIds,
         ),
       );
       await _bank.recordAttempt(
@@ -473,6 +439,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           ...result.wrongQuestionIds,
         ],
         wrongQuestionIds: result.wrongQuestionIds,
+        selectedAnswers: result.selectedAnswers,
       );
       unawaited(
         GamificationService.instance.recordTestCompleted(
@@ -731,5 +698,3 @@ class _DailyQuotaBanner extends StatelessWidget {
     );
   }
 }
-
-enum _DailyQuotaAction { cancel, ad, premium }

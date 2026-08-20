@@ -132,6 +132,7 @@
 
     {% include "panel/_question_map_editor.html" %}
 
+    <div class="option-table-head" id="option-table-head" hidden></div>
     <label>A
       <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}" class="js-rich">
     </label>
@@ -233,11 +234,12 @@
           <div class="quiz-mock-svg" id="pv-svg" aria-hidden="true"></div>
           <img class="quiz-mock-img" id="pv-img" alt="">
           <p class="quiz-mock-opts-label">Şıklar</p>
+          <div class="quiz-opt-col-head" id="pv-opt-col-head" hidden></div>
           <div class="quiz-mock-opts">
             {% for c in "ABCDE" %}
             <div class="quiz-mock-opt{% if question.correct_option == c or not question and c == 'A' %} is-correct{% endif %}" id="pv-opt-{{ c }}">
               <span class="quiz-mock-badge">{{ c }}</span>
-              <span class="quiz-mock-opt-text is-empty" id="pv-opt-text-{{ c }}">Şık {{ c }}</span>
+              <div class="quiz-mock-opt-text is-empty" id="pv-opt-text-{{ c }}">Şık {{ c }}</div>
             </div>
             {% endfor %}
           </div>
@@ -255,8 +257,9 @@
 <script src="{% static 'panel/rich-format.js' %}"></script>
 {{ map_markers_json|json_script:"map-markers-data" }}
 {{ map_templates_json|json_script:"map-templates-data" }}
-<script src="{% static 'panel/map-question-editor.js' %}"></script>
-<script src="{% static 'panel/question-preview.js' %}"></script>
+      <script src="{% static 'panel/map-question-editor.js' %}?v=13"></script>
+<script src="{% static 'panel/option-table.js' %}?v=5"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=5"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {

@@ -4,16 +4,25 @@
  */
 (function () {
   function normalizePasteText(text) {
+    var src;
     if (window.KpssMathRender && window.KpssMathRender.normalizeLatex) {
-      return window.KpssMathRender.normalizeLatex(text);
+      src = window.KpssMathRender.normalizeLatex(text);
+    } else {
+      src = String(text || "")
+        .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
+          return "$$" + body.trim() + "$$";
+        })
+        .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
+          return "$" + body.trim() + "$";
+        });
     }
-    return String(text || "")
-      .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
-        return "$$" + body.trim() + "$$";
-      })
-      .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
-        return "$" + body.trim() + "$";
-      });
+    if (window.KpssMathRender && window.KpssMathRender.normalizeExamArrows) {
+      return window.KpssMathRender.normalizeExamArrows(src);
+    }
+    return src
+      .replace(/\$\\(?:long)?rightarrow\$/g, "→")
+      .replace(/\$\\to\$/g, "→")
+      .replace(/[ \t]*->[ \t]*/g, " → ");
   }
 
   function styleOf(node) {
@@ -176,6 +185,7 @@
   function wrapTex(tex, display) {
     var body = String(tex || "").trim();
     if (!body) return "";
+    if (/^\\(?:long)?rightarrow$/.test(body) || body === "\\to") return "→";
     return display ? "$$" + body + "$$" : "$" + body + "$";
   }
 

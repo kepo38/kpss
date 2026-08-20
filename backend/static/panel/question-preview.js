@@ -29,6 +29,13 @@
     return (text || "").trim();
   }
 
+  function escapeText(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
   function val(name) {
     var el = document.querySelector('[name="' + name + '"]');
     return el ? (el.value || "").trim() : "";
@@ -59,7 +66,9 @@
   }
 
   function inlineMapHtml(src) {
-    if (!src) return "";
+    if (!src) {
+      return '<span class="quiz-mock-img-inline quiz-mock-img-slot">Harita</span>';
+    }
     return (
       '<img class="quiz-mock-img-inline" src="' +
       src.replace(/"/g, "&quot;") +
@@ -68,7 +77,7 @@
   }
 
   function stemWithInlineMap(text, src) {
-    if (!text || !src || text.indexOf(MAP_PLACEHOLDER) === -1) {
+    if (!text || text.indexOf(MAP_PLACEHOLDER) === -1) {
       return { html: stemToHtml(text), inline: false };
     }
     var parts = text.split(MAP_PLACEHOLDER);
@@ -114,6 +123,9 @@
     if (!stemEl) return;
 
     var stem = val("stem");
+    if (window.KpssOptionTable && window.KpssOptionTable.visibleStem) {
+      stem = window.KpssOptionTable.visibleStem(stem);
+    }
     var src = currentImageSrc();
     var rendered = stemWithInlineMap(stem, src);
     if (stem) {
@@ -137,21 +149,52 @@
     syncFigureSvg(svgEl, currentFigureSvg());
 
     var correct = val("correct_option") || "A";
+    var filled = [];
     ["A", "B", "C", "D", "E"].forEach(function (k) {
       var row = document.getElementById("pv-opt-" + k);
       var text = document.getElementById("pv-opt-text-" + k);
       if (!row || !text) return;
-      var t = formatPlain(val("option_" + k.toLowerCase()));
-      if (t) {
-        text.innerHTML = window.KpssMathRender
-          ? window.KpssMathRender.plainInline(t)
-          : t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        text.classList.remove("is-empty");
-      } else {
-        text.textContent = "Şık " + k;
-        text.classList.add("is-empty");
+      filled.push({
+        k: k,
+        row: row,
+        text: text,
+        t: val("option_" + k.toLowerCase()),
+      });
+    });
+    if (window.KpssOptionTable) {
+      window.KpssOptionTable.apply({
+        stem: val("stem"),
+        stemEl: document.querySelector('[name="stem"]'),
+        optionTexts: filled.map(function (item) {
+          return item.t;
+        }),
+        optionEls: filled.map(function (item) {
+          return item.text;
+        }),
+        optionRows: filled.map(function (item) {
+          return item.row;
+        }),
+        previewHead: document.getElementById("pv-opt-col-head"),
+        formHead: document.getElementById("option-table-head"),
+        optsRoot: document.querySelector("#question-preview .quiz-mock-opts"),
+        emptyHtml: function (index) {
+          return "Şık " + filled[index].k;
+        },
+        plainHtml: function (t) {
+          var formatted = formatPlain(t);
+          return window.KpssMathRender
+            ? window.KpssMathRender.plainInline(formatted)
+            : escapeText(formatted);
+        },
+      });
+    }
+    filled.forEach(function (item) {
+      if (item.t) item.text.classList.remove("is-empty");
+      else {
+        item.text.textContent = "Şık " + item.k;
+        item.text.classList.add("is-empty");
       }
-      row.classList.toggle("is-correct", correct === k);
+      item.row.classList.toggle("is-correct", correct === item.k);
     });
 
     var sol = val("solution");
