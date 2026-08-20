@@ -365,6 +365,20 @@ class _SummaryCardFace extends StatelessWidget {
               color: Colors.white,
             ),
           ),
+          if (card.imageUrl != null && card.imageUrl!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(
+                  card.imageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Expanded(
             child: Text(

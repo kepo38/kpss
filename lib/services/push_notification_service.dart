@@ -106,21 +106,57 @@ class PushNotificationService {
     if (body.isEmpty && message.notification == null) return;
 
     final payload = jsonEncode(Map<String, dynamic>.from(message.data));
+    final imageUrl = message.notification?.android?.imageUrl ??
+        message.notification?.apple?.imageUrl ??
+        message.data['image_url']?.toString();
+
+    BigPictureStyleInformation? bigPicture;
+    if (Platform.isAndroid &&
+        imageUrl != null &&
+        imageUrl.trim().isNotEmpty) {
+      final bytes = await _downloadImageBytes(imageUrl.trim());
+      if (bytes != null && bytes.isNotEmpty) {
+        final bitmap = ByteArrayAndroidBitmap(bytes);
+        bigPicture = BigPictureStyleInformation(
+          bitmap,
+          contentTitle: title.toString(),
+          summaryText: body.toString(),
+          hideExpandedLargeIcon: true,
+        );
+      }
+    }
+
     await NotificationService.instance.plugin.show(
       message.hashCode,
       title,
       body,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
           'Duyurular',
-          channelDescription: '${BrandConstants.appName} duyuru ve kampanya bildirimleri',
+          channelDescription:
+              '${BrandConstants.appName} duyuru ve kampanya bildirimleri',
           importance: Importance.high,
           priority: Priority.high,
+          styleInformation: bigPicture,
         ),
       ),
       payload: payload,
     );
+  }
+
+  Future<Uint8List?> _downloadImageBytes(String url) async {
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(
+            const Duration(seconds: 8),
+          );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return res.bodyBytes;
+      }
+    } catch (e) {
+      debugPrint('Duyuru görseli indirilemedi: $e');
+    }
+    return null;
   }
 
   Future<void> _onOpened(RemoteMessage message) async {

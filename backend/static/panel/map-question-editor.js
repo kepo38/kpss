@@ -18,6 +18,7 @@
     color: "#c026d3",
     labelSide: "right",
     showLabel: false,
+    labelSizeDelta: 0,
   };
   var DEFAULT_CIRCLE = {
     shape: "circle",
@@ -29,6 +30,7 @@
     color: "#c026d3",
     labelSide: "right",
     showLabel: false,
+    labelSizeDelta: 0,
   };
   var DEFAULT_LINE = {
     shape: "line",
@@ -145,7 +147,26 @@
         ? marker.labelSide
         : "right",
       showLabel: showLabel,
+      labelSizeDelta: normalizeLabelSizeDelta(marker && marker.labelSizeDelta),
     };
+  }
+
+  function normalizeLabelSizeDelta(raw) {
+    var n = Math.round(Number(raw) || 0);
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.round(n / 2) * 2;
+    return Math.max(-20, Math.min(40, n));
+  }
+
+  function romanBasePx(canvasWidth) {
+    return Math.max(68, Math.round(canvasWidth * 0.048));
+  }
+
+  function romanPxForMarker(canvasWidth, marker) {
+    return Math.max(
+      28,
+      romanBasePx(canvasWidth) + normalizeLabelSizeDelta(marker && marker.labelSizeDelta)
+    );
   }
 
   function clamp(value, min, max) {
@@ -192,13 +213,22 @@
     var templatesData = document.getElementById("map-templates-data");
     var mapTemplates = {};
     var fillLayer = document.getElementById("map-fill-layer");
+    var brushLayer = document.getElementById("map-brush-layer");
     var paintButton = document.getElementById("map-paint-toggle");
+    var brushButton = document.getElementById("map-brush-toggle");
     var fillColorInput = document.getElementById("map-fill-color");
     var fillColorWrap = document.getElementById("map-fill-color-wrap");
+    var brushWidthWrap = document.getElementById("map-brush-width-wrap");
+    var brushWidthInput = document.getElementById("map-brush-width");
+    var brushWidthVal = document.getElementById("map-brush-width-val");
     var markers = [];
     var fills = [];
     var provinces = [];
     var paintMode = false;
+    var brushMode = false;
+    var brushWidth = (window.KpssMapSmartBrush && window.KpssMapSmartBrush.DEFAULT_WIDTH) || 2.2;
+    var smartBrush = null;
+    var initialBrushes = [];
     var lineMode = false;
     var spokeMode = false;
     var cityLabelMode = false;
@@ -228,6 +258,8 @@
             province: String(item.province),
             color: /^#[0-9a-f]{6}$/i.test(item.color || "") ? item.color : DEFAULT_FILL_COLOR,
           });
+        } else if (item && item.shape === "brush") {
+          initialBrushes.push(item);
         } else {
           markers.push(normalizeMarker(item));
         }
@@ -235,6 +267,7 @@
     } catch (_) {
       markers = [];
       fills = [];
+      initialBrushes = [];
     }
     markers = markers.slice(0, MAX_MARKERS);
     var loadedLines = markers.filter(function (marker) {
@@ -328,15 +361,18 @@
     }
 
     function serialize() {
+      var brushItems = smartBrush ? smartBrush.getStrokes() : [];
       hidden.value = JSON.stringify(
         fills
           .map(function (fill) {
             return { shape: "fill", province: fill.province, color: fill.color };
           })
+          .concat(brushItems)
           .concat(markers)
       );
       var parts = [];
       if (fills.length) parts.push(fills.length + " il boyalı");
+      if (brushItems.length) parts.push(brushItems.length + " fırça");
       if (markers.length) parts.push(markers.length + " işaret");
       if (spokeMode && !lineDraft) {
         status.textContent = "Merkezi tıklayın";
@@ -355,9 +391,11 @@
       } else {
         status.textContent = parts.length
           ? parts.join(" · ")
-          : paintMode
-            ? "İl boyamak için haritaya tıklayın"
-            : "Bir araç seçin";
+          : brushMode
+            ? "Akıllı Fırça: sürükleyerek boyayın (kara dışına yazılmaz)"
+            : paintMode
+              ? "İl boyamak için haritaya tıklayın"
+              : "Bir araç seçin";
       }
     }
 
@@ -775,6 +813,11 @@
         var label = document.createElement("span");
         label.className = "map-marker-label is-" + marker.labelSide;
         label.textContent = pinLabel(index);
+        var delta = normalizeLabelSizeDelta(marker.labelSizeDelta);
+        if (delta !== 0) {
+          label.style.fontSize =
+            "calc(clamp(12px, 2.05vw, 21px) + " + delta + "px)";
+        }
         node.appendChild(label);
       }
 
@@ -1146,6 +1189,53 @@
         });
         sideLabel.appendChild(side);
         grid.appendChild(sideLabel);
+
+        var sizeWrap = document.createElement("div");
+        sizeWrap.className = "map-roman-size";
+        var sizeTitle = document.createElement("span");
+        sizeTitle.className = "map-roman-size-title";
+        sizeTitle.textContent = "Romen punto";
+        sizeWrap.appendChild(sizeTitle);
+        var sizeRow = document.createElement("div");
+        sizeRow.className = "map-roman-size-row";
+        var minusBtn = document.createElement("button");
+        minusBtn.type = "button";
+        minusBtn.className = "btn btn-ghost map-roman-size-btn";
+        minusBtn.textContent = "A-";
+        minusBtn.title = "2 punto küçült";
+        var sizeVal = document.createElement("span");
+        sizeVal.className = "map-roman-size-value";
+        var plusBtn = document.createElement("button");
+        plusBtn.type = "button";
+        plusBtn.className = "btn btn-ghost map-roman-size-btn";
+        plusBtn.textContent = "A+";
+        plusBtn.title = "2 punto büyüt";
+        function refreshSizeLabel() {
+          var d = normalizeLabelSizeDelta(marker.labelSizeDelta);
+          sizeVal.textContent = d === 0 ? "varsayılan" : (d > 0 ? "+" : "") + d + " pt";
+          minusBtn.disabled = d <= -20;
+          plusBtn.disabled = d >= 40;
+        }
+        minusBtn.addEventListener("click", function () {
+          marker.labelSizeDelta = normalizeLabelSizeDelta((marker.labelSizeDelta || 0) - 2);
+          refreshSizeLabel();
+          renderMarkers();
+          serialize();
+          notify();
+        });
+        plusBtn.addEventListener("click", function () {
+          marker.labelSizeDelta = normalizeLabelSizeDelta((marker.labelSizeDelta || 0) + 2);
+          refreshSizeLabel();
+          renderMarkers();
+          serialize();
+          notify();
+        });
+        sizeRow.appendChild(minusBtn);
+        sizeRow.appendChild(sizeVal);
+        sizeRow.appendChild(plusBtn);
+        sizeWrap.appendChild(sizeRow);
+        refreshSizeLabel();
+        grid.appendChild(sizeWrap);
         }
         card.appendChild(grid);
         controls.appendChild(card);
@@ -1182,6 +1272,11 @@
         markers = [];
         fills = [];
         paintMode = false;
+        brushMode = false;
+        if (smartBrush) {
+          smartBrush.clear();
+          smartBrush.setModeVisual(false);
+        }
         lineMode = false;
         spokeMode = false;
         cityLabelMode = false;
@@ -1200,8 +1295,10 @@
         if (lineCountWrap) lineCountWrap.hidden = true;
         if (clearButton) clearButton.hidden = true;
         if (paintButton) paintButton.hidden = true;
+        if (brushButton) brushButton.hidden = true;
         if (fillColorWrap) fillColorWrap.hidden = true;
-        wrap.classList.remove("is-paint", "is-line");
+        if (brushWidthWrap) brushWidthWrap.hidden = true;
+        wrap.classList.remove("is-paint", "is-line", "is-brush");
         applyTemplateAssets();
         serialize();
         status.textContent = "Tematik harita — işaret eklenmez.";
@@ -1246,15 +1343,27 @@
       }
       if (clearButton) clearButton.hidden = false;
       if (paintButton) paintButton.hidden = !paintEnabled();
+      if (brushButton) brushButton.hidden = !paintEnabled();
       if (fillColorWrap) fillColorWrap.hidden = !paintEnabled();
+      if (brushWidthWrap) brushWidthWrap.hidden = !(paintEnabled() && brushMode);
       if (!paintEnabled()) {
         paintMode = false;
+        brushMode = false;
+        if (smartBrush) {
+          smartBrush.clear();
+          smartBrush.setModeVisual(false);
+        }
         fills = [];
       }
       if (paintButton) {
         paintButton.classList.toggle("btn-primary", paintMode);
         paintButton.classList.toggle("btn-ghost", !paintMode);
       }
+      if (brushButton) {
+        brushButton.classList.toggle("btn-primary", brushMode);
+        brushButton.classList.toggle("btn-ghost", !brushMode);
+      }
+      if (smartBrush) smartBrush.setModeVisual(brushMode && paintEnabled());
       wrap.classList.toggle("is-paint", paintMode && paintEnabled());
       wrap.classList.toggle("is-line", lineMode || spokeMode || cityLabelMode);
       if (addLineButton) {
@@ -1490,7 +1599,7 @@
       var next = !ellipseMode;
       stopLineModes();
       ellipseMode = next;
-      if (ellipseMode) paintMode = false;
+      if (ellipseMode) { paintMode = false; brushMode = false; }
       render();
     });
     if (addCircleButton) {
@@ -1506,7 +1615,7 @@
         var next = !lineMode;
         stopLineModes();
         lineMode = next;
-        if (lineMode) paintMode = false;
+        if (lineMode) { paintMode = false; brushMode = false; }
         render();
       });
     }
@@ -1516,7 +1625,7 @@
         var next = !spokeMode;
         stopLineModes();
         spokeMode = next;
-        if (spokeMode) paintMode = false;
+        if (spokeMode) { paintMode = false; brushMode = false; }
         render();
       });
     }
@@ -1526,7 +1635,7 @@
         var next = !cityLabelMode;
         stopLineModes();
         cityLabelMode = next;
-        if (cityLabelMode) paintMode = false;
+        if (cityLabelMode) { paintMode = false; brushMode = false; }
         render();
       });
     }
@@ -1565,6 +1674,7 @@
     clearButton.addEventListener("click", function () {
       markers = [];
       fills = [];
+      if (smartBrush) smartBrush.clear();
       selected = -1;
       render();
     });
@@ -1573,9 +1683,27 @@
         if (!paintEnabled()) return;
         paintMode = !paintMode;
         if (paintMode) {
+          brushMode = false;
           stopLineModes();
         }
         render();
+      });
+    }
+    if (brushButton) {
+      brushButton.addEventListener("click", function () {
+        if (!paintEnabled()) return;
+        brushMode = !brushMode;
+        if (brushMode) {
+          paintMode = false;
+          stopLineModes();
+        }
+        render();
+      });
+    }
+    if (brushWidthInput) {
+      brushWidthInput.addEventListener("input", function () {
+        brushWidth = Number(brushWidthInput.value) || brushWidth;
+        if (brushWidthVal) brushWidthVal.textContent = String(brushWidth);
       });
     }
     if (fillColorInput) {
@@ -1701,8 +1829,9 @@
           ctx.fill();
         });
       });
-      var romanPx = Math.max(68, Math.round(canvas.width * 0.048));
-      ctx.font = "700 " + romanPx + "px Arial, Helvetica, sans-serif";
+      if (smartBrush && smartBrush.paintPreview) {
+        smartBrush.paintPreview(ctx, canvas.width, canvas.height, provinces);
+      }
       if ("letterSpacing" in ctx) ctx.letterSpacing = "-0.08em";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#111827";
@@ -1776,6 +1905,8 @@
         ctx.fill();
         if (marker.showLabel === false) return;
 
+        var romanPx = romanPxForMarker(canvas.width, marker);
+        ctx.font = "700 " + romanPx + "px Arial, Helvetica, sans-serif";
         var aabbW = Math.abs(rx * 2 * Math.cos(rot)) + Math.abs(ry * 2 * Math.sin(rot));
         var aabbH = Math.abs(rx * 2 * Math.sin(rot)) + Math.abs(ry * 2 * Math.cos(rot));
         var label = pinLabel(index);
@@ -1841,7 +1972,6 @@
           );
         });
         ctx.textAlign = "start";
-        ctx.font = "700 " + romanPx + "px Arial, Helvetica, sans-serif";
       })();
       return canvas.toDataURL("image/png");
     }
@@ -1854,6 +1984,34 @@
       },
     };
     applyTemplateAssets();
+    if (window.KpssMapSmartBrush && brushLayer && wrap) {
+      smartBrush = window.KpssMapSmartBrush.attach({
+        wrap: wrap,
+        fitPlane: fitPlane || wrap,
+        layer: brushLayer,
+        isEnabled: function () {
+          return paintEnabled();
+        },
+        isModeOn: function () {
+          return brushMode;
+        },
+        getColor: function () {
+          return fillColor;
+        },
+        getWidth: function () {
+          return brushWidth;
+        },
+        eventToPercent: eventToMapPercent,
+        onChange: function () {
+          serialize();
+          notify();
+        },
+        onSuppressClick: function (on) {
+          suppressMapClick = Boolean(on);
+        },
+      });
+      if (initialBrushes.length) smartBrush.load(initialBrushes);
+    }
     var provincesSrc = root.dataset.provincesSrc;
     if (provincesSrc) {
       fetch(provincesSrc)
@@ -1862,6 +2020,7 @@
         })
         .then(function (data) {
           provinces = data.provinces || [];
+          if (smartBrush) smartBrush.setProvinces(provinces);
           markers.forEach(syncLineLabel);
           markers.forEach(syncCityLabel);
           renderFills();

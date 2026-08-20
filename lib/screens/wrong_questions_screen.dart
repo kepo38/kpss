@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
@@ -22,7 +20,6 @@ import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/wrong_notebook/wrong_notebook_empty_state.dart';
 import '../widgets/wrong_notebook/wrong_notebook_header.dart';
-import '../widgets/wrong_notebook/wrong_notebook_manual_meta_sheet.dart';
 import '../widgets/wrong_notebook/wrong_notebook_practice_bar.dart';
 import '../widgets/wrong_notebook/wrong_notebook_question_card.dart';
 import '../widgets/wrong_notebook/wrong_notebook_remove_toast.dart';
@@ -44,7 +41,6 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   String? _subjectFilter;
   bool _hydrating = false;
   String? _similarLoadingId;
-  bool _addingManual = false;
 
   @override
   void initState() {
@@ -139,131 +135,20 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     );
   }
 
-  Future<void> _addManualQuestion() async {
-    if (_addingManual) return;
-    try {
-      final source = await showModalBottomSheet<ImageSource>(
-        context: context,
-        useRootNavigator: true,
-        backgroundColor: Colors.transparent,
-        builder: (sheetContext) {
-          final surface = AppTheme.surfaceCard(sheetContext);
-          final on = AppTheme.onPage(sheetContext);
-          final muted = AppTheme.mutedOnPage(sheetContext);
-          return Container(
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              border: Border.all(color: AppTheme.hairline(sheetContext)),
-            ),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                    child: Text(
-                      'Manuel soru ekle',
-                      style: TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: on,
-                      ),
-                    ),
-                  ),
-                  ListTile(
-                    leading: Icon(
-                      Icons.photo_camera_rounded,
-                      color: AppTheme.champagne,
-                    ),
-                    title: Text(
-                      'Kameradan çek',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: on,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Sorunun fotoğrafını çek',
-                      style: TextStyle(color: muted, fontSize: 12.5),
-                    ),
-                    onTap: () =>
-                        Navigator.of(sheetContext).pop(ImageSource.camera),
-                  ),
-                  ListTile(
-                    leading: Icon(
-                      Icons.photo_library_rounded,
-                      color: AppTheme.champagne,
-                    ),
-                    title: Text(
-                      'Galeriden seç',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: on,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Galerideki bir görseli kullan',
-                      style: TextStyle(color: muted, fontSize: 12.5),
-                    ),
-                    onTap: () =>
-                        Navigator.of(sheetContext).pop(ImageSource.gallery),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-      if (source == null || !mounted) return;
-
-      setState(() => _addingManual = true);
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: source,
-        imageQuality: 86,
-        maxWidth: 1800,
-      );
-      if (picked == null || !mounted) return;
-
-      final form = await _askManualMeta();
-      if (form == null || !mounted) return;
-
-      final saved = await ManualQuestionService.instance.addFromImage(
-        sourceFile: File(picked.path),
-        subject: form.$1,
-        topic: form.$2,
-        note: form.$3,
-      );
-      if (!mounted) return;
-      if (saved == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fotoğraf eklenemedi. Tekrar deneyin.')),
-        );
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Manuel soru deftere eklendi.')),
-      );
-    } on Exception catch (e) {
-      debugPrint('Manual question add failed: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('İzin verilmedi veya işlem iptal edildi.')),
-      );
-    } finally {
-      if (mounted && _addingManual) setState(() => _addingManual = false);
-    }
-  }
-
-  Future<(String, String, String?)?> _askManualMeta() {
-    return WrongNotebookManualMetaSheet.show(
+  Future<void> _unlockGuestQuestion(
+    BuildContext context,
+    QuestionModel question,
+  ) async {
+    final ok = await AccountLinkCard.prompt(
       context,
-      kpssType: KpssPreferenceService.instance.kpssType,
+      title: 'Giriş yap',
+      subtitle: 'Soru metnini görmek için Google hesabını bağla.',
     );
+    if (!ok || !mounted) return;
+    // Aktarım auth içinde beklenir; emin olmak için bir kez daha senkronize et.
+    await ContentBankService.instance.onUserSessionChanged();
+    if (!mounted) return;
+    await _openQuestion(this.context, question.id);
   }
 
   Future<void> _openQuestion(BuildContext context, String questionId) async {
@@ -515,28 +400,30 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
             foregroundColor: AppTheme.onPage(context),
             elevation: 0,
             scrolledUnderElevation: 0,
-            toolbarHeight: allQuestions.isNotEmpty ? 78 : 64,
             centerTitle: false,
             titleSpacing: 0,
             leading: const AppBackButton(),
-            title: WrongNotebookHeaderTitleBlock(
-              showSmartReview: allQuestions.isNotEmpty,
-              onSmartReview: allQuestions.isNotEmpty
-                  ? () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => SmartReviewScreen(kpssType: kpssType),
-                        ),
-                      );
-                    }
-                  : null,
-            ),
+            title: const WrongNotebookHeaderTitleBlock(),
             actions: [
-              WrongNotebookAddQuestionAction(
-                loading: _addingManual,
-                onTap: _addManualQuestion,
-              ),
-              const SizedBox(width: 12),
+              if (allQuestions.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Center(
+                    child: WrongNotebookHeaderPill(
+                      label: 'Akıllı Tekrar',
+                      icon: Icons.psychology_alt_outlined,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                SmartReviewScreen(kpssType: kpssType),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
             ],
           ),
           body: DecoratedBox(
@@ -561,7 +448,25 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                           ),
                         ),
                       )
-                    : WrongNotebookEmptyState(kpssType: kpssType))
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          WrongNotebookBookMistakesButton(
+                            count: 0,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const WrongNotebookManualScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          Expanded(
+                            child: WrongNotebookEmptyState(kpssType: kpssType),
+                          ),
+                        ],
+                      ))
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -637,12 +542,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                     frostStem: guestLocked,
                                     onSignIn: () {
                                       unawaited(
-                                        AccountLinkCard.prompt(
-                                          context,
-                                          title: 'Giriş yap',
-                                          subtitle:
-                                              'Soru metnini görmek için Google hesabını bağla.',
-                                        ),
+                                        _unlockGuestQuestion(context, q),
                                       );
                                     },
                                     onToggleFavorite: () =>

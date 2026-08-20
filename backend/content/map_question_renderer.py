@@ -26,16 +26,17 @@ from .map_catalog import get_map_entry, is_marker_template, is_static_template
 
 from .map_provinces import (
     DEFAULT_FILL_COLOR,
+    MAX_BRUSH_POINTS,
+    MAX_BRUSH_STROKES,
+    MAX_BRUSH_WIDTH,
     MAX_FILLS,
+    MIN_BRUSH_WIDTH,
+    draw_brush_strokes,
     draw_province_fills,
     line_endpoint_names,
     province_at,
     province_ids,
 )
-
-
-
-
 
 MAX_MARKERS = 12
 
@@ -43,7 +44,7 @@ DEFAULT_COLOR = "#ef4444"
 
 ALLOWED_LABEL_SIDES = {"left", "right", "top", "bottom"}
 
-ALLOWED_SHAPES = {"ellipse", "circle", "fill", "line", "city-label"}
+ALLOWED_SHAPES = {"ellipse", "circle", "fill", "line", "city-label", "brush"}
 
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -100,11 +101,14 @@ def validate_map_markers(
     if not isinstance(markers, list):
         raise ValidationError("Harita işaretleri liste olmalı.")
     if not markers:
-        raise ValidationError("Harita sorusunda en az bir işaret veya boyalı il olmalı.")
+        raise ValidationError(
+            "Harita sorusunda en az bir işaret, boyalı il veya fırça darbesi olmalı."
+        )
 
     known_ids = province_ids()
     pin_count = 0
     fill_count = 0
+    brush_count = 0
     normalized: list[dict[str, Any]] = []
     for index, raw in enumerate(markers, start=1):
         if not isinstance(raw, dict):
@@ -113,7 +117,12 @@ def validate_map_markers(
         if shape not in ALLOWED_SHAPES:
             raise ValidationError(f"{index}. işaret şekli geçersiz.")
         color = str(
-            raw.get("color") or (DEFAULT_FILL_COLOR if shape == "fill" else DEFAULT_COLOR)
+            raw.get("color")
+            or (
+                DEFAULT_FILL_COLOR
+                if shape in {"fill", "brush"}
+                else DEFAULT_COLOR
+            )
         ).strip()
         if not HEX_COLOR.fullmatch(color):
             raise ValidationError(f"{index}. işaret rengi geçersiz.")
@@ -126,6 +135,42 @@ def validate_map_markers(
                 raise ValidationError(f"{index}. boyalı il geçersiz.")
             normalized.append(
                 {"shape": "fill", "province": province, "color": color.lower()}
+            )
+            continue
+        if shape == "brush":
+            brush_count += 1
+            if brush_count > MAX_BRUSH_STROKES:
+                raise ValidationError(
+                    f"En fazla {MAX_BRUSH_STROKES} fırça darbesi eklenebilir."
+                )
+            width = _number(
+                raw.get("width", 2.2),
+                f"{index}. fırça kalınlığı",
+                MIN_BRUSH_WIDTH,
+                MAX_BRUSH_WIDTH,
+            )
+            points_raw = raw.get("points")
+            if not isinstance(points_raw, list) or not points_raw:
+                raise ValidationError(f"{index}. fırça noktaları gerekli.")
+            points: list[list[float]] = []
+            for point in points_raw[:MAX_BRUSH_POINTS]:
+                if not isinstance(point, (list, tuple)) or len(point) < 2:
+                    continue
+                points.append(
+                    [
+                        _number(point[0], f"{index}. fırça X", 0, 100),
+                        _number(point[1], f"{index}. fırça Y", 0, 100),
+                    ]
+                )
+            if not points:
+                raise ValidationError(f"{index}. fırça noktaları geçersiz.")
+            normalized.append(
+                {
+                    "shape": "brush",
+                    "color": color.lower(),
+                    "width": width,
+                    "points": points,
+                }
             )
             continue
         pin_count += 1
@@ -228,6 +273,17 @@ def validate_map_markers(
             show_label = bool(raw.get("showLabel"))
         else:
             show_label = True
+        label_size_delta = int(
+            round(
+                float(
+                    raw.get("labelSizeDelta", 0)
+                    if raw.get("labelSizeDelta") is not None
+                    else 0
+                )
+            )
+        )
+        label_size_delta = int(round(label_size_delta / 2) * 2)
+        label_size_delta = max(-20, min(40, label_size_delta))
         normalized.append(
             {
                 "x": _number(raw.get("x"), f"{index}. işaret X", 0, 100),
@@ -239,6 +295,7 @@ def validate_map_markers(
                 "color": color.lower(),
                 "labelSide": label_side,
                 "showLabel": show_label,
+                "labelSizeDelta": label_size_delta,
             }
         )
     return normalized
@@ -663,12 +720,19 @@ def render_marker_map(
 
 
     fills = [item for item in markers if item.get("shape") == "fill"]
-    pins = [item for item in markers if item.get("shape") != "fill"]
+    brushes = [item for item in markers if item.get("shape") == "brush"]
+    pins = [
+        item
+        for item in markers
+        if item.get("shape") not in {"fill", "brush"}
+    ]
     draw_province_fills(image, fills)
+    draw_brush_strokes(image, brushes)
 
     roman_index = 0
     lines = []
     city_labels = []
+    base_roman = max(68, round(image.width * 0.048))
     for marker in pins:
         shape = marker.get("shape")
         if shape == "line":
@@ -686,6 +750,8 @@ def render_marker_map(
         cy = image.height * marker["y"] / 100
         draw = ImageDraw.Draw(image)
         label = _roman(roman_index)
+        delta = int(marker.get("labelSizeDelta") or 0)
+        font = _font(max(28, base_roman + delta))
         label_width, label_height = _roman_label_size(
             draw, label, font, label_stroke
         )

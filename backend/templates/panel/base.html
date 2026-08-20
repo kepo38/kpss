@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
   <link rel="stylesheet" href="{% static 'panel/option-table.css' %}?v=4">
-  <link rel="stylesheet" href="{% static 'panel/map-question.css' %}?v=10">
+  <link rel="stylesheet" href="{% static 'panel/map-question.css' %}?v=13">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="{% static 'panel/math-render.js' %}"></script>
@@ -43,6 +43,7 @@
             <a class="nav-link nav-link-sub {% if url_name == 'panel_manual_question' %}is-active{% endif %}" href="{% url 'panel_manual_question' %}">Manuel soru</a>
             <a class="nav-link nav-link-sub {% if url_name == 'panel_quick_question' %}is-active{% endif %}" href="{% url 'panel_quick_question' %}">Görselden soru</a>
           </div>
+          <a class="nav-link {% if url_name == 'panel_summary_card_studio' or url_name == 'panel_summary_card_studio_edit' or url_name == 'panel_summary_card_new' or url_name == 'panel_summary_card_edit' %}is-active{% endif %}" href="{% url 'panel_summary_card_studio' %}">Konu kartı ekle</a>
           <a class="nav-link {% if url_name == 'panel_maps' or url_name == 'panel_map_delete' %}is-active{% endif %}" href="{% url 'panel_maps' %}">Haritalar</a>
         </div>
 

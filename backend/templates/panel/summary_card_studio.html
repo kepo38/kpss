@@ -1,0 +1,135 @@
+{% extends "panel/base.html" %}
+{% load static %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'panel/summary-card-studio.css' %}?v=1">
+
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  {% if card %}
+  <a href="{% url 'panel_topic' card.topic_id 'summary' %}">{{ card.topic.name }}</a> /
+  Özet kart
+  {% else %}
+  Konu kartı ekle
+  {% endif %}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">
+  Ders ve konu seçin; başlık, özet ve isteğe bağlı görsel ekleyin.
+  Sağda uygulamadaki kaydırma kartı anlık görünür.
+</p>
+
+<div class="workspace">
+  <div class="sc-studio-left">
+    <form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8" id="summary-card-form">
+      {% csrf_token %}
+
+      <label>Ders
+        <select name="subject_id" id="sc-subject" required>
+          <option value="">Ders seçin…</option>
+          {% for s in subjects %}
+          <option value="{{ s.id }}" {% if selected_subject_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>Konu
+        <select name="topic_id" id="sc-topic" required>
+          {% if not selected_subject_id %}
+          <option value="">Önce ders seçin…</option>
+          {% else %}
+          <option value="">Konu seçin…</option>
+          {% for t in topics %}
+          <option value="{{ t.id }}" {% if selected_topic_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+          {% endif %}
+        </select>
+      </label>
+
+      <label>Tür
+        <select name="kind" id="sc-kind">
+          {% for value, label in kind_choices %}
+          <option value="{{ value }}" {% if card.kind == value or not card and value == 'tip' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>Başlık
+        <input type="text" name="title" id="sc-title" required maxlength="160"
+               value="{{ card.title|default:'' }}" placeholder="Örn. Zincir kuralı">
+      </label>
+
+      <label>Özet
+        <textarea name="body" id="sc-body" required rows="6"
+                  placeholder="Formül, kural veya ÖSYM ipucu…">{{ card.body|default:'' }}</textarea>
+      </label>
+
+      <label>Görsel
+        <input type="file" name="image" id="sc-image" accept="image/*">
+      </label>
+      {% if card and card.image %}
+      <div class="sc-existing-image">
+        <img src="{{ card.image.url }}" alt="Mevcut görsel" id="sc-existing-thumb">
+        <label class="check">
+          <input type="checkbox" name="clear_image" id="sc-clear-image">
+          Görseli kaldır
+        </label>
+      </div>
+      {% endif %}
+
+      <label>Sıra
+        <input type="number" name="sort_order" value="{{ card.sort_order|default:0 }}">
+      </label>
+
+      <label class="check">
+        <input type="checkbox" name="is_published" {% if card.is_published %}checked{% endif %}>
+        Yayında
+      </label>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" type="submit">Kaydet</button>
+        {% if card %}
+        <a class="btn btn-ghost" href="{% url 'panel_topic' card.topic_id 'summary' %}">Konuya dön</a>
+        {% else %}
+        <a class="btn btn-ghost" href="{% url 'panel_home' %}">İptal</a>
+        {% endif %}
+      </div>
+    </form>
+
+    {% if card %}
+    <form method="post" action="{% url 'panel_summary_card_delete' card.id %}"
+          onsubmit="return confirm('Bu özet kart silinsin mi?');"
+          style="margin-top:12px;">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit" style="color:#f87171;">Sil</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <aside class="preview-pane" aria-label="Uygulama önizlemesi">
+    <p class="preview-label">Uygulama önizlemesi</p>
+    <div class="phone">
+      <div class="phone-notch" aria-hidden="true"></div>
+      <div class="phone-screen sc-phone-screen">
+        <div class="sc-mock-bar">
+          <span class="sc-mock-topic" id="pv-sc-topic">Konu</span>
+          <span class="sc-mock-meta">Özet kart</span>
+        </div>
+        <div class="sc-mock-deck">
+          <div class="sc-mock-card" id="pv-sc-card">
+            <div class="sc-mock-chip" id="pv-sc-kind">Püf nokta</div>
+            <h2 class="sc-mock-title" id="pv-sc-title">Başlık buraya…</h2>
+            <img class="sc-mock-img" id="pv-sc-img" alt="" hidden>
+            <p class="sc-mock-body" id="pv-sc-body">Özet metni buraya…</p>
+          </div>
+          <div class="sc-mock-actions" aria-hidden="true">
+            <span>Unuttum</span>
+            <span>Biliyorum</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="{% static 'panel/summary-card-studio.js' %}?v=1"></script>
+{% endblock %}

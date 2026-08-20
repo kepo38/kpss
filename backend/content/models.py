@@ -518,6 +518,12 @@ class TopicSummaryCard(models.Model):
         verbose_name="Özet",
         help_text="Kısa formül, kural veya ÖSYM ipucu.",
     )
+    image = models.ImageField(
+        upload_to="summary_cards/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Görsel",
+    )
     sort_order = models.PositiveIntegerField(default=0)
     is_published = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

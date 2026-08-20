@@ -103,3 +103,10 @@ Ayrı iş = ayrı dosya. Harita, tablo/eşleştirme şıkları, yapıştırma, �
 - `RewardedAd.load` / interstitial / banner **widget veya buton içine yazılmaz**.
 - SDK: `lib/services/ad_manager.dart`. UI çağrısı: `AdService.showRewardedAd(...)`.
 - Örnek: `AdService.showRewardedAd(kind: AdRewardKind.campaign, onComplete: () { ... });`
+
+## Disk dolu — kaynak koruma
+
+- ENOSPC / "No space left" / "Diskte yeterli yer yok" görünce **Write/StrReplace yapma**; işi durdur, kullanıcıya yer açmasını söyle.
+- Disk açmak için yalnızca `build/`, `android/**/build`, `.gradle` cache, `.dart_tool/flutter_build`, TEMP — **asla** `lib/`, `backend/` kaynak, `assets/`, panel JS/CSS truncate/silme.
+- Yazma başarısız olup dosya 0 byte kaldıysa boş bırakma; `git checkout -- dosya` veya Cursor Local History ile geri al, sonra devam et.
+- Kaynak bütünlüğü özellik bitirmekten önce gelir.

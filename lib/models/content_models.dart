@@ -295,6 +295,7 @@ class TopicSummaryCardModel {
   final SummaryCardKind kind;
   final String title;
   final String body;
+  final String? imageUrl;
   final int sortOrder;
 
   const TopicSummaryCardModel({
@@ -306,6 +307,7 @@ class TopicSummaryCardModel {
     required this.kind,
     required this.title,
     required this.body,
+    this.imageUrl,
     this.sortOrder = 0,
   });
 
@@ -324,6 +326,7 @@ class TopicSummaryCardModel {
         'kind': kind.name,
         'title': title,
         'body': body,
+        if (imageUrl != null) 'imageUrl': imageUrl,
         'sortOrder': sortOrder,
       };
 
@@ -342,6 +345,7 @@ class TopicSummaryCardModel {
       kind: kind,
       title: json['title'] as String,
       body: json['body'] as String,
+      imageUrl: json['imageUrl'] as String?,
       sortOrder: json['sortOrder'] as int? ?? 0,
     );
   }

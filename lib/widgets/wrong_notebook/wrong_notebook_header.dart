@@ -27,36 +27,15 @@ class WrongNotebookHeaderTitle extends StatelessWidget {
 }
 
 class WrongNotebookHeaderTitleBlock extends StatelessWidget {
-  final bool showSmartReview;
-  final VoidCallback? onSmartReview;
-
-  const WrongNotebookHeaderTitleBlock({
-    super.key,
-    this.showSmartReview = false,
-    this.onSmartReview,
-  });
+  const WrongNotebookHeaderTitleBlock({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const WrongNotebookHeaderTitle(),
-        if (showSmartReview && onSmartReview != null) ...[
-          const SizedBox(height: 5),
-          WrongNotebookHeaderPill(
-            label: 'Akıllı Tekrar',
-            icon: Icons.psychology_alt_outlined,
-            onTap: onSmartReview!,
-          ),
-        ],
-      ],
-    );
+    return const WrongNotebookHeaderTitle();
   }
 }
 
-/// Kitaptan foto ile eklenen yanlışlar — pembe vurgu.
+/// Kitaptan foto ile eklenen yanlışlar — pembe vurgu (iki satır, dar).
 class WrongNotebookBookMistakesButton extends StatelessWidget {
   final int count;
   final VoidCallback onTap;
@@ -71,107 +50,120 @@ class WrongNotebookBookMistakesButton extends StatelessWidget {
   static const _pinkDeep = Color(0xFFDB4F86);
   static const _pinkLight = Color(0xFFFBCFE8);
 
+  static const _titleStyle = TextStyle(
+    fontFamily: 'serif',
+    fontSize: 11.5,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 0.45,
+    height: 1.05,
+    color: Colors.white,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Ink(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  _pinkLight.withValues(alpha: 0.55),
-                  _pink.withValues(alpha: 0.22),
-                  _pinkDeep.withValues(alpha: 0.14),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Ink(
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    _pinkLight.withValues(alpha: 0.55),
+                    _pink.withValues(alpha: 0.22),
+                    _pinkDeep.withValues(alpha: 0.14),
+                  ],
+                ),
+                border: Border.all(
+                  color: _pink.withValues(alpha: 0.48),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _pinkDeep.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
                 ],
               ),
-              border: Border.all(
-                color: _pink.withValues(alpha: 0.48),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _pinkDeep.withValues(alpha: 0.12),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.72),
-                    border: Border.all(
-                      color: _pink.withValues(alpha: 0.35),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.72),
+                      border: Border.all(
+                        color: _pink.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.menu_book_rounded,
+                      size: 17,
+                      color: _pinkDeep,
                     ),
                   ),
-                  child: const Icon(
-                    Icons.menu_book_rounded,
-                    size: 18,
-                    color: _pinkDeep,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ShaderMask(
+                  const SizedBox(width: 10),
+                  ShaderMask(
                     shaderCallback: (bounds) => const LinearGradient(
                       colors: [_pinkDeep, _pink, Color(0xFFC73672)],
                     ).createShader(bounds),
-                    child: const Text(
-                      'KİTAPTAKİ YANLIŞLARIM',
-                      style: TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.6,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                if (count > 0)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _pinkDeep,
-                      borderRadius: BorderRadius.circular(99),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _pinkDeep.withValues(alpha: 0.28),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('KİTAPTAKİ', style: _titleStyle),
+                        Text('YANLIŞLARIM', style: _titleStyle),
                       ],
                     ),
-                    child: Text(
-                      '$count',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                  ),
+                  if (count > 0) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _pinkDeep,
+                        borderRadius: BorderRadius.circular(99),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _pinkDeep.withValues(alpha: 0.28),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        '$count',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
+                  ],
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: _pinkDeep.withValues(alpha: 0.85),
                   ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: _pinkDeep.withValues(alpha: 0.85),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -259,11 +251,13 @@ class WrongNotebookHeaderPill extends StatelessWidget {
 class WrongNotebookAddQuestionAction extends StatelessWidget {
   final VoidCallback? onTap;
   final bool loading;
+  final bool expanded;
 
   const WrongNotebookAddQuestionAction({
     super.key,
     required this.onTap,
     this.loading = false,
+    this.expanded = false,
   });
 
   static const _labelStyle = TextStyle(
@@ -277,72 +271,89 @@ class WrongNotebookAddQuestionAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: loading ? null : onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(10, 5, 8, 5),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: AppTheme.champagne.withValues(alpha: 0.08),
-              border: Border.all(
-                color: AppTheme.champagne.withValues(alpha: 0.38),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.champagne.withValues(alpha: 0.12),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+    final button = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: loading ? null : onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          width: expanded ? double.infinity : null,
+          padding: EdgeInsets.fromLTRB(
+            expanded ? 14 : 10,
+            expanded ? 12 : 5,
+            expanded ? 12 : 8,
+            expanded ? 12 : 5,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            color: AppTheme.champagne.withValues(alpha: 0.08),
+            border: Border.all(
+              color: AppTheme.champagne.withValues(alpha: 0.38),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      AppTheme.champagneLight,
-                      AppTheme.champagne,
-                      Color(0xFFB8925A),
-                    ],
-                  ).createShader(bounds),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('SORU', style: _labelStyle),
-                      Text('EKLE', style: _labelStyle),
-                    ],
-                  ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.champagne.withValues(alpha: 0.12),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: expanded
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppTheme.champagneLight,
+                    AppTheme.champagne,
+                    Color(0xFFB8925A),
+                  ],
+                ).createShader(bounds),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('SORU', style: _labelStyle),
+                    Text('EKLE', style: _labelStyle),
+                  ],
                 ),
-                const SizedBox(width: 7),
-                if (loading)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.champagne,
-                    ),
-                  )
-                else
-                  Icon(
-                    Icons.add_a_photo_outlined,
-                    size: 21,
+              ),
+              SizedBox(width: expanded ? 10 : 7),
+              if (loading)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
                     color: AppTheme.champagne,
                   ),
-              ],
-            ),
+                )
+              else
+                Icon(
+                  Icons.add_a_photo_outlined,
+                  size: expanded ? 24 : 21,
+                  color: AppTheme.champagne,
+                ),
+            ],
           ),
         ),
       ),
+    );
+
+    if (expanded) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: button,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: button,
     );
   }
 }

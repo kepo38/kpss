@@ -427,6 +427,19 @@ class TopicSummaryCardAdmin(ModelAdmin):
     search_fields = ("title", "public_id", "body")
     autocomplete_fields = ("topic",)
     list_filter_sheet = False
+    fields = (
+        "public_id",
+        "topic",
+        "kind",
+        "title",
+        "body",
+        "image",
+        "sort_order",
+        "is_published",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(TopicTest)

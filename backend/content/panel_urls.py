@@ -107,6 +107,16 @@ urlpatterns = [
         name="panel_summary_card_edit",
     ),
     path(
+        "ozet-kart/",
+        panel_views.panel_summary_card_studio,
+        name="panel_summary_card_studio",
+    ),
+    path(
+        "ozet-kart/<int:card_id>/",
+        panel_views.panel_summary_card_studio,
+        name="panel_summary_card_studio_edit",
+    ),
+    path(
         "ozet/<int:card_id>/sil/",
         panel_views.panel_summary_card_delete,
         name="panel_summary_card_delete",

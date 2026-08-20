@@ -1459,14 +1459,49 @@ def panel_lesson_delete(request: HttpRequest, lesson_id: int) -> HttpResponse:
 def panel_summary_card_edit(
     request: HttpRequest, topic_id: int, card_id: int | None = None
 ) -> HttpResponse:
-    topic = get_object_or_404(Topic, pk=topic_id)
+    """Konu workspace linkleri → stüdyo formuna yönlendir."""
+    get_object_or_404(Topic, pk=topic_id)
+    if card_id:
+        return redirect("panel_summary_card_studio_edit", card_id=card_id)
+    url = reverse("panel_summary_card_studio")
+    return redirect(f"{url}?topic={topic_id}")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_summary_card_studio(
+    request: HttpRequest, card_id: int | None = None
+) -> HttpResponse:
+    """Sol menü: ders + konu seçimli özet kart formu ve uygulama önizlemesi."""
     card = (
-        get_object_or_404(TopicSummaryCard, pk=card_id, topic=topic)
+        get_object_or_404(
+            TopicSummaryCard.objects.select_related("topic__subject"),
+            pk=card_id,
+        )
         if card_id
         else None
     )
 
+    selected_subject_id: int | None = None
+    selected_topic_id: int | None = None
+    if card is not None:
+        selected_subject_id = card.topic.subject_id
+        selected_topic_id = card.topic_id
+    else:
+        topic_raw = (request.GET.get("topic") or "").strip()
+        if topic_raw.isdigit():
+            topic_hint = (
+                Topic.objects.filter(pk=int(topic_raw))
+                .select_related("subject")
+                .first()
+            )
+            if topic_hint is not None:
+                selected_topic_id = topic_hint.id
+                selected_subject_id = topic_hint.subject_id
+
     if request.method == "POST":
+        topic_raw = (request.POST.get("topic_id") or "").strip()
         title = (request.POST.get("title") or "").strip()
         body = (request.POST.get("body") or "").strip()
         kind = (request.POST.get("kind") or "tip").strip()
@@ -1474,29 +1509,65 @@ def panel_summary_card_edit(
             kind = "tip"
         sort_order = int(request.POST.get("sort_order") or 0)
         is_published = request.POST.get("is_published") == "on"
-        if not title or not body:
+        clear_image = request.POST.get("clear_image") == "on"
+
+        if not topic_raw.isdigit():
+            messages.error(request, "Ders ve konu seçin.")
+        elif not title or not body:
             messages.error(request, "Başlık ve özet zorunlu.")
         else:
+            topic = get_object_or_404(Topic, pk=int(topic_raw))
             if card is None:
                 card = TopicSummaryCard(topic=topic, public_id=_pid("sum"))
+            else:
+                card.topic = topic
             card.title = title
             card.body = body
             card.kind = kind
             card.sort_order = sort_order
             card.is_published = is_published
+            if clear_image and card.image:
+                card.image.delete(save=False)
+                card.image = None
+            elif request.FILES.get("image"):
+                card.image = request.FILES["image"]
             card.save()
             messages.success(request, "Özet kart kaydedildi.")
-            return redirect("panel_topic", topic_id=topic.id, tab="summary")
+            return redirect(
+                "panel_summary_card_studio_edit", card_id=card.pk
+            )
+
+        selected_subject_id = (
+            int(request.POST.get("subject_id"))
+            if (request.POST.get("subject_id") or "").isdigit()
+            else selected_subject_id
+        )
+        selected_topic_id = (
+            int(topic_raw) if topic_raw.isdigit() else selected_topic_id
+        )
+
+    subjects = Subject.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    )
+    topics_for_subject = (
+        Topic.objects.filter(
+            subject_id=selected_subject_id, is_active=True
+        ).order_by("sort_order", "name")
+        if selected_subject_id
+        else Topic.objects.none()
+    )
 
     return render(
         request,
-        "panel/summary_card_form.html",
+        "panel/summary_card_studio.html",
         {
-            "topic": topic,
-            "subject": topic.subject,
             "card": card,
+            "subjects": subjects,
+            "topics": topics_for_subject,
+            "selected_subject_id": selected_subject_id,
+            "selected_topic_id": selected_topic_id,
             "kind_choices": SUMMARY_CARD_KIND_CHOICES,
-            "page_title": "Özet kart" if card else "Yeni özet kart",
+            "page_title": "Özet kart düzenle" if card else "Konu kartı ekle",
         },
     )
 

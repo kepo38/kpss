@@ -174,8 +174,11 @@ class ManualQuestionService extends ChangeNotifier {
 
   bool _shouldMigrateGuestRows(String? fromUserId, String toUserId) {
     if (fromUserId == null || fromUserId == toUserId) return false;
-    if (fromUserId == 'unknown') return true;
-    return fromUserId.startsWith('guest-');
+    if (!AuthService.instance.hasPermanentAccount) return false;
+    if (fromUserId == 'unknown' || fromUserId == 'guest-pending') return true;
+    if (fromUserId.startsWith('guest-')) return true;
+    // Firebase anonim → Google (id değişebilir)
+    return true;
   }
 
   ManualQuestionModel? _itemById(String id) {

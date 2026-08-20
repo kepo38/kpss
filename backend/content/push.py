@@ -135,6 +135,7 @@ def send_announcement_push(announcement) -> PushResult:
         "sound": "default",
     }
     if image_url:
+        # Genişletilmiş big-picture stili (Hepsiburada benzeri)
         android_notification_kwargs["image"] = image_url
 
     android = messaging.AndroidConfig(

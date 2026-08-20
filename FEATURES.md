@@ -28,10 +28,10 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Model** | Konuya bağlı kısa kart: `kind` = `formula` / `tip` / `osym`; başlık + gövde; sıralama; yayın bayrağı | `TopicSummaryCard` (`models.py`), migration `0041_topic_summary_card.py`, `TopicSummaryCardModel` (`content_models.dart`) |
-| **API** | `GET /pack/` ve `GET /catalog/` yanıtına `summaryCards` listesi; revizyon sinyali kart kaydında | `serializers.py`, `views.py`, `revision.py` |
-| **Panel CRUD** | Konu workspace sekmesi **Özet kartlar**; yeni/düzenle/sil; formül / püf / ÖSYM | `/panel/konu/<id>/summary/`, `/panel/konu/<id>/ozet/...`, `topic_workspace.html`, `summary_card_form.html`, `panel_summary_card_*` |
-| **Konu detayı destesi** | Test listesinin üstünde Tinder tarzı deste: kaydır / **Biliyorum** / **Unuttum**; kalp ile favori | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` |
+| **Model** | Konuya bağlı kısa kart: `kind` = `formula` / `tip` / `osym`; başlık + gövde; isteğe bağlı **görsel**; sıralama; yayın bayrağı | `TopicSummaryCard` (`models.py`), migration `0041` + `0042_topicsummarycard_image.py`, `TopicSummaryCardModel` (`content_models.dart`) |
+| **API** | `GET /pack/` ve `GET /catalog/` yanıtına `summaryCards` listesi (`imageUrl` dahil); revizyon sinyali kart kaydında | `serializers.py`, `views.py`, `revision.py` |
+| **Panel CRUD** | Sol menü **Konu kartı ekle** (`/panel/ozet-kart/`): ders→konu, metin+görsel, sağda telefon önizleme; konu workspace sekmesi aynı stüdyoya yönlenir | `summary_card_studio.html` + `.js`/`.css`, `panel_summary_card_studio`, `base.html`, `topic_workspace.html` |
+| **Konu detayı destesi** | Test listesinin üstünde Tinder tarzı deste: kaydır / **Biliyorum** / **Unuttum**; kalp ile favori; görsel varsa kartta | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` |
 | **İlerleme** | Kullanıcıya özel bilinen / zayıf / favori ID’ler (SharedPreferences scope); oturum değişince yeniden yüklenir | `summary_card_progress_service.dart`, `auth_service.dart`, `main.dart` |
 | **Favorilerim** | İki sekme: **Soru Favorileri** · **Özet Kartlar**; özet tarafta filtre **Favoriler** / **Tekrar Et** | `favorites_screen.dart` |
 | **İçerik bankası** | Katalog/pack’ten `_summaryCards` yükleme, konu/ID sorguları, disk persist | `content_bank_service.dart` |
@@ -41,8 +41,8 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Header / Akıllı Tekrar** | Üst balon kaldırıldı; **Akıllı Tekrar** başlığın altında ortalanmış pill; istatistik alt yazısı: uygulama konu testlerine göre analiz | `wrong_notebook_header.dart`, `wrong_questions_screen.dart`, `wrong_notebook_stats_row.dart` |
-| **Kitaptaki yanlışlarım** | Pembe **KİTAPTAKİ YANLIŞLARIM** → ayrı ekran; **SORU EKLE** premium aksiyonu | `wrong_notebook_manual_screen.dart`, `wrong_notebook_manual_card.dart` |
+| **Header / Akıllı Tekrar** | **Akıllı Tekrar** sağ üst pill; **Kitaptaki** butonu iki satır (KİTAPTAKİ / YANLIŞLARIM), dar; istatistik alt yazısı konu testlerine göre | `wrong_notebook_header.dart`, `wrong_questions_screen.dart` |
+| **Kitaptaki yanlışlarım** | Pembe giriş → ayrı ekran; **SORU EKLE** (foto) bu ekranın üstünde | `wrong_notebook_manual_screen.dart`, `WrongNotebookAddQuestionAction` |
 | **Manuel foto soru** | Kamera/galeri; meta sheet **YANLIŞ SORULARIM**; ders→konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini (galeriye düşmez); durum: Yeni / Tekrar Et / Çözüldü | `manual_question_model.dart`, `manual_question_service.dart`, `wrong_notebook_manual_meta_sheet.dart` |
 | **Defter inceleme** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış**; işaretli şık; **Not Al** + «KAYITLI KALIR»; normal testte «Daha önce» | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart` |
 | **Balon tetik** | Google + bitmiş konu testi + **defterde ≥1 yanlış**; Günün Denemesi / yarım test tetiklemez | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
@@ -72,14 +72,16 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Sol menü** | Gruplar: İçerik · Deneme & sınav · Kullanıcı & satış · Kalite · Ayarlar | `base.html` |
 | **Promosyon CRUD** | Liste / yeni / düzenle / sil / aktif-pasif (günlük iş Admin’de değil panelde) | `/panel/promosyon/`, `promo_codes.html`, `promo_code_form.html`, `panel_promo_*` |
 | **Kullanıcılar** | Toplu sil, misafir filtresi, **Misafirleri temizle**; bir kerelik anonim misafir temizliği | `users.html`, `panel_views.py` |
+| **Duyuru şablonu** | Hepsiburada tarzı big-picture önizleme (görsel + başlık + metin); hazır şablon chipleri; FCM görseli korunur; uygulama ön planda da big picture | `announcement_form.html`, `announcement-push-preview.css`/`.js`, `push_notification_service.dart` |
 
 #### Panel — harita editörü (genişletme)
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
 | **İl boya** | ÖSYM bölge boyama; komşu aynı renk birleşir | `map-question-editor.js`, `map_provinces.py` |
+| **Akıllı Fırça** | Kalınlıklı serbest stroke; kara maskesi clip; `shape:brush` + width/points; İl boya’dan ayrı | `map-smart-brush.js`, `map_provinces.draw_brush_strokes` |
 | **Doğru / ışın / il adı** | İki tıklama doğru; ışın: merkez→adet→hedef iller; il adı etiketi; şehir adları açık/gizli | `map-question-editor.js`, `map_question_renderer.py` |
-| **Elips** | Varsayılan kapalı; tıklayarak koy; Romen varsayılan kapalı; tutaçlarla boyut + dönüş | `map-question-editor.js` |
+| **Elips** | Varsayılan kapalı; tıklayarak koy; Romen varsayılan kapalı; tutaçlarla boyut + dönüş; Romen **A− / A+** ile ±2 punto | `map-question-editor.js` |
 | **%170 düzenleme** | Tam ekran harita; araç çubuğu altta; Esc / %100 çıkış | `map-question.css` |
 | **PNG zemin** | Açık kâğıt zemin (koyu temada Romen okunur) | `map_question_renderer.py` |
 | **Mükerrer** | `[HARITA]` ve `(Not: …)` yok sayılır; aynı şıklar + benzer kök | `question_fingerprint.py` |
@@ -101,8 +103,8 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Yanlış defteri balonu** | Yalnızca **Google hesabı** + **en az 1 konu testi bitmiş** + **defterde en az 1 yanlış** varken; panel açıkken. Günün Denemesi / yarım test tetiklemez. Sol yaslı; YANLIŞ→DEFTERİM 3D; teal çerçeve | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
 | **Yanlış defteri UI** | Header alt başlığı («X soru · Y ders») yok; en çok yanlış derste kırmızı adet rozeti; kart: konu chip sol üst, kalp+sil sağ üst; metin «İstediğiniz zaman silebilirsiniz»; karttan onaylı silme; silince alt SnackBar yok, ortada şampanya çerçeveli kutu (~3 sn): onay ikonu, «Defterden kaldırıldı», soru önizlemesi | `wrong_questions_screen.dart`, `wrong_notebook_*` |
 | **Defter soru notu** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış** (onaysız deftere dönüş); testte işaretlediği şık işaretli; normal testte aynı soru işaretsiz + mavi «Daha önce». Sağda seviye; solda **Not Al** + «KAYITLI KALIR». Bitmiş testte yanlış kalan sorular sonradan doğru cevaplansa istatistik güncellenmez | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart`, `content_bank_service.dart` |
-| **BENZER upsell** | Başlık **BENZER SORULAR**; alt metin «Yanlışlarını daha iyi analiz et» | `pro_upsell_sheet.dart` |
-| **Misafir yanlış defteri** | Yalnızca **soru metni** hafif buzlu (metin okunur); kalp, sil, BENZER açık. **GİRİŞ YAP** yok; karta dokununca giriş ister | `wrong_notebook_guest_frost.dart`, `wrong_notebook_question_card.dart` |
+| **BENZER upsell** | Başlık **BENZER SORULAR**; üstte 👯; alt metin «Yanlışlarını daha iyi analiz et» | `pro_upsell_sheet.dart` |
+| **Misafir yanlış defteri** | Yalnızca **soru metni** hafif buzlu; kalp, sil, BENZER açık. Karta dokununca Google ister; **bağlanınca defter Google hesabına aktarılır**, buz kalkar, soru açılır | `wrong_notebook_guest_frost.dart`, `content_bank_service.dart` (scope migrate), `question_note_service.dart`, `manual_question_service.dart`, `wrong_questions_screen.dart` |
 | **Puan Hesaplama** | Gelişim’den kaldırıldı. Deneme sekmesi AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (eski «Deneme» + `+` yok; FAB «Deneme Ekle» durur) | `analytics_hub_screen.dart`, `statistics_screen.dart`, `puan_hesaplama_button.dart` |
 | **Puan ekranı etiketleri** | **GY-Net** / **GK-Net** (üstte puan; net ayrı) | `puan_hesaplama_screen.dart` |
 | **Quiz sonuç** | Konu adı üstte; motive satır; +XP ve seri chip; soru başı ortalama süre **NET** kutusunun üstünde | `quiz_screen.dart`, `shareable_result_card.dart`, `gamification_service.dart` |
@@ -225,7 +227,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Akıllı tekrar** | Günlük 15 soruluk aralıklı tekrar seti (yanlışlar → vadesi gelen → zayıf konular) | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
-| **Yanlış defteri** | Konu testlerinden yanlışlar; **kullanıcı başına yerel** (SharedPreferences scope); karttan onaylı **kaldır**; karta tıklayınca inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte işaretsiz + «Daha önce»; bitmiş test yanlışları sonradan doğru cevaplansa istatistik değişmez. **Akıllı Tekrar** başlık altında; **Kitaptaki Yanlışlarım** pembe butonu ile manuel foto sorular ayrı ekranda (ders filtresi). **Manuel foto soru:** kamera/galeri ile eklenir; **YANLIŞ SORULARIM** formunda ders/konu müfredattan zorunlu seçilir (ders → konular); not opsiyonel; uygulama özel dizininde tutulur (galeriye düşmez), durum etiketi (**Yeni / Tekrar Et / Çözüldü**) değiştirilebilir. **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; kalp/BENZER açık | `lib/screens/wrong_questions_screen.dart`, `lib/screens/wrong_notebook_manual_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/widgets/quiz_take_note_button.dart`, `lib/services/question_note_service.dart`, `lib/services/content_bank_service.dart`, `lib/services/manual_question_service.dart` | Ücretsiz; misafir metin hafif buzlu |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; **kullanıcı başına yerel** (SharedPreferences scope); karttan onaylı **kaldır**; karta tıklayınca inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte işaretsiz + «Daha önce»; bitmiş test yanlışları sonradan doğru cevaplansa istatistik değişmez. **Akıllı Tekrar** sağ üstte; **Kitaptaki Yanlışlarım** (iki satır, dar pembe buton) ile manuel foto sorular ayrı ekranda; foto ekleme o ekranda **SORU EKLE**. **Manuel foto soru:** kamera/galeri; **YANLIŞ SORULARIM** formunda ders/konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini; durum **Yeni / Tekrar Et / Çözüldü**. **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; **Google sonrası defter aktarılır, buz kalkar** | `lib/screens/wrong_questions_screen.dart`, `lib/screens/wrong_notebook_manual_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/widgets/quiz_take_note_button.dart`, `lib/services/question_note_service.dart`, `lib/services/content_bank_service.dart`, `lib/services/manual_question_service.dart` | Ücretsiz; misafir metin hafif buzlu |
 | **Benzer sorular** | Embedding tabanlı benzer soru seti (API); kaynak soru ve %88+ aynı kök metinli kopyalar hariç | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar`, `backend/content/embeddings.py` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; şampanya etiket «Yanlış defteriyle deneme oluşturabilirsin»; ana CTA «Derslerden test çöz» | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
@@ -384,7 +386,7 @@ Sol menü bölümleri: **İçerik** · **Deneme & sınav** · **Kullanıcı & sa
 | Konu kapasitesi (test gruplama) | `/panel/konu/<id>/kapasite/` |
 | Konu sekmeleri: dersler, **özet kartlar**, sorular, testler, senaryolar | `/panel/konu/<id>/<tab>/` |
 | Bilgi kartı (ders) CRUD | `/panel/konu/<id>/bilgi/...` |
-| **Özet konu kartı** CRUD (formül / püf / ÖSYM) | `/panel/konu/<id>/ozet/...` |
+| **Özet konu kartı** CRUD (formül / püf / ÖSYM; görsel; stüdyo önizleme) | `/panel/ozet-kart/`, `/panel/konu/<id>/ozet/...` |
 | Test CRUD, soru atama | `/panel/konu/<id>/test/...` |
 | Senaryo grupları (ortak paragraf) | `/panel/konu/<id>/grup/...` |
 | Soru CRUD (kök, A–E, çözüm, görsel, SVG, zorluk, ÖSYM) | `/panel/konu/<id>/soru/...` |
@@ -414,9 +416,9 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
 | Şablon kütüphanesi | Sistem + yüklenen haritalar; koordinatlı işaret veya tematik (işaret yok) | `/panel/haritalar/`, `maps.html`, `map_catalog.py` |
-| İl boyama | Koordinatlı Türkiye haritasında **İl boya** ile ili tıklayıp doldurma (ÖSYM bölge boyama); komşu aynı renk birleşir | `_question_map_editor.html`, `map-question-editor.js`, `map_provinces.py`, `turkiye_iller.json` |
+| İl boyama | **İl boya:** tıkla → ili doldur. **Akıllı Fırça:** kalınlıklı serbest karalama; boya kara maskesine (il poligon birleşimi) clip edilir, denize yazılmaz; kayıt `shape:"brush"` | `_question_map_editor.html`, `map-smart-brush.js`, `map-question-editor.js`, `map_provinces.py` |
 | Soru formu editörü | Şablon seç, `[HARITA]` yerleştir (düğme soru metnine yazar; şablon yoksa uyarı), elips/daire koy; seçili işareti **Delete / Backspace** siler | `_question_map_editor.html`, `map-question-editor.js` |
-| Elips | **Elips ekle** varsayılan kapalı; seçilince haritaya tıklayarak konur. Romen numarası varsayılan kapalı (karttan açılabilir). Seçilince kenar tutaçlarıyla boyut, yeşil tutaçla 0–179° dönüş | `map-question-editor.js` |
+| Elips | **Elips ekle** varsayılan kapalı; seçilince haritaya tıklayarak konur. Romen numarası varsayılan kapalı (karttan açılabilir); **A− / A+** ile ±2 punto. Seçilince kenar tutaçlarıyla boyut, yeşil tutaçla 0–179° dönüş | `map-question-editor.js` |
 | Doğru çizgisi | **Doğru çiz**: iki tıklama. **Işın çiz**: merkez → kaç doğru → hedef iller. **İl adı**: tıklanan il, doğru/ışın etiketiyle aynı kalın yazı (sürüklenebilir). **Şehir adları: açık/gizli** | `map-question-editor.js`, `map_question_renderer.py`, `map_provinces.py` |
 | Daire | Çap = harita genişliğinin %’si; kare kutu → tam daire (yükseklik % kullanılmaz) | `map-question-editor.js`, `map_question_renderer.py` |
 | Önizleme / kayıt PNG | Açık kâğıt zemin (deniz şeffaf olsa da koyu temada Romen okunur); Romen rakamları Arial/Helvetica | `map_question_renderer.py` |
@@ -444,7 +446,7 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Kullanıcı listesi (filtre, toplu sil, misafir temizle) | `/panel/kullanicilar/` |
 | Premium ver / kaldır | `/panel/kullanici/<id>/premium/` |
 | **Promosyon kodları** (liste / yeni / düzenle / sil / aktif-pasif) | `/panel/promosyon/` |
-| Duyuru CRUD + push gönder | `/panel/duyuru/...` |
+| Duyuru CRUD + big-picture push önizleme | `/panel/duyuru/...`, `announcement-push-preview.*` |
 | Mobil arayüz (yanlış defteri balonu aç/kapa, metin) | `/panel/mobil-arayuz/` |
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |

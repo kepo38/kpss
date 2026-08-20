@@ -25,10 +25,62 @@ class QuestionNoteService extends ChangeNotifier {
       await initialize();
       return;
     }
+    final previous = _activeUserScopeId;
     final scope = _userScopeId;
-    if (_activeUserScopeId == scope) return;
+    if (previous == scope) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (_shouldMigrateGuestNotes(previous, scope)) {
+      await _migrateNotesScope(
+        prefs,
+        fromUserId: previous!,
+        toUserId: scope,
+      );
+    }
     await _loadForCurrentUser();
     notifyListeners();
+  }
+
+  bool _shouldMigrateGuestNotes(String? fromUserId, String toUserId) {
+    if (fromUserId == null || fromUserId.isEmpty || fromUserId == toUserId) {
+      return false;
+    }
+    if (!AuthService.instance.hasPermanentAccount) return false;
+    return true;
+  }
+
+  Future<void> _migrateNotesScope(
+    SharedPreferences prefs, {
+    required String fromUserId,
+    required String toUserId,
+  }) async {
+    final fromKey = '${_kKey}_$fromUserId';
+    final toKey = '${_kKey}_$toUserId';
+    final fromRaw = prefs.getString(fromKey);
+    if (fromRaw == null || fromRaw.isEmpty) return;
+    final merged = <String, dynamic>{};
+    try {
+      final fromMap = jsonDecode(fromRaw);
+      if (fromMap is Map) {
+        fromMap.forEach((k, v) {
+          merged[k.toString()] = v;
+        });
+      }
+    } catch (_) {
+      return;
+    }
+    final toRaw = prefs.getString(toKey);
+    if (toRaw != null && toRaw.isNotEmpty) {
+      try {
+        final toMap = jsonDecode(toRaw);
+        if (toMap is Map) {
+          toMap.forEach((k, v) {
+            merged.putIfAbsent(k.toString(), () => v);
+          });
+        }
+      } catch (_) {}
+    }
+    await prefs.setString(toKey, jsonEncode(merged));
+    await prefs.remove(fromKey);
   }
 
   Future<void> initialize() async {

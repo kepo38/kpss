@@ -226,6 +226,46 @@ class MapMarkerValidationTests(SimpleTestCase):
         )
         self.assertEqual(len(result), 1)
 
+    def test_normalizes_brush_stroke(self):
+        result = validate_map_markers(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "brush",
+                    "color": "#ef4444",
+                    "width": 2.5,
+                    "points": [[40, 50], [42, 51], [44, 52]],
+                }
+            ],
+        )
+        self.assertEqual(result[0]["shape"], "brush")
+        self.assertEqual(result[0]["width"], 2.5)
+        self.assertEqual(len(result[0]["points"]), 3)
+
+    def test_rejects_empty_brush_points(self):
+        with self.assertRaises(ValidationError):
+            validate_map_markers(
+                "turkiye_goller",
+                [{"shape": "brush", "color": "#ef4444", "width": 2, "points": []}],
+            )
+
+    def test_brush_does_not_consume_pin_slots(self):
+        brushes = [
+            {
+                "shape": "brush",
+                "color": "#111827",
+                "width": 2,
+                "points": [[10 + i, 50], [11 + i, 51]],
+            }
+            for i in range(5)
+        ]
+        result = validate_map_markers(
+            "turkiye_goller",
+            brushes + VALID_MARKERS,
+        )
+        self.assertEqual(sum(1 for m in result if m["shape"] == "brush"), 5)
+        self.assertEqual(sum(1 for m in result if m["shape"] != "brush"), 2)
+
 
 class MapRendererTests(SimpleTestCase):
     def test_renders_province_fill(self):
@@ -244,6 +284,42 @@ class MapRendererTests(SimpleTestCase):
             self.assertGreater(paper[0], 230)
             self.assertGreater(paper[1], 230)
             self.assertGreater(paper[2], 230)
+
+    def test_renders_brush_stroke(self):
+        blank = render_map_question("turkiye_goller", VALID_MARKERS)
+        brushed = render_map_question(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "brush",
+                    "color": "#ef4444",
+                    "width": 3.0,
+                    "points": [[35, 48], [40, 50], [45, 52], [50, 50]],
+                }
+            ]
+            + VALID_MARKERS,
+        )
+        self.assertNotEqual(blank, brushed)
+
+    def test_brush_clipped_off_land_does_not_paint_corner_paper(self):
+        """Sea/corner stroke should not tint paper corner after flatten."""
+        raw = render_map_question(
+            "turkiye_goller",
+            [
+                {
+                    "shape": "brush",
+                    "color": "#ff0000",
+                    "width": 5.0,
+                    "points": [[1, 1], [2, 2], [3, 1], [2, 3]],
+                }
+            ]
+            + VALID_MARKERS,
+        )
+        with Image.open(BytesIO(raw)) as image:
+            pixel = image.convert("RGBA").getpixel((2, 2))
+            self.assertGreater(pixel[0], 200)
+            self.assertGreater(pixel[1], 200)
+            self.assertGreater(pixel[2], 200)
 
     def test_circle_is_round_not_map_aspect_ellipse(self):
         image = Image.new("RGBA", (1600, 700), (0, 0, 0, 0))

@@ -207,6 +207,7 @@ class TopicSummaryCardSerializer(serializers.ModelSerializer):
     subjectName = serializers.CharField(source="topic.subject.name")
     topicName = serializers.CharField(source="topic.name")
     sortOrder = serializers.IntegerField(source="sort_order")
+    imageUrl = serializers.SerializerMethodField()
 
     class Meta:
         model = TopicSummaryCard
@@ -219,8 +220,18 @@ class TopicSummaryCardSerializer(serializers.ModelSerializer):
             "kind",
             "title",
             "body",
+            "imageUrl",
             "sortOrder",
         )
+
+    def get_imageUrl(self, obj: TopicSummaryCard) -> str | None:
+        request = self.context.get("request")
+        if not obj.image:
+            return None
+        url = obj.image.url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
 
 
 class ContentPackSerializer(serializers.Serializer):

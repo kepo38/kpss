@@ -449,7 +449,7 @@ class AuthService extends ChangeNotifier {
       await _persist();
       _syncPremiumSideEffects();
       notifyListeners();
-      _notifyUserScopedServices();
+      await _relayUserScopedServices();
       return true;
     } catch (e) {
       debugPrint('Auth exchange: $e');
@@ -477,7 +477,7 @@ class AuthService extends ChangeNotifier {
     await _clearLocal();
     notifyListeners();
     await ensureAnonymousSession();
-    _notifyUserScopedServices();
+    await _relayUserScopedServices();
   }
 
   Future<void> _persist() async {
@@ -509,10 +509,14 @@ class AuthService extends ChangeNotifier {
   }
 
   void _notifyUserScopedServices() {
-    unawaited(ContentBankService.instance.onUserSessionChanged());
-    unawaited(ManualQuestionService.instance.onUserSessionChanged());
-    unawaited(QuestionNoteService.instance.onUserSessionChanged());
-    unawaited(SummaryCardProgressService.instance.onUserSessionChanged());
-    unawaited(DailyMiniExamService.instance.onAuthSessionChanged());
+    unawaited(_relayUserScopedServices());
+  }
+
+  Future<void> _relayUserScopedServices() async {
+    await ContentBankService.instance.onUserSessionChanged();
+    await ManualQuestionService.instance.onUserSessionChanged();
+    await QuestionNoteService.instance.onUserSessionChanged();
+    await SummaryCardProgressService.instance.onUserSessionChanged();
+    await DailyMiniExamService.instance.onAuthSessionChanged();
   }
 }

@@ -89,19 +89,127 @@ class ContentBankService extends ChangeNotifier {
 
   String _scopedKey(String base) => '${base}_$_userScopeId';
 
+  String _scopedKeyFor(String base, String userId) => '${base}_$userId';
+
   /// Google / misafir oturumu değişince yanlış defteri verisini yeniden yükle.
   Future<void> onUserSessionChanged() async {
     if (!_loaded) {
       await initialize();
       return;
     }
+    final previous = _activeUserScopeId;
     final scope = _userScopeId;
-    if (_activeUserScopeId == scope) return;
+    if (previous == scope) return;
     _dropCachedWrongBodies();
     final prefs = await SharedPreferences.getInstance();
+    if (_shouldMigrateGuestWrongNotebook(previous, scope)) {
+      await _migrateWrongNotebookScope(
+        prefs,
+        fromUserId: previous!,
+        toUserId: scope,
+      );
+    }
     await _migrateLegacyWrongNotebookKeys(prefs);
     _loadUserWrongNotebookFromPrefs(prefs);
     notifyListeners();
+  }
+
+  bool _shouldMigrateGuestWrongNotebook(String? fromUserId, String toUserId) {
+    if (fromUserId == null || fromUserId.isEmpty || fromUserId == toUserId) {
+      return false;
+    }
+    // Yalnızca kalıcı (Google) hesaba geçerken misafir/anonim defteri taşı.
+    if (!AuthService.instance.hasPermanentAccount) return false;
+    return true;
+  }
+
+  Future<void> _migrateWrongNotebookScope(
+    SharedPreferences prefs, {
+    required String fromUserId,
+    required String toUserId,
+  }) async {
+    await _mergeStringListPref(
+      prefs,
+      fromKey: _scopedKeyFor(_kWrongQuestions, fromUserId),
+      toKey: _scopedKeyFor(_kWrongQuestions, toUserId),
+    );
+    await _mergeStringListPref(
+      prefs,
+      fromKey: _scopedKeyFor(_kStatLockedWrongQuestions, fromUserId),
+      toKey: _scopedKeyFor(_kStatLockedWrongQuestions, toUserId),
+    );
+    await _mergeStringMapPref(
+      prefs,
+      fromKey: _scopedKeyFor(_kWrongQuestionSelections, fromUserId),
+      toKey: _scopedKeyFor(_kWrongQuestionSelections, toUserId),
+    );
+    await _mergeStringMapPref(
+      prefs,
+      fromKey: _scopedKeyFor(_kWrongQuestionBodies, fromUserId),
+      toKey: _scopedKeyFor(_kWrongQuestionBodies, toUserId),
+    );
+  }
+
+  Future<void> _mergeStringListPref(
+    SharedPreferences prefs, {
+    required String fromKey,
+    required String toKey,
+  }) async {
+    final fromRaw = prefs.getString(fromKey);
+    if (fromRaw == null || fromRaw.isEmpty) return;
+    final merged = <String>{};
+    try {
+      final fromList = jsonDecode(fromRaw);
+      if (fromList is List) {
+        merged.addAll(fromList.map((e) => e.toString()));
+      }
+    } catch (_) {
+      return;
+    }
+    final toRaw = prefs.getString(toKey);
+    if (toRaw != null && toRaw.isNotEmpty) {
+      try {
+        final toList = jsonDecode(toRaw);
+        if (toList is List) {
+          merged.addAll(toList.map((e) => e.toString()));
+        }
+      } catch (_) {}
+    }
+    await prefs.setString(toKey, jsonEncode(merged.toList()));
+    await prefs.remove(fromKey);
+  }
+
+  Future<void> _mergeStringMapPref(
+    SharedPreferences prefs, {
+    required String fromKey,
+    required String toKey,
+  }) async {
+    final fromRaw = prefs.getString(fromKey);
+    if (fromRaw == null || fromRaw.isEmpty) return;
+    final merged = <String, dynamic>{};
+    try {
+      final fromMap = jsonDecode(fromRaw);
+      if (fromMap is Map) {
+        fromMap.forEach((k, v) {
+          merged[k.toString()] = v;
+        });
+      }
+    } catch (_) {
+      return;
+    }
+    final toRaw = prefs.getString(toKey);
+    if (toRaw != null && toRaw.isNotEmpty) {
+      try {
+        final toMap = jsonDecode(toRaw);
+        if (toMap is Map) {
+          toMap.forEach((k, v) {
+            merged.putIfAbsent(k.toString(), () => v);
+          });
+        }
+      } catch (_) {}
+    }
+    await prefs.setString(toKey, jsonEncode(merged));
+    await prefs.remove(fromKey);
   }
 
   void _dropCachedWrongBodies() {

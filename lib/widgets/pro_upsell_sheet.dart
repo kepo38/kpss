@@ -119,7 +119,7 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text('👑', style: TextStyle(fontSize: 36, height: 1)),
+                  const Text('👯', style: TextStyle(fontSize: 36, height: 1)),
                   const SizedBox(height: 10),
                   const Text(
                     'BENZER SORULAR',

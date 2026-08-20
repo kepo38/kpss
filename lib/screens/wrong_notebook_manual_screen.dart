@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/manual_question_model.dart';
+import '../services/kpss_preference_service.dart';
 import '../services/manual_question_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
+import '../widgets/wrong_notebook/wrong_notebook_header.dart';
 import '../widgets/wrong_notebook/wrong_notebook_manual_card.dart';
+import '../widgets/wrong_notebook/wrong_notebook_manual_meta_sheet.dart';
 import '../widgets/wrong_notebook/wrong_notebook_subject_filter.dart';
 import '../widgets/wrong_notebook/wrong_notebook_utils.dart';
 
@@ -26,6 +30,7 @@ class WrongNotebookManualScreen extends StatefulWidget {
 
 class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
   String? _subjectFilter;
+  bool _adding = false;
 
   List<(String subject, int count)> _subjectSummary(
     List<ManualQuestionModel> items,
@@ -58,6 +63,131 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
     }
     final keys = grouped.keys.toList()..sort();
     return {for (final k in keys) k: grouped[k]!};
+  }
+
+  Future<void> _addManualQuestion() async {
+    if (_adding) return;
+    try {
+      final source = await showModalBottomSheet<ImageSource>(
+        context: context,
+        useRootNavigator: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          final surface = AppTheme.surfaceCard(sheetContext);
+          final on = AppTheme.onPage(sheetContext);
+          final muted = AppTheme.mutedOnPage(sheetContext);
+          return Container(
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+              border: Border.all(color: AppTheme.hairline(sheetContext)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+                    child: Text(
+                      'Manuel soru ekle',
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: on,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.photo_camera_rounded,
+                      color: AppTheme.champagne,
+                    ),
+                    title: Text(
+                      'Kameradan çek',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: on,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Sorunun fotoğrafını çek',
+                      style: TextStyle(color: muted, fontSize: 12.5),
+                    ),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(ImageSource.camera),
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.photo_library_rounded,
+                      color: AppTheme.champagne,
+                    ),
+                    title: Text(
+                      'Galeriden seç',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: on,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Galerideki bir görseli kullan',
+                      style: TextStyle(color: muted, fontSize: 12.5),
+                    ),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(ImageSource.gallery),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      if (source == null || !mounted) return;
+
+      setState(() => _adding = true);
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source,
+        imageQuality: 86,
+        maxWidth: 1800,
+      );
+      if (picked == null || !mounted) return;
+
+      final form = await WrongNotebookManualMetaSheet.show(
+        context,
+        kpssType: KpssPreferenceService.instance.kpssType,
+      );
+      if (form == null || !mounted) return;
+
+      final saved = await ManualQuestionService.instance.addFromImage(
+        sourceFile: File(picked.path),
+        subject: form.$1,
+        topic: form.$2,
+        note: form.$3,
+      );
+      if (!mounted) return;
+      if (saved == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fotoğraf eklenemedi. Tekrar deneyin.')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Manuel soru deftere eklendi.')),
+      );
+    } on Exception catch (e) {
+      debugPrint('Manual question add failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('İzin verilmedi veya işlem iptal edildi.'),
+        ),
+      );
+    } finally {
+      if (mounted && _adding) setState(() => _adding = false);
+    }
   }
 
   Future<void> _confirmRemove(ManualQuestionModel item) async {
@@ -119,12 +249,16 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
                   child: Image.file(File(imagePath)),
                 ),
               ),
-              Positioned(
-                top: 28,
-                left: 16,
-                child: IconButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  icon: const Icon(Icons.close_rounded),
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: IconButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -191,161 +325,75 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
                 ],
               ),
             ),
-            child: all.isEmpty
-                ? _EmptyState()
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _HeroStrip(count: all.length, subjectCount: subjects.length),
-                      WrongNotebookSubjectFilter(
-                        subjects: subjects,
-                        totalCount: all.length,
-                        selectedSubject: _subjectFilter,
-                        minSubjectsToShow: 1,
-                        defaultAccent: WrongNotebookManualScreen.pinkDeep,
-                        onChanged: (value) =>
-                            setState(() => _subjectFilter = value),
-                      ),
-                      Expanded(
-                        child: filtered.isEmpty
-                            ? Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(28),
-                                  child: Text(
-                                    'Bu derste kitap sorusu yok.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: AppTheme.mutedOnPage(context),
-                                      fontWeight: FontWeight.w500,
-                                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                WrongNotebookAddQuestionAction(
+                  expanded: true,
+                  loading: _adding,
+                  onTap: _addManualQuestion,
+                ),
+                if (all.isEmpty)
+                  const Expanded(child: _EmptyState())
+                else ...[
+                  WrongNotebookSubjectFilter(
+                    subjects: subjects,
+                    totalCount: all.length,
+                    selectedSubject: _subjectFilter,
+                    minSubjectsToShow: 1,
+                    defaultAccent: WrongNotebookManualScreen.pinkDeep,
+                    onChanged: (value) =>
+                        setState(() => _subjectFilter = value),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Text(
+                                'Bu derste kitap sorusu yok.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: AppTheme.mutedOnPage(context),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                            children: [
+                              for (final entry in grouped.entries) ...[
+                                _SubjectHeader(
+                                  subject: entry.key,
+                                  count: entry.value.length,
+                                  accent: wrongNotebookSubjectAccent(
+                                    entry.key,
                                   ),
                                 ),
-                              )
-                            : ListView(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 4, 16, 20),
-                                children: [
-                                  for (final entry in grouped.entries) ...[
-                                    _SubjectHeader(
-                                      subject: entry.key,
-                                      count: entry.value.length,
-                                      accent: wrongNotebookSubjectAccent(
-                                        entry.key,
-                                      ),
-                                    ),
-                                    for (final item in entry.value)
-                                      WrongNotebookManualCard(
-                                        item: item,
-                                        onTapImage: () =>
-                                            _openImage(item.imagePath),
-                                        onRemove: () => _confirmRemove(item),
-                                        onStatusChanged: (status) {
-                                          unawaited(
-                                            ManualQuestionService.instance
-                                                .markStatus(item.id, status),
-                                          );
-                                        },
-                                      ),
-                                  ],
-                                ],
-                              ),
-                      ),
-                    ],
+                                for (final item in entry.value)
+                                  WrongNotebookManualCard(
+                                    item: item,
+                                    onTapImage: () =>
+                                        _openImage(item.imagePath),
+                                    onRemove: () => _confirmRemove(item),
+                                    onStatusChanged: (status) {
+                                      unawaited(
+                                        ManualQuestionService.instance
+                                            .markStatus(item.id, status),
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ],
+                          ),
                   ),
+                ],
+              ],
+            ),
           ),
         );
       },
-    );
-  }
-}
-
-class _HeroStrip extends StatelessWidget {
-  final int count;
-  final int subjectCount;
-
-  const _HeroStrip({
-    required this.count,
-    required this.subjectCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final on = AppTheme.onPage(context);
-    final muted = AppTheme.mutedOnPage(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              WrongNotebookManualScreen.pinkLight.withValues(alpha: 0.42),
-              Colors.white.withValues(alpha: 0.88),
-            ],
-          ),
-          border: Border.all(
-            color: WrongNotebookManualScreen.pink.withValues(alpha: 0.38),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: WrongNotebookManualScreen.pinkDeep.withValues(alpha: 0.08),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: WrongNotebookManualScreen.pinkDeep.withValues(alpha: 0.12),
-                border: Border.all(
-                  color: WrongNotebookManualScreen.pink.withValues(alpha: 0.35),
-                ),
-              ),
-              child: const Icon(
-                Icons.photo_library_rounded,
-                color: WrongNotebookManualScreen.pinkDeep,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$count soru kayıtlı',
-                    style: TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: on,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$subjectCount derste dağılıyor',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: muted,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -368,10 +416,10 @@ class _SubjectHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 4,
-            height: 18,
+            width: 8,
+            height: 8,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(99),
+              shape: BoxShape.circle,
               color: accent,
             ),
           ),
@@ -381,7 +429,7 @@ class _SubjectHeader extends StatelessWidget {
               subject,
               style: TextStyle(
                 fontFamily: 'serif',
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.onPage(context),
               ),
@@ -390,15 +438,15 @@ class _SubjectHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(99),
-              color: WrongNotebookManualScreen.pinkDeep.withValues(alpha: 0.12),
             ),
             child: Text(
               '$count',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
-                color: WrongNotebookManualScreen.pinkDeep,
+                color: accent,
               ),
             ),
           ),
@@ -409,6 +457,8 @@ class _SubjectHeader extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
   @override
   Widget build(BuildContext context) {
     final muted = AppTheme.mutedOnPage(context);
@@ -424,9 +474,11 @@ class _EmptyState extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: WrongNotebookManualScreen.pinkLight.withValues(alpha: 0.45),
+                color:
+                    WrongNotebookManualScreen.pinkLight.withValues(alpha: 0.45),
                 border: Border.all(
-                  color: WrongNotebookManualScreen.pink.withValues(alpha: 0.35),
+                  color:
+                      WrongNotebookManualScreen.pink.withValues(alpha: 0.35),
                 ),
               ),
               child: const Icon(
@@ -448,8 +500,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Yanlış Defterim ekranındaki SORU EKLE ile '
-              'fotoğraf çekip burada toplayabilirsin.',
+              'Üstteki SORU EKLE ile fotoğraf çekip burada toplayabilirsin.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13.5,
