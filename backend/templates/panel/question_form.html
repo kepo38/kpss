@@ -254,13 +254,13 @@
 </div>
 
 <script src="{% static 'panel/paste-image.js' %}"></script>
-<script src="{% static 'panel/rich-format.js' %}"></script>
+<script src="{% static 'panel/rich-format.js' %}?v=2"></script>
 {{ map_markers_json|json_script:"map-markers-data" }}
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=1"></script>
       <script src="{% static 'panel/map-question-editor.js' %}?v=16"></script>
-<script src="{% static 'panel/option-table.js' %}?v=5"></script>
-<script src="{% static 'panel/question-preview.js' %}?v=5"></script>
+<script src="{% static 'panel/option-table.js' %}?v=6"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=6"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {

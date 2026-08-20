@@ -17,7 +17,7 @@ class OptionColumnLayout {
         .trim();
     if (raw.isEmpty || !raw.contains(':')) return null;
     final chunks = raw.split(_labeledSplit);
-    if (chunks.length < 3) return null;
+    if (chunks.length < 2) return null;
     final keys = <String>[];
     final vals = <String>[];
     for (final chunk in chunks) {
@@ -41,14 +41,14 @@ class OptionColumnLayout {
         .trim();
     if (raw.isEmpty) return null;
     var parts = _parts(raw, _dashSplit);
-    if (parts.length < 3) parts = _parts(raw, _pipeSplit);
-    if (parts.length < 3) {
+    if (parts.length < 2) parts = _parts(raw, _pipeSplit);
+    if (parts.length < 2) {
       final tight = _parts(raw, _tightDashSplit);
-      if (tight.length >= 3 && tight.every((p) => !p.contains(' '))) {
+      if (tight.length >= 2 && tight.every((p) => !p.contains(' '))) {
         parts = tight;
       }
     }
-    if (parts.length < 3) return null;
+    if (parts.length < 2) return null;
     return parts;
   }
 
@@ -71,7 +71,7 @@ class OptionColumnLayout {
     var bestN = 0;
     var best = 0;
     counts.forEach((n, seen) {
-      if (n >= 3 && seen > best) {
+      if (n >= 2 && seen > best) {
         best = seen;
         bestN = n;
       }
@@ -89,7 +89,8 @@ class OptionColumnLayout {
         .trim();
   }
 
-  static List<String>? headersFromOptions(Iterable<String> options, int columns) {
+  static List<String>? headersFromOptions(
+      Iterable<String> options, int columns) {
     for (final option in options) {
       final row = labeledRow(option);
       if (row != null && row.keys.length == columns) return row.keys;
@@ -102,13 +103,16 @@ class OptionColumnLayout {
     Iterable<String> options,
     int columns,
   ) {
-    return headersFromStem(stem, columns) ??
-        headersFromOptions(options, columns);
+    final found =
+        headersFromStem(stem, columns) ?? headersFromOptions(options, columns);
+    if (found != null) return found;
+    if (columns == 2) return const ['Olay', 'Sonuç'];
+    return null;
   }
 
   static List<String>? headersFromStem(String stem, int columns) {
     const romans = ['I', 'II', 'III', 'IV', 'V'];
-    if (columns < 3 || columns > romans.length) return null;
+    if (columns < 2 || columns > romans.length) return null;
     final marked = _markerHeaders(stem, columns);
     if (marked != null) return marked;
     final labels = <String>[];
@@ -161,7 +165,8 @@ class OptionColumnLayout {
           .where((e) => e.isNotEmpty)
           .toList();
       if (words.length != columns) continue;
-      if (words.every((w) => w.length <= 24 && RegExp(r'^[A-ZÇĞİÖŞÜÂÎÛ]').hasMatch(w))) {
+      if (words.every(
+          (w) => w.length <= 24 && RegExp(r'^[A-ZÇĞİÖŞÜÂÎÛ]').hasMatch(w))) {
         return words;
       }
     }

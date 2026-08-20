@@ -216,9 +216,8 @@ class _QuizScreenState extends State<QuizScreen>
     super.dispose();
   }
 
-  Duration get _elapsedNow => _timerPaused
-      ? _frozenElapsed
-      : DateTime.now().difference(_startedAt);
+  Duration get _elapsedNow =>
+      _timerPaused ? _frozenElapsed : DateTime.now().difference(_startedAt);
 
   void _syncDisplayFromElapsed(Duration elapsed) {
     if (_isCountdown) {
@@ -263,7 +262,7 @@ class _QuizScreenState extends State<QuizScreen>
         ContentBankService.instance.isInWrongNotebook(_currentQuestion.id);
     _showWrongNotebookHint = inNotebook;
     if (!inNotebook) return;
-    _wrongNotebookHintTimer = Timer(const Duration(seconds: 5), () {
+    _wrongNotebookHintTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       setState(() => _showWrongNotebookHint = false);
     });
@@ -383,9 +382,8 @@ class _QuizScreenState extends State<QuizScreen>
   QuestionModel get _currentQuestion => widget.questions[_currentIndex];
 
   String get _resultHeading {
-    final topic = widget.questions.isEmpty
-        ? ''
-        : widget.questions.first.konuAdi.trim();
+    final topic =
+        widget.questions.isEmpty ? '' : widget.questions.first.konuAdi.trim();
     if (topic.isNotEmpty) return topic;
     return widget.title.trim().isEmpty ? 'Test Sonucu' : widget.title;
   }
@@ -515,9 +513,8 @@ class _QuizScreenState extends State<QuizScreen>
 
     if (widget.dailyMiniRankingMode &&
         !DailyMiniExamService.instance.rankingLocked) {
-      final answeredCount = _answers
-          .where((a) => a != null && a.isNotEmpty)
-          .length;
+      final answeredCount =
+          _answers.where((a) => a != null && a.isNotEmpty).length;
       final result = await showDialog<_DailyMiniExitChoice>(
         context: context,
         builder: (context) => AlertDialog(
@@ -541,7 +538,8 @@ class _QuizScreenState extends State<QuizScreen>
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, _DailyMiniExitChoice.stay),
+              onPressed: () =>
+                  Navigator.pop(context, _DailyMiniExitChoice.stay),
               style: TextButton.styleFrom(
                 foregroundColor: AppTheme.champagne,
               ),
@@ -831,7 +829,8 @@ class _QuizScreenState extends State<QuizScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Tamam', style: TextStyle(color: AppTheme.neonEdge)),
+              child: const Text('Tamam',
+                  style: TextStyle(color: AppTheme.neonEdge)),
             ),
           ],
         ),
@@ -846,8 +845,7 @@ class _QuizScreenState extends State<QuizScreen>
           content: Text(
             QuestionErrorReportService.testsRequiredWarning(
               completed: completed,
-              required:
-                  QuestionErrorReportService.instance.minTestsRequiredNow,
+              required: QuestionErrorReportService.instance.minTestsRequiredNow,
             ),
           ),
         ),
@@ -1124,54 +1122,54 @@ class _QuizScreenState extends State<QuizScreen>
               title: SizedBox(
                 width: double.infinity,
                 child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _resultHeading,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
-                      color: AppTheme.champagneLight,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _emotionalFeedback(result),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      height: 1.35,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ResultRewardChip(
-                          icon: Icons.bolt_rounded,
-                          label: '+$gainedXp XP',
-                          color: AppTheme.neonEdge,
-                        ),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _resultHeading,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                        color: AppTheme.champagneLight,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _ResultRewardChip(
-                          icon: Icons.local_fire_department_rounded,
-                          label: '$streak gün seri',
-                          color: const Color(0xFFFB923C),
-                        ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _emotionalFeedback(result),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                        color: Colors.white,
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ResultRewardChip(
+                            icon: Icons.bolt_rounded,
+                            label: '+$gainedXp XP',
+                            color: AppTheme.neonEdge,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ResultRewardChip(
+                            icon: Icons.local_fire_department_rounded,
+                            label: '$streak gün seri',
+                            color: const Color(0xFFFB923C),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -1549,71 +1547,71 @@ class _QuizScreenState extends State<QuizScreen>
                       : null,
                 ),
                 if (!widget.fromWrongNotebook) ...[
-                SizedBox(
-                  height: 40,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: widget.questions.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 6),
-                    itemBuilder: (context, i) {
-                      final selectedAnswer =
-                          i == _currentIndex ? _selectedAnswer : _answers[i];
-                      final answered = selectedAnswer != null;
-                      final answeredCorrectly = answered &&
-                          selectedAnswer == widget.questions[i].dogruCevap;
-                      final active = i == _currentIndex;
-                      final previouslySolved = !answered &&
-                          ContentBankService.instance
-                              .isQuestionSolved(widget.questions[i].id);
-                      final chip = _questionChipColors(
-                        answered: answered,
-                        answeredCorrectly: answeredCorrectly,
-                        previouslySolved: previouslySolved,
-                        active: active,
-                      );
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: widget.questions.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, i) {
+                        final selectedAnswer =
+                            i == _currentIndex ? _selectedAnswer : _answers[i];
+                        final answered = selectedAnswer != null;
+                        final answeredCorrectly = answered &&
+                            selectedAnswer == widget.questions[i].dogruCevap;
+                        final active = i == _currentIndex;
+                        final previouslySolved = !answered &&
+                            ContentBankService.instance
+                                .isQuestionSolved(widget.questions[i].id);
+                        final chip = _questionChipColors(
+                          answered: answered,
+                          answeredCorrectly: answeredCorrectly,
+                          previouslySolved: previouslySolved,
+                          active: active,
+                        );
 
-                      return GestureDetector(
-                        onTap: () => _goTo(i),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          width: 32,
-                          height: 32,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: chip.fill,
-                            border: Border.all(
-                              color: chip.border,
-                              width: active ? 2 : 1,
+                        return GestureDetector(
+                          onTap: () => _goTo(i),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            width: 32,
+                            height: 32,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: chip.fill,
+                              border: Border.all(
+                                color: chip.border,
+                                width: active ? 2 : 1,
+                              ),
+                            ),
+                            child: Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: chip.text,
+                              ),
                             ),
                           ),
-                          child: Text(
-                            '${i + 1}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: chip.text,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                  child: Wrap(
-                    spacing: 14,
-                    runSpacing: 6,
-                    children: [
-                      _legendDot(Colors.white, 'Cevaplanmadı'),
-                      _legendDot(_correctGreen, 'Doğru'),
-                      _legendDot(_answeredWrongBurgundy, 'Yanlış'),
-                      _legendDot(_previousBlue, 'Daha önce'),
-                    ],
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                    child: Wrap(
+                      spacing: 14,
+                      runSpacing: 6,
+                      children: [
+                        _legendDot(Colors.white, 'Cevaplanmadı'),
+                        _legendDot(_correctGreen, 'Doğru'),
+                        _legendDot(_answeredWrongBurgundy, 'Yanlış'),
+                        _legendDot(_previousBlue, 'Daha önce'),
+                      ],
+                    ),
                   ),
-                ),
                 ],
                 const SizedBox(height: 8),
                 Expanded(
@@ -1636,7 +1634,8 @@ class _QuizScreenState extends State<QuizScreen>
                               const SizedBox(height: 16),
                             ],
                             QuestionStemPanel(
-                              child: (_currentQuestion.imageUrl ?? '').isNotEmpty
+                              child: (_currentQuestion.imageUrl ?? '')
+                                      .isNotEmpty
                                   ? QuestionStemContent(
                                       stem: _currentQuestion.soruMetni,
                                       imageUrl: _currentQuestion.imageUrl,
@@ -1665,8 +1664,7 @@ class _QuizScreenState extends State<QuizScreen>
                               ..._matchingOptionHeaders(_currentQuestion),
                               ..._currentQuestion.siklar.entries.map(
                                 (entry) {
-                                  final selected =
-                                      _selectedAnswer == entry.key;
+                                  final selected = _selectedAnswer == entry.key;
                                   final revealed = _selectedAnswer != null;
                                   final isCorrectKey =
                                       entry.key == _currentQuestion.dogruCevap;
@@ -1779,8 +1777,8 @@ class _QuizScreenState extends State<QuizScreen>
             QuizWrongNotebookBanner(visible: _showWrongNotebookHint),
             if (_noteCardOpen)
               QuizQuestionNoteCard(
-                initialText: QuestionNoteService.instance
-                    .noteFor(_currentQuestion.id),
+                initialText:
+                    QuestionNoteService.instance.noteFor(_currentQuestion.id),
                 onSave: (text) => unawaited(_saveQuestionNote(text)),
                 onClose: () => setState(() => _noteCardOpen = false),
               ),

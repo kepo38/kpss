@@ -164,6 +164,41 @@
     return src;
   }
 
+  /** `** metin **` / `__ metin __` gibi boşluklu işaretleri sıkılaştırır. */
+  function tightenMarkdownMarkers(text) {
+    var src = collapseNestedMarks(text);
+    src = src.replace(/\*\*\s+([\s\S]+?)\s+\*\*/g, function (_, inner) {
+      return "**" + String(inner).trim() + "**";
+    });
+    src = src.replace(/__\s+([\s\S]+?)\s+__/g, function (_, inner) {
+      return "__" + String(inner).trim() + "__";
+    });
+    src = src.replace(/(?<!\*)\*\s+([\s\S]+?)\s+\*(?!\*)/g, function (_, inner) {
+      return "*" + String(inner).trim() + "*";
+    });
+    src = src.replace(/\*\*([\s\S]+?)\s+\*\*/g, function (_, inner) {
+      return "**" + String(inner).trim() + "**";
+    });
+    src = src.replace(/__([\s\S]+?)\s+__/g, function (_, inner) {
+      return "__" + String(inner).trim() + "__";
+    });
+    return src;
+  }
+
+  /**
+   * Flutter FormattedText.normalizeMarkup ile uyumlu ön işleme:
+   * CRLF, ZWSP, tam genişlik ＊/＿, boşluklu markdown işaretleri.
+   */
+  function normalizeMarkup(text) {
+    var src = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/＊/g, "*")
+      .replace(/＿/g, "_");
+    return tightenMarkdownMarkers(src);
+  }
+
   function mdMarks(text) {
     var html = escapeHtml(collapseNestedMarks(text))
       .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong class=\"preview-bold\"><em>$1</em></strong></u>")
@@ -268,7 +303,8 @@
   /** Metin içinde markdown + inline/display LaTeX. */
   function richInline(text) {
     if (!text) return "";
-    var src = normalizeExamArrows(normalizeLatex(String(text)));
+    var src = normalizeMarkup(String(text));
+    src = normalizeExamArrows(normalizeLatex(src));
     var holders = [];
     src = src.replace(
       /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g,
@@ -327,11 +363,8 @@
   function documentHtml(text, options) {
     options = options || {};
     var examMode = !!options.examMode;
-    var src = restoreCollapsedBreaks(
-      normalizeLatex(String(text || ""))
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n")
-    );
+    var src = normalizeMarkup(String(text || ""));
+    src = restoreCollapsedBreaks(normalizeLatex(src));
     if (!src.trim()) return "";
 
     var lines = src.split("\n");
@@ -455,6 +488,7 @@
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
     normalizeExamArrows: normalizeExamArrows,
+    normalizeMarkup: normalizeMarkup,
     restoreCollapsedBreaks: restoreCollapsedBreaks,
     wrapBareLatex: wrapBareLatex,
     forceDisplaySizeAll: forceDisplaySizeAll,

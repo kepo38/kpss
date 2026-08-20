@@ -253,6 +253,10 @@ class WrongNotebookAddQuestionAction extends StatelessWidget {
   final bool loading;
   final bool expanded;
 
+  static const _pink = Color(0xFFE879A9);
+  static const _pinkDeep = Color(0xFFDB4F86);
+  static const _pinkLight = Color(0xFFFBCFE8);
+
   const WrongNotebookAddQuestionAction({
     super.key,
     required this.onTap,
@@ -271,75 +275,133 @@ class WrongNotebookAddQuestionAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final button = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: loading ? null : onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          width: expanded ? double.infinity : null,
-          padding: EdgeInsets.fromLTRB(
-            expanded ? 14 : 10,
-            expanded ? 12 : 5,
-            expanded ? 12 : 8,
-            expanded ? 12 : 5,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            color: AppTheme.champagne.withValues(alpha: 0.08),
-            border: Border.all(
-              color: AppTheme.champagne.withValues(alpha: 0.38),
+    final radius = BorderRadius.circular(expanded ? 18 : 14);
+    final button = Semantics(
+      button: true,
+      enabled: !loading && onTap != null,
+      label: loading ? 'Soru ekleniyor' : 'Soru ekle',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: loading ? null : onTap,
+          borderRadius: radius,
+          child: Ink(
+            padding: EdgeInsets.fromLTRB(
+              expanded ? 16 : 10,
+              expanded ? 9 : 5,
+              expanded ? 10 : 8,
+              expanded ? 9 : 5,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.champagne.withValues(alpha: 0.12),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              color:
+                  expanded ? null : AppTheme.champagne.withValues(alpha: 0.08),
+              gradient: expanded
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF4B2237),
+                        Color(0xFF301C2A),
+                        Color(0xFF1D1820),
+                      ],
+                    )
+                  : null,
+              border: Border.all(
+                color: expanded
+                    ? _pink.withValues(alpha: 0.52)
+                    : AppTheme.champagne.withValues(alpha: 0.38),
               ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
-            mainAxisAlignment: expanded
-                ? MainAxisAlignment.center
-                : MainAxisAlignment.start,
-            children: [
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppTheme.champagneLight,
-                    AppTheme.champagne,
-                    Color(0xFFB8925A),
-                  ],
-                ).createShader(bounds),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('SORU', style: _labelStyle),
-                    Text('EKLE', style: _labelStyle),
-                  ],
+              boxShadow: [
+                BoxShadow(
+                  color: expanded
+                      ? _pinkDeep.withValues(alpha: 0.25)
+                      : AppTheme.champagne.withValues(alpha: 0.12),
+                  blurRadius: expanded ? 14 : 6,
+                  offset: Offset(0, expanded ? 5 : 2),
                 ),
+              ],
+            ),
+            child: ExcludeSemantics(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: expanded
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                children: [
+                  if (expanded)
+                    const Text(
+                      'SORU EKLE',
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                        letterSpacing: 1.25,
+                        color: Color(0xFFFFE5F0),
+                      ),
+                    )
+                  else
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppTheme.champagneLight,
+                          AppTheme.champagne,
+                          Color(0xFFB8925A),
+                        ],
+                      ).createShader(bounds),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('SORU', style: _labelStyle),
+                          Text('EKLE', style: _labelStyle),
+                        ],
+                      ),
+                    ),
+                  SizedBox(width: expanded ? 12 : 7),
+                  if (loading)
+                    SizedBox(
+                      width: expanded ? 32 : 20,
+                      height: expanded ? 32 : 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: expanded ? _pinkLight : AppTheme.champagne,
+                      ),
+                    )
+                  else if (expanded)
+                    Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [_pink, _pinkDeep],
+                        ),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.add_a_photo_rounded,
+                        size: 17,
+                        color: Colors.white,
+                      ),
+                    )
+                  else
+                    const Icon(
+                      Icons.add_a_photo_outlined,
+                      size: 21,
+                      color: AppTheme.champagne,
+                    ),
+                ],
               ),
-              SizedBox(width: expanded ? 10 : 7),
-              if (loading)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppTheme.champagne,
-                  ),
-                )
-              else
-                Icon(
-                  Icons.add_a_photo_outlined,
-                  size: expanded ? 24 : 21,
-                  color: AppTheme.champagne,
-                ),
-            ],
+            ),
           ),
         ),
       ),
@@ -347,8 +409,14 @@ class WrongNotebookAddQuestionAction extends StatelessWidget {
 
     if (expanded) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: button,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+        child: Align(
+          alignment: Alignment.center,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 176),
+            child: button,
+          ),
+        ),
       );
     }
     return Padding(

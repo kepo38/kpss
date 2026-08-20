@@ -35,7 +35,7 @@
     var text = stripMarkup(raw);
     if (!text || text.indexOf(":") === -1) return null;
     var chunks = text.split(/\s*[,;]\s*(?=[^,:]{1,24}:)/);
-    if (chunks.length < 3) return null;
+    if (chunks.length < 2) return null;
     var keys = [];
     var vals = [];
     var i;
@@ -57,11 +57,11 @@
     var text = stripMarkup(raw);
     if (!text) return null;
     var parts = partsOf(text, DASH_SPLIT);
-    if (parts.length < 3) parts = partsOf(text, PIPE_SPLIT);
-    if (parts.length < 3) {
+    if (parts.length < 2) parts = partsOf(text, PIPE_SPLIT);
+    if (parts.length < 2) {
       var tight = partsOf(text, TIGHT_DASH);
       if (
-        tight.length >= 3 &&
+        tight.length >= 2 &&
         tight.every(function (p) {
           return p.indexOf(" ") === -1;
         })
@@ -69,7 +69,7 @@
         parts = tight;
       }
     }
-    if (parts.length < 3) return null;
+    if (parts.length < 2) return null;
     return parts;
   }
 
@@ -87,7 +87,7 @@
     Object.keys(counts).forEach(function (key) {
       var n = Number(key);
       var seen = counts[n];
-      if (n >= 3 && seen > best) {
+      if (n >= 2 && seen > best) {
         best = seen;
         bestN = n;
       }
@@ -169,7 +169,7 @@
   }
 
   function headersFromStem(stem, columns) {
-    if (columns < 3 || columns > ROMANS.length) return null;
+    if (columns < 2 || columns > ROMANS.length) return null;
     var marked = markerHeaders(stem, columns);
     if (marked) return marked;
     var src = visibleStem(stem);
@@ -184,6 +184,15 @@
       labels.push(m[2]);
     }
     return labels;
+  }
+
+
+  function headersFor(stem, texts, columns) {
+    var found =
+      headersFromStem(stem, columns) || headersFromOptions(texts, columns);
+    if (found) return found;
+    if (columns === 2) return ["Olay", "Sonuç"];
+    return null;
   }
 
   function escapeText(text) {
@@ -295,9 +304,7 @@
     }
     var colN = alignedCount(nonempty);
     var parsed = colN
-      ? headersFromStem(opts.stem || "", colN) ||
-        headersFromOptions(nonempty, colN) ||
-        []
+      ? headersFor(opts.stem || "", nonempty, colN) || []
       : [];
     var fromForm = colN ? readFormHeaders(opts.formHead, colN) : [];
     var labels = fromForm.some(Boolean) ? fromForm : parsed;
@@ -367,6 +374,7 @@
     cellsOf: splitCells,
     alignedCount: alignedCount,
     headersFromStem: headersFromStem,
+    headersFor: headersFor,
     visibleStem: visibleStem,
     apply: apply,
   };

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// Normal testte defterdeki soru açılınca 5 sn’lik bilgi.
+/// Normal testte defterdeki soru açılınca 3 sn ortada premium toast.
 class QuizWrongNotebookBanner extends StatelessWidget {
   final bool visible;
 
@@ -17,51 +17,105 @@ class QuizWrongNotebookBanner extends StatelessWidget {
       child: AnimatedOpacity(
         opacity: visible ? 1 : 0,
         duration: const Duration(milliseconds: 280),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                color: const Color(0xFF1C2A42).withValues(alpha: 0.94),
-                border: Border.all(
-                  color: AppTheme.champagne.withValues(alpha: 0.7),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.menu_book_rounded,
-                      size: 18,
-                      color: AppTheme.champagneLight,
+        curve: Curves.easeOutCubic,
+        child: AnimatedScale(
+          scale: visible ? 1 : 0.94,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          child: Align(
+            alignment: Alignment.center,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF152238).withValues(alpha: 0.96),
+                        AppTheme.ink.withValues(alpha: 0.94),
+                      ],
                     ),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'BU SORU YANLIŞ DEFTERİMDE KAYITLI',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.45,
-                          color: Colors.white,
-                          height: 1.25,
-                        ),
+                    border: Border.all(
+                      color: AppTheme.champagne.withValues(alpha: 0.72),
+                      width: 1.15,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.32),
+                        blurRadius: 22,
+                        offset: const Offset(0, 10),
                       ),
+                      BoxShadow(
+                        color: AppTheme.champagne.withValues(alpha: 0.12),
+                        blurRadius: 18,
+                        spreadRadius: -2,
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.champagne.withValues(alpha: 0.16),
+                            border: Border.all(
+                              color: AppTheme.champagne.withValues(alpha: 0.55),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.menu_book_rounded,
+                            size: 18,
+                            color: AppTheme.champagneLight,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'YANLIŞ DEFTERİMDE',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.7,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                        ),
+                        const Text(
+                          'KAYITLI',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: AppTheme.champagneLight,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Daha önce yanlış işaretledin',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.15,
+                            color: Colors.white.withValues(alpha: 0.72),
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

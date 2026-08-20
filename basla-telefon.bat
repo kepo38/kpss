@@ -1,7 +1,40 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
 title KPSS Odak — Telefon (otomatik guncelle)
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
+if errorlevel 1 (
+  echo [HATA] Proje klasorune girilemedi: %~dp0
+  pause
+  exit /b 1
+)
+
+if exist "C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin\java.exe" (
+  set "JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot"
+  set "PATH=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin;%PATH%"
+)
+if exist "C:\flutter\flutter\bin\flutter.bat" (
+  set "PATH=C:\flutter\flutter\bin;%PATH%"
+)
+if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
+  set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;%PATH%"
+)
+
+set "GRADLE_USER_HOME=%~d0\.gradle"
+if not exist "%GRADLE_USER_HOME%\" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
+if not exist "%GRADLE_USER_HOME%\" (
+  echo [HATA] Gradle onbellegi olusturulamadi: %GRADLE_USER_HOME%
+  pause
+  exit /b 1
+)
+
+set "PUB_CACHE=%~dp0.pub-cache"
+if not exist "%PUB_CACHE%\" mkdir "%PUB_CACHE%" >nul 2>&1
+if not exist "%PUB_CACHE%\" (
+  echo [HATA] Pub onbellegi olusturulamadi: %PUB_CACHE%
+  pause
+  exit /b 1
+)
 
 echo.
 echo  ============================================================

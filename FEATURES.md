@@ -42,9 +42,10 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
 | **Header / Akıllı Tekrar** | **Akıllı Tekrar** sağ üst pill; **Kitaptaki** butonu iki satır (KİTAPTAKİ / YANLIŞLARIM), dar; istatistik alt yazısı konu testlerine göre | `wrong_notebook_header.dart`, `wrong_questions_screen.dart` |
-| **Kitaptaki yanlışlarım** | Pembe giriş → ayrı ekran; **SORU EKLE** (foto) bu ekranın üstünde | `wrong_notebook_manual_screen.dart`, `WrongNotebookAddQuestionAction` |
+| **Kitaptaki yanlışlarım** | Pembe giriş → ayrı ekran; üstte kompakt premium **SORU EKLE** foto butonu; boş ekran başlığı **Yanlış Sorularını Takip Et!** | `wrong_notebook_manual_screen.dart`, `WrongNotebookAddQuestionAction` |
 | **Manuel foto soru** | Kamera/galeri; meta sheet **YANLIŞ SORULARIM**; ders→konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini (galeriye düşmez); durum: Yeni / Tekrar Et / Çözüldü | `manual_question_model.dart`, `manual_question_service.dart`, `wrong_notebook_manual_meta_sheet.dart` |
 | **Defter inceleme** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış**; işaretli şık; **Not Al** + «KAYITLI KALIR»; normal testte «Daha önce» | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart` |
+| **Defter kayıtlı toast** | Konu testi + günlük denemede ortada premium toast (~3 sn): «YANLIŞ DEFTERİMDE / KAYITLI»; **Akıllı Tekrar**’da yok (`suppressWrongNotebookHint`) | `quiz_wrong_notebook_banner.dart`, `quiz_screen.dart`, `smart_review_screen.dart` |
 | **Balon tetik** | Google + bitmiş konu testi + **defterde ≥1 yanlış**; Günün Denemesi / yarım test tetiklemez | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
 | **Benzer sorular** | Embedding sonucu: kaynak soru ve kök metni ≥%88 benzer kopyalar elenir | `embeddings.py`, `test_embeddings.py`, `QuestionFetchService` |
 
@@ -62,8 +63,8 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Eşleştirme şıkları** | Panel: `option-table.js` + CSS (değerler sütun, etiket başlık, dikey çizgi yok). Mobil: `option_column_layout.dart` | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
-| **Yapıştırma** | Eşleştirme oku `->` / `\\rightarrow` → `→` | `rich-format.js` |
+| **Eşleştirme şıkları** | Panel + mobil: 2+ sütun (ör. Olay / Sonuç); başlık yoksa 2-sütunda `Olay`/`Sonuç`. Değerler sütun, etiket başlık, dikey çizgi yok. | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
+| **Yapıştırma / biçim** | Panel paste: ZWSP + tam genişlik `＊`/`＿` → `*`/`_` (Flutter `normalizeMarkup` ile aynı); eşleştirme oku `->` / `\\rightarrow` → `→` | `math-render.js`, `rich-format.js`, `formatted_text.dart` |
 
 #### Panel — menü, promosyon, kullanıcılar
 
@@ -86,14 +87,27 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **PNG zemin** | Açık kâğıt zemin (koyu temada Romen okunur) | `map_question_renderer.py` |
 | **Mükerrer** | `[HARITA]` ve `(Not: …)` yok sayılır; aynı şıklar + benzer kök | `question_fingerprint.py` |
 
-#### Geliştirici araçları / build
+#### Mobil — Akıllı Tekrar (hizalama)
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **uygulamayi-yukle.bat** | Release APK derle → eski paketi **uninstall** → install → aç; uzun derlemede net mesaj; JDK/Flutter/adb PATH | `uygulamayi-yukle.bat` |
+| **Seçim mantığı** | «Nasıl çalışır?» ile uyum: (1) yanlış defteri — vadesi gelen önce, (2) başarı &lt;%60 zayıf konular, (3) oturum sonrası SRS (doğru ertelenir, yanlış yarın). **Müfredattan rastgele doldurma yok** | `smart_review_service.dart`, `SmartReviewLogic` |
+| **Ders filtresi** | Tümü + müfredat ders chipleri; seçime göre yanlış/zayıf havuz yeniden kurulur | `smart_review_screen.dart` |
+| **CTA** | Buton metni **AKILLI TEKRARI BAŞLAT**; defter kayıtlı toast bastırılır | `smart_review_screen.dart` |
+| **Test** | Seçim / vade / havuz boyutu birim testleri | `test/smart_review_service_test.dart` |
+
+#### Geliştirici araçları / build / proje kökü
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Asıl kök** | Stabil çalışma kökü **`D:\HEDEFKAMU`** (ASCII). `D:\ozel\HEDEFKAMU` kopya; C: yedek — yeni iş C’ye yazılmaz | — |
+| **uygulamayi-yukle.bat** | Release APK → uninstall → install → aç; `GRADLE_USER_HOME=%~d0\.gradle`, `PUB_CACHE=%~dp0.pub-cache` (C/D farklı kök L8 hatasını önler); JDK 17 PATH | `uygulamayi-yukle.bat` |
+| **basla-telefon.bat** | Debug hot-reload; aynı D: Gradle/Pub cache + JDK bootstrap | `basla-telefon.bat` |
+| **Gradle** | `android.overridePathCheck=true`; `kotlin.incremental=false` (Kotlin incremental C↔D kök çakışması) | `android/gradle.properties` |
 | **Play paket boyutu** | Release ABI: `armeabi-v7a` + `arm64-v8a`; native lib sıkıştırma; hedef ≤80 MB | `android/app/build.gradle.kts` |
-| **Anayasa kuralı** | Dosya ayrımı (harita / option-table / önizleme ayrı dosya); büyük dosyaya yalnızca bağlama | `.cursor/rules/kpss-akademi.mdc` |
-| **Testler** | Hata bildirimi, embedding benzerlik filtresi, anonim auth, watermark, kampanya, exam text parity | `test_error_report.py`, `test_embeddings.py`, `test_anonymous_auth.py`, `*_test.dart` |
+| **Panel JS bölümleri** | Yapıştırma `rich-format.js`; render `math-render.js`; önizleme `question-preview.js`; şık tablo `option-table.js`; harita ayrı dosyalar — cache `?v=` | `backend/static/panel/`, `base.html`, `question_form.html` |
+| **Anayasa kuralı** | Dosya ayrımı; disk dolunca kaynak truncate yok; API yalnızca `ApiConfig` | `.cursor/rules/kpss-akademi.mdc` |
+| **Testler** | Hata bildirimi, embedding, anonim auth, watermark, kampanya, exam text, **smart_review** | `test_*.py`, `*_test.dart`, `smart_review_service_test.dart` |
 
 ### 19 Ağustos 2026 — işlenen davranış (önceki commit)
 
@@ -103,6 +117,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Yanlış defteri balonu** | Yalnızca **Google hesabı** + **en az 1 konu testi bitmiş** + **defterde en az 1 yanlış** varken; panel açıkken. Günün Denemesi / yarım test tetiklemez. Sol yaslı; YANLIŞ→DEFTERİM 3D; teal çerçeve | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
 | **Yanlış defteri UI** | Header alt başlığı («X soru · Y ders») yok; en çok yanlış derste kırmızı adet rozeti; kart: konu chip sol üst, kalp+sil sağ üst; metin «İstediğiniz zaman silebilirsiniz»; karttan onaylı silme; silince alt SnackBar yok, ortada şampanya çerçeveli kutu (~3 sn): onay ikonu, «Defterden kaldırıldı», soru önizlemesi | `wrong_questions_screen.dart`, `wrong_notebook_*` |
 | **Defter soru notu** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış** (onaysız deftere dönüş); testte işaretlediği şık işaretli; normal testte aynı soru işaretsiz + mavi «Daha önce». Sağda seviye; solda **Not Al** + «KAYITLI KALIR». Bitmiş testte yanlış kalan sorular sonradan doğru cevaplansa istatistik güncellenmez | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart`, `content_bank_service.dart` |
+| **Defter kayıtlı toast** | Ortada premium toast, 3 sn; konu testleri + günlük deneme; **Akıllı Tekrar**’da bastırılır | `quiz_wrong_notebook_banner.dart`, `quiz_screen.dart`, `smart_review_screen.dart` |
 | **BENZER upsell** | Başlık **BENZER SORULAR**; üstte 👯; alt metin «Yanlışlarını daha iyi analiz et» | `pro_upsell_sheet.dart` |
 | **Misafir yanlış defteri** | Yalnızca **soru metni** hafif buzlu; kalp, sil, BENZER açık. Karta dokununca Google ister; **bağlanınca defter Google hesabına aktarılır**, buz kalkar, soru açılır | `wrong_notebook_guest_frost.dart`, `content_bank_service.dart` (scope migrate), `question_note_service.dart`, `manual_question_service.dart`, `wrong_questions_screen.dart` |
 | **Puan Hesaplama** | Gelişim’den kaldırıldı. Deneme sekmesi AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (eski «Deneme» + `+` yok; FAB «Deneme Ekle» durur) | `analytics_hub_screen.dart`, `statistics_screen.dart`, `puan_hesaplama_button.dart` |
@@ -226,8 +241,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Akıllı tekrar** | Günlük 15 soruluk aralıklı tekrar seti (yanlışlar → vadesi gelen → zayıf konular) | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
-| **Yanlış defteri** | Konu testlerinden yanlışlar; **kullanıcı başına yerel** (SharedPreferences scope); karttan onaylı **kaldır**; karta tıklayınca inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte işaretsiz + «Daha önce»; bitmiş test yanlışları sonradan doğru cevaplansa istatistik değişmez. **Akıllı Tekrar** sağ üstte; **Kitaptaki Yanlışlarım** (iki satır, dar pembe buton) ile manuel foto sorular ayrı ekranda; foto ekleme o ekranda **SORU EKLE**. **Manuel foto soru:** kamera/galeri; **YANLIŞ SORULARIM** formunda ders/konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini; durum **Yeni / Tekrar Et / Çözüldü**. **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; **Google sonrası defter aktarılır, buz kalkar** | `lib/screens/wrong_questions_screen.dart`, `lib/screens/wrong_notebook_manual_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/widgets/quiz_take_note_button.dart`, `lib/services/question_note_service.dart`, `lib/services/content_bank_service.dart`, `lib/services/manual_question_service.dart` | Ücretsiz; misafir metin hafif buzlu |
+| **Akıllı tekrar** | Ders filtresi; set yalnızca yanlış defteri + %60 altı konular (müfredat doldurma yok); buton «AKILLI TEKRARI BAŞLAT»; SRS oturum sonrası | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; **kullanıcı başına yerel** (SharedPreferences scope); karttan onaylı **kaldır**; karta tıklayınca inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte işaretsiz + «Daha önce»; konu/günlük denemede ortada 3 sn premium «defterde kayıtlı» toast (**Akıllı Tekrar**’da yok). Bitmiş test yanlışları sonradan doğru cevaplansa istatistik değişmez. **Akıllı Tekrar** sağ üstte; **Kitaptaki Yanlışlarım** (iki satır, dar pembe buton) ile manuel foto sorular ayrı ekranda; foto ekleme o ekranda **SORU EKLE**. **Manuel foto soru:** kamera/galeri; **YANLIŞ SORULARIM** formunda ders/konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini; durum **Yeni / Tekrar Et / Çözüldü**. **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; **Google sonrası defter aktarılır, buz kalkar** | `lib/screens/wrong_questions_screen.dart`, `lib/screens/wrong_notebook_manual_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/widgets/quiz_take_note_button.dart`, `lib/widgets/quiz_wrong_notebook_banner.dart`, `lib/services/question_note_service.dart`, `lib/services/content_bank_service.dart`, `lib/services/manual_question_service.dart` | Ücretsiz; misafir metin hafif buzlu |
 | **Benzer sorular** | Embedding tabanlı benzer soru seti (API); kaynak soru ve %88+ aynı kök metinli kopyalar hariç | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar`, `backend/content/embeddings.py` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; şampanya etiket «Yanlış defteriyle deneme oluşturabilirsin»; ana CTA «Derslerden test çöz» | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
@@ -597,10 +612,12 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 Bu sürümde öne çıkanlar (ayrıntı: [20 Ağustos 2026](#20-ağustos-2026--işlenen-ekleme-ve-değişiklikler-bu-commit)):
 
-- **Özet konu kartları:** panel CRUD + pack/catalog `summaryCards` + konu detayında kaydırma destesi + Favorilerim sekmeleri
-- **Yanlış defteri:** Kitaptaki yanlışlarım (manuel foto), defter notu, benzer soru kök kopya filtresi
-- **Panel:** menü grupları, promosyon CRUD, kullanıcı toplu/misafir temizleme, harita doğru/ışın/il adı, eşleştirme şık tablosu
-- **Destek mailto** cihaz/sürüm gövdesi; **reklamsız kampanya** yalnızca banner; **uygulamayi-yukle.bat** uninstall→install
+- **Özet konu kartları:** panel stüdyo + görsel (`0042`) + swipe deste + Favorilerim sekmeleri
+- **Yanlış defteri:** Kitaptaki yanlışlarım (kompakt **SORU EKLE**, boş başlık «Yanlış Sorularını Takip Et!»); misafir→Google defter aktarımı; ortada 3 sn «defterde kayıtlı» toast (Akıllı Tekrar’da yok)
+- **Akıllı Tekrar:** ders filtresi; yalnız yanlış + zayıf konular; **AKILLI TEKRARI BAŞLAT**
+- **Panel:** özet kart stüdyosu; duyuru big-picture önizleme; harita Romen A± + Akıllı Fırça; şık tablosu **2+ sütun**; yapıştırma ZWSP/`＊` normalize
+- **Build:** asıl kök `D:\HEDEFKAMU`; bat’larda D: Gradle/Pub cache; `overridePathCheck` + `kotlin.incremental=false`
+- **Destek mailto**; reklamsız kampanya yalnızca banner; `uygulamayi-yukle.bat` uninstall→install
 
 ### Sürüm notu (2026-08-18)
 

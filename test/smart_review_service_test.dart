@@ -75,4 +75,33 @@ void main() {
   test('daily target constant is 15', () {
     expect(SmartReviewService.dailyTarget, 15);
   });
+
+  test('selection never invents ids outside wrongs+weak pool', () {
+    final pool = {'w1', 'w2', 'a1'};
+    final selected = SmartReviewLogic.selectQuestionIds(
+      wrongQuestionIds: ['w1', 'w2'],
+      weakTopicQuestionIds: ['a1'],
+      schedules: const {},
+      now: now,
+      target: 15,
+      daySeed: 99,
+    );
+    expect(selected.length, 3);
+    expect(selected.toSet().difference(pool), isEmpty);
+  });
+
+  // Havuz hedeften küçükse select hedefe pad etmez; mevcut boyutta durur.
+  test('selection stops at available pool size when pool < target', () {
+    final selected = SmartReviewLogic.selectQuestionIds(
+      wrongQuestionIds: ['w1'],
+      weakTopicQuestionIds: ['a1', 'a2'],
+      schedules: const {},
+      now: now,
+      target: SmartReviewService.dailyTarget,
+      daySeed: 1,
+    );
+    expect(selected.length, lessThan(SmartReviewService.dailyTarget));
+    expect(selected.length, 3);
+    expect(selected.toSet(), {'w1', 'a1', 'a2'});
+  });
 }

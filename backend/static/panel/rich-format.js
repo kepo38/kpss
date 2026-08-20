@@ -17,12 +17,22 @@
         });
     }
     if (window.KpssMathRender && window.KpssMathRender.normalizeExamArrows) {
-      return window.KpssMathRender.normalizeExamArrows(src);
+      src = window.KpssMathRender.normalizeExamArrows(src);
+    } else {
+      src = src
+        .replace(/\$\\(?:long)?rightarrow\$/g, "→")
+        .replace(/\$\\to\$/g, "→")
+        .replace(/[ \t]*->[ \t]*/g, " → ");
     }
-    return src
-      .replace(/\$\\(?:long)?rightarrow\$/g, "→")
-      .replace(/\$\\to\$/g, "→")
-      .replace(/[ \t]*->[ \t]*/g, " → ");
+    if (window.KpssMathRender && window.KpssMathRender.normalizeMarkup) {
+      return window.KpssMathRender.normalizeMarkup(src);
+    }
+    return String(src || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/＊/g, "*")
+      .replace(/＿/g, "_");
   }
 
   function styleOf(node) {

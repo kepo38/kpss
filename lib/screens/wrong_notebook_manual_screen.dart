@@ -49,9 +49,7 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
     List<ManualQuestionModel> items,
   ) {
     if (_subjectFilter == null) return items;
-    return items
-        .where((item) => item.subjectLabel == _subjectFilter)
-        .toList();
+    return items.where((item) => item.subjectLabel == _subjectFilter).toList();
   }
 
   Map<String, List<ManualQuestionModel>> _groupBySubject(
@@ -477,8 +475,7 @@ class _EmptyState extends StatelessWidget {
                 color:
                     WrongNotebookManualScreen.pinkLight.withValues(alpha: 0.45),
                 border: Border.all(
-                  color:
-                      WrongNotebookManualScreen.pink.withValues(alpha: 0.35),
+                  color: WrongNotebookManualScreen.pink.withValues(alpha: 0.35),
                 ),
               ),
               child: const Icon(
@@ -489,7 +486,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Henüz kitap sorusu eklemedin',
+              'Yanlış Sorularını Takip Et!',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'serif',

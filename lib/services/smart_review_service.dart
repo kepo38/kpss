@@ -10,8 +10,8 @@ import '../widgets/countdown_widget.dart';
 import 'content_bank_service.dart';
 import 'question_fetch_service.dart';
 
-/// Günlük 15 soruluk spaced-repetition seti.
-/// Öncelik: yanlış defteri → vadesi gelen → düşük başarı konuları.
+/// Günlük spaced-repetition seti.
+/// Öncelik: yanlış defteri (vadesi gelen önce) → %60 altı zayıf konular → SRS erteleme (oturum sonrası).
 class SmartReviewService extends ChangeNotifier {
   SmartReviewService._();
   static final SmartReviewService instance = SmartReviewService._();
@@ -23,6 +23,7 @@ class SmartReviewService extends ChangeNotifier {
   final Map<String, ReviewSchedule> _schedules = {};
   String? _packDay;
   String? _packType;
+  String? _packSubjectId;
   List<String> _packIds = [];
   bool _packCompleted = false;
   bool _initialized = false;
@@ -41,41 +42,57 @@ class SmartReviewService extends ChangeNotifier {
   }
 
   /// Bugünün setini üretir / önbellekten döner.
-  Future<SmartReviewPack> ensureTodayPack(KpssType type) async {
+  /// [subjectId] null ise tüm dersler; aksi halde yalnızca o ders.
+  Future<SmartReviewPack> ensureTodayPack(
+    KpssType type, {
+    String? subjectId,
+  }) async {
     final now = DateTime.now();
     final day = SmartReviewLogic.dayKey(now);
     if (_packDay == day &&
         _packType == type.name &&
+        _packSubjectId == subjectId &&
         _packIds.isNotEmpty) {
-      return _currentPack(type);
+      return _currentPack(type, subjectId: subjectId);
     }
 
     final bank = ContentBankService.instance;
-    final weakTopics = _weakTopics(type, bank);
+    var wrongIds = bank.wrongQuestionIds.toList();
+    if (subjectId != null) {
+      final subject = KpssCurriculum.findSubject(type, subjectId);
+      if (subject != null) {
+        final bodies = bank.questionsByIds(wrongIds);
+        wrongIds = bodies
+            .where((q) => q.dersAdi == subject.name)
+            .map((q) => q.id)
+            .toList();
+      } else {
+        wrongIds = [];
+      }
+    }
+
+    final weakTopics = _weakTopics(type, bank, subjectId: subjectId);
+    // Adımlar 1–2: yanlışlar (vade önce) → zayıf konular. Adım 3 (SRS) scheduleAfter*.
     final selected = SmartReviewLogic.selectQuestionIds(
-      wrongQuestionIds: bank.wrongQuestionIds.toList(),
+      wrongQuestionIds: wrongIds,
       weakTopicQuestionIds: [
         for (final w in weakTopics) ...w.questionIds,
       ],
       schedules: Map.of(_schedules),
       now: now,
       target: dailyTarget,
-      daySeed: day.hashCode ^ type.index,
+      daySeed: day.hashCode ^ type.index ^ (subjectId?.hashCode ?? 0),
     );
 
-    // Yalnızca yanlış / zayıf konu materyali varsa set oluştur;
-    // eksik kalırsa aynı havuzdan doldur.
-    final filled = selected.isEmpty
-        ? const <String>[]
-        : _fillFromBank(type, bank, selected);
-
+    // Yalnızca yanlış defteri + zayıf konu havuzu; müfredattan doldurma yok.
     _packDay = day;
     _packType = type.name;
-    _packIds = filled;
+    _packSubjectId = subjectId;
+    _packIds = selected;
     _packCompleted = false;
     await _persist();
     notifyListeners();
-    return _currentPack(type);
+    return _currentPack(type, subjectId: subjectId);
   }
 
   Future<List<QuestionModel>> fetchQuestionsForTodayPack(KpssType type) {
@@ -104,10 +121,20 @@ class SmartReviewService extends ChangeNotifier {
     return 'Yanlış + düşük başarı · günlük $dailyTarget soru';
   }
 
-  bool hasMaterial(KpssType type) {
+  bool hasMaterial(KpssType type, {String? subjectId}) {
     final bank = ContentBankService.instance;
-    if (bank.wrongQuestionCount > 0) return true;
-    return _weakTopics(type, bank).isNotEmpty;
+    var wrongIds = bank.wrongQuestionIds.toList();
+    if (subjectId != null) {
+      final subject = KpssCurriculum.findSubject(type, subjectId);
+      if (subject == null) return false;
+      final bodies = bank.questionsByIds(wrongIds);
+      wrongIds = bodies
+          .where((q) => q.dersAdi == subject.name)
+          .map((q) => q.id)
+          .toList();
+    }
+    if (wrongIds.isNotEmpty) return true;
+    return _weakTopics(type, bank, subjectId: subjectId).isNotEmpty;
   }
 
   /// Oturum sonrası SRS aralıklarını güncelle + günlük paketi tamamla.
@@ -142,20 +169,48 @@ class SmartReviewService extends ChangeNotifier {
     notifyListeners();
   }
 
-  SmartReviewPack _currentPack(KpssType type) {
+  SmartReviewPack _currentPack(KpssType type, {String? subjectId}) {
+    final bank = ContentBankService.instance;
+    var wrongIds = bank.wrongQuestionIds.toList();
+    if (subjectId != null) {
+      final subject = KpssCurriculum.findSubject(type, subjectId);
+      if (subject != null) {
+        final bodies = bank.questionsByIds(wrongIds);
+        wrongIds = bodies
+            .where((q) => q.dersAdi == subject.name)
+            .map((q) => q.id)
+            .toList();
+      } else {
+        wrongIds = [];
+      }
+    }
+    final weak = _weakTopics(type, bank, subjectId: subjectId);
     return SmartReviewPack(
       dayKey: _packDay ?? SmartReviewLogic.dayKey(DateTime.now()),
       kpssType: type,
+      subjectId: subjectId ?? _packSubjectId,
       questionIds: List.unmodifiable(_packIds),
       completed: _packCompleted,
-      wrongCount: ContentBankService.instance.wrongQuestionCount,
-      weakTopicCount: _weakTopics(type, ContentBankService.instance).length,
+      wrongCount: wrongIds.length,
+      weakTopicCount: weak.length,
     );
   }
 
-  List<_WeakTopic> _weakTopics(KpssType type, ContentBankService bank) {
+  List<_WeakTopic> _weakTopics(
+    KpssType type,
+    ContentBankService bank, {
+    String? subjectId,
+  }) {
+    final subjects = <KpssSubject>[];
+    if (subjectId != null) {
+      final subject = KpssCurriculum.findSubject(type, subjectId);
+      if (subject != null) subjects.add(subject);
+    } else {
+      subjects.addAll(KpssCurriculum.subjectsFor(type));
+    }
+
     final out = <_WeakTopic>[];
-    for (final subject in KpssCurriculum.subjectsFor(type)) {
+    for (final subject in subjects) {
       for (final topic in subject.topics) {
         final stats = bank.topicStats(topic.id);
         if (stats.attemptCount <= 0) continue;
@@ -175,47 +230,19 @@ class SmartReviewService extends ChangeNotifier {
     return out;
   }
 
-  List<String> _fillFromBank(
-    KpssType type,
-    ContentBankService bank,
-    List<String> selected,
-  ) {
-    if (selected.length >= dailyTarget) {
-      return selected.take(dailyTarget).toList();
-    }
-    final seen = selected.toSet();
-    final extras = <String>[];
-    if (bank.hasFullQuestionBank) {
-      for (final subject in KpssCurriculum.subjectsFor(type)) {
-        for (final topic in subject.topics) {
-          for (final q in bank.questionsForTopic(type, topic.id)) {
-            if (seen.add(q.id)) extras.add(q.id);
-            if (selected.length + extras.length >= dailyTarget) break;
-          }
-          if (selected.length + extras.length >= dailyTarget) break;
-        }
-        if (selected.length + extras.length >= dailyTarget) break;
-      }
-    } else {
-      for (final id in bank.catalogQuestionIds) {
-        if (seen.add(id)) extras.add(id);
-        if (selected.length + extras.length >= dailyTarget) break;
-      }
-    }
-    return [...selected, ...extras].take(dailyTarget).toList();
-  }
-
   void _load(String? raw) {
     _schedules.clear();
     _packIds = [];
     _packDay = null;
     _packType = null;
+    _packSubjectId = null;
     _packCompleted = false;
     if (raw == null || raw.isEmpty) return;
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
       _packDay = map['packDay'] as String?;
       _packType = map['packType'] as String?;
+      _packSubjectId = map['packSubjectId'] as String?;
       _packCompleted = map['packCompleted'] as bool? ?? false;
       _packIds = (map['packIds'] as List<dynamic>? ?? const [])
           .map((e) => e.toString())
@@ -232,6 +259,7 @@ class SmartReviewService extends ChangeNotifier {
     } catch (_) {
       _schedules.clear();
       _packIds = [];
+      _packSubjectId = null;
     }
   }
 
@@ -240,6 +268,7 @@ class SmartReviewService extends ChangeNotifier {
     final payload = jsonEncode({
       'packDay': _packDay,
       'packType': _packType,
+      'packSubjectId': _packSubjectId,
       'packCompleted': _packCompleted,
       'packIds': _packIds,
       'schedules': {
@@ -259,6 +288,7 @@ class SmartReviewService extends ChangeNotifier {
     _packIds = [];
     _packDay = null;
     _packType = null;
+    _packSubjectId = null;
     _packCompleted = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(storageKey);
@@ -269,6 +299,7 @@ class SmartReviewService extends ChangeNotifier {
 class SmartReviewPack {
   final String dayKey;
   final KpssType kpssType;
+  final String? subjectId;
   final List<String> questionIds;
   final bool completed;
   final int wrongCount;
@@ -277,6 +308,7 @@ class SmartReviewPack {
   const SmartReviewPack({
     required this.dayKey,
     required this.kpssType,
+    this.subjectId,
     required this.questionIds,
     required this.completed,
     required this.wrongCount,
@@ -346,6 +378,7 @@ abstract final class SmartReviewLogic {
   }
 
   /// Yanlışlar (vadesi gelen önce) → zayıf konu soruları → hedefe kadar.
+  /// Adım 3 (SRS erteleme) [scheduleAfterWrong] / [scheduleAfterCorrect] ile oturum sonrası.
   static List<String> selectQuestionIds({
     required List<String> wrongQuestionIds,
     required List<String> weakTopicQuestionIds,

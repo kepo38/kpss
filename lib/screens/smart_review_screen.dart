@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/kpss_curriculum.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
 import '../services/smart_review_service.dart';
@@ -12,7 +13,7 @@ import '../widgets/study_empty_cta.dart';
 import 'quiz_screen.dart';
 import 'study_hub_screen.dart';
 
-/// Günlük 15 soruluk akıllı tekrar (spaced repetition).
+/// Günlük akıllı tekrar (spaced repetition) — yanlış defteri + zayıf konular.
 class SmartReviewScreen extends StatefulWidget {
   final KpssType kpssType;
 
@@ -27,6 +28,7 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
   SmartReviewPack? _pack;
   bool _loading = true;
   bool _starting = false;
+  String? _subjectId;
 
   @override
   void initState() {
@@ -36,12 +38,21 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final pack = await _service.ensureTodayPack(widget.kpssType);
+    final pack = await _service.ensureTodayPack(
+      widget.kpssType,
+      subjectId: _subjectId,
+    );
     if (!mounted) return;
     setState(() {
       _pack = pack;
       _loading = false;
     });
+  }
+
+  void _selectSubject(String? subjectId) {
+    if (_subjectId == subjectId) return;
+    setState(() => _subjectId = subjectId);
+    _load();
   }
 
   Future<void> _start() async {
@@ -67,6 +78,7 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
         builder: (_) => QuizScreen(
           title: 'Akıllı Tekrar',
           questions: questions,
+          suppressWrongNotebookHint: true,
         ),
       ),
     );
@@ -82,9 +94,16 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
     await _load();
   }
 
+  String? get _selectedSubjectName {
+    final id = _subjectId;
+    if (id == null) return null;
+    return KpssCurriculum.findSubject(widget.kpssType, id)?.name;
+  }
+
   @override
   Widget build(BuildContext context) {
     final pack = _pack;
+    final subjectName = _selectedSubjectName;
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
@@ -114,14 +133,27 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                 child: CircularProgressIndicator(color: AppTheme.champagne),
               )
             : pack == null || pack.isEmpty
-                ? StudyEmptyCta(
-                    icon: Icons.auto_awesome_outlined,
-                    title: 'Henüz tekrar seti yok',
-                    message:
-                        'Yanlış yaptığın veya düşük başarı gösterdiğin '
-                        'konulardan günlük ${SmartReviewService.dailyTarget} '
-                        'soruluk set oluşur. Önce bir konu testi çöz.',
-                    kpssType: widget.kpssType,
+                ? ListView(
+                    padding: const EdgeInsets.fromLTRB(22, 12, 22, 40),
+                    children: [
+                      _SubjectFilterRow(
+                        kpssType: widget.kpssType,
+                        selectedId: _subjectId,
+                        onSelected: _selectSubject,
+                      ),
+                      const SizedBox(height: 16),
+                      StudyEmptyCta(
+                        icon: Icons.auto_awesome_outlined,
+                        title: 'Henüz tekrar seti yok',
+                        message: subjectName != null
+                            ? '$subjectName için yanlış veya düşük başarı '
+                                'konusu yok. Başka ders seç veya önce konu '
+                                'testi çöz.'
+                            : 'Yanlış yaptığın veya düşük başarı gösterdiğin '
+                                'konulardan set oluşur. Önce bir konu testi çöz.',
+                        kpssType: widget.kpssType,
+                      ),
+                    ],
                   )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(22, 12, 22, 40),
@@ -148,8 +180,12 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                             Text(
                               pack.completed
                                   ? 'Bugünkü tekrarı tamamladın. Yarın yeni set hazır.'
-                                  : 'Yanlış defteri ve düşük başarı konularından '
-                                      'seçilmiş ${pack.size} soru.',
+                                  : subjectName != null
+                                      ? '$subjectName · yanlış defteri ve düşük '
+                                          'başarı konularından seçilmiş '
+                                          '${pack.size} soru.'
+                                      : 'Yanlış defteri ve düşük başarı konularından '
+                                          'seçilmiş ${pack.size} soru.',
                               style: TextStyle(
                                 height: 1.4,
                                 color: Colors.white.withValues(alpha: 0.72),
@@ -202,6 +238,12 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                         text:
                             'Doğru bildiklerin ertelenir; yanlışlar yarın tekrar gelir.',
                       ),
+                      const SizedBox(height: 18),
+                      _SubjectFilterRow(
+                        kpssType: widget.kpssType,
+                        selectedId: _subjectId,
+                        onSelected: _selectSubject,
+                      ),
                       const SizedBox(height: 24),
                       ScaleButton(
                         onPressed: pack.completed || _starting ? null : _start,
@@ -233,7 +275,7 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                                 ? 'Bugün tamamlandı'
                                 : _starting
                                     ? 'Hazırlanıyor…'
-                                    : 'Tekrara başla · ${pack.size} soru',
+                                    : 'AKILLI TEKRARI BAŞLAT',
                           ),
                         ),
                       ),
@@ -258,6 +300,99 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                       ),
                     ],
                   ),
+      ),
+    );
+  }
+}
+
+class _SubjectFilterRow extends StatelessWidget {
+  final KpssType kpssType;
+  final String? selectedId;
+  final ValueChanged<String?> onSelected;
+
+  const _SubjectFilterRow({
+    required this.kpssType,
+    required this.selectedId,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subjects = KpssCurriculum.subjectsFor(kpssType);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Ders seç',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            color: AppTheme.slate.withValues(alpha: 0.85),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _SubjectChip(
+              label: 'Tümü',
+              selected: selectedId == null,
+              onTap: () => onSelected(null),
+            ),
+            for (final subject in subjects)
+              _SubjectChip(
+                label: subject.name,
+                selected: selectedId == subject.id,
+                onTap: () => onSelected(subject.id),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SubjectChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SubjectChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: selected ? AppTheme.champagne : Colors.transparent,
+            border: Border.all(
+              color: selected
+                  ? AppTheme.champagne
+                  : AppTheme.champagne.withValues(alpha: 0.45),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: selected ? AppTheme.ink : AppTheme.onPage(context),
+            ),
+          ),
+        ),
       ),
     );
   }

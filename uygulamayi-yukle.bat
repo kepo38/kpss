@@ -83,7 +83,7 @@ set "ADB="
 
 if exist "C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin\java.exe" (
   set "JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot"
-  set "PATH=%JAVA_HOME%\bin;%PATH%"
+  set "PATH=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin;%PATH%"
 )
 if exist "C:\flutter\flutter\bin\flutter.bat" (
   set "PATH=C:\flutter\flutter\bin;%PATH%"
@@ -91,7 +91,19 @@ if exist "C:\flutter\flutter\bin\flutter.bat" (
 if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
   set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;%PATH%"
 )
-if exist "D:\.gradle" set "GRADLE_USER_HOME=D:\.gradle"
+set "GRADLE_USER_HOME=%~d0\.gradle"
+if not exist "%GRADLE_USER_HOME%\" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
+if not exist "%GRADLE_USER_HOME%\" (
+  echo [HATA] Gradle onbellegi olusturulamadi: %GRADLE_USER_HOME%
+  goto :fail
+)
+
+set "PUB_CACHE=%~dp0.pub-cache"
+if not exist "%PUB_CACHE%\" mkdir "%PUB_CACHE%" >nul 2>&1
+if not exist "%PUB_CACHE%\" (
+  echo [HATA] Pub onbellegi olusturulamadi: %PUB_CACHE%
+  goto :fail
+)
 
 echo.
 echo  ============================================================
