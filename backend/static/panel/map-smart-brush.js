@@ -366,23 +366,30 @@
             }
           }
         });
-        // Land mask
-        tctx.globalCompositeOperation = "destination-in";
-        tctx.fillStyle = "#fff";
-        (provinces || []).forEach(function (province) {
-          (province.polygons || []).forEach(function (ring) {
-            if (!ring.length) return;
-            tctx.beginPath();
-            ring.forEach(function (point, index) {
-              var px = (point[0] / 100) * canvasW;
-              var py = (point[1] / 100) * canvasH;
-              if (index === 0) tctx.moveTo(px, py);
-              else tctx.lineTo(px, py);
+        // Land mask — tüm illerin birleşimi (destination-in ile tek seferde)
+        if (provinces && provinces.length) {
+          var mask = document.createElement("canvas");
+          mask.width = canvasW;
+          mask.height = canvasH;
+          var mctx = mask.getContext("2d");
+          mctx.fillStyle = "#fff";
+          provinces.forEach(function (province) {
+            (province.polygons || []).forEach(function (ring) {
+              if (!ring.length) return;
+              mctx.beginPath();
+              ring.forEach(function (point, index) {
+                var px = (point[0] / 100) * canvasW;
+                var py = (point[1] / 100) * canvasH;
+                if (index === 0) mctx.moveTo(px, py);
+                else mctx.lineTo(px, py);
+              });
+              mctx.closePath();
+              mctx.fill();
             });
-            tctx.closePath();
-            tctx.fill();
           });
-        });
+          tctx.globalCompositeOperation = "destination-in";
+          tctx.drawImage(mask, 0, 0);
+        }
         ctx.drawImage(tmp, 0, 0);
       },
     };

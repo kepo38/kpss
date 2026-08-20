@@ -1,0 +1,84 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">
+  Günün mini denemesi haftalık/aylık sıralaması: toplam doğru, eşitlikte toplam süre.
+  1. → 3 gün, 2. → 2 gün, 3. → 1 gün Premium.
+</p>
+
+<form class="form" method="post" style="max-width:720px;margin-bottom:28px;">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="save">
+  <label class="check">
+    <input type="checkbox" name="weekly_enabled" {% if config.weekly_enabled %}checked{% endif %}>
+    Haftalık ödül aktif
+  </label>
+  <label class="check">
+    <input type="checkbox" name="monthly_enabled" {% if config.monthly_enabled %}checked{% endif %}>
+    Aylık ödül aktif
+  </label>
+  <label class="check">
+    <input type="checkbox" name="rewards_visible" {% if config.rewards_visible %}checked{% endif %}>
+    ÖDÜL ekranı uygulamada görünsün
+  </label>
+  <button class="btn btn-primary" type="submit">Kaydet</button>
+</form>
+
+<h2 style="font-size:1.1rem;margin-bottom:12px;">Dönem finalize (manuel)</h2>
+<p class="media-hint">
+  Bitmiş önceki hafta/ay için ödül dağıtır.
+  Otomatik: <code>finalize-mini-oduller.bat</code> veya
+  <code>python manage.py finalize_daily_mini_ranking --auto</code>
+  (günde bir, örn. 00:15 — idempotent).
+</p>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px;">
+  {% for kt in kpss_types %}
+  <form method="post" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="finalize_weekly_{{ kt }}">
+    <button class="btn btn-secondary" type="submit">Haftalık · {{ kt }}</button>
+  </form>
+  <form method="post" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="finalize_monthly_{{ kt }}">
+    <button class="btn btn-secondary" type="submit">Aylık · {{ kt }}</button>
+  </form>
+  {% endfor %}
+</div>
+
+<h2 style="font-size:1.1rem;margin-bottom:12px;">Son kazananlar</h2>
+{% if winners %}
+<table class="table" style="width:100%;max-width:960px;">
+  <thead>
+    <tr>
+      <th>Dönem</th>
+      <th>KPSS</th>
+      <th>#</th>
+      <th>Kullanıcı</th>
+      <th>Doğru</th>
+      <th>Süre</th>
+      <th>Premium</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for w in winners %}
+    <tr>
+      <td>{{ w.period_start|date:"d.m.Y" }} – {{ w.period_end|date:"d.m.Y" }} ({{ w.get_period_kind_display }})</td>
+      <td>{{ w.kpss_type }}</td>
+      <td>{{ w.rank }}</td>
+      <td>{{ w.display_name|default:w.email_prefix }}{{ w.email_rest }}</td>
+      <td>{{ w.total_correct }}</td>
+      <td>{{ w.total_duration_seconds }} sn</td>
+      <td>{{ w.premium_days }} gün</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="media-hint">Henüz finalize edilmiş ödül yok.</p>
+{% endif %}
+{% endblock %}

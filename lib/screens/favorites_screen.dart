@@ -11,6 +11,7 @@ import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/study_empty_cta.dart';
+import '../widgets/topic_summary_swipe_deck.dart';
 import 'quiz_screen.dart';
 
 /// Favori sorular + özet konu kartları.
@@ -89,6 +90,11 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         ),
       ),
     );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openSummaryCard(TopicSummaryCardModel card) async {
+    await SummaryCardFace.showViewer(context, card);
     if (mounted) setState(() {});
   }
 
@@ -278,6 +284,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                                 return _SummaryFavoriteTile(
                                   card: card,
                                   isWeak: progress.isWeak(card.id),
+                                  onOpen: () => _openSummaryCard(card),
                                   onRemove: () async {
                                     if (_cardFilter == 'weak') {
                                       await progress.removeWeak(card.id);
@@ -346,11 +353,13 @@ class _FilterChip extends StatelessWidget {
 class _SummaryFavoriteTile extends StatelessWidget {
   final TopicSummaryCardModel card;
   final bool isWeak;
+  final VoidCallback onOpen;
   final VoidCallback onRemove;
 
   const _SummaryFavoriteTile({
     required this.card,
     required this.isWeak,
+    required this.onOpen,
     required this.onRemove,
   });
 
@@ -367,63 +376,68 @@ class _SummaryFavoriteTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      card.kindLabel,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.champagne,
-                      ),
-                    ),
-                    if (isWeak) ...[
-                      const SizedBox(width: 8),
+            child: InkWell(
+              onTap: onOpen,
+              borderRadius: BorderRadius.circular(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
                       Text(
-                        'Tekrar Et',
-                        style: TextStyle(
+                        card.kindLabel,
+                        style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFFF87171).withValues(alpha: 0.9),
+                          color: AppTheme.champagne,
                         ),
                       ),
+                      if (isWeak) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          'Tekrar Et',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color:
+                                const Color(0xFFF87171).withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  card.title,
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.onPage(context),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  card.body,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.35,
-                    color: AppTheme.mutedOnPage(context),
+                  const SizedBox(height: 4),
+                  Text(
+                    card.title,
+                    style: TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.onPage(context),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${card.subjectName} · ${card.topicName}',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: AppTheme.mutedOnPage(context)
-                        .withValues(alpha: 0.85),
+                  const SizedBox(height: 4),
+                  Text(
+                    card.body,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: AppTheme.mutedOnPage(context),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    '${card.subjectName} · ${card.topicName}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppTheme.mutedOnPage(context)
+                          .withValues(alpha: 0.85),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           IconButton(

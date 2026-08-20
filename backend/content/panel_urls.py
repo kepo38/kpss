@@ -207,6 +207,11 @@ urlpatterns = [
         name="panel_mobile_ui",
     ),
     path(
+        "mini-deneme-odulleri/",
+        panel_views.panel_daily_mini_ranking,
+        name="panel_daily_mini_ranking",
+    ),
+    path(
         "sinavlar/",
         panel_views.panel_exam_type_list,
         name="panel_exam_type_list",

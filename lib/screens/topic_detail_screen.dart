@@ -85,6 +85,22 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     if (mounted) setState(() {});
   }
 
+  static String _learnSectionSubtitle(
+    List<TopicLessonModel> lessons,
+    List<TopicSummaryCardModel> summaryCards,
+  ) {
+    if (lessons.isNotEmpty && summaryCards.isNotEmpty) {
+      return '${lessons.length} bilgi kartı · ${summaryCards.length} özet kart';
+    }
+    if (lessons.isNotEmpty) {
+      return '${lessons.length} bilgi kartı';
+    }
+    if (summaryCards.isNotEmpty) {
+      return '${summaryCards.length} özet kart';
+    }
+    return 'Henüz bilgi kartı yok';
+  }
+
   @override
   Widget build(BuildContext context) {
     final subject =
@@ -94,6 +110,8 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final stats = _bank.topicStats(widget.topicId);
     final lessons = _bank.lessonsForTopic(widget.topicId);
     final summaryCards = _bank.summaryCardsForTopic(widget.topicId);
+    final learnSubtitle = _learnSectionSubtitle(lessons, summaryCards);
+    final canOpenLessons = lessons.isNotEmpty;
     final progress =
         _bank.topicQuestionProgress(widget.kpssType, widget.topicId);
 
@@ -147,70 +165,80 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
               totalQuestions: progress.total,
             ),
             const SizedBox(height: 24),
-            if (summaryCards.isNotEmpty) ...[
-              TopicSummarySwipeDeck(cards: summaryCards),
-              const SizedBox(height: 24),
-            ],
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: lessons.isEmpty
-                    ? null
-                    : () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => LessonReaderScreen(
-                              topicName: topic?.name ?? 'Konu',
-                              lessons: lessons,
-                            ),
-                          ),
-                        ),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: canOpenLessons
+                          ? () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => LessonReaderScreen(
+                                    topicName: topic?.name ?? 'Konu',
+                                    lessons: lessons,
+                                  ),
+                                ),
+                              )
+                          : null,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                          horizontal: 4,
+                        ),
+                        child: Row(
                           children: [
-                            const Text(
-                              'Konuyu öğren',
-                              style: TextStyle(
-                                fontFamily: 'serif',
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Konuyu öğren',
+                                    style: TextStyle(
+                                      fontFamily: 'serif',
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    learnSubtitle,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white.withValues(alpha: 0.45),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              lessons.isEmpty
-                                  ? 'Henüz bilgi kartı yok'
-                                  : '${lessons.length} bilgi kartı',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white.withValues(alpha: 0.45),
-                              ),
+                            Icon(
+                              Icons.menu_book_outlined,
+                              color: canOpenLessons
+                                  ? AppTheme.neonEdge.withValues(alpha: 0.8)
+                                  : Colors.white.withValues(alpha: 0.25),
                             ),
                           ],
                         ),
                       ),
-                      Icon(
-                        Icons.menu_book_outlined,
-                        color: AppTheme.neonEdge.withValues(alpha: 0.8),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  if (summaryCards.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    TopicSummarySwipeDeck(cards: summaryCards),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 20),

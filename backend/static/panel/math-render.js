@@ -78,6 +78,19 @@
       .replace(/[ \t]*->[ \t]*/g, " → ");
   }
 
+  function protectMarkdownSpans(text, holders) {
+    return String(text || "").replace(/\*\*[\s\S]+?\*\*|__[\s\S]+?__/g, function (m) {
+      holders.push(m);
+      return "§§K" + (holders.length - 1) + "§§";
+    });
+  }
+
+  function restoreMarkdownSpans(text, holders) {
+    return String(text || "").replace(/§§K(\d+)§§/g, function (_, idx) {
+      return holders[Number(idx)] || "";
+    });
+  }
+
   /**
    * Sohbet kopyasında yutulan Enter'ları geri koy:
    * "...aynıdır ($a^b \\equiv a$).Verilen" → satır kırılır.
@@ -90,17 +103,26 @@
       holders.push(m);
       return "§§M" + (holders.length - 1) + "§§";
     });
+    var mdHolders = [];
+    src = protectMarkdownSpans(src, mdHolders);
     src = src.replace(/([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
     src = src.replace(/:(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, ":\n");
     src = src.replace(/([.!?])(?!\n)(?=\d+\.\s)/g, "$1\n");
     src = src.replace(/:(?!\n)(?=\d+\.\s)/g, ":\n");
     src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
     src = src.replace(/(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)/g, "$1\n");
-    var romanCount = (src.match(/\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s/g) || []).length;
-    if (romanCount >= 2) {
+    // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
+    // "III. Selim … III. Selim Dönemi" gibi aynı rakam tekrarına dokunma.
+    var romanTokens = src.match(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s/g) || [];
+    var romanUnique = {};
+    for (var ri = 0; ri < romanTokens.length; ri++) {
+      romanUnique[romanTokens[ri].replace(/\s+$/, "")] = true;
+    }
+    if (Object.keys(romanUnique).length >= 2) {
       src = src.replace(/(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)/g, "\n");
     }
-    src = src.replace(/§§M(\d+)§§\s*(?=\*\*[a-zçğıöşüâîû])/g, "§§M$1§§\n");
+    src = restoreMarkdownSpans(src, mdHolders);
+    src = src.replace(/§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
       return holders[Number(idx)] || "";
@@ -164,23 +186,70 @@
     return src;
   }
 
-  /** `** metin **` / `__ metin __` gibi boşluklu işaretleri sıkılaştırır. */
+  function repairSplitBoldLines(text) {
+    return String(text || "").replace(
+      /\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*/g,
+      "**$1$2**"
+    );
+  }
+
+  /** `** metin **` / `__ metin __` — iç boşluğu dışarı taşı (yutma). */
   function tightenMarkdownMarkers(text) {
     var src = collapseNestedMarks(text);
-    src = src.replace(/\*\*\s+([\s\S]+?)\s+\*\*/g, function (_, inner) {
-      return "**" + String(inner).trim() + "**";
+    function peel(open, close, full, inner) {
+      var body = String(inner);
+      var leadSpaces = "";
+      var trailSpaces = "";
+      var mLead = full.match(
+        new RegExp("^" + open.replace(/\*/g, "\\*") + "([ \\t]+)")
+      );
+      if (mLead) leadSpaces = mLead[1];
+      var mTrail = full.match(
+        new RegExp("([ \\t]+)" + close.replace(/\*/g, "\\*") + "$")
+      );
+      if (mTrail) trailSpaces = mTrail[1];
+      if (body.indexOf("\n") >= 0) {
+        return leadSpaces + open + body + close + trailSpaces;
+      }
+      return leadSpaces + open + body.trim() + close + trailSpaces;
+    }
+    src = src.replace(/\*\*[ \t]+([\s\S]+?)[ \t]+\*\*/g, function (full, inner) {
+      return peel("**", "**", full, inner);
     });
-    src = src.replace(/__\s+([\s\S]+?)\s+__/g, function (_, inner) {
-      return "__" + String(inner).trim() + "__";
+    src = src.replace(/__[ \t]+([\s\S]+?)[ \t]+__/g, function (full, inner) {
+      return peel("__", "__", full, inner);
     });
-    src = src.replace(/(?<!\*)\*\s+([\s\S]+?)\s+\*(?!\*)/g, function (_, inner) {
-      return "*" + String(inner).trim() + "*";
+    src = src.replace(/(?<!\*)\*[ \t]+([\s\S]+?)[ \t]+\*(?!\*)/g, function (full, inner) {
+      return peel("*", "*", full, inner);
     });
-    src = src.replace(/\*\*([\s\S]+?)\s+\*\*/g, function (_, inner) {
-      return "**" + String(inner).trim() + "**";
+    src = src.replace(/\*\*([\s\S]+?)[ \t]+\*\*/g, function (full, inner) {
+      return peel("**", "**", full, inner);
     });
-    src = src.replace(/__([\s\S]+?)\s+__/g, function (_, inner) {
-      return "__" + String(inner).trim() + "__";
+    src = src.replace(/__([\s\S]+?)[ \t]+__/g, function (full, inner) {
+      return peel("__", "__", full, inner);
+    });
+    return src;
+  }
+
+  /**
+   * Harf/`**` bitişikse (`kelime**kalın**devam`) araya boşluk koy.
+   * Math placeholder'ları koru.
+   */
+  function ensureMarkdownExteriorSpaces(text) {
+    var src = String(text || "");
+    var holders = [];
+    src = src.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, function (m) {
+      holders.push(m);
+      return "§§M" + (holders.length - 1) + "§§";
+    });
+    // Açılış: harf/rakam/apostrof + ** veya __ (*** / ___ değil)
+    src = src.replace(/([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(\*\*)(?!\*)/g, "$1 $2");
+    src = src.replace(/([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(__)(?!_)/g, "$1 $2");
+    // Kapanış: ** veya __ + harf/rakam
+    src = src.replace(/(\*\*)(?!\*)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g, "$1 $2");
+    src = src.replace(/(__)(?!_)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g, "$1 $2");
+    src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
+      return holders[Number(idx)] || "";
     });
     return src;
   }
@@ -196,7 +265,13 @@
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .replace(/＊/g, "*")
       .replace(/＿/g, "_");
-    return tightenMarkdownMarkers(src);
+    src = tightenMarkdownMarkers(src);
+    src = ensureMarkdownExteriorSpaces(src);
+    src = repairSplitBoldLines(src);
+    // Bozuk satır kırığından kalan yalnız ** / __ satırlarını temizle.
+    src = src.replace(/^\s*\*\*\s*$/gm, "");
+    src = src.replace(/^\s*__\s*$/gm, "");
+    return src;
   }
 
   function mdMarks(text) {
@@ -415,6 +490,19 @@
 
       if (/^[-•*◦○–—]+$/.test(trimmed)) {
         return;
+      }
+
+      if (examMode) {
+        var stepHdr = trimmed.match(/^\*\*\s*\d+\.\s+Adım:.+\*\*$/);
+        if (stepHdr) {
+          if (!inList) {
+            html.push('<ul class="rich-list">');
+            inList = true;
+          }
+          closeNested();
+          html.push("<li>" + richInline(trimmed) + "</li>");
+          return;
+        }
       }
 
       var bullet = line.match(/^(\s*)(?:[-•*◦○–—]\s+)+(.+)/);

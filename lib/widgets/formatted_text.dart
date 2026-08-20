@@ -98,6 +98,15 @@ class FormattedText extends StatelessWidget {
     return buffer.toString();
   }
 
+  /// Soru gövdesi justify için: soft satır kırılımlarını boşluğa çevirir,
+  /// çoklu whitespace'i tek boşluğa indirger; `$$…$$` ve madde satırları korunur.
+  static String prepareExamJustifyText(String input) {
+    if (input.isEmpty) return input;
+    return examFormat(normalizeMarkup(input))
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+        .trim();
+  }
+
   static bool usesDisplayMath(String tex) {
     final t = tex;
     return t.contains(r'\frac') ||
@@ -187,8 +196,12 @@ class FormattedText extends StatelessWidget {
       caseSensitive: false,
     );
     return text.replaceAllMapped(re, (m) {
-      final inner = (m.group(1) ?? '').trim();
-      return inner.isEmpty ? '' : '$marker$inner$marker';
+      final raw = m.group(1) ?? '';
+      final lead = RegExp(r'^[ \t]+').firstMatch(raw)?.group(0) ?? '';
+      final trail = RegExp(r'[ \t]+$').firstMatch(raw)?.group(0) ?? '';
+      final inner = raw.substring(lead.length, raw.length - trail.length);
+      if (inner.isEmpty) return raw;
+      return '$lead$marker$inner$marker$trail';
     });
   }
 
@@ -219,8 +232,11 @@ class FormattedText extends StatelessWidget {
   }
 
   static String _wrapMd(String inner, {bool bold = false, bool italic = false, bool underline = false}) {
-    var core = inner.trim();
-    if (core.isEmpty) return '';
+    final raw = inner;
+    final lead = RegExp(r'^[ \t]+').firstMatch(raw)?.group(0) ?? '';
+    final trail = RegExp(r'[ \t]+$').firstMatch(raw)?.group(0) ?? '';
+    var core = raw.substring(lead.length, raw.length - trail.length).trim();
+    if (core.isEmpty) return raw;
     if (bold && italic) {
       core = '***$core***';
     } else if (bold) {
@@ -229,7 +245,7 @@ class FormattedText extends StatelessWidget {
       core = '*$core*';
     }
     if (underline) core = '__${core}__';
-    return core;
+    return '$lead$core$trail';
   }
 
   static String _convertStyledSpans(String text) {
@@ -285,10 +301,25 @@ class FormattedText extends StatelessWidget {
     return current;
   }
 
-  /// `** metin **` / `__ metin __` gibi boşluklu işaretleri sıkılaştırır.
+  /// `** metin **` / `__ metin __` — iç boşluğu dışarı taşı (yutma).
   static String _tightenMarkdownMarkers(String text) {
     var t = text;
     var prev = '';
+    String peel(String open, String close, String full, String inner) {
+      final lead = RegExp('^${RegExp.escape(open)}([ \\t]+)')
+              .firstMatch(full)
+              ?.group(1) ??
+          '';
+      final trail = RegExp('([ \\t]+)${RegExp.escape(close)}\$')
+              .firstMatch(full)
+              ?.group(1) ??
+          '';
+      if (inner.contains('\n')) {
+        return '$lead$open$inner$close$trail';
+      }
+      return '$lead$open${inner.trim()}$close$trail';
+    }
+
     while (prev != t) {
       prev = t;
       t = t.replaceAllMapped(
@@ -317,27 +348,75 @@ class FormattedText extends StatelessWidget {
       );
     }
     t = t.replaceAllMapped(
-      RegExp(r'\*\*\s+(.+?)\s+\*\*', dotAll: true),
-      (m) => '**${m.group(1)!.trim()}**',
+      RegExp(r'\*\*[ \t]+(.+?)[ \t]+\*\*', dotAll: true),
+      (m) => peel('**', '**', m.group(0)!, m.group(1)!),
     );
     t = t.replaceAllMapped(
-      RegExp(r'__\s+(.+?)\s+__', dotAll: true),
-      (m) => '__${m.group(1)!.trim()}__',
+      RegExp(r'__[ \t]+(.+?)[ \t]+__', dotAll: true),
+      (m) => peel('__', '__', m.group(0)!, m.group(1)!),
     );
     t = t.replaceAllMapped(
-      RegExp(r'(?<!\*)\*\s+(.+?)\s+\*(?!\*)', dotAll: true),
-      (m) => '*${m.group(1)!.trim()}*',
-    );
-    // Kapanıştan önce tek boşluk: **metin **
-    t = t.replaceAllMapped(
-      RegExp(r'\*\*(.+?)\s+\*\*', dotAll: true),
-      (m) => '**${m.group(1)!.trim()}**',
+      RegExp(r'(?<!\*)\*[ \t]+(.+?)[ \t]+\*(?!\*)', dotAll: true),
+      (m) => peel('*', '*', m.group(0)!, m.group(1)!),
     );
     t = t.replaceAllMapped(
-      RegExp(r'__(.+?)\s+__', dotAll: true),
-      (m) => '__${m.group(1)!.trim()}__',
+      RegExp(r'\*\*(.+?)[ \t]+\*\*', dotAll: true),
+      (m) => peel('**', '**', m.group(0)!, m.group(1)!),
+    );
+    t = t.replaceAllMapped(
+      RegExp(r'__(.+?)[ \t]+__', dotAll: true),
+      (m) => peel('__', '__', m.group(0)!, m.group(1)!),
     );
     return t;
+  }
+
+  /// Harf/`**` bitişikse araya boşluk koy.
+  static String _ensureMarkdownExteriorSpaces(String text) {
+    if (text.isEmpty) return text;
+    var src = text;
+    final holders = <String>[];
+    src = src.replaceAllMapped(
+      RegExp(r'\$\$[\s\S]+?\$\$|\$[^$\n]+\$'),
+      (m) {
+        holders.add(m.group(0)!);
+        return '§§M${holders.length - 1}§§';
+      },
+    );
+    const letter =
+        r"0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû";
+    src = src.replaceAllMapped(
+      RegExp('([$letter\'’])(\\*\\*)(?!\\*)'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+    src = src.replaceAllMapped(
+      RegExp('([$letter\'’])(__)(?!_)'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+    src = src.replaceAllMapped(
+      RegExp('(\\*\\*)(?!\\*)([$letter])'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+    src = src.replaceAllMapped(
+      RegExp('(__)(?!_)([$letter])'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'§§M(\d+)§§'),
+      (m) {
+        final i = int.tryParse(m.group(1)!) ?? -1;
+        if (i < 0 || i >= holders.length) return m.group(0)!;
+        return holders[i];
+      },
+    );
+    return src;
+  }
+
+  /// Satır kırığı ile bölünmüş **…** bloklarını birleştirir.
+  static String _repairSplitBoldLines(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*'),
+      (m) => '**${m.group(1)}${m.group(2)}**',
+    );
   }
 
   static String normalizeMarkup(String input) {
@@ -384,7 +463,12 @@ class FormattedText extends StatelessWidget {
     // Dönüştürülemeyen HTML etiketlerini kaldır (metni düz bırakma)
     text = text.replaceAll(RegExp(r'</?[a-zA-Z][^>]*>'), '');
     text = _tightenMarkdownMarkers(text);
+    text = _ensureMarkdownExteriorSpaces(text);
+    text = _repairSplitBoldLines(text);
     text = emphasizeSignWords(text);
+    // Bozuk satır kırığından kalan yalnız ** / __ satırlarını temizle.
+    text = text.replaceAll(RegExp(r'^\s*\*\*\s*$', multiLine: true), '');
+    text = text.replaceAll(RegExp(r'^\s*__\s*$', multiLine: true), '');
 
     return text;
   }
@@ -547,6 +631,14 @@ class FormattedText extends StatelessWidget {
         return '§§M${holders.length - 1}§§';
       },
     );
+    final mdHolders = <String>[];
+    src = src.replaceAllMapped(
+      RegExp(r'\*\*[\s\S]+?\*\*|__[\s\S]+?__'),
+      (m) {
+        mdHolders.add(m.group(0)!);
+        return '§§K${mdHolders.length - 1}§§';
+      },
+    );
     src = src.replaceAllMapped(
       RegExp(r'([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
       (m) => '${m.group(1)}\n',
@@ -571,18 +663,28 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)'),
       (m) => '${m.group(1)}\n',
     );
-    // I. II. III. madde dizisi; "III. Jeolojik Zaman" gibi tek kullanıma dokunma.
-    if (RegExp(r'\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
-            .allMatches(src)
-            .length >=
-        2) {
+    // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
+    // "III. Selim … III. Selim Dönemi" gibi aynı rakam tekrarına dokunma.
+    final romanMatches = RegExp(r'\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
+        .allMatches(src)
+        .map((m) => m.group(0)!.trimRight())
+        .toSet();
+    if (romanMatches.length >= 2) {
       src = src.replaceAllMapped(
         RegExp(r'(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)'),
         (m) => '\n',
       );
     }
     src = src.replaceAllMapped(
-      RegExp(r'(§§M\d+§§)\s*(?=\*\*[a-zçğıöşüâîû])'),
+      RegExp(r'§§K(\d+)§§'),
+      (m) {
+        final i = int.tryParse(m.group(1)!) ?? -1;
+        if (i < 0 || i >= mdHolders.length) return m.group(0)!;
+        return mdHolders[i];
+      },
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(§§M\d+§§)\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))'),
       (m) => '${m.group(1)}\n',
     );
     src = src.replaceAllMapped(
@@ -1126,6 +1228,7 @@ class _WrappedExamLine extends StatelessWidget {
       ),
       textAlign: textAlign ?? TextAlign.start,
       softWrap: true,
+      textWidthBasis: TextWidthBasis.parent,
     );
   }
 }
@@ -1270,13 +1373,58 @@ class _DocumentText extends StatelessWidget {
     final lines =
         text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
     final children = <Widget>[];
+    final softBuf = StringBuffer();
+
+    void flushSoftParagraph() {
+      final joined = softBuf
+          .toString()
+          .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+          .trim();
+      softBuf.clear();
+      if (joined.isEmpty) return;
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: _lineWidget(joined),
+        ),
+      );
+    }
+
+    bool isHardBreakLine(String trimmed) {
+      if (RegExp(r'^\$\$[\s\S]+\$\$$').hasMatch(trimmed)) return true;
+      final displayInline = RegExp(r'^\$([^$\n]+)\$$').firstMatch(trimmed);
+      if (displayInline != null) {
+        final tex = FormattedText.prepareTex(displayInline.group(1)!.trim());
+        if (FormattedText.usesDisplayMath(tex)) return true;
+      }
+      if (RegExp(r'^(---|\*\*\*|___)$').hasMatch(trimmed)) return true;
+      if (RegExp(r'^#{1,3}\s+').hasMatch(trimmed)) return true;
+      if (FormattedText._isStructuralLine(trimmed)) return true;
+      if (RegExp(r'^\*\*\s*\d+\.\s+Adım:.+\*\*$').hasMatch(trimmed)) {
+        return true;
+      }
+      if (RegExp(r'^(?:\s*)(?:[-•*◦○–—]\s+)+').hasMatch(trimmed)) {
+        return true;
+      }
+      return false;
+    }
 
     for (final line in lines) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) {
+        flushSoftParagraph();
         children.add(const SizedBox(height: 8));
         continue;
       }
+
+      // examWrap: soft satırları tek paragrafta birleştir → TextAlign.justify çalışır.
+      if (examWrap && !isHardBreakLine(trimmed)) {
+        if (softBuf.isNotEmpty) softBuf.write(' ');
+        softBuf.write(trimmed);
+        continue;
+      }
+
+      flushSoftParagraph();
 
       if (RegExp(r'^\$\$[\s\S]+\$\$$').hasMatch(trimmed)) {
         children.add(
@@ -1372,6 +1520,26 @@ class _DocumentText extends StatelessWidget {
         continue;
       }
 
+      if (examLayout || examWrap) {
+        final stepHdr =
+            RegExp(r'^\*\*\s*\d+\.\s+Adım:.+\*\*$').hasMatch(trimmed);
+        if (stepHdr) {
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• ', style: base),
+                  Expanded(child: _lineWidget(trimmed)),
+                ],
+              ),
+            ),
+          );
+          continue;
+        }
+      }
+
       final bullet = RegExp(r'^(\s*)(?:[-•*◦○–—]\s+)+(.+)').firstMatch(line);
       if (bullet != null) {
         final nested = bullet.group(1)!.replaceAll('\t', '  ').length >= 2;
@@ -1398,10 +1566,12 @@ class _DocumentText extends StatelessWidget {
       );
     }
 
+    flushSoftParagraph();
+
     return SizedBox(
       width: double.infinity,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
       ),
     );

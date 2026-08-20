@@ -1,46 +1,56 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import '../theme/subject_neon_palette.dart';
 
-/// Ana sayfa bölüm başlığı (neon çubuk + serif başlık).
+/// Stüdyo bölüm başlığı.
 class HomeSectionHeader extends StatelessWidget {
   final String title;
+  final String? eyebrow;
   final Widget? trailing;
 
-  const HomeSectionHeader(this.title, {super.key, this.trailing});
-
-  static const _titleStyle = TextStyle(
-    fontFamily: 'serif',
-    fontSize: 26,
-    fontWeight: FontWeight.w600,
-    color: AppTheme.ink,
-    letterSpacing: -0.5,
-  );
+  const HomeSectionHeader(
+    this.title, {
+    super.key,
+    this.eyebrow,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Container(
-          width: 3,
-          height: 22,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [AppTheme.neonEdge, AppTheme.champagne],
-            ),
-            boxShadow: SubjectNeonPalette.glow(AppTheme.neonEdge, blur: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (eyebrow != null && eyebrow!.isNotEmpty) ...[
+                Text(
+                  eyebrow!.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2,
+                    color: AppTheme.champagne.withValues(alpha: 0.75),
+                  ),
+                ),
+                const SizedBox(height: 6),
+              ],
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.4,
+                  height: 1.1,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 10),
-        Text(title, style: _titleStyle),
-        if (trailing != null) ...[
-          const SizedBox(width: 10),
-          trailing!,
-        ],
+        if (trailing != null) trailing!,
       ],
     );
   }

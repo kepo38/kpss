@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/savings_constants.dart';
 import '../screens/premium/premium_paywall_screen.dart';
+import '../screens/daily_mini_rewards_screen.dart';
 import '../services/daily_mini_exam_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
@@ -49,6 +50,25 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                 fontSize: 18,
               ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DailyMiniRewardsScreen(),
+                    ),
+                  );
+                },
+                child: const Text(
+                  'ÖDÜL',
+                  style: TextStyle(
+                    color: AppTheme.champagneLight,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ],
           ),
           body: Column(
             children: [

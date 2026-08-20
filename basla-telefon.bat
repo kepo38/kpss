@@ -2,6 +2,13 @@
 setlocal EnableExtensions
 chcp 65001 >nul
 title KPSS Odak — Telefon (otomatik guncelle)
+if /I not "%~dp0"=="D:\HEDEFKAMU\" (
+  if exist "D:\HEDEFKAMU\basla-telefon.bat" (
+    echo [!] Telefon guncelleme D:\HEDEFKAMU uzerinden yapiliyor...
+    call "D:\HEDEFKAMU\basla-telefon.bat"
+    exit /b %ERRORLEVEL%
+  )
+)
 cd /d "%~dp0" 2>nul
 if errorlevel 1 (
   echo [HATA] Proje klasorune girilemedi: %~dp0
@@ -20,7 +27,7 @@ if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
   set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;%PATH%"
 )
 
-set "GRADLE_USER_HOME=%~d0\.gradle"
+set "GRADLE_USER_HOME=D:\.gradle"
 if not exist "%GRADLE_USER_HOME%\" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
 if not exist "%GRADLE_USER_HOME%\" (
   echo [HATA] Gradle onbellegi olusturulamadi: %GRADLE_USER_HOME%
@@ -28,7 +35,7 @@ if not exist "%GRADLE_USER_HOME%\" (
   exit /b 1
 )
 
-set "PUB_CACHE=%~dp0.pub-cache"
+set "PUB_CACHE=D:\HEDEFKAMU\.pub-cache"
 if not exist "%PUB_CACHE%\" mkdir "%PUB_CACHE%" >nul 2>&1
 if not exist "%PUB_CACHE%\" (
   echo [HATA] Pub onbellegi olusturulamadi: %PUB_CACHE%

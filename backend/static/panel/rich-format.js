@@ -71,22 +71,29 @@
   }
 
   function wrapMarkdown(text, bold, italic, underline) {
-    var core = String(text || "").trim();
-    if (!core) return "";
-    if (!italic && isBoldUnderline(core) && (bold || underline)) return core;
-    if (bold && /^__\*\*.+\*\*__$/.test(core)) return core;
-    if (underline && /^\*\*__.+__\*\*$/.test(core)) return core;
+    var raw = String(text || "");
+    var lead = (raw.match(/^[ \t]+/) || [""])[0];
+    var trail = (raw.match(/[ \t]+$/) || [""])[0];
+    var core = raw.slice(lead.length, raw.length - trail.length).trim();
+    if (!core) return raw;
+    if (!italic && isBoldUnderline(core) && (bold || underline)) {
+      return lead + core + trail;
+    }
+    if (bold && /^__\*\*.+\*\*__$/.test(core)) return lead + core + trail;
+    if (underline && /^\*\*__.+__\*\*$/.test(core)) return lead + core + trail;
     if (bold && fullyWrapped(core, "**")) core = core.slice(2, -2).trim();
     if (underline && fullyWrapped(core, "__")) core = core.slice(2, -2).trim();
     if (italic && fullyWrapped(core, "*") && !fullyWrapped(core, "**")) {
       core = core.slice(1, -1).trim();
     }
-    if (bold && underline && !italic) return "**__" + core + "__**";
-    if (bold && italic) core = "***" + core + "***";
+    if (bold && underline && !italic) core = "**__" + core + "__**";
+    else if (bold && italic) core = "***" + core + "***";
     else if (bold) core = "**" + core + "**";
     else if (italic) core = "*" + core + "*";
-    if (underline) core = "__" + core + "__";
-    return core;
+    if (underline && !(bold && underline && !italic)) {
+      core = "__" + core + "__";
+    }
+    return lead + core + trail;
   }
 
   function wrapColor(text, color) {
@@ -407,13 +414,42 @@
       return;
     }
 
-    const insert = selected.length ? selected : "metin";
-    el.value = value.slice(0, start) + open + insert + close + value.slice(end);
+    const lead = (selected.match(/^[ \t]+/) || [""])[0];
+    const trail = (selected.match(/[ \t]+$/) || [""])[0];
+    const core = selected.slice(lead.length, selected.length - trail.length);
+    const insert = core.length ? core : "metin";
+    let beforePad = "";
+    let afterPad = "";
+    const leftChar = value.slice(Math.max(0, start - 1), start);
+    const rightChar = value.slice(end, end + 1);
+    if (
+      !lead &&
+      leftChar &&
+      /[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’]/.test(leftChar)
+    ) {
+      beforePad = " ";
+    }
+    if (
+      !trail &&
+      rightChar &&
+      /[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû]/.test(rightChar)
+    ) {
+      afterPad = " ";
+    }
+    const wrapped = lead + beforePad + open + insert + close + afterPad + trail;
+    el.value = value.slice(0, start) + wrapped + value.slice(end);
     el.focus();
+    const selStart = start + lead.length + beforePad.length;
     if (selected.length) {
-      el.setSelectionRange(start, start + open.length + insert.length + close.length);
+      el.setSelectionRange(
+        selStart,
+        selStart + open.length + insert.length + close.length
+      );
     } else {
-      el.setSelectionRange(start + open.length, start + open.length + insert.length);
+      el.setSelectionRange(
+        selStart + open.length,
+        selStart + open.length + insert.length
+      );
     }
     el.dispatchEvent(new Event("input", { bubbles: true }));
   }

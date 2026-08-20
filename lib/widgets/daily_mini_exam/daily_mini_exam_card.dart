@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../constants/daily_mini_exam_constants.dart';
 import '../../models/quiz_result.dart';
 import '../../screens/daily_mini_exam_result_screen.dart';
+import '../../screens/daily_mini_rewards_screen.dart';
 import '../../screens/profile_screen.dart';
 import '../../screens/quiz_screen.dart';
 import '../../services/ad_manager.dart';
@@ -150,6 +151,14 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => const DailyMiniExamResultScreen(),
+      ),
+    );
+  }
+
+  Future<void> _openRewards() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const DailyMiniRewardsScreen(),
       ),
     );
   }
@@ -415,6 +424,29 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const DailyMiniExamHeader(),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: _openRewards,
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.champagneLight,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 0,
+                                ),
+                              ),
+                              icon: const Icon(Icons.emoji_events_outlined, size: 16),
+                              label: const Text(
+                                'ÖDÜL',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                          ),
                           if (!submittedRanking) ...[
                             const SizedBox(height: 10),
                             const DailyMiniExamSubjectMix(),

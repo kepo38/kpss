@@ -1133,6 +1133,56 @@ class DailyMiniExamView(APIView):
         return Response(self._payload(request, kpss_type), status=201)
 
 
+class DailyMiniPeriodRankingView(APIView):
+    """Haftalık / aylık mini deneme sıralaması (toplam doğru + süre)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        from .daily_mini_exam import VALID_KPSS_TYPES
+        from .daily_mini_ranking import period_ranking_payload
+
+        raw_period = (request.query_params.get("period") or "weekly").strip().lower()
+        if raw_period not in ("weekly", "monthly"):
+            return Response({"detail": "period=weekly|monthly gerekli."}, status=400)
+        kpss_type = (request.query_params.get("kpss_type") or "lisans").strip()
+        if kpss_type not in VALID_KPSS_TYPES:
+            return Response({"detail": "Geçersiz kpss_type."}, status=400)
+        user = get_user_from_request(request)
+        user_id = user.pk if user is not None else None
+        return Response(period_ranking_payload(raw_period, kpss_type, user_id))
+
+
+class DailyMiniRewardHistoryView(APIView):
+    """Geçmiş dönem kazananları — herkes görebilir."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        from .daily_mini_exam import VALID_KPSS_TYPES
+        from .daily_mini_ranking import get_ranking_campaign, reward_history
+
+        kpss_type = (request.query_params.get("kpss_type") or "lisans").strip()
+        if kpss_type not in VALID_KPSS_TYPES:
+            return Response({"detail": "Geçersiz kpss_type."}, status=400)
+        try:
+            limit = min(48, max(1, int(request.query_params.get("limit", "24"))))
+        except (TypeError, ValueError):
+            limit = 24
+        campaign = get_ranking_campaign()
+        return Response(
+            {
+                "rewardsVisible": campaign.rewards_visible,
+                "weeklyEnabled": campaign.weekly_enabled,
+                "monthlyEnabled": campaign.monthly_enabled,
+                "rewardDays": {"1": 3, "2": 2, "3": 1},
+                "periods": reward_history(kpss_type, limit=limit),
+            }
+        )
+
+
 class PromoRedeemThrottle(SimpleRateThrottle):
     scope = "promo_redeem"
 

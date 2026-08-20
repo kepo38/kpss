@@ -123,7 +123,7 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
                           offset: const Offset(0, 8),
                           child: Opacity(
                             opacity: 0.45,
-                            child: _SummaryCardFace(
+                            child: SummaryCardFace(
                               card: _queue[1],
                               showHeart: false,
                             ),
@@ -136,7 +136,7 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
                         angle: progress * 0.08,
                         child: Stack(
                           children: [
-                            _SummaryCardFace(card: card),
+                            SummaryCardFace(card: card),
                             if (progress > 0.15)
                               _SwipeStamp(
                                 label: 'BİLİYORUM',
@@ -282,14 +282,50 @@ class _SwipeStamp extends StatelessWidget {
   }
 }
 
-class _SummaryCardFace extends StatelessWidget {
+class SummaryCardFace extends StatelessWidget {
   final TopicSummaryCardModel card;
   final bool showHeart;
 
-  const _SummaryCardFace({
+  const SummaryCardFace({
+    super.key,
     required this.card,
     this.showHeart = true,
   });
+
+  /// Favorilerden tam kart göstermek için.
+  static Future<void> showViewer(
+    BuildContext context,
+    TopicSummaryCardModel card,
+  ) {
+    return showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.72),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 40),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * 0.62,
+          child: Stack(
+            children: [
+              SummaryCardFace(card: card),
+              Positioned(
+                top: 6,
+                right: 2,
+                child: IconButton(
+                  tooltip: 'Kapat',
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

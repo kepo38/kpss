@@ -2782,3 +2782,54 @@ def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
             "page_title": "Mobil arayüz",
         },
     )
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_daily_mini_ranking(request: HttpRequest) -> HttpResponse:
+    from .daily_mini_exam import VALID_KPSS_TYPES
+    from .daily_mini_ranking import finalize_period, get_ranking_campaign
+    from .models import DailyMiniRankingCampaign, DailyMiniRankingWinner
+
+    cfg = get_ranking_campaign()
+    if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
+        if action == "save":
+            cfg.weekly_enabled = request.POST.get("weekly_enabled") == "on"
+            cfg.monthly_enabled = request.POST.get("monthly_enabled") == "on"
+            cfg.rewards_visible = request.POST.get("rewards_visible") == "on"
+            cfg.save()
+            messages.success(request, "Mini deneme ödül ayarları kaydedildi.")
+        elif action.startswith("finalize_"):
+            parts = action.split("_", 2)
+            if len(parts) == 3:
+                period = parts[1]
+                kpss_type = parts[2]
+                if period in ("weekly", "monthly") and kpss_type in VALID_KPSS_TYPES:
+                    winners = finalize_period(period, kpss_type, send_push=True)
+                    if winners:
+                        messages.success(
+                            request,
+                            f"{len(winners)} kazanan için premium tanımlandı ({period}).",
+                        )
+                    else:
+                        messages.warning(
+                            request,
+                            "Finalize yapılmadı (dönem zaten işlenmiş veya ödül kapalı).",
+                        )
+        return redirect("panel_daily_mini_ranking")
+
+    winners = DailyMiniRankingWinner.objects.select_related("user").order_by(
+        "-finalized_at"
+    )[:60]
+    return render(
+        request,
+        "panel/daily_mini_ranking.html",
+        {
+            "config": cfg,
+            "winners": winners,
+            "kpss_types": VALID_KPSS_TYPES,
+            "page_title": "Mini deneme ödülleri",
+        },
+    )

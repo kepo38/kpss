@@ -1,6 +1,13 @@
 @echo off
 chcp 65001 >nul
 title KPSS Odak — Panel
+if /I not "%~dp0"=="D:\HEDEFKAMU\" (
+  if exist "D:\HEDEFKAMU\basla.bat" (
+    echo [!] Panel D:\HEDEFKAMU uzerinden baslatiliyor...
+    call "D:\HEDEFKAMU\basla.bat"
+    exit /b %ERRORLEVEL%
+  )
+)
 cd /d "%~dp0"
 
 echo.

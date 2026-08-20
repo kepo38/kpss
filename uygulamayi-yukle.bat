@@ -91,18 +91,28 @@ if exist "C:\flutter\flutter\bin\flutter.bat" (
 if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
   set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;%PATH%"
 )
-set "GRADLE_USER_HOME=%~d0\.gradle"
+set "GRADLE_USER_HOME=D:\.gradle"
 if not exist "%GRADLE_USER_HOME%\" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
 if not exist "%GRADLE_USER_HOME%\" (
   echo [HATA] Gradle onbellegi olusturulamadi: %GRADLE_USER_HOME%
   goto :fail
 )
 
-set "PUB_CACHE=%~dp0.pub-cache"
+set "PUB_CACHE=D:\HEDEFKAMU\.pub-cache"
 if not exist "%PUB_CACHE%\" mkdir "%PUB_CACHE%" >nul 2>&1
 if not exist "%PUB_CACHE%\" (
   echo [HATA] Pub onbellegi olusturulamadi: %PUB_CACHE%
   goto :fail
+)
+
+:: ozel / ozel kopyadan calisirsa ASCII canonical yola yonlendir (L8 desugar karisikligi onlenir)
+if /I not "%~dp0"=="D:\HEDEFKAMU\" (
+  if exist "D:\HEDEFKAMU\uygulamayi-yukle.bat" (
+    echo [!] Kopya yol algilandi: %~dp0
+    echo     Derleme D:\HEDEFKAMU uzerinden yapiliyor...
+    call "D:\HEDEFKAMU\uygulamayi-yukle.bat"
+    exit /b %ERRORLEVEL%
+  )
 )
 
 echo.
@@ -118,6 +128,8 @@ echo   Akis: derle -^> eski uygulamayi SIL -^> yeni APK kur -^> ac
 echo   Derleme 3-8 dk surebilir; pencereyi kapatmayin.
 echo.
 echo   Proje: %CD%
+echo   GRADLE_USER_HOME: %GRADLE_USER_HOME%
+echo   PUB_CACHE: %PUB_CACHE%
 echo.
 
 where flutter >nul 2>&1
@@ -152,14 +164,36 @@ if errorlevel 1 (
 )
 
 echo.
+echo [.] Gradle daemon durduruluyor...
+if exist "android\gradlew.bat" (
+  call android\gradlew.bat --stop >nul 2>&1
+)
+
+echo.
 echo [.] Release APK derleniyor...
 echo     ^(Birkac dakika surebilir; pencereyi kapatmayin.^)
 echo.
 
 call flutter build apk --release
 if errorlevel 1 (
-  echo [HATA] APK derlenemedi.
-  goto :fail
+  echo.
+  echo [!] Ilk derleme basarisiz - L8/Gradle temizligi deneniyor...
+  if exist "android\gradlew.bat" (
+    call android\gradlew.bat --stop >nul 2>&1
+    call android\gradlew.bat clean >nul 2>&1
+  )
+  call flutter clean >nul 2>&1
+  if exist "build\" rmdir /s /q "build" >nul 2>&1
+  call flutter pub get
+  if errorlevel 1 (
+    echo [HATA] flutter pub get basarisiz.
+    goto :fail
+  )
+  call flutter build apk --release
+  if errorlevel 1 (
+    echo [HATA] APK derlenemedi.
+    goto :fail
+  )
 )
 
 echo.

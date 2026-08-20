@@ -57,7 +57,7 @@ class PremiumService {
     PremiumFeature(
       iconName: 'leaderboard',
       title: 'Sıralama',
-      description: 'Haftalık ve aylık XP sıralaması.',
+      description: 'Haftalık ve aylık toplam doğru sıralaması.',
     ),
   ];
 }

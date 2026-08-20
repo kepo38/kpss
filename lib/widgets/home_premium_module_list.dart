@@ -9,7 +9,7 @@ import '../screens/premium/task_management_screen.dart';
 import '../screens/premium/topic_tracking_screen.dart';
 import 'home_module_row.dart';
 
-/// Ana sayfa Premium modül listesi.
+/// Stüdyo Premium suite listesi.
 class HomePremiumModuleList extends StatelessWidget {
   final KpssType kpssType;
   final bool isPremium;
@@ -36,7 +36,7 @@ class HomePremiumModuleList extends StatelessWidget {
               ? 'Kütüphanede internetsiz test'
               : 'Yalnızca yıllık Premium',
           locked: !canOffline,
-          accent: true,
+          premiumTone: true,
           onTap: () => onNavigate(const OfflinePackScreen()),
         ),
         HomeModuleRow(
@@ -44,7 +44,7 @@ class HomePremiumModuleList extends StatelessWidget {
           title: 'Konu Takibi',
           subtitle: 'Müfredat ilerlemeni işaretle',
           locked: !isPremium,
-          accent: true,
+          premiumTone: true,
           onTap: () => onNavigatePremium(
             () => TopicTrackingScreen(kpssType: kpssType),
           ),
@@ -54,7 +54,7 @@ class HomePremiumModuleList extends StatelessWidget {
           title: 'Görev Yönetimi',
           subtitle: 'Haftalık plan ve öncelikler',
           locked: !isPremium,
-          accent: true,
+          premiumTone: true,
           onTap: () => onNavigatePremium(() => const TaskManagementScreen()),
         ),
         HomeModuleRow(
@@ -62,15 +62,15 @@ class HomePremiumModuleList extends StatelessWidget {
           title: 'Bulut Senkron',
           subtitle: 'Cihazlar arası senkron',
           locked: !isPremium,
-          accent: true,
+          premiumTone: true,
           onTap: () => onNavigatePremium(() => const CloudSyncScreen()),
         ),
         HomeModuleRow(
           icon: Icons.leaderboard_outlined,
           title: 'Sıralama',
-          subtitle: 'Haftalık ve aylık XP',
+          subtitle: 'Haftalık ve aylık doğru',
           locked: !isPremium,
-          accent: true,
+          premiumTone: true,
           onTap: () => onNavigatePremium(() => const LeaderboardScreen()),
         ),
       ],

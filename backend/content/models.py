@@ -1099,6 +1099,72 @@ class DailyMiniExamAttempt(models.Model):
         return f"{self.user_id} · {self.exam_date} · {self.correct}/{self.total}"
 
 
+class DailyMiniRankingCampaign(models.Model):
+    """Mini deneme haftalık/aylık ödül kampanyası — tek satır (pk=1)."""
+
+    weekly_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Haftalık ödül aktif",
+    )
+    monthly_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Aylık ödül aktif",
+    )
+    rewards_visible = models.BooleanField(
+        default=True,
+        verbose_name="ÖDÜL ekranı uygulamada görünsün",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mini deneme sıralama kampanyası"
+        verbose_name_plural = "Mini deneme sıralama kampanyası"
+
+    def __str__(self) -> str:
+        return "Mini deneme ödül kampanyası"
+
+
+class DailyMiniRankingWinner(models.Model):
+    """Finalize edilmiş dönemin ilk 3 kullanıcısı."""
+
+    PERIOD_KIND_CHOICES = (
+        ("weekly", "Haftalık"),
+        ("monthly", "Aylık"),
+    )
+
+    period_kind = models.CharField(max_length=10, choices=PERIOD_KIND_CHOICES)
+    period_start = models.DateField()
+    period_end = models.DateField()
+    kpss_type = models.CharField(max_length=20, choices=KPSS_TYPE_CHOICES)
+    rank = models.PositiveSmallIntegerField()
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="mini_ranking_wins",
+    )
+    total_correct = models.PositiveIntegerField(default=0)
+    total_duration_seconds = models.PositiveIntegerField(default=0)
+    premium_days = models.PositiveSmallIntegerField(default=0)
+    display_name = models.CharField(max_length=160, blank=True)
+    email_prefix = models.CharField(max_length=64, blank=True)
+    email_rest = models.CharField(max_length=120, blank=True)
+    finalized_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-period_start", "rank"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["period_kind", "period_start", "kpss_type", "rank"],
+                name="uniq_mini_ranking_period_rank",
+            ),
+        ]
+        verbose_name = "Mini deneme sıralama ödülü"
+        verbose_name_plural = "Mini deneme sıralama ödülleri"
+
+    def __str__(self) -> str:
+        return f"{self.period_kind} {self.period_start} #{self.rank}"
+
+
 EXAM_ICON_CHOICES = (
     ("school", "Okul"),
     ("book", "Kitap"),

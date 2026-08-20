@@ -4,7 +4,7 @@ import '../../theme/exam_typography.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
 
-/// Soru kökü — panel önizlemesi ile aynı: 18pt, satır kırılımı, wrap.
+/// Soru kökü — soft satırlar birleşir, Android/iOS'ta TextAlign.justify.
 class ExamStemView extends StatelessWidget {
   final String text;
 
@@ -12,11 +12,15 @@ class ExamStemView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FormattedText(
+    final cleaned = FormattedText.prepareExamJustifyText(
       OptionColumnLayout.visibleStem(text),
+    );
+    return FormattedText(
+      cleaned,
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,
+      textAlign: TextAlign.justify,
       style: ExamTypography.body(
         color: Colors.white,
         fontSize: 18,

@@ -45,6 +45,26 @@ class ApiConfig {
   static Uri dailyMiniExamUri(String kpssType) => Uri.parse(
         '$baseUrl$dailyMiniExamPath',
       ).replace(queryParameters: {'kpss_type': kpssType});
+  static Uri dailyMiniPeriodRankingUri({
+    required String period,
+    required String kpssType,
+  }) =>
+      Uri.parse('${baseUrl}${dailyMiniExamPath}period-ranking/').replace(
+        queryParameters: {
+          'period': period,
+          'kpss_type': kpssType,
+        },
+      );
+  static Uri dailyMiniRewardHistoryUri({
+    required String kpssType,
+    int limit = 24,
+  }) =>
+      Uri.parse('${baseUrl}${dailyMiniExamPath}reward-history/').replace(
+        queryParameters: {
+          'kpss_type': kpssType,
+          'limit': '$limit',
+        },
+      );
   static Uri promoRedeemUri() => Uri.parse('$baseUrl$promoRedeemPath');
   static Uri examTypesUri() => Uri.parse('$baseUrl/api/v1/exam-types/');
   static Uri questionRatingUri(String questionId) => Uri.parse(

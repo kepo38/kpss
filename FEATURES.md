@@ -24,6 +24,58 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **panel/API** güncellemelerinin ayrıntılı kaydı. Katalog satırları aşağıda ilgili bölümlerde de yansıtılmıştır.
 
+#### Mobil — mini deneme haftalık/aylık ÖDÜL (yeni)
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Metrik** | Dönem sıralaması: **toplam doğru**; eşitlikte **toplam süre** (kısa üstte) | `daily_mini_ranking.py` |
+| **Ödül** | 1.→3 gün, 2.→2 gün, 3.→1 gün Premium; haftalık ve aylık aynı | `REWARD_DAYS`, `grant_premium_days` |
+| **ÖDÜL ekranı** | Herkese açık: canlı haftalık/aylık liste + geçmiş kazananlar; kart ve sonuç AppBar’dan **ÖDÜL** | `daily_mini_rewards_screen.dart`, `daily_mini_exam_card.dart`, `daily_mini_exam_result_screen.dart` |
+| **API** | `GET /daily-mini-exam/period-ranking/?period=weekly\|monthly`, `GET /daily-mini-exam/reward-history/` | `views.py`, `urls.py`, `api_config.dart`, `daily_mini_ranking_service.dart` |
+| **Model / migrate** | `DailyMiniRankingCampaign` (singleton), `DailyMiniRankingWinner` | `models.py`, `0043_daily_mini_ranking_rewards.py` |
+| **Finalize** | Idempotent; push + `UserMessage`; `--auto` / `--all-kpss` | `finalize_daily_mini_ranking.py`, `finalize-mini-oduller.bat` |
+| **Premium Sıralama** | Mock XP kaldırıldı; canlı dönem listesi («X doğru») | `leaderboard_screen.dart`, `leaderboard_service.dart`, `leaderboard_model.dart` |
+
+#### Mobil — Stüdyo hub (Daha fazla)
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Giriş** | Üst bar kare ikon (`Icons.apps_outlined`) → Stüdyo; ink/champagne premium dil | `app_shell_top_bar.dart`, `main_shell.dart` → `home_screen.dart` |
+| **Hero** | Marka + «Stüdyo» + kısa vaat + Premium CTA / aktif rozet; geri tuşu | `home_hero_section.dart` |
+| **Bölümler** | Çalışma araçları (ücretsiz) · Premium suite (PRO kilit rozeti) · Profil | `home_tools_module_list.dart`, `home_premium_module_list.dart`, `home_module_row.dart`, `home_section_header.dart` |
+| **Sadeleştirme** | Bu hub’dan günlük görev / ders ızgarası kaldırıldı (Ana Sayfa / Dersler’de kalır) | `home_screen.dart` |
+
+#### Mobil — soru metni justify + biçim
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Justify** | Soft `\n` tek paragrafta birleşir; `TextAlign.justify` (Android/iOS); `$$` / madde satırları korunur | `exam_stem_view.dart`, `formatted_text.dart` (`prepareExamJustifyText`, `_DocumentText`) |
+| **Kalın boşluk** | Harf/`**` bitişikte otomatik boşluk; tighten iç boşluğu dışarı taşır | `math-render.js`, `rich-format.js`, `formatted_text.dart` |
+| **III. Selim kırığı** | Aynı Romen tekrarı madde listesi sayılmaz; yalnızca ≥2 farklı Romen | `math-render.js`, `formatted_text.dart` |
+
+#### Mobil — özet kart / favoriler
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Favori özet kart** | Tıklanınca `SummaryCardFace.showViewer()`; konuya gitmez | `favorites_screen.dart`, `topic_summary_swipe_deck.dart` |
+| **Konu detayı** | Özet deste «Konuyu öğren» içinde; alt yazıda özet/bilgi sayısı | `topic_detail_screen.dart` |
+
+#### Panel — ödül, markdown, harita fırça
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Mini deneme ödülleri** | Menü **Deneme & sınav**; aç-kapa; manuel finalize; kazanan tablosu | `/panel/mini-deneme-odulleri/`, `daily_mini_ranking.html`, `base.html` |
+| **Çözüm/önizleme markdown** | `**…**` koruması; bölünmüş kalın onarımı; cache `math-render.js?v=8`, `rich-format.js?v=3` | `math-render.js`, `rich-format.js`, `base.html`, `question_form.html` |
+| **Akıllı Fırça önizleme** | İl maskesi birleşik canvas + tek `destination-in` (boş önizleme düzeltmesi) | `map-smart-brush.js` |
+
+#### Geliştirici araçları / build
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Canonical path** | `D:\ozel\HEDEFKAMU` bat’ları `D:\HEDEFKAMU`’ye yönlendirir; `GRADLE_USER_HOME=D:\.gradle` | `basla.bat`, `basla-telefon.bat`, `uygulamayi-yukle.bat` |
+| **APK yükleme** | L8 hata sonrası clean retry; gereksiz her seferinde full clean yok | `uygulamayi-yukle.bat` |
+| **Ödül cron** | Task Scheduler: günde 00:15 `finalize-mini-oduller.bat` (`--auto`) | `finalize-mini-oduller.bat` |
+
 #### Mobil — özet konu kartları (yeni)
 
 | Alan | Ne yapıldı | Dosyalar |
@@ -63,14 +115,14 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Eşleştirme şıkları** | Panel + mobil: 2+ sütun (ör. Olay / Sonuç); başlık yoksa 2-sütunda `Olay`/`Sonuç`. Değerler sütun, etiket başlık, dikey çizgi yok. | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
-| **Yapıştırma / biçim** | Panel paste: ZWSP + tam genişlik `＊`/`＿` → `*`/`_` (Flutter `normalizeMarkup` ile aynı); eşleştirme oku `->` / `\\rightarrow` → `→` | `math-render.js`, `rich-format.js`, `formatted_text.dart` |
+| **Eşleştirme şıkları** | Panel: `option-table.js` + CSS (değerler sütun, etiket başlık, dikey çizgi yok). Mobil: `option_column_layout.dart` | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
+| **Yapıştırma** | Eşleştirme oku `->` / `\\rightarrow` → `→` | `rich-format.js` |
 
 #### Panel — menü, promosyon, kullanıcılar
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Sol menü** | Gruplar: İçerik · Deneme & sınav · Kullanıcı & satış · Kalite · Ayarlar | `base.html` |
+| **Sol menü** | Gruplar: İçerik · Deneme & sınav (Sınavlar, şablon, paket, **Mini deneme ödülleri**) · Kullanıcı & satış · Kalite · Ayarlar | `base.html` |
 | **Promosyon CRUD** | Liste / yeni / düzenle / sil / aktif-pasif (günlük iş Admin’de değil panelde) | `/panel/promosyon/`, `promo_codes.html`, `promo_code_form.html`, `panel_promo_*` |
 | **Kullanıcılar** | Toplu sil, misafir filtresi, **Misafirleri temizle**; bir kerelik anonim misafir temizliği | `users.html`, `panel_views.py` |
 | **Duyuru şablonu** | Hepsiburada tarzı big-picture önizleme (görsel + başlık + metin); hazır şablon chipleri; FCM görseli korunur; uygulama ön planda da big picture | `announcement_form.html`, `announcement-push-preview.css`/`.js`, `push_notification_service.dart` |
@@ -87,27 +139,16 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **PNG zemin** | Açık kâğıt zemin (koyu temada Romen okunur) | `map_question_renderer.py` |
 | **Mükerrer** | `[HARITA]` ve `(Not: …)` yok sayılır; aynı şıklar + benzer kök | `question_fingerprint.py` |
 
-#### Mobil — Akıllı Tekrar (hizalama)
+#### Geliştirici araçları / build
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Seçim mantığı** | «Nasıl çalışır?» ile uyum: (1) yanlış defteri — vadesi gelen önce, (2) başarı &lt;%60 zayıf konular, (3) oturum sonrası SRS (doğru ertelenir, yanlış yarın). **Müfredattan rastgele doldurma yok** | `smart_review_service.dart`, `SmartReviewLogic` |
-| **Ders filtresi** | Tümü + müfredat ders chipleri; seçime göre yanlış/zayıf havuz yeniden kurulur | `smart_review_screen.dart` |
-| **CTA** | Buton metni **AKILLI TEKRARI BAŞLAT**; defter kayıtlı toast bastırılır | `smart_review_screen.dart` |
-| **Test** | Seçim / vade / havuz boyutu birim testleri | `test/smart_review_service_test.dart` |
-
-#### Geliştirici araçları / build / proje kökü
-
-| Alan | Ne yapıldı | Dosyalar |
-|---|---|---|
-| **Asıl kök** | Stabil çalışma kökü **`D:\HEDEFKAMU`** (ASCII). `D:\ozel\HEDEFKAMU` kopya; C: yedek — yeni iş C’ye yazılmaz | — |
-| **uygulamayi-yukle.bat** | Release APK → uninstall → install → aç; `GRADLE_USER_HOME=%~d0\.gradle`, `PUB_CACHE=%~dp0.pub-cache` (C/D farklı kök L8 hatasını önler); JDK 17 PATH | `uygulamayi-yukle.bat` |
-| **basla-telefon.bat** | Debug hot-reload; aynı D: Gradle/Pub cache + JDK bootstrap | `basla-telefon.bat` |
-| **Gradle** | `android.overridePathCheck=true`; `kotlin.incremental=false` (Kotlin incremental C↔D kök çakışması) | `android/gradle.properties` |
+| **uygulamayi-yukle.bat** | Canonical `D:\HEDEFKAMU`; Release APK → uninstall → install → aç; L8 hata sonrası clean retry; JDK/Flutter/adb PATH | `uygulamayi-yukle.bat` |
+| **basla / basla-telefon** | ozel kopyadan yönlendirme; `GRADLE_USER_HOME=D:\.gradle`, `PUB_CACHE` proje içi | `basla.bat`, `basla-telefon.bat` |
+| **Ödül finalize cron** | `finalize_daily_mini_ranking --auto`; bat + Task Scheduler örneği | `finalize-mini-oduller.bat`, `finalize_daily_mini_ranking.py` |
 | **Play paket boyutu** | Release ABI: `armeabi-v7a` + `arm64-v8a`; native lib sıkıştırma; hedef ≤80 MB | `android/app/build.gradle.kts` |
-| **Panel JS bölümleri** | Yapıştırma `rich-format.js`; render `math-render.js`; önizleme `question-preview.js`; şık tablo `option-table.js`; harita ayrı dosyalar — cache `?v=` | `backend/static/panel/`, `base.html`, `question_form.html` |
-| **Anayasa kuralı** | Dosya ayrımı; disk dolunca kaynak truncate yok; API yalnızca `ApiConfig` | `.cursor/rules/kpss-akademi.mdc` |
-| **Testler** | Hata bildirimi, embedding, anonim auth, watermark, kampanya, exam text, **smart_review** | `test_*.py`, `*_test.dart`, `smart_review_service_test.dart` |
+| **Anayasa kuralı** | Dosya ayrımı (harita / option-table / önizleme ayrı dosya); büyük dosyaya yalnızca bağlama | `.cursor/rules/kpss-akademi.mdc` |
+| **Testler** | Hata bildirimi, embedding benzerlik filtresi, anonim auth, watermark, kampanya, exam text parity | `test_error_report.py`, `test_embeddings.py`, `test_anonymous_auth.py`, `*_test.dart` |
 
 ### 19 Ağustos 2026 — işlenen davranış (önceki commit)
 
@@ -150,7 +191,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 |---|---|---|
 | **Ana sekme kabuğu** | Alt menü: Ana Sayfa, Dersler, Gelişim, Deneme; üstte profil | `lib/screens/main_shell.dart` |
 | **Yanlış defteri balonu** | Yalnızca Google + en az 1 bitmiş konu testi + defterde yanlış varken; koyu teal zemin; **YANLIŞ** → **DEFTERİM** 3D; mavi-yeşil çerçeve; sağ üst X; sola yaslı (`left: -16`) | `lib/widgets/wrong_notebook_promo_bubble.dart` |
-| **Genişletilmiş ana sayfa** | “Daha fazla” menüsü: modül listesi, görevler, araçlar, premium modüller | `lib/screens/home_screen.dart`, `lib/widgets/app_shell_top_bar.dart` |
+| **Stüdyo (Daha fazla)** | Pro Üyelik solundaki kare ikon → ink/champagne **Stüdyo** hub: çalışma araçları + Premium suite + Profil; görev/ders ızgarası yok | `home_screen.dart`, `home_hero_section.dart`, `home_module_row.dart`, `app_shell_top_bar.dart` |
 | **Giriş yönlendirme** | Sınav seçilmemişse hemen onboarding → seçimden sonra «Ataman Gerçekleşiyor» (**3,5 sn**) → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart`, `lib/screens/exam_track_onboarding_screen.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
 | **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: ortada 657 `app_icon` siyah daire gölgeyi doldurur; üstünde HEDEF KAMU (yan logo yok), altında «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
@@ -198,7 +239,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı | `lib/screens/quiz_screen.dart` | Ücretsiz; reklamlı |
-| **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil | `lib/widgets/question_stem_content.dart`, `lib/widgets/formatted_text.dart` | Ücretsiz |
+| **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil; soft satırlar birleşir; **TextAlign.justify** (Android/iOS) | `question_stem_content.dart`, `exam_stem_view.dart`, `formatted_text.dart` (`prepareExamJustifyText`) | Ücretsiz |
 | **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; her konuda testte mümkünse **4 ÖSYM** soru, **4 etiketsiz + 1 ÖSYM** sırası (etiketsiz yetmezse normal sıra) | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
 | **Çizim katmanı** | Soru alanında kalem / yeşil fosfor (geniş vurgu) / silgi; işaretler kaydırınca metinde kalır; kalem kapalıyken görünür; test bitince kaydedilmez | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp); **Favorilerim** sekmeli: Soru Favorileri + Özet Kartlar (Favori / Tekrar Et) | `favorite_heart_button.dart`, `favorites_service.dart`, `summary_card_progress_service.dart`, `favorites_screen.dart` | Ücretsiz |
@@ -231,6 +272,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 |---|---|---|---|
 | **Günlük görev merkezi** | Ders bazlı günlük ilerleme çubukları (Türkçe, Mat, Tarih, Coğrafya, Vatandaşlık) | `lib/widgets/daily_mission_center.dart` | Ücretsiz |
 | **Günün mini denemesi** | 20 soru; CTA «Denemeye Başla / Sıralamanı Gör» + 657 logo daireyi doldurur; kürsü PNG paylaşımı (ortada soluk Hedef Kamu); **Heyecan Dorukta!** → sayaç 4’te **İŞTE SIRALAMAN** → **BUGÜNKÜ SIRALAMAN** (en az 1 cevap); boş gönderim sıralamaya girmez; 00:00–06:00 dünün liderleri; demo seed kürsüde yok; **EN BAŞARILILAR** altta sabit **Bu ayın yanlış çözümleri** + **Devam Et** | `lib/widgets/daily_mini_exam/`, `lib/screens/quiz_screen.dart`, `lib/screens/daily_mini_exam_result_screen.dart`, `lib/services/daily_mini_exam_service.dart`, `backend/content/views.py`, `backend/content/daily_mini_exam.py` | Ücretsiz (misafir: ilk gün) |
+| **Haftalık/aylık ÖDÜL sıralaması** | Toplam doğru + toplam süre (eşitlikte daha kısa süre üstte); 1.→3 gün, 2.→2 gün, 3.→1 gün Premium (haftalık ve aylık); **ÖDÜL** ekranı herkese açık; panel ayar + manuel finalize; otomatik: `finalize_daily_mini_ranking --auto` / `finalize-mini-oduller.bat` (günde 1, idempotent) | `daily_mini_rewards_screen.dart`, `daily_mini_ranking_service.dart`, `daily_mini_ranking.py`, `finalize_daily_mini_ranking.py`, `finalize-mini-oduller.bat`, `GET …/period-ranking/`, `GET …/reward-history/` | Ücretsiz |
 | **Deneme paketleri vitrini** | Dersler sekmesi **en altında**; yumuşak yatay kaydırma; ortalanmış başlık | `lib/widgets/exam_pack_showcase.dart`, `lib/services/exam_pack_service.dart`, `GET /api/v1/exam-packs/` | Ücretsiz vitrin |
 | **Mini deneme PDF upsell** | Sonuç sonrası Premium yönlendirmesi (aylık yanlış varsa) | `daily_mini_exam_result_screen.dart` | Upsell |
 | **Tasarruf içgörüsü** | Ücretsiz testlerin tahmini TL değeri; 20 test kilometre taşı | `lib/widgets/savings_insight_banner.dart`, `lib/services/user_savings_insight_service.dart` | Ücretsiz |
@@ -255,7 +297,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
-| **Favorilerim** | Soru favorileri + özet kartlar (Favori / Tekrar Et); soru orijinal test bağlamında açılır | `favorites_screen.dart`, `summary_card_progress_service.dart` | Ücretsiz |
+| **Favorilerim** | Soru favorileri + özet kartlar (Favori / Tekrar Et); özet karta tıklanınca tam ekran kart görüntüleyici; soru orijinal test bağlamında açılır | `favorites_screen.dart`, `topic_summary_swipe_deck.dart` (`SummaryCardFace.showViewer`), `summary_card_progress_service.dart` | Ücretsiz |
 | **Notlarım** | Ders etiketli çalışma notları (CRUD) | `lib/screens/notes_screen.dart`, `lib/services/notes_service.dart` | Ücretsiz |
 | **Hesap bağlama kartı** | Google bağlamadan önce uyarı | `lib/widgets/account_link_card.dart` | Ücretsiz |
 
@@ -288,7 +330,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Odak · Pomodoro** | 25/50/90/özel dk, ortam sesleri, tamamlanınca XP | `lib/screens/premium/focus_mode_screen.dart`, `lib/services/pomodoro_service.dart` | Premium (araçlar menüsü) |
 | **Bulut senkron** | Google/Apple senkron arayüzü (**mock**) | `lib/screens/premium/cloud_sync_screen.dart`, `lib/services/cloud_sync_service.dart` | Premium |
 | **Offline paket** | Tüm soru paketini çevrimdışı indirme | `lib/screens/premium/offline_pack_screen.dart`, `lib/services/offline_pack_service.dart` | **Yıllık Premium** |
-| **Sıralama** | Haftalık/aylık XP sıralaması (**demo veri**) | `lib/screens/premium/leaderboard_screen.dart`, `lib/services/leaderboard_service.dart` | Premium |
+| **Sıralama** | Haftalık/aylık **toplam doğru** (mini deneme dönem API); PremiumGate | `leaderboard_screen.dart`, `leaderboard_service.dart`, `daily_mini_ranking_service.dart` | Premium |
 | **Premium kapısı** | Paywall’a yönlendirme yardımcısı | `lib/widgets/premium_gate.dart` | — |
 | **Benzer sorular** | Yanlış defterinden embedding benzeri | `wrong_questions_screen.dart` | Premium |
 | **Sınırsız test** | Günlük ders kotası kalkar | `content_bank_service.dart` | Premium |
@@ -466,6 +508,7 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
 | Deneme paketi düzenle / sil / aktif-pasif (Dersler vitrini) + şablondan üret | `/panel/deneme-paket/...` |
+| **Mini deneme ödülleri** (haftalık/aylık aç-kapa, manuel finalize, kazananlar) | `/panel/mini-deneme-odulleri/` |
 
 ### Embedding ve test gruplama
 
@@ -539,6 +582,8 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET/PATCH /me/` | Profil | Bearer | `AuthService` |
 | `GET/PATCH/DELETE /me/messages/` | Kullanıcı mesajları | Bearer | `UserMessageService` |
 | `GET/POST /daily-mini-exam/` | Mini deneme + gönderim | Opsiyonel/Bearer | `DailyMiniExamService` |
+| `GET /daily-mini-exam/period-ranking/` | Haftalık/aylık sıralama (`period`, `kpss_type`) | Opsiyonel/Bearer | `DailyMiniRankingService` |
+| `GET /daily-mini-exam/reward-history/` | Finalize edilmiş dönem kazananları | Opsiyonel/Bearer | `DailyMiniRankingService` |
 | `POST /promo/redeem/` | Promosyon kodu (Google; 5/dk; max 32) | Bearer (Google) | `PromoCodeService` |
 | `GET /exam-types/` | Sınav geri sayım kataloğu | Hayır | `ExamCatalogService` |
 | `GET /exam-packs/?exam_type=` | Yayınlanmış deneme paketleri | Hayır | `ExamPackService` |
@@ -587,7 +632,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 - **İçerik:** `Question`, `QuestionScenario`, `MapTemplate`
 - **Kullanıcı:** `AppUser`, `DeviceToken`, `UserMessage`
 - **Etkileşim:** `QuestionRating`, `QuestionAttempt`, `QuestionErrorReport`
-- **Mini deneme:** `DailyMiniExam`, `DailyMiniExamAttempt`
+- **Mini deneme:** `DailyMiniExam`, `DailyMiniExamAttempt`, `DailyMiniRankingCampaign`, `DailyMiniRankingWinner`
 - **Operasyon:** `Announcement`, `ExamType`, `PromoCode`, `PromoCodeRedemption`, `OcrIngestLog`, `ContentRevision`
 - **Deneme paketleri:** `ExamDistributionTemplate`, `ExamPack`, `ExamPackExam`, `ExamPackExamQuestion`
 - **Embedding:** `Question.embedding` (JSON)
@@ -598,13 +643,15 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ## Bilinen sınırlamalar
 
-1. **Bulut senkron** ve **sıralama** arayüzü hazır; backend entegrasyonu kısmen mock/demo.
+1. **Bulut senkron** arayüzü hazır; gerçek çok cihazlı sync backend’i kısmen mock.
 2. **Mikro öğrenme** ve **güncel bilgiler** yerel/demo içerik kullanır (Django soru bankası değil).
 3. **Deneme analizi** premium kapısı sekme ile ana menü arasında tutarsız olabilir.
 4. **Instagram Reels** yalnızca backend servisi; panel UI yok.
 5. **Anonim oturum** çevrimdışı çalışmayı destekler; senkron özellikler backend oturumu ister.
 6. Soru metni/şık/çözüm **mobil kodda hardcode edilmez** — kaynak Django (`QuestionFetchService`, `ContentBankService`).
 7. **Play Store / release APK** yalnızca `armeabi-v7a` + `arm64-v8a` (telefon); x86_64 emülatör bu release’i çalıştırmaz. Hedef paket **≤80 MB**.
+8. **Mini deneme ödül finalize** otomatik için OS Task Scheduler / cron gerekir (`finalize-mini-oduller.bat` veya `manage.py … --auto`); panelden manuel de çalışır.
+9. Canonical proje yolu **`D:\HEDEFKAMU`**; `D:\ozel\HEDEFKAMU` kopyası bat ile yönlendirilir — iki klonu aynı Gradle daemon ile açmayın.
 
 ---
 
@@ -612,12 +659,10 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 Bu sürümde öne çıkanlar (ayrıntı: [20 Ağustos 2026](#20-ağustos-2026--işlenen-ekleme-ve-değişiklikler-bu-commit)):
 
-- **Özet konu kartları:** panel stüdyo + görsel (`0042`) + swipe deste + Favorilerim sekmeleri
-- **Yanlış defteri:** Kitaptaki yanlışlarım (kompakt **SORU EKLE**, boş başlık «Yanlış Sorularını Takip Et!»); misafir→Google defter aktarımı; ortada 3 sn «defterde kayıtlı» toast (Akıllı Tekrar’da yok)
-- **Akıllı Tekrar:** ders filtresi; yalnız yanlış + zayıf konular; **AKILLI TEKRARI BAŞLAT**
-- **Panel:** özet kart stüdyosu; duyuru big-picture önizleme; harita Romen A± + Akıllı Fırça; şık tablosu **2+ sütun**; yapıştırma ZWSP/`＊` normalize
-- **Build:** asıl kök `D:\HEDEFKAMU`; bat’larda D: Gradle/Pub cache; `overridePathCheck` + `kotlin.incremental=false`
-- **Destek mailto**; reklamsız kampanya yalnızca banner; `uygulamayi-yukle.bat` uninstall→install
+- **Özet konu kartları:** panel CRUD + pack/catalog `summaryCards` + konu detayında kaydırma destesi + Favorilerim sekmeleri
+- **Yanlış defteri:** Kitaptaki yanlışlarım (manuel foto), defter notu, benzer soru kök kopya filtresi
+- **Panel:** menü grupları, promosyon CRUD, kullanıcı toplu/misafir temizleme, harita doğru/ışın/il adı, eşleştirme şık tablosu
+- **Destek mailto** cihaz/sürüm gövdesi; **reklamsız kampanya** yalnızca banner; **uygulamayi-yukle.bat** uninstall→install
 
 ### Sürüm notu (2026-08-18)
 
