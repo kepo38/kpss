@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/manual_question_model.dart';
+import '../services/ad_service.dart';
 import '../services/kpss_preference_service.dart';
 import '../services/manual_question_service.dart';
+import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/wrong_notebook/manual_question_annotate_viewer.dart';
@@ -145,6 +147,14 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
       );
       if (source == null || !mounted) return;
 
+      // İlk foto ücretsiz; 2. ve sonrası (Pro değilse) ödüllü reklam.
+      await ManualQuestionService.instance.initialize();
+      final existingCount = ManualQuestionService.instance.items.length;
+      if (!PremiumService.instance.isPremium && existingCount >= 1) {
+        final earned = await _watchAdForExtraPhoto();
+        if (!earned || !mounted) return;
+      }
+
       setState(() => _adding = true);
       final picker = ImagePicker();
       final picked = await picker.pickImage(
@@ -187,6 +197,58 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
     } finally {
       if (mounted && _adding) setState(() => _adding = false);
     }
+  }
+
+  /// 2. foto ve sonrası için ödüllü reklam (Pro ücretsiz).
+  Future<bool> _watchAdForExtraPhoto() async {
+    final dialogNavigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: Center(
+            child: Card(
+              color: Color(0xFF152238),
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppTheme.champagne),
+                    SizedBox(height: 16),
+                    Text(
+                      'Ek foto için reklam…',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final earned = await AdService.showRewardedAd(
+      kind: AdRewardKind.dailyTestBonus,
+    );
+    if (dialogNavigator.mounted && dialogNavigator.canPop()) {
+      dialogNavigator.pop();
+    }
+
+    if (!earned && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'İlk foto ücretsiz. Sonrakiler için reklamı sonuna kadar izleyin.',
+          ),
+        ),
+      );
+    }
+    return earned;
   }
 
   Future<void> _confirmRemove(ManualQuestionModel item) async {

@@ -123,44 +123,48 @@ class _BootSplashScreenState extends State<BootSplashScreen>
 class _SplashAppIcon extends StatelessWidget {
   const _SplashAppIcon();
 
-  static const _size = 220.0;
+  /// Siyah gölge daire (dış).
+  static const _disc = 220.0;
+
+  /// app_icon bunun içinde — biraz küçük ki siyah disk kenarı görünsün.
+  static const _icon = 188.0;
 
   @override
   Widget build(BuildContext context) {
-    // app_icon, siyah daire gölgenin içinde ortalı ve tam kaplar (soluk).
+    // Siyah daire gölge + içinde soluk app_icon (ikon diski tamamen örtmesin).
     return SizedBox(
-      width: _size,
-      height: _size,
+      width: _disc,
+      height: _disc,
       child: Stack(
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: _size,
-            height: _size,
+            width: _disc,
+            height: _disc,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFF05070C),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  blurRadius: 32,
-                  spreadRadius: 4,
+                  color: Colors.black.withValues(alpha: 0.65),
+                  blurRadius: 36,
+                  spreadRadius: 6,
                 ),
               ],
             ),
           ),
           ClipOval(
             child: SizedBox(
-              width: _size,
-              height: _size,
+              width: _icon,
+              height: _icon,
               child: ColorFiltered(
                 colorFilter: ColorFilter.mode(
-                  const Color(0xFF7D8B94).withValues(alpha: 0.72),
+                  const Color(0xFF6A7680).withValues(alpha: 0.55),
                   BlendMode.modulate,
                 ),
                 child: Opacity(
-                  opacity: 0.68,
+                  opacity: 0.52,
                   child: Image.asset(
                     BrandConstants.appIconAsset,
                     fit: BoxFit.cover,

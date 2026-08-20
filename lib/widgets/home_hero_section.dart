@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
 import 'scale_button.dart';
 
@@ -208,33 +207,36 @@ class HomeHeroSection extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: AppTheme.neonEdge.withValues(alpha: 0.45),
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
                           ),
-                          color: AppTheme.neonEdge.withValues(alpha: 0.12),
-                        ),
-                        child: Text(
-                          BrandConstants.appName.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2.4,
-                            color: AppTheme.neonEdge.withValues(alpha: 0.95),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppTheme.neonEdge.withValues(alpha: 0.45),
+                            ),
+                            color: AppTheme.neonEdge.withValues(alpha: 0.12),
+                          ),
+                          child: Text(
+                            'STÜDYO',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 2.4,
+                              color: AppTheme.neonEdge.withValues(alpha: 0.95),
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 12),
                       const Text(
                         'Stüdyo',
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'serif',
                           fontSize: 44,
@@ -242,15 +244,6 @@ class HomeHeroSection extends StatelessWidget {
                           height: 1.0,
                           letterSpacing: -1.4,
                           color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Çalışma araçları ve Premium özellikler — tek parlak hub.',
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.4,
-                          color: Colors.white.withValues(alpha: 0.68),
                         ),
                       ),
                     ],

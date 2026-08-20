@@ -1,7 +1,7 @@
 name: kpss_akademi
 description: Hedef Kamu - Premium KPSS hazırlık mobil uygulaması
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.1+3
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

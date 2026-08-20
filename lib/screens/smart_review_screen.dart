@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../data/kpss_curriculum.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
+import '../services/premium_service.dart';
 import '../services/smart_review_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/scale_button.dart';
 import '../widgets/study_empty_cta.dart';
 import 'quiz_screen.dart';
@@ -59,6 +61,9 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
     if (_starting) return;
     final pack = _pack;
     if (pack == null || pack.isEmpty) return;
+
+    final allowed = await PremiumGate.requirePremium(context);
+    if (!allowed || !mounted) return;
 
     setState(() => _starting = true);
     final questions =
@@ -247,7 +252,7 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                       const SizedBox(height: 24),
                       ScaleButton(
                         onPressed: pack.completed || _starting ? null : _start,
-                        child: FilledButton.icon(
+                        child: FilledButton(
                           onPressed:
                               pack.completed || _starting ? null : _start,
                           style: FilledButton.styleFrom(
@@ -256,8 +261,9 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                             disabledBackgroundColor:
                                 AppTheme.ink.withValues(alpha: 0.08),
                             minimumSize: const Size(double.infinity, 52),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                           ),
-                          icon: _starting
+                          child: _starting
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
@@ -265,18 +271,65 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : Icon(
-                                  pack.completed
-                                      ? Icons.check_circle_outline
-                                      : Icons.play_arrow_rounded,
-                                ),
-                          label: Text(
-                            pack.completed
-                                ? 'Bugün tamamlandı'
-                                : _starting
-                                    ? 'Hazırlanıyor…'
-                                    : 'AKILLI TEKRARI BAŞLAT',
-                          ),
+                              : pack.completed
+                                  ? const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.check_circle_outline),
+                                        SizedBox(width: 8),
+                                        Text('Bugün tamamlandı'),
+                                      ],
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          PremiumService.instance.isPremium
+                                              ? Icons.play_arrow_rounded
+                                              : Icons.lock_rounded,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Flexible(
+                                          child: Text(
+                                            'AKILLI TEKRARI BAŞLAT',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        if (!PremiumService.instance.isPremium) ...[
+                                          const SizedBox(width: 10),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 7,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              color: AppTheme.ink
+                                                  .withValues(alpha: 0.12),
+                                              border: Border.all(
+                                                color: AppTheme.ink
+                                                    .withValues(alpha: 0.22),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'PRO',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 0.8,
+                                                color: AppTheme.ink,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                         ),
                       ),
                       const SizedBox(height: 10),

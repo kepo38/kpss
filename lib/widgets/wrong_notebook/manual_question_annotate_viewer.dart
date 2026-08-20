@@ -7,10 +7,9 @@ import '../../models/manual_question_model.dart';
 import '../../services/manual_question_service.dart';
 import '../../theme/app_theme.dart';
 import '../manual_annotation_codec.dart';
-import '../premium_gate.dart';
 import '../quiz_drawing_overlay.dart';
 
-/// Kitaptaki yanlış foto — tam ekran; premium kalem ile kalıcı çizim.
+/// Kitaptaki yanlış foto — tam ekran; kalem ile kalıcı çizim.
 class ManualQuestionAnnotateViewer extends StatefulWidget {
   final ManualQuestionModel item;
 
@@ -106,8 +105,6 @@ class _ManualQuestionAnnotateViewerState
       await _persist();
       return;
     }
-    final ok = await PremiumGate.requirePremium(context);
-    if (!ok || !mounted) return;
     setState(() => _drawing = true);
   }
 
@@ -190,39 +187,45 @@ class _ManualQuestionAnnotateViewerState
                 );
               },
             ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () async {
-                      if (_drawing) await _persist();
-                      if (context.mounted) Navigator.of(context).pop();
-                    },
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (_saving)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppTheme.champagneLight,
-                        ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () async {
+                        if (_drawing) await _persist();
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
                       ),
                     ),
-                  _PremiumPencilButton(
-                    active: _drawing,
-                    onPressed: _toggleDrawing,
-                  ),
-                ],
+                    const Spacer(),
+                    if (_saving)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.champagneLight,
+                          ),
+                        ),
+                      ),
+                    _PremiumPencilButton(
+                      active: _drawing,
+                      onPressed: _toggleDrawing,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -279,7 +282,7 @@ class _PremiumPencilButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: active ? 'Kalemi kapat' : 'Premium kalem',
+      message: active ? 'Kalemi kapat' : 'Kalem',
       child: Material(
         color: Colors.transparent,
         child: InkWell(

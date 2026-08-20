@@ -1,11 +1,14 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-08-20  
+> **Son güncelleme:** 2026-08-21  
 > **Dart paketi:** `kpss_akademi`  
 > **Android applicationId (Play Store):** `com.hedefkamu.hedef_kamu`  
+> **Sürüm (mobil):** `1.0.1+3`  
 > **Stack:** Flutter mobil + Django REST API + içerik paneli (`/panel/`) + Unfold admin (`/admin/`)
 
 Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kaynakta toplar. Yeni özellik eklendiğinde, mevcut bir özellik değiştirildiğinde veya kaldırıldığında **aynı PR/commit ile güncellenmelidir**.
+
+**Premium kaynağı:** Play Billing aboneliği **veya** panel/API `isPremium` / promosyon / mini deneme ödül günleri → `PremiumService.instance.isPremium` (`premium_service.dart`, `play_billing_service.dart`). Kapı yardımcısı: `PremiumGate.requirePremium` / `navigate` → paywall.
 
 ---
 
@@ -20,7 +23,18 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
-### 20 Ağustos 2026 — işlenen ekleme ve değişiklikler (bu commit)
+### 21 Ağustos 2026 — işlenen ekleme ve değişiklikler (bu commit)
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Akıllı Tekrar** | «AKILLI TEKRARI BAŞLAT» yalnızca **Premium**; tıklanınca `PremiumGate` → paywall; CTA’da kilit + **PRO** rozeti | `smart_review_screen.dart`, `premium_gate.dart` |
+| **Kitaptaki yanlışlarım** | Kalem/annotate **ücretsiz**; **1. foto ücretsiz**, **2.+ foto** Pro değilse ödüllü reklam | `wrong_notebook_manual_screen.dart`, `manual_question_annotate_viewer.dart` |
+| **Açılış splash** | Siyah daire gölge (220) + içinde soluk `app_icon` (188); üstte HEDEF KAMU, altta Ataman + kayan çizgi | `boot_splash_screen.dart` |
+| **Stüdyo hero** | Üst sağ **Premium’u keşfet**; ortada **STÜDYO** pill; alt yazı kaldırıldı | `home_hero_section.dart` |
+| **ÖDÜL UI** | BUGÜNÜN KÜRSÜSÜ üzerinde sarkan ÖDÜL madalyon; ödüller doğrudan Premium günü (promosyon kodu değil) | `daily_mini_odul_button.dart`, `daily_mini_rewards_screen.dart` |
+| **FEATURES** | Premium alanlar matrisi genişletildi (aşağıda) | `FEATURES.md` |
+
+### 20 Ağustos 2026 — işlenen ekleme ve değişiklikler
 
 Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **panel/API** güncellemelerinin ayrıntılı kaydı. Katalog satırları aşağıda ilgili bölümlerde de yansıtılmıştır.
 
@@ -194,7 +208,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Stüdyo (Daha fazla)** | Pro Üyelik solundaki kare ikon → ink/champagne **Stüdyo** hub: çalışma araçları + Premium suite + Profil; görev/ders ızgarası yok | `home_screen.dart`, `home_hero_section.dart`, `home_module_row.dart`, `app_shell_top_bar.dart` |
 | **Giriş yönlendirme** | Sınav seçilmemişse hemen onboarding → seçimden sonra «Ataman Gerçekleşiyor» (**3,5 sn**) → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart`, `lib/screens/exam_track_onboarding_screen.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
-| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: ortada 657 `app_icon` siyah daire gölgeyi doldurur; üstünde HEDEF KAMU (yan logo yok), altında «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
+| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: **siyah daire gölge** + içinde soluk 657 `app_icon` (ikon diskten biraz küçük); üstünde HEDEF KAMU (yan logo yok), altında «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
 | **Dikey ekran kilidi** | Tüm cihazlarda yalnızca portrait | `lib/services/orientation_policy.dart`, `android/.../AndroidManifest.xml` |
 | **Web önizleme çerçevesi** | Masaüstü web’de telefon boyutunda kart | `lib/main.dart` |
 
@@ -283,9 +297,9 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Akıllı tekrar** | Ders filtresi; set yalnızca yanlış defteri + %60 altı konular (müfredat doldurma yok); buton «AKILLI TEKRARI BAŞLAT»; SRS oturum sonrası | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart` | Ücretsiz |
-| **Yanlış defteri** | Konu testlerinden yanlışlar; **kullanıcı başına yerel** (SharedPreferences scope); karttan onaylı **kaldır**; karta tıklayınca inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte işaretsiz + «Daha önce»; konu/günlük denemede ortada 3 sn premium «defterde kayıtlı» toast (**Akıllı Tekrar**’da yok). Bitmiş test yanlışları sonradan doğru cevaplansa istatistik değişmez. **Akıllı Tekrar** sağ üstte; **Kitaptaki Yanlışlarım** (iki satır, dar pembe buton) ile manuel foto sorular ayrı ekranda; foto ekleme o ekranda **SORU EKLE**. **Manuel foto soru:** kamera/galeri; **YANLIŞ SORULARIM** formunda ders/konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini; durum **Yeni / Tekrar Et / Çözüldü**. **Misafir:** yalnızca soru metni hafif buzlu; karta dokununca giriş; **Google sonrası defter aktarılır, buz kalkar** | `lib/screens/wrong_questions_screen.dart`, `lib/screens/wrong_notebook_manual_screen.dart`, `lib/widgets/wrong_notebook/`, `lib/widgets/quiz_take_note_button.dart`, `lib/widgets/quiz_wrong_notebook_banner.dart`, `lib/services/question_note_service.dart`, `lib/services/content_bank_service.dart`, `lib/services/manual_question_service.dart` | Ücretsiz; misafir metin hafif buzlu |
-| **Benzer sorular** | Embedding tabanlı benzer soru seti (API); kaynak soru ve %88+ aynı kök metinli kopyalar hariç | `wrong_questions_screen.dart`, `QuestionFetchService.fetchSimilar`, `backend/content/embeddings.py` | **Premium** |
+| **Akıllı tekrar** | Ders filtresi; set yanlış defteri + %60 altı konular; «AKILLI TEKRARI BAŞLAT» → `PremiumGate.requirePremium` (PRO rozeti + kilit ikonu); ekranı görmek ücretsiz, **oturumu başlatmak Premium** | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart`, `premium_gate.dart` | **Premium** (başlat) |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; kullanıcı başına yerel; karttan kaldır; inceleme (**Çıkış**, işaretli şık, **Not Al**). Normal testte «Daha önce» toast. **Akıllı Tekrar** pill (başlat Premium). **Kitaptaki Yanlışlarım:** manuel foto; **1. foto ücretsiz**, **2.+** Pro değilse ödüllü reklam; **kalem/annotate ücretsiz**. Misafir: metin buzlu → Google’da aktarım | `wrong_questions_screen.dart`, `wrong_notebook_manual_screen.dart`, `manual_question_annotate_viewer.dart`, `wrong_notebook/*`, `quiz_wrong_notebook_banner.dart` | Liste/annotate **ücretsiz**; benzer **Premium**; ekstra foto **reklam veya Premium** |
+| **Benzer sorular** | Embedding tabanlı benzer set; kaynak + %88+ aynı kök hariç; ücretsizde `ProUpsellSheet` | `wrong_questions_screen.dart`, `pro_upsell_sheet.dart`, `embeddings.py` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; şampanya etiket «Yanlış defteriyle deneme oluşturabilirsin»; ana CTA «Derslerden test çöz» | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
 ---
@@ -329,11 +343,12 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Görev yönetimi** | Haftalık görevler, öncelik, tamamlama/silme | `lib/screens/premium/task_management_screen.dart`, `lib/services/task_service.dart` | Premium |
 | **Odak · Pomodoro** | 25/50/90/özel dk, ortam sesleri, tamamlanınca XP | `lib/screens/premium/focus_mode_screen.dart`, `lib/services/pomodoro_service.dart` | Premium (araçlar menüsü) |
 | **Bulut senkron** | Google/Apple senkron arayüzü (**mock**) | `lib/screens/premium/cloud_sync_screen.dart`, `lib/services/cloud_sync_service.dart` | Premium |
-| **Offline paket** | Tüm soru paketini çevrimdışı indirme | `lib/screens/premium/offline_pack_screen.dart`, `lib/services/offline_pack_service.dart` | **Yıllık Premium** |
-| **Sıralama** | Haftalık/aylık **toplam doğru** (mini deneme dönem API); PremiumGate | `leaderboard_screen.dart`, `leaderboard_service.dart`, `daily_mini_ranking_service.dart` | Premium |
+| **Offline paket** | Tüm soru paketini çevrimdışı indirme | `lib/screens/premium/offline_pack_screen.dart`, `lib/services/offline_pack_service.dart` | **Yalnızca yıllık Premium** (`canUseOfflinePack`) |
+| **Sıralama** | Haftalık/aylık **toplam doğru** (mini deneme dönem API, canlı); PremiumGate | `leaderboard_screen.dart`, `leaderboard_service.dart`, `daily_mini_ranking_service.dart` | Premium |
+| **Akıllı Tekrar (başlat)** | Stüdyo / yanlış defteri girişinden ekran açık; oturum başlatma kapılı | `smart_review_screen.dart` | Premium |
 | **Premium kapısı** | Paywall’a yönlendirme yardımcısı | `lib/widgets/premium_gate.dart` | — |
 | **Benzer sorular** | Yanlış defterinden embedding benzeri | `wrong_questions_screen.dart` | Premium |
-| **Sınırsız test** | Günlük ders kotası kalkar | `content_bank_service.dart` | Premium |
+| **Sınırsız test** | Günlük ders kotası + özel test (harita) kotası kalkar | `content_bank_service.dart`, `topic_detail_screen.dart`, `special_map_geography_screen.dart` | Premium |
 
 **Abonelik ürünleri:** `kpss_premium_monthly`, `kpss_premium_yearly` — `lib/services/iap_constants.dart`
 
@@ -596,31 +611,92 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 
 ## Erişim matrisi
 
+Kaynak doğruluk: `PremiumService` (Play Billing **veya** sunucu/panel `isPremium` / promo / ödül günleri). Reklam bypass: `AdManager.setPremium`. Offline indirme: yalnızca `isYearlyPremium` / `canUseOfflinePack`.
+
+### A) Çalışma ve test (freemium)
+
+| Yetenek | Ücretsiz | Ödüllü reklam | Premium (aylık veya yıllık) | Yıllık Premium |
+|---|---|---|---|---|
+| Müfredat, ders okuma, özet kart destesi | ✓ | | ✓ | ✓ |
+| Ders başına **1 konu testi / gün** | ✓ | | sınırsız | sınırsız |
+| **+1 bonus test / gün** (derse özel) | | ✓ (`dailyTestBonus`) | gerekmez | gerekmez |
+| **Sınırsız konu testi** | | | ✓ | ✓ |
+| **Özel Testler · Haritalarla Coğrafya** | Aynı günlük kota mantığı | kota dolunca reklam/Premium diyalog | sınırsız | sınırsız |
+| **Günün mini denemesi** (20 soru) | ✓ (oturumda banner yok) | | ✓ | ✓ |
+| Mini deneme **ÖDÜL** ekranı (hafta/ay liste) | ✓ (herkese açık) | | ✓ | ✓ |
+| Mini deneme sıralama ödülü (1./2./3.) | Kazanınca **Premium gün** (3/2/1) | | | |
+| Quiz **banner** reklamı | ✓ | 12s kampanya kapatır | **Bypass** | **Bypass** |
+| Sayfa geçiş **interstitial** | ✓ | | **Bypass** | **Bypass** |
+| **Çözüm tam açma** | Önizleme; tam çözüm kilitli | ✓ (`solutionUnlock`) | ✓ anında | ✓ |
+| **Filigran** | ✓ | ✓ | ✓ | ✓ |
+| **Hata bildirimi** | Google + **5** bitmiş konu testi; 1/gün | | Google + **3** bitmiş test; 1/gün | aynı |
+| Favoriler, notlar, çalışma kasası | ✓ | | ✓ | ✓ |
+| Gelişim sekmesi / ders analitiği | ✓ | | ✓ | ✓ |
+| Deneme sekmesi + puan hesaplama | ✓¹ | | ✓ | ✓ |
+| Stüdyo «Deneme Analizi» satırı | `PremiumGate` | | ✓ | ✓ |
+| VPN/DNS ağ kilidi | Kilitlenebilir | | **muaf** | **muaf** |
+| Ekran görüntüsü (`FLAG_SECURE`) | Yasak | | Yasak | Yasak |
+
+> ¹ Alt **Deneme** sekmesi `PremiumGate` olmadan açılır; Stüdyo listesinde aynı ekran Premium kapılı. Pazarlama / kapı farkı bilinçli not.
+
+### B) Yanlış defteri ve Akıllı Tekrar
+
+| Yetenek | Ücretsiz | Ödüllü reklam | Premium | Yıllık |
+|---|---|---|---|---|
+| Yanlış defteri listesi / inceleme / Not Al | ✓ (misafir: metin buzlu) | | ✓ | ✓ |
+| Defterden sil / kalp | ✓ | | ✓ | ✓ |
+| **Benzer sorular** | Upsell sheet | | ✓ | ✓ |
+| **Akıllı Tekrar ekranı** (paket özeti) | ✓ görüntüleme | | ✓ | ✓ |
+| **AKILLI TEKRARI BAŞLAT** | Paywall | | ✓ | ✓ |
+| Kitaptaki yanlışlar — **1. foto** | ✓ | | ✓ | ✓ |
+| Kitaptaki — **2. ve sonraki foto** | | ✓ zorunlu | ✓ ücretsiz | ✓ |
+| Kitaptaki — **kalem / annotate** | ✓ | | ✓ | ✓ |
+
+### C) Stüdyo Premium suite (PRO kilit)
+
+Stüdyo hub (`home_premium_module_list` + araçlarda pomodoro/analiz). Hepsi `PremiumGate.navigate` veya kendi ekranında yıllık kontrolü.
+
+| Modül | Kapı | Not |
+|---|---|---|
+| **Offline Paket** | **Yalnızca yıllık** (`canUseOfflinePack`); aylık Premium’da kilit + «Yıllık Premium’a geç» | Tam pack indirme |
+| **Konu Takibi** | Premium | Müfredat işaretleme |
+| **Görev Yönetimi** | Premium | Haftalık plan |
+| **Bulut Senkron** | Premium | UI; sync kısmen mock |
+| **Sıralama** | Premium | Canlı haftalık/aylık toplam doğru (mini deneme API) |
+| **Odak · Pomodoro** | Premium | Araçlar listesinde (`onNavigatePremium`) |
+| **Deneme Analizi** (Stüdyo satırı) | Premium | Alt sekme ücretsiz¹ |
+
+Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık), Konu Takibi, Odak/Pomodoro, Deneme Analizi Pro, Görev Yönetimi, Bulut Senkron, Sıralama. **Kodda ayrıca Premium olan ama paywall listesinde kısa geçenler:** Akıllı Tekrar başlat, Benzer sorular, sınırsız test, reklam bypass, çözüm kilidi, VPN muafiyeti, kitaptaki ekstra foto.
+
+### D) Reklam kampanyası (Premium açmaz)
+
+| Kampanya | Ne verir | Ne **açmaz** |
+|---|---|---|
+| 3 ödüllü reklam → **12 saat** | Yalnızca **quiz banner** kapalı | Çözüm kilidi, günlük kota, benzer, sınırsız test, offline, konu takibi, pomodoro, Akıllı Tekrar, VPN muafiyeti |
+
+### E) Özet tablo (hızlı bakış)
+
 | Yetenek | Ücretsiz | Ödüllü reklam | Premium | Yıllık Premium |
 |---|---|---|---|---|
-| Müfredat ve ders okuma | ✓ | | | |
+| Müfredat ve ders okuma | ✓ | | ✓ | ✓ |
 | Ders başına 1 test/gün | ✓ | | | |
-| +1 bonus test/gün (derse özel) | | ✓ | | |
-| Sınırsız konu testi | | | ✓ | ✓ |
-| Quiz banner reklamı | ✓ | 12s kampanya | Bypass | Bypass |
-| Sayfa geçiş interstitial | ✓ | | Bypass | Bypass |
+| +1 bonus test/gün | | ✓ | | |
+| Sınırsız konu / özel test | | | ✓ | ✓ |
+| Quiz banner | ✓ | 12s kampanya | Bypass | Bypass |
+| Interstitial | ✓ | | Bypass | Bypass |
 | Çözüm kilidi açma | | ✓ | ✓ | ✓ |
-| 12 saat banner’sız (3 reklam) | | ✓ | Bypass | Bypass |
-| Günün mini denemesi | ✓ (reklamsız oturum) | | ✓ | ✓ |
-| Akıllı tekrar | ✓ | | | |
-| Yanlış defteri listesi | ✓ (misafir: yalnızca soru metni hafif buzlu) | | | |
+| Günün mini denemesi | ✓ | | ✓ | ✓ |
+| Akıllı Tekrar **başlat** | | | ✓ | ✓ |
+| Yanlış defteri listesi | ✓ | | ✓ | ✓ |
 | Benzer sorular | | | ✓ | ✓ |
-| Favoriler ve notlar | ✓ | | | |
-| Özet konu kartları (kaydır / favori / tekrar) | ✓ | | | |
-| Gelişim merkezi | ✓ | | | |
-| Deneme analizi | ✓ (sekme)¹ / Premium (ana menü) | | Pazarlama: ✓ | ✓ |
-| Deneme paketleri (IAP) | Google hesabı + satın alma | | Google hesabı + satın alma | Google hesabı + satın alma |
-| Konu takibi, görevler, pomodoro | | | ✓ | ✓ |
-| Bulut senkron UI | | | ✓ (mock) | ✓ |
-| Sıralama | | | ✓ (demo) | ✓ |
+| Kitaptaki 1. foto / kalem | ✓ | | ✓ | ✓ |
+| Kitaptaki 2.+ foto | | ✓ | ✓ | ✓ |
+| Konu takibi, görev, pomodoro, sıralama, bulut UI | | | ✓ | ✓ |
+| Deneme analizi (Stüdyo) | | | ✓ | ✓ |
+| Deneme sekmesi | ✓¹ | | ✓ | ✓ |
 | Offline paket | | | | ✓ |
-| Filigran | ✓ (tüm planlar) | | ✓ | ✓ |
-| Promosyon Premium | | | ✓ | ✓ |
+| Filigran | ✓ | ✓ | ✓ | ✓ |
+| Promosyon / ödül Premium günleri | | | ✓ | ✓ |
 
 ---
 
@@ -655,9 +731,16 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ---
 
-## Sürüm notu (2026-08-20)
+## Sürüm notu (2026-08-21)
 
-Bu sürümde öne çıkanlar (ayrıntı: [20 Ağustos 2026](#20-ağustos-2026--işlenen-ekleme-ve-değişiklikler-bu-commit)):
+- **Premium:** Akıllı Tekrar başlat kapısı; FEATURES erişim matrisi A–E detaylandı
+- **Kitaptaki yanlışlarım:** kalem ücretsiz; 2.+ foto reklam veya Pro
+- **Splash:** siyah daire + içinde soluk `app_icon`
+- **Stüdyo:** Premium’u keşfet / STÜDYO pill
+
+### Sürüm notu (2026-08-20)
+
+Bu sürümde öne çıkanlar (ayrıntı: [20 Ağustos 2026](#20-ağustos-2026--işlenen-ekleme-ve-değişiklikler)):
 
 - **Özet konu kartları:** panel CRUD + pack/catalog `summaryCards` + konu detayında kaydırma destesi + Favorilerim sekmeleri
 - **Yanlış defteri:** Kitaptaki yanlışlarım (manuel foto), defter notu, benzer soru kök kopya filtresi

@@ -59,6 +59,22 @@ class PremiumService {
       title: 'Sıralama',
       description: 'Haftalık ve aylık toplam doğru sıralaması.',
     ),
+    PremiumFeature(
+      iconName: 'repeat',
+      title: 'Akıllı Tekrar',
+      description:
+          'Yanlış defteri ve zayıf konulardan günlük SRS oturumu başlat.',
+    ),
+    PremiumFeature(
+      iconName: 'similar',
+      title: 'Benzer Sorular',
+      description: 'Yanlış defterinden embedding ile benzer soru seti.',
+    ),
+    PremiumFeature(
+      iconName: 'unlimited',
+      title: 'Sınırsız Konu Testi',
+      description: 'Günlük ders kotası ve reklam zorunluluğu kalkar.',
+    ),
   ];
 }
 
