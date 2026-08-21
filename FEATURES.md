@@ -23,6 +23,20 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+
+### 21 Ağustos 2026 — LaTeX hyphen / kompakt şık / APK ambient trim / quiz başlık
+
+Önceki aynı gün Focus/Deep Work + quiz AppBar oturumunun üstüne: matematik metninin Türkçe soft-hyphen ile bozulmaması, kısa/math şık tipografisi, kullanılmayan ambient WAV silimi (APK), Test başlığı sola kaydırma. Panel `math-formulas.js`. Deep Work / Odak UX büyük ölçüde önceki maddelerde; bu turda yalnızca APK ses boşluğu.
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **LaTeX soft-hyphen** | `$…$` / `$$…$$` / `\(…\)` / `\[…\]` bölgeleri hyphenate dışı; `displaystyle` / `begin` kırılması önlendi | `turkish_hyphenation.dart`, `formatted_text.dart`, ilgili testler |
+| **Panel math-formulas** | Formül yardımcıları ayrı `math-formulas.js`; base/question_form + rich-format/math-render bağları | `backend/static/panel/math-formulas.js`, `math-render.js`, `rich-format.js`, `base.html`, `question_form.html` |
+| **Kısa/math şık** | ≤20 görünür karakter veya `$` içeren şık: ortalı + **18pt**; uzun düz metin sola 15pt | `exam_option_view.dart` |
+| **Quiz AppBar başlık** | Test 1 sola kaydırıldı (`leadingWidth` 48, `-10` inset) | `quiz_screen.dart` |
+| **APK ambient trim** | Kullanılmayan ambient WAV silindi (kafe/kütüphane/deniz/binaural/brown); pubspec asset listesi sade | `assets/sounds/ambient_*.wav` (silinenler), `pubspec.yaml` |
+| **Odak / Deep Work** | Yağmur/Orman + yerel Deep Work MP3 zaten belgelendi; ek UX boşluğu yok (yalnızca WAV trim) | (önceki maddeler) |
+
 ### 21 Ağustos 2026 — Odak Deep Work MP3 / soru viewCount / telefon bat / quiz·profil (later session)
 
 Önceki aynı gün commit’inin (`eca90bd` neon/pack/tablo/Özel Notlarım; `acc4bf3` panel şablon) üstüne: Focus ortam sadeleştirme + yerel Deep Work müziği, soru görüntüleme sayacı, telefon LAN launcher düzeltmeleri, quiz AppBar / profil / Gelişim CTA cilası.

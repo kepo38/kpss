@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/theme/exam_typography.dart';
 import 'package:kpss_akademi/widgets/formatted_text.dart';
@@ -476,5 +477,51 @@ void main() {
     expect(find.byType(FittedBox), findsNothing);
     expect(find.byType(SingleChildScrollView), findsWidgets);
     expect(tester.takeException(), isNull);
+  });
+
+  test('prepareTex strips soft hyphens from latex commands', () {
+    const broken =
+        'dis\u00ADplaystyle \\be\u00ADgin{array}{r} AB8 \\\\ -16C \\\\ \\hli\u00ADne CA3 \\end{array}';
+    final out = FormattedText.prepareTex(broken);
+    expect(out.contains('\u00AD'), isFalse);
+    expect(out, contains(r'\begin{array}'));
+    expect(out, contains(r'\rule{5em}{0.05em}'));
+    expect(out, isNot(contains(r'\hline')));
+  });
+
+  test('wrapBareLatex keeps simple algebra dollar delimiters', () {
+    expect(FormattedText.wrapBareLatex(r'$A + B + C$'), r'$A + B + C$');
+    expect(FormattedText.wrapBareLatex(r'$Yalnız I$'), 'Yalnız I');
+  });
+
+  testWidgets('exam stem renders display array math not raw latex', (tester) async {
+    const stem =
+        'İşlem aşağıda verilmiştir.\n'
+        r'$$\displaystyle \begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}$$'
+        '\n'
+        r'$A + B + C$ değerini bulunuz.';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: FormattedText(
+              stem,
+              preserveLineBreaks: true,
+              examLayout: true,
+              examWrap: true,
+              style: ExamTypography.body(color: Colors.white, fontSize: 18),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.textContaining(r'$$\displaystyle'), findsNothing);
+    expect(find.textContaining(r'\begin{array}'), findsNothing);
+    expect(find.textContaining(r'$A + B + C$'), findsNothing);
   });
 }

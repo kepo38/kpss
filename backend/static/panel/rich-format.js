@@ -473,6 +473,23 @@
 
     const bar = document.createElement("div");
     bar.className = "rich-toolbar";
+    var mathBtns = "";
+    if (window.KpssMathFormulas && window.KpssMathFormulas.toolbarItems) {
+      mathBtns =
+        '<span class="rich-sep" aria-hidden="true"></span>' +
+        '<span class="rich-hint" title="Matematik parçacıkları">∑</span>';
+      window.KpssMathFormulas.toolbarItems().forEach(function (item) {
+        mathBtns +=
+          '<button type="button" class="rich-btn" data-math="' +
+          item.key +
+          '" title="' +
+          (item.title || item.label) +
+          '">' +
+          item.label +
+          "</button>";
+      });
+    }
+
     bar.innerHTML =
       '<button type="button" class="rich-btn" data-fmt="bold" title="Kalın (Ctrl+B)"><strong>K</strong></button>' +
       '<button type="button" class="rich-btn" data-fmt="italic" title="İtalik (Ctrl+I)"><em>I</em></button>' +
@@ -481,7 +498,8 @@
       '<button type="button" class="rich-btn rich-btn-color rich-btn-green" data-fmt="green" title="Yeşil">G</button>' +
       '<button type="button" class="rich-btn rich-btn-color rich-btn-red" data-fmt="red" title="Kırmızı">R</button>' +
       '<button type="button" class="rich-btn rich-btn-color rich-btn-blue" data-fmt="blue" title="Mavi">M</button>' +
-      '<span class="rich-hint">Seç → Kalın / İtalik / Altı çizili / Renk</span>';
+      mathBtns +
+      '<span class="rich-hint">Seç → Kalın / İtalik / Altı çizili / Renk · ∑ Matematik</span>';
 
     wrap.appendChild(bar);
     wrap.appendChild(el);
@@ -489,10 +507,15 @@
 
     bar.addEventListener("mousedown", function (e) {
       // Odak kaybını engelle (seçim bozulmasın)
-      if (e.target.closest("[data-fmt]")) e.preventDefault();
+      if (e.target.closest("[data-fmt], [data-math]")) e.preventDefault();
     });
 
     bar.addEventListener("click", function (e) {
+      const mathBtn = e.target.closest("[data-math]");
+      if (mathBtn && window.KpssMathFormulas) {
+        window.KpssMathFormulas.insert(el, mathBtn.getAttribute("data-math"));
+        return;
+      }
       const btn = e.target.closest("[data-fmt]");
       if (!btn) return;
       applyFormat(el, btn.getAttribute("data-fmt"));

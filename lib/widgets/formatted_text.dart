@@ -522,12 +522,14 @@ class FormattedText extends StatelessWidget {
     if (t.isEmpty) return false;
     return RegExp(
           r'\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|'
-          r'underline|begin|infty|pm|neq|leq|geq)\b',
+          r'underline|begin|infty|pm|neq|leq|geq|displaystyle|hline)\b',
         ).hasMatch(t) ||
         t.contains(r'^') ||
         t.contains(r'_') ||
         t.contains('{') ||
-        RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t);
+        RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t) ||
+        // $A + B + C$ gibi basit cebir (Yalnız I düz metin kalsın)
+        RegExp(r'[A-Za-z0-9]\s*[+\-=≠≤≥×·]\s*[A-Za-z0-9]').hasMatch(t);
   }
 
   static String wrapBareLatex(String input) {
@@ -585,7 +587,8 @@ class FormattedText extends StatelessWidget {
   }
 
   static String prepareTex(String tex, {bool forceDisplayStyle = true}) {
-    var t = _repairLatexEscapes(tex.trim());
+    // Soft hyphen (heceleme) LaTeX komutlarını bozar → önce temizle.
+    var t = _repairLatexEscapes(tex.replaceAll('\u00AD', '').trim());
     t = t.replaceAllMapped(
       RegExp(
         r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan|begin|end|array|hline|matrix|displaystyle|rule)',
@@ -1363,8 +1366,10 @@ class _DocumentText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lines =
-        text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    // Çok satırlı $$…$$ bloklarını tek satıra birleştir (satır satır bölünmesin).
+    final lines = _coalesceDisplayMathLines(
+      text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n'),
+    );
     final children = <Widget>[];
     final softBuf = StringBuffer();
 
@@ -1561,6 +1566,7 @@ class _DocumentText extends StatelessWidget {
 
     flushSoftParagraph();
 
+    if (children.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       width: double.infinity,
       child: Column(
@@ -1568,5 +1574,47 @@ class _DocumentText extends StatelessWidget {
         children: children,
       ),
     );
+  }
+
+  /// Açık `$$` ile kapanış `$$` arasındaki satırları tek satırda birleştirir.
+  static List<String> _coalesceDisplayMathLines(List<String> lines) {
+    final out = <String>[];
+    final buf = StringBuffer();
+    var inDisplay = false;
+
+    void flush() {
+      if (buf.isEmpty) return;
+      out.add(buf.toString());
+      buf.clear();
+    }
+
+    for (final raw in lines) {
+      final line = raw;
+      if (!inDisplay) {
+        final open = line.indexOf(r'$$');
+        if (open < 0) {
+          out.add(line);
+          continue;
+        }
+        final after = line.substring(open + 2);
+        final close = after.indexOf(r'$$');
+        if (close >= 0) {
+          out.add(line);
+          continue;
+        }
+        inDisplay = true;
+        buf.write(line.trimRight());
+        continue;
+      }
+
+      buf.write(' ');
+      buf.write(line.trim());
+      if (line.contains(r'$$')) {
+        inDisplay = false;
+        flush();
+      }
+    }
+    flush();
+    return out;
   }
 }

@@ -36,9 +36,10 @@
   function looksLikeMath(text) {
     var t = String(text || "").trim();
     if (!t) return false;
-    return /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq)\b/.test(
+    return /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq|displaystyle|hline)\b/.test(
       t
-    ) || /[\^_{}]/.test(t) || /(^|[^\\A-Za-z])frac\{/.test(t);
+    ) || /[\^_{}]/.test(t) || /(^|[^\\A-Za-z])frac\{/.test(t) ||
+      /[A-Za-z0-9]\s*[+\-=≠≤≥×·]\s*[A-Za-z0-9]/.test(t);
   }
 
   /** Şıkta yalnızca gerçek LaTeX varsa $...$ sarmala; "Yalnız I" düz metin kalsın. */

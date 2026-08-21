@@ -30,4 +30,21 @@ void main() {
       'Bu bir il-ko-kul ör-ne-ği-dir.',
     );
   });
+
+  test('does not hyphenate inside latex math delimiters', () {
+    const array =
+        r'$$\displaystyle \begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}$$';
+    final out = TurkishHyphenation.hyphenate(array);
+    expect(out, array);
+    expect(out.contains(TurkishHyphenation.softHyphen), isFalse);
+
+    const mixed =
+        r'İlköğretimde $A + B + C$ ve $$\begin{array}{r} x \\ y \end{array}$$ vardır.';
+    final mixedOut = TurkishHyphenation.hyphenate(mixed);
+    expect(mixedOut, contains(r'$A + B + C$'));
+    expect(mixedOut, contains(r'$$\begin{array}{r} x \\ y \end{array}$$'));
+    expect(mixedOut.contains(r'\begin'), isTrue);
+    // Prose outside math still hyphenates.
+    expect(mixedOut.contains(TurkishHyphenation.softHyphen), isTrue);
+  });
 }

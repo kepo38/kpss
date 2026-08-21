@@ -22,14 +22,32 @@ class TurkishHyphenation {
   static bool _isVowel(String ch) => _vowels.contains(ch);
 
   /// [minWordLength] altındaki sözcüklere dokunulmaz (en az 4: 2+2 kuralı).
+  ///
+  /// `$…$` / `$$…$$` / `\(...\)` / `\[…\]` bölgelerine soft hyphen eklenmez;
+  /// aksi halde `displaystyle` / `begin` / `array` gibi LaTeX komutları
+  /// bozulur ve flutter_math ham metne düşer.
   static String hyphenate(String input, {int minWordLength = 4}) {
     if (input.isEmpty) return input;
-    return input.replaceAllMapped(_wordRe, (match) {
+    final holders = <String>[];
+    final masked = input.replaceAllMapped(
+      RegExp(r'\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]'),
+      (m) {
+        holders.add(m.group(0)!);
+        return '§§H${holders.length - 1}§§';
+      },
+    );
+    final hyphenated = masked.replaceAllMapped(_wordRe, (match) {
       final word = match.group(0)!;
       if (word.length < minWordLength) return word;
       // Zaten soft hyphen varsa yeniden işlemeyelim.
       if (word.contains(softHyphen)) return word;
       return _hyphenateWord(word);
+    });
+    if (holders.isEmpty) return hyphenated;
+    return hyphenated.replaceAllMapped(RegExp(r'§§H(\d+)§§'), (m) {
+      final i = int.tryParse(m.group(1)!) ?? -1;
+      if (i < 0 || i >= holders.length) return m.group(0)!;
+      return holders[i];
     });
   }
 

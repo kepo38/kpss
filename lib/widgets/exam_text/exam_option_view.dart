@@ -8,7 +8,14 @@ import 'option_column_layout.dart';
 /// Badge diameter (CircleAvatar radius 14) + gap after badge in option rows.
 const double kOptionBadgeLeadingWidth = 28 + 12;
 
-/// Şık metni — 15pt, wrap; eşleştirme satırında eşit sütun (yalnızca forceColumns).
+/// Short / math-ish şık: larger type (default option is 15).
+const double kCompactOptionFontSize = 18;
+
+/// Visible-char threshold for compact (centered + larger) option layout.
+const int kCompactOptionCharLimit = 20;
+
+/// Şık metni — 15pt wrap (prose); kısa/math şıklar ortalı + daha büyük punto.
+/// Eşleştirme satırında eşit sütun (yalnızca forceColumns) — tasarım korunur.
 class ExamOptionView extends StatelessWidget {
   final String text;
   final int? forceColumns;
@@ -18,6 +25,19 @@ class ExamOptionView extends StatelessWidget {
     required this.text,
     this.forceColumns,
   });
+
+  /// Compact when text is short (≤ [kCompactOptionCharLimit] visible chars
+  /// after markup strip) **or** contains LaTeX `$` delimiters.
+  /// Long Turkish prose stays start-aligned at normal option size.
+  static bool isCompactOption(String text) {
+    final visible = FormattedText.stripMarkup(text)
+        .replaceAll('\u00a0', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (visible.isEmpty) return false;
+    if (visible.contains(r'$')) return true;
+    return visible.length <= kCompactOptionCharLimit;
+  }
 
   List<String> _forcedCells(int columns) {
     final cells = OptionColumnLayout.cellsOf(text);
@@ -80,14 +100,21 @@ class ExamOptionView extends StatelessWidget {
         ],
       );
     }
+
+    final compact = isCompactOption(text);
+    final style = ExamTypography.option(
+      color: Colors.white,
+      fontSize: compact ? kCompactOptionFontSize : 15,
+    );
+
     return FormattedText(
       TurkishHyphenation.hyphenate(
         FormattedText.wrapBareLatex(FormattedText.stripMarkup(text)),
       ),
       examLayout: true,
       examWrap: true,
-      textAlign: TextAlign.start,
-      style: ExamTypography.option(color: Colors.white),
+      textAlign: compact ? TextAlign.center : TextAlign.start,
+      style: style,
     );
   }
 }

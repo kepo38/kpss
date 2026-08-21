@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/theme/exam_typography.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_option_view.dart';
@@ -6,6 +7,20 @@ import 'package:kpss_akademi/widgets/exam_text/exam_solution_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_stem_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/option_column_layout.dart';
 import 'package:kpss_akademi/widgets/formatted_text.dart';
+
+String _plain(String s) => s.replaceAll('\u00AD', '');
+
+Finder textContainingPlain(String needle) {
+  return find.byWidgetPredicate((w) {
+    if (w is Text && w.data != null) {
+      return _plain(w.data!).contains(needle);
+    }
+    if (w is RichText) {
+      return _plain(w.text.toPlainText()).contains(needle);
+    }
+    return false;
+  });
+}
 
 void main() {
   testWidgets('exam stem keeps uniform 18pt with bold question line', (tester) async {
@@ -27,8 +42,8 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('Nizamülmülk'), findsWidgets);
-    expect(find.textContaining('Buna göre'), findsOneWidget);
+    expect(textContainingPlain('Nizamülmülk'), findsWidgets);
+    expect(textContainingPlain('Buna göre'), findsOneWidget);
     expect(find.byType(FittedBox), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -72,7 +87,7 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('Toplumun'), findsOneWidget);
+    expect(textContainingPlain('Toplumun'), findsOneWidget);
     expect(find.byType(FittedBox), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -185,5 +200,31 @@ void main() {
       ]),
       3,
     );
+  });
+
+  testWidgets('exam stem renders array display math via ExamStemView', (tester) async {
+    const stem =
+        'Verilen işlem:\n'
+        r'$$\displaystyle \begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}$$'
+        '\n'
+        r'$A + B + C$ kaçtır?';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: ExamStemView(text: stem),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.textContaining(r'$$\displaystyle'), findsNothing);
+    expect(find.textContaining(r'\hline'), findsNothing);
+    expect(find.textContaining(r'$A + B + C$'), findsNothing);
+    expect(textContainingPlain('kaçtır'), findsOneWidget);
   });
 }
