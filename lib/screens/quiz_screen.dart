@@ -437,8 +437,8 @@ class _QuizScreenState extends State<QuizScreen>
     return 'Asla pes etme. Yanlışlar en büyük öğretmendir.';
   }
 
-  /// Doğru cevaplayan oranı — `Başarı: %49`.
-  String? _successRateLabel() {
+  /// Doğru cevaplayan oranı — `Başarı: %49`. Veri yoksa `Başarı: —`.
+  String _successRateLabel() {
     final live = _optionPercentages;
     if (live != null && live.isNotEmpty) {
       final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
@@ -469,9 +469,13 @@ class _QuizScreenState extends State<QuizScreen>
     }
 
     final rate = _currentQuestion.correctRate;
-    if (rate == null) return null;
-    final pct = rate <= 1.0 ? (rate * 100) : rate;
-    return 'Başarı: %${pct.round()}';
+    if (rate != null) {
+      final pct = rate <= 1.0 ? (rate * 100) : rate;
+      return 'Başarı: %${pct.round()}';
+    }
+
+    // Henüz cevap istatistiği yok — chip yine görünsün (ör. Matematik Test 1).
+    return 'Başarı: —';
   }
 
   Map<String, double>? get _optionPercentages =>

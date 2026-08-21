@@ -25,6 +25,7 @@ class MainActivity : FlutterActivity() {
                     val allow = call.argument<Boolean>("allow") == true
                     captureOverrideAllow = allow
                     applyScreenshotPolicy()
+                    Log.i(TAG, "screenshotGate setAllowed=$allow")
                     result.success(null)
                 }
                 else -> result.notImplemented()

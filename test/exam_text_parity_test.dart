@@ -100,6 +100,24 @@ void main() {
     expect(spans, isNotEmpty);
   });
 
+  test('dash-pair options are never compact-centered (A/B/C align)', () {
+    expect(
+      ExamOptionView.isCompactOption('kibirli — içselleştiriyor'),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isCompactOption('şüpheci — eleştiriyor'),
+      isFalse,
+    );
+    // Eski bug: ≤20 görünür karakter → C ortalı, A/B sola.
+    expect(
+      ExamOptionView.isCompactOption('bilgiç — irdeliyor'),
+      isFalse,
+    );
+    expect(ExamOptionView.isCompactOption(r'$x+1$'), isTrue);
+    expect(ExamOptionView.isCompactOption('42'), isTrue);
+  });
+
   test('dash-separated options become two or three columns', () {
     expect(
       OptionColumnLayout.cellsOf(

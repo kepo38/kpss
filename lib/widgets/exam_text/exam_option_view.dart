@@ -12,6 +12,7 @@ const double kOptionBadgeLeadingWidth = 28 + 12;
 const double kCompactOptionFontSize = 18;
 
 /// Visible-char threshold for compact (centered + larger) option layout.
+/// Tireli eşleştirme şıkları (`bilgiç — irdeliyor`) bu eşiğe bakılmadan sola yaslanır.
 const int kCompactOptionCharLimit = 20;
 
 /// Şık metni — 15pt wrap (prose); kısa/math şıklar ortalı + daha büyük punto.
@@ -26,9 +27,9 @@ class ExamOptionView extends StatelessWidget {
     this.forceColumns,
   });
 
-  /// Compact when text is short (≤ [kCompactOptionCharLimit] visible chars
-  /// after markup strip) **or** contains LaTeX `$` delimiters.
-  /// Long Turkish prose stays start-aligned at normal option size.
+  /// Compact when LaTeX `$…$` **or** very short plain answer.
+  /// Tire / em dash ile ayrılmış çift şıklar (ÖSYM boşluk doldurma) her zaman
+  /// sola hizalı kalır — aksi halde A/B uzun, C kısa olunca C ortada kalır.
   static bool isCompactOption(String text) {
     final visible = FormattedText.stripMarkup(text)
         .replaceAll('\u00a0', ' ')
@@ -36,6 +37,8 @@ class ExamOptionView extends StatelessWidget {
         .trim();
     if (visible.isEmpty) return false;
     if (visible.contains(r'$')) return true;
+    // "kibirli — içselleştiriyor" / "bilgiç - irdeliyor" → asla ortalı.
+    if (RegExp(r'\s[-–—―−]{1,3}\s').hasMatch(visible)) return false;
     return visible.length <= kCompactOptionCharLimit;
   }
 

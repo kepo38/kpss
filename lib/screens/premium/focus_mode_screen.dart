@@ -784,34 +784,66 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                       ),
                     ),
                     Positioned(
-                      top: nameCenterY - 22,
-                      left: 40,
-                      right: 40,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          _userDisplayName,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          style: GoogleFonts.cormorantGaramond(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.4,
-                            color: Colors.white,
-                            height: 1.05,
-                            shadows: [
-                              Shadow(
-                                color: accent.withValues(alpha: 0.55),
-                                blurRadius: 18,
+                      top: nameCenterY - 72,
+                      left: 24,
+                      right: 24,
+                      height: 144,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Quiz filigranı ile aynı: eğik + soluk HEDEF KAMU markası.
+                          IgnorePointer(
+                            child: Transform.rotate(
+                              angle: -math.pi / 4,
+                              child: Opacity(
+                                opacity: 0.22,
+                                child: Image.asset(
+                                  BrandConstants.watermarkAsset,
+                                  width: 132,
+                                  height: 132,
+                                  fit: BoxFit.contain,
+                                  color: AppTheme.champagneLight,
+                                  colorBlendMode: BlendMode.srcIn,
+                                  errorBuilder: (_, __, ___) => Image.asset(
+                                    BrandConstants.logoAsset,
+                                    width: 120,
+                                    height: 120,
+                                    fit: BoxFit.contain,
+                                    color: AppTheme.champagneLight,
+                                    colorBlendMode: BlendMode.srcIn,
+                                  ),
+                                ),
                               ),
-                              Shadow(
-                                color: _Neon.magenta.withValues(alpha: 0.25),
-                                blurRadius: 28,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _userDisplayName,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              style: GoogleFonts.cormorantGaramond(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.4,
+                                color: Colors.white,
+                                height: 1.05,
+                                shadows: [
+                                  Shadow(
+                                    color: accent.withValues(alpha: 0.55),
+                                    blurRadius: 18,
+                                  ),
+                                  Shadow(
+                                    color:
+                                        _Neon.magenta.withValues(alpha: 0.25),
+                                    blurRadius: 28,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Align(
