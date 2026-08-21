@@ -39,6 +39,7 @@ import '../widgets/question_rating_bar.dart';
 import '../widgets/osym_badge.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/quiz_drawing_overlay.dart';
+import '../widgets/quiz_zoom_viewport.dart';
 import '../widgets/quiz_question_note_card.dart';
 import '../widgets/quiz_take_note_button.dart';
 import '../widgets/quiz_wrong_notebook_banner.dart';
@@ -128,6 +129,7 @@ class _QuizScreenState extends State<QuizScreen>
   Timer? _wrongNotebookHintDelayTimer;
   static const _maxStrokesPerQuestion = 80;
   final ScrollController _scrollController = ScrollController();
+  final TransformationController _contentZoom = TransformationController();
 
   late final AnimationController _flashCtrl;
   late final Animation<double> _flashOpacity;
@@ -235,6 +237,7 @@ class _QuizScreenState extends State<QuizScreen>
     _durationNotifier.dispose();
     _flashCtrl.dispose();
     _scrollController.dispose();
+    _contentZoom.dispose();
     AdManager.instance.endTestSession();
     super.dispose();
   }
@@ -798,6 +801,85 @@ class _QuizScreenState extends State<QuizScreen>
     });
   }
 
+  /// Soru gövdesi (senaryo + kök + çözüm/şıklar + puan) — zoom ve çizim ortak.
+  Widget _buildQuestionBody({required EdgeInsets padding}) {
+    return Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_currentQuestion.hasScenarioPassage) ...[
+            _ScenarioPassageCard(question: _currentQuestion),
+            const SizedBox(height: 16),
+          ],
+          QuestionStemPanel(
+            child: QuestionStemContent(
+              stem: _currentQuestion.soruMetni,
+              imageUrl: _currentQuestion.imageUrl,
+              sekilKodu: _currentQuestion.sekilKodu,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (_showingSolution)
+            _SolutionPanel(
+              question: _currentQuestion,
+              selectedAnswer: _selectedAnswer,
+              showFullSolution: _isSolutionFullyUnlocked,
+              unlocking: _solutionUnlocking,
+              onUnlockFull: _unlockFullSolution,
+            )
+          else ...[
+            ..._matchingOptionHeaders(_currentQuestion),
+            ..._currentQuestion.siklar.entries.map(
+              (entry) {
+                final selected = _selectedAnswer == entry.key;
+                final revealed = _selectedAnswer != null;
+                final isCorrectKey =
+                    entry.key == _currentQuestion.dogruCevap;
+                _OptionTone? tone;
+                if (revealed) {
+                  if (isCorrectKey) {
+                    tone = _OptionTone.correct;
+                  } else if (selected) {
+                    tone = _OptionTone.wrong;
+                  }
+                }
+                return _OptionTile(
+                  label: entry.key,
+                  text: entry.value,
+                  forceColumns: OptionColumnLayout.forcedColumns(
+                    _currentQuestion.optionTable,
+                  ),
+                  isSelected: selected,
+                  tone: tone,
+                  percentage: revealed
+                      ? _visibleOptionPercentages[entry.key]
+                      : null,
+                  onTap: () => _selectAnswer(entry.key),
+                );
+              },
+            ),
+          ],
+          if (_selectedAnswer != null &&
+              AuthService.instance.isSignedIn &&
+              QuestionRatingService.canRate(
+                _currentQuestion.id,
+              )) ...[
+            const SizedBox(height: 16),
+            QuestionRatingBar(
+              selectedStars: _ratingSummary?.userRating,
+              averageRating: _ratingSummary?.averageRating,
+              ratingCount: _ratingSummary?.ratingCount ?? 0,
+              loading: _ratingLoading,
+              saving: _ratingSaving,
+              onRate: _rateQuestion,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   void _goTo(int index) {
     if (_isFinishing || widget.questions.isEmpty) return;
     if (index < 0 || index >= widget.questions.length) return;
@@ -808,6 +890,8 @@ class _QuizScreenState extends State<QuizScreen>
       _selectedAnswer = _answers[index];
       _showingSolution = false;
       _solutionUnlocking = false;
+      _drawingEnabled = false;
+      _contentZoom.value = Matrix4.identity();
       _resetRatingState();
       _resetErrorReportState();
       _syncTimerForCurrentQuestion();
@@ -1667,12 +1751,19 @@ class _QuizScreenState extends State<QuizScreen>
               width: 40,
               child: IconButton(
                 padding: EdgeInsets.zero,
-                tooltip: _drawingEnabled ? 'Çizimi kapat' : 'Çizim modu',
+                tooltip: _drawingEnabled
+                    ? 'Çizimi kapat (yakınlaştırma açılır)'
+                    : 'Çizim modu (yakınlaştırma kilitlenir)',
                 onPressed: _isFinishing
                     ? null
-                    : () => setState(
-                          () => _drawingEnabled = !_drawingEnabled,
-                        ),
+                    : () => setState(() {
+                          final next = !_drawingEnabled;
+                          if (next) {
+                            // Çizim: zoom sıfır + kilitle.
+                            _contentZoom.value = Matrix4.identity();
+                          }
+                          _drawingEnabled = next;
+                        }),
                 icon: Icon(
                   _drawingEnabled
                       ? Icons.edit_off_outlined
@@ -1802,140 +1893,99 @@ class _QuizScreenState extends State<QuizScreen>
                 ],
                 const SizedBox(height: 8),
                 Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      SingleChildScrollView(
-                        controller: _scrollController,
-                        padding: EdgeInsets.fromLTRB(
-                          20,
-                          8,
-                          20,
-                          _drawingEnabled ? 72 : 16,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  child: _drawingEnabled && !_isFinishing
+                      ? Stack(
+                          fit: StackFit.expand,
                           children: [
-                            if (_currentQuestion.hasScenarioPassage) ...[
-                              _ScenarioPassageCard(question: _currentQuestion),
-                              const SizedBox(height: 16),
-                            ],
-                            QuestionStemPanel(
-                              // Filigran metin/harita bloklarında QuestionStemContent içinde.
-                              child: QuestionStemContent(
-                                stem: _currentQuestion.soruMetni,
-                                imageUrl: _currentQuestion.imageUrl,
-                                sekilKodu: _currentQuestion.sekilKodu,
+                            SingleChildScrollView(
+                              controller: _scrollController,
+                              child: _buildQuestionBody(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  8,
+                                  20,
+                                  72,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            if (_showingSolution)
-                              _SolutionPanel(
-                                question: _currentQuestion,
-                                selectedAnswer: _selectedAnswer,
-                                showFullSolution: _isSolutionFullyUnlocked,
-                                unlocking: _solutionUnlocking,
-                                onUnlockFull: _unlockFullSolution,
-                              )
-                            else ...[
-                              ..._matchingOptionHeaders(_currentQuestion),
-                              ..._currentQuestion.siklar.entries.map(
-                                (entry) {
-                                  final selected = _selectedAnswer == entry.key;
-                                  final revealed = _selectedAnswer != null;
-                                  final isCorrectKey =
-                                      entry.key == _currentQuestion.dogruCevap;
-                                  _OptionTone? tone;
-                                  if (revealed) {
-                                    if (isCorrectKey) {
-                                      tone = _OptionTone.correct;
-                                    } else if (selected) {
-                                      tone = _OptionTone.wrong;
+                            ListenableBuilder(
+                              listenable: _scrollController,
+                              builder: (context, _) {
+                                final scrollOffset =
+                                    _scrollController.hasClients
+                                        ? _scrollController.offset
+                                        : 0.0;
+                                final strokes =
+                                    _drawings[_currentQuestion.id] ??
+                                        const [];
+                                return QuizDrawingOverlay(
+                                  scrollOffset: scrollOffset,
+                                  strokes: strokes,
+                                  onStrokeComplete: (stroke) {
+                                    if (_isFinishing) return;
+                                    setState(() {
+                                      final list = _drawings.putIfAbsent(
+                                        _currentQuestion.id,
+                                        () => [],
+                                      );
+                                      if (list.length >=
+                                          _maxStrokesPerQuestion) {
+                                        return;
+                                      }
+                                      list.add(stroke);
+                                    });
+                                  },
+                                  onUndo: () {
+                                    if (_isFinishing) return;
+                                    final list =
+                                        _drawings[_currentQuestion.id];
+                                    if (list == null || list.isEmpty) {
+                                      return;
                                     }
-                                  }
-                                  return _OptionTile(
-                                    label: entry.key,
-                                    text: entry.value,
-                                    forceColumns: OptionColumnLayout.forcedColumns(
-                                      _currentQuestion.optionTable,
-                                    ),
-                                    isSelected: selected,
-                                    tone: tone,
-                                    percentage: revealed
-                                        ? _visibleOptionPercentages[entry.key]
-                                        : null,
-                                    onTap: () => _selectAnswer(entry.key),
-                                  );
-                                },
-                              ),
-                            ],
-                            if (_selectedAnswer != null &&
-                                AuthService.instance.isSignedIn &&
-                                QuestionRatingService.canRate(
-                                  _currentQuestion.id,
-                                )) ...[
-                              const SizedBox(height: 16),
-                              QuestionRatingBar(
-                                selectedStars: _ratingSummary?.userRating,
-                                averageRating: _ratingSummary?.averageRating,
-                                ratingCount: _ratingSummary?.ratingCount ?? 0,
-                                loading: _ratingLoading,
-                                saving: _ratingSaving,
-                                onRate: _rateQuestion,
-                              ),
-                            ],
+                                    setState(() {
+                                      list.removeLast();
+                                      if (list.isEmpty) {
+                                        _drawings
+                                            .remove(_currentQuestion.id);
+                                      }
+                                    });
+                                  },
+                                  onClear: () => setState(
+                                    () => _drawings
+                                        .remove(_currentQuestion.id),
+                                  ),
+                                );
+                              },
+                            ),
                           ],
-                        ),
-                      ),
-                      ListenableBuilder(
-                        listenable: _scrollController,
-                        builder: (context, _) {
-                          final scrollOffset = _scrollController.hasClients
-                              ? _scrollController.offset
-                              : 0.0;
-                          final strokes =
-                              _drawings[_currentQuestion.id] ?? const [];
-                          if (_drawingEnabled && !_isFinishing) {
-                            return QuizDrawingOverlay(
-                              scrollOffset: scrollOffset,
-                              strokes: strokes,
-                              onStrokeComplete: (stroke) {
-                                if (_isFinishing) return;
-                                setState(() {
-                                  final list = _drawings.putIfAbsent(
-                                    _currentQuestion.id,
-                                    () => [],
-                                  );
-                                  if (list.length >= _maxStrokesPerQuestion) {
-                                    return;
-                                  }
-                                  list.add(stroke);
-                                });
-                              },
-                              onUndo: () {
-                                if (_isFinishing) return;
-                                final list = _drawings[_currentQuestion.id];
-                                if (list == null || list.isEmpty) return;
-                                setState(() {
-                                  list.removeLast();
-                                  if (list.isEmpty) {
-                                    _drawings.remove(_currentQuestion.id);
-                                  }
-                                });
-                              },
-                              onClear: () => setState(
-                                () => _drawings.remove(_currentQuestion.id),
+                        )
+                      : QuizZoomViewport(
+                          controller: _contentZoom,
+                          zoomEnabled: !_isFinishing,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              _buildQuestionBody(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  8,
+                                  20,
+                                  16,
+                                ),
                               ),
-                            );
-                          }
-                          return QuizStrokeLayer(
-                            scrollOffset: scrollOffset,
-                            strokes: strokes,
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+                              if ((_drawings[_currentQuestion.id] ??
+                                      const [])
+                                  .isNotEmpty)
+                                Positioned.fill(
+                                  child: QuizStrokeLayer(
+                                    scrollOffset: 0,
+                                    strokes:
+                                        _drawings[_currentQuestion.id]!,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                 ),
               ],
             ),

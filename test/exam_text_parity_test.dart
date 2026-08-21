@@ -100,7 +100,7 @@ void main() {
     expect(spans, isNotEmpty);
   });
 
-  test('dash-pair options are never compact-centered (A/B/C align)', () {
+  test('all plain options stay start-aligned; only LaTeX is compact size', () {
     expect(
       ExamOptionView.isCompactOption('kibirli — içselleştiriyor'),
       isFalse,
@@ -109,13 +109,15 @@ void main() {
       ExamOptionView.isCompactOption('şüpheci — eleştiriyor'),
       isFalse,
     );
-    // Eski bug: ≤20 görünür karakter → C ortalı, A/B sola.
     expect(
       ExamOptionView.isCompactOption('bilgiç — irdeliyor'),
       isFalse,
     );
+    // Tire yok + kısa — eski bug: ortalanıyordu.
+    expect(ExamOptionView.isCompactOption('ukala kanıksıyor'), isFalse);
+    expect(ExamOptionView.isCompactOption('42'), isFalse);
     expect(ExamOptionView.isCompactOption(r'$x+1$'), isTrue);
-    expect(ExamOptionView.isCompactOption('42'), isTrue);
+    expect(ExamOptionView.isCompactOption(r'$12$'), isTrue);
   });
 
   test('dash-separated options become two or three columns', () {

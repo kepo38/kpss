@@ -316,10 +316,13 @@ class WrongNotebookShareService {
                       type: MaterialType.transparency,
                       child: SizedBox(
                         width: WrongNotebookShareCard.cardWidth,
+                        height: WrongNotebookShareCard.cardHeight,
                         child: OverflowBox(
                           alignment: Alignment.topLeft,
                           minWidth: WrongNotebookShareCard.cardWidth,
                           maxWidth: WrongNotebookShareCard.cardWidth,
+                          minHeight: WrongNotebookShareCard.cardHeight,
+                          maxHeight: WrongNotebookShareCard.cardHeight,
                           child: RepaintBoundary(
                             key: boundaryKey,
                             child: card,
@@ -413,9 +416,9 @@ class WrongNotebookShareService {
           try {
             _log(
               'toImage attempt=$attempt size=${target.size} '
-              'pixelRatio=2.5',
+              'pixelRatio=2.0',
             );
-            image = await target.toImage(pixelRatio: 2.5);
+            image = await target.toImage(pixelRatio: 2.0);
             _log(
               'toImage ok ${image.width}x${image.height}',
             );

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../screens/analytics_hub_screen.dart';
 import 'countdown_widget.dart';

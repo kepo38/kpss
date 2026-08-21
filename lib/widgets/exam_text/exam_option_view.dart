@@ -11,11 +11,8 @@ const double kOptionBadgeLeadingWidth = 28 + 12;
 /// Short / math-ish şık: larger type (default option is 15).
 const double kCompactOptionFontSize = 18;
 
-/// Visible-char threshold for compact (centered + larger) option layout.
-/// Tireli eşleştirme şıkları (`bilgiç — irdeliyor`) bu eşiğe bakılmadan sola yaslanır.
-const int kCompactOptionCharLimit = 20;
-
-/// Şık metni — 15pt wrap (prose); kısa/math şıklar ortalı + daha büyük punto.
+/// Şık metni — ÖSYM hizası: **tüm şıklar sola**.
+/// Yalnızca LaTeX (`$…$`) içeren şıklar daha büyük punto; ortalanmaz.
 /// Eşleştirme satırında eşit sütun (yalnızca forceColumns) — tasarım korunur.
 class ExamOptionView extends StatelessWidget {
   final String text;
@@ -27,19 +24,15 @@ class ExamOptionView extends StatelessWidget {
     this.forceColumns,
   });
 
-  /// Compact when LaTeX `$…$` **or** very short plain answer.
-  /// Tire / em dash ile ayrılmış çift şıklar (ÖSYM boşluk doldurma) her zaman
-  /// sola hizalı kalır — aksi halde A/B uzun, C kısa olunca C ortada kalır.
+  /// Büyük punto yalnızca LaTeX şıklarında.
+  /// Uzunluk eşiği / tire istisnası yok — aynı soruda A–E hizası bozulmasın.
   static bool isCompactOption(String text) {
     final visible = FormattedText.stripMarkup(text)
         .replaceAll('\u00a0', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (visible.isEmpty) return false;
-    if (visible.contains(r'$')) return true;
-    // "kibirli — içselleştiriyor" / "bilgiç - irdeliyor" → asla ortalı.
-    if (RegExp(r'\s[-–—―−]{1,3}\s').hasMatch(visible)) return false;
-    return visible.length <= kCompactOptionCharLimit;
+    return visible.contains(r'$');
   }
 
   List<String> _forcedCells(int columns) {
@@ -116,7 +109,7 @@ class ExamOptionView extends StatelessWidget {
       ),
       examLayout: true,
       examWrap: true,
-      textAlign: compact ? TextAlign.center : TextAlign.start,
+      textAlign: TextAlign.start,
       style: style,
     );
   }

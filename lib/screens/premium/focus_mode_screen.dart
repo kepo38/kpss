@@ -863,6 +863,9 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                               height: 1,
                             ),
                           ),
+                          const SizedBox(height: 18),
+                          // Ana ekrandaki aktif süre chip'inin aynısı.
+                          _buildPresetChip(_pomodoro.preset),
                         ],
                       ),
                     ),

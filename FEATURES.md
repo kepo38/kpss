@@ -1,4 +1,4 @@
-﻿# Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
+# Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
 > **Son güncelleme:** 2026-08-21  
 > **Dart paketi:** `kpss_akademi`  
@@ -23,6 +23,22 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+
+### 21 Ağustos 2026 — Quiz zoom · şık hizası · paylaşım 9:16 · Odak chip · çizim sürükle
+
+Bu tur: quiz içerik yakınlaştırma; şık biçim kuralı netleşti; yanlış defteri paylaşım görseli tam ekran hikâye; Odak tam ekran süre chip’i; kalem araç çubuğu sürüklenir; paylaşım yakalama logları.
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Quiz pinch-to-zoom** | Soru gövdesi (kök + şık/çözüm) `InteractiveViewer` (1×–4×); çift dokunuş 2.2× / sıfırla; yakınken **Sıfırla** FAB | `quiz_zoom_viewport.dart`, `quiz_screen.dart` |
+| **Zoom ↔ çizim** | Kalem açıkken zoom kilit + matris sıfır; kalem kapalıyken zoom açık; mevcut çizimler zoom’da `QuizStrokeLayer` ile içerikle birlikte | `quiz_screen.dart`, `quiz_drawing_overlay.dart` |
+| **Şık hizası (kural)** | **Tüm şıklar sola**; yalnızca `$…$` LaTeX büyük punto. Eski ≤20 karakter ortala kuralı kaldırıldı (A–E uyumsuzluğu) | `exam_option_view.dart`, `exam_text_parity_test.dart` |
+| **Başarı chip** | Veri yoksa da `Başarı: —` (gizlenmez) | `quiz_screen.dart` |
+| **Yanlış defteri paylaşım 9:16** | 1080×1920 hikâye karesi; tek soluk filigran; daire harfli şıklar; pill kutular yok | `wrong_notebook_share_card.dart`, `wrong_notebook_share_service.dart` |
+| **Paylaşım yakalama** | Overlay + adım kodlu `WrongNotebookShare` log; snackbar’da `FAIL` kodu; `ScreenshotGate` | `wrong_notebook_share_service.dart`, `screenshot_gate.dart`, `MainActivity.kt` |
+| **Paylaşım hakkı metni** | **GÜNDE 1 SORU PAYLAŞABİLİRSİNİZ** | `wrong_notebook_share_service.dart` |
+| **Kalem araç çubuğu** | Üst tutamaçla yukarı/aşağı sürüklenir | `quiz_drawing_overlay.dart` |
+| **Odak tam ekran** | Sayaç altında aktif **20/40/60** chip (ana ekranla aynı stil); isim arkasında quiz filigranı (eğik soluk) | `focus_mode_screen.dart` |
 
 ### 21 Ağustos 2026 — Odak Dalga/Kafe · çözüm kotası · NEDEN BİZ · paylaşım · kota · canlı istatistik
 
@@ -238,7 +254,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Defter kayıtlı toast** | Konu testi + günlük denemede ortada premium toast (~3 sn): «YANLIŞ DEFTERİMDE / KAYITLI»; **Akıllı Tekrar**’da yok (`suppressWrongNotebookHint`) | `quiz_wrong_notebook_banner.dart`, `quiz_screen.dart`, `smart_review_screen.dart` |
 | **Balon tetik** | Google + bitmiş konu testi + **defterde ≥1 yanlış**; Günün Denemesi / yarım test tetiklemez | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
 | **Benzer sorular** | Embedding sonucu: kaynak soru ve kök metni ≥%88 benzer kopyalar elenir | `embeddings.py`, `test_embeddings.py`, `QuestionFetchService` |
-| **WhatsApp paylaşımı** | Google zorunlu; soru metni gitmez (filigranlı PNG kart + yardım cümlesi). Ücretsiz: günde **1** (+ödüllü reklam); Premium: günde **3**. Kota dolunca paylaşım yok. Capture: `ScreenshotGate` ile `FLAG_SECURE` geçici açılır | `wrong_notebook_share_service.dart`, `wrong_notebook_share_card.dart`, `screenshot_gate.dart`, `ad_manager.dart` |
+| **WhatsApp paylaşımı** | Google zorunlu; soru metni gitmez. **1080×1920 (9:16)** filigranlı hikâye PNG + yardım cümlesi. Ücretsiz: günde **1** (+ödüllü reklam); Premium: günde **3**. Capture: `ScreenshotGate`; hata kodları log+snackbar | `wrong_notebook_share_service.dart`, `wrong_notebook_share_card.dart`, `screenshot_gate.dart`, `ad_manager.dart` |
 
 #### Mobil — destek, güvenlik, kota, reklam
 
@@ -377,12 +393,13 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı; AppBar: **Test sola** + **Soru X/Y** ortada (ÖSYM ekseni); boş başlıkta yalnız Soru; şeritte yeşil **Başarı: %N**, **N kişi gördü** (`viewCount`) | `lib/screens/quiz_screen.dart`, `lib/widgets/brand_mark.dart`, `question_view_service.dart` | Ücretsiz; reklamlı |
+| **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı; AppBar: **Test sola** + **Soru X/Y** ortada (ÖSYM ekseni); boş başlıkta yalnız Soru; şeritte yeşil **Başarı: %N** (veri yoksa `Başarı: —`), **N kişi gördü**; **pinch-to-zoom** (kalem kapalıyken) | `quiz_screen.dart`, `quiz_zoom_viewport.dart`, `brand_mark.dart`, `question_view_service.dart` | Ücretsiz; reklamlı |
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil; soft satırlar birleşir; **TextAlign.justify** (Android/iOS) | `question_stem_content.dart`, `exam_stem_view.dart`, `formatted_text.dart` (`prepareExamJustifyText`) | Ücretsiz |
 | **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; üst şeritte **ekran ortası** (Stack); yer değiştirilmez | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
-| **Başarı oranı** | Şerit sağ üst: `Başarı: %49` — `correctRate` (0–1) veya canlı doğru şık yüzdesi; yeşil `#34D399` | `quiz_screen.dart`, `QuizHeaderStrip.successLabel` | Ücretsiz |
+| **Başarı oranı** | Şerit sağ üst: `Başarı: %49` veya veri yoksa `Başarı: —`; `correctRate` / canlı şık yüzdesi; yeşil `#34D399` | `quiz_screen.dart`, `QuizHeaderStrip.successLabel` | Ücretsiz |
 | **Görüntüleme sayacı** | Benzersiz kullanıcı; soru açılınca (cevap/boş fark etmez); `POST …/view/` + şerit «N kişi gördü» | `question_view_service.dart`, `Question.view_count` / `QuestionView`, `quiz_screen.dart` | Oturum ile artar |
-| **Çizim katmanı** | Soru alanında kalem / yeşil fosfor (geniş vurgu) / silgi; işaretler kaydırınca metinde kalır; kalem kapalıyken görünür; test bitince kaydedilmez | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
+| **Yakınlaştırma** | İki parmak / çift dokunuş; 1×–4×; kalem açıkken kilitlenir | `quiz_zoom_viewport.dart`, `quiz_screen.dart` | Ücretsiz |
+| **Çizim katmanı** | Kalem / yeşil fosfor / silgi; araç çubuğu **sürüklenebilir**; zoom ile exclusive (kalem↔zoom) | `quiz_drawing_overlay.dart`, `quiz_screen.dart` | Ücretsiz |
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp); **Favorilerim** sekmeli: Soru Favorileri + Özet Kartlar (Favori / Tekrar Et) | `favorite_heart_button.dart`, `favorites_service.dart`, `summary_card_progress_service.dart`, `favorites_screen.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
 | **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; ücretsiz **5**, Premium **3** konu testi bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 / Premium + 3 |
@@ -404,7 +421,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
 | Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
 
-Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni soldan hizalı. **Tablo sorusu** panelde açık işaretlenir (`option_table`: `none` | `dual` | `triple`); şık metni `X — Y` / pipe / etiketli hücre. Başlık: `<!--optcols:…-->` veya 2 sütunda **Olay / Sonuç**. Otomatik tire algısı **yok** — yalnızca bayraklı sorularda sütun UI (`option-table.js`, `option_column_layout.dart`, `exam_option_view.dart`).
+Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni **sola hizalı** (A–E tutarlı). Yalnızca `$…$` içeren şıklar daha büyük punto; uzunluk eşiği ile ortalama **yok**. **Tablo sorusu** panelde açık işaretlenir (`option_table`: `none` | `dual` | `triple`); şık metni `X — Y` / pipe / etiketli hücre. Başlık: `<!--optcols:…-->` veya 2 sütunda **Olay / Sonuç**. Otomatik tire algısı **yok** — yalnızca bayraklı sorularda sütun UI (`option-table.js`, `option_column_layout.dart`, `exam_option_view.dart`).
 
 ---
 
@@ -468,7 +485,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Promosyon kodu** | Backend’den Premium süresi; misafir kullanamaz; kod en fazla 32 karakter; 5/dk | `lib/services/promo_code_service.dart` | Google hesabı |
 | **Konu takibi** | Müfredat maddelerini işaretleme, ilerleme yüzdesi | `lib/screens/premium/topic_tracking_screen.dart`, `lib/services/topic_progress_service.dart` | Premium |
 | **Görev yönetimi** | Haftalık görevler, öncelik, tamamlama/silme | `lib/screens/premium/task_management_screen.dart`, `lib/services/task_service.dart` | Premium |
-| **Odak · Pomodoro** | Neon UI; süre **20/40/60 dk** (80 yok); ortam **Dalga** (`ambient_wave.mp3`) / **Kafe** (`ambient_cafe.mp3`) — Deep Work ile aynı loop + kesilince sürdürme; ambient↔Deep Work exclusive; **Deep Work Music**; tam ekranda **DERS ÇALIŞIYORUM** + bugünkü süre + kullanıcı adı + premium kronometre; Sıfırla; XP | `focus_mode_screen.dart`, `pomodoro_service.dart`, `pomodoro_session_model.dart`, `assets/sounds/ambient_wave.mp3`, `ambient_cafe.mp3`, `deep_work_music.mp3` | **Ücretsiz** |
+| **Odak · Pomodoro** | Neon UI; süre **20/40/60 dk** (80 yok); ortam **Dalga** / **Kafe** MP3 — Deep Work loop/sürdürme; ambient↔Deep Work exclusive; **Deep Work Music**; tam ekranda **DERS ÇALIŞIYORUM** + bugünkü süre + kullanıcı adı (arkada soluk filigran) + premium kronometre + **aktif süre chip’i** (sayacın altında); Sıfırla; XP | `focus_mode_screen.dart`, `pomodoro_service.dart`, `pomodoro_session_model.dart`, `ambient_wave.mp3`, `ambient_cafe.mp3`, `deep_work_music.mp3` | **Ücretsiz** |
 | **Bulut senkron** | Google/Apple senkron arayüzü (**mock**) | `lib/screens/premium/cloud_sync_screen.dart`, `lib/services/cloud_sync_service.dart` | Premium |
 | **Offline paket** | Tam pack indirme; istemci yıllık Play + Google oturumu; sunucu Bearer + `is_yearly_premium`; `POST /premium/sync/` | `offline_pack_screen.dart`, `offline_pack_service.dart`, `content_sync_service.dart`, `premium_sync_service.dart` | **Yalnızca yıllık Premium** (`canUseOfflinePack`) |
 | **Sıralama** | Haftalık/aylık **toplam doğru** (mini deneme dönem API, canlı); PremiumGate | `leaderboard_screen.dart`, `leaderboard_service.dart`, `daily_mini_ranking_service.dart` | Premium |
@@ -862,18 +879,15 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ## Sürüm notu (2026-08-21)
 
-- **Odak Modu:** 20/40/60 (80 yok); ortam **Dalga / Kafe** MP3 (yağmur/orman WAV silindi); Deep Work + ambient aynı loop/sürdürme; tam ekran DERS ÇALIŞIYORUM + kronometre
-- **Çözüm:** test başına ilk 4 ücretsiz; 5.+ ödüllü reklam
-- **NEDEN BİZ:** profil hero üstünde kitap vs uygulama karşılaştırması
-- **Yanlış defteri WhatsApp:** filigranlı PNG; ücretsiz 1/gün (+reklam), Premium 3/gün; `ScreenshotGate`
-- **Günlük kota:** ders bazlı API (`DailySubjectFreeUsage` / `daily-quota`)
-- **Panel:** `/panel/uygulama-durumu/` canlı kullanıcı
-- **Güvenlik:** Android FLAG_SECURE + iOS kayıt kalkanı; LaTeX `§§#n#§§` holder
-- **Gelişim:** sağ üst ODAK pill **mavi↔mor** gradient
-- **Soru viewCount:** `POST /questions/<id>/view/`; şerit «N kişi gördü»
-- **Quiz AppBar:** Test sola + Soru ortada (ÖSYM)
-- **Offline paket:** Bearer + yıllık sunucu kapısı; `POST /premium/sync/`
-- **Stüdyo:** Odak · Pomodoro ve Deneme Analizi herkese açık
+- **Quiz zoom:** pinch + çift dokunuş; kalem açıkken zoom kilit
+- **Şık kuralı:** tüm şıklar sola; yalnızca LaTeX büyük punto
+- **Başarı chip:** veri yoksa `Başarı: —`
+- **Yanlış defteri paylaşım:** 1080×1920 hikâye; detaylı capture log
+- **Kalem toolbar:** dikey sürüklenir
+- **Odak tam ekran:** sayaç altında aktif süre chip + filigranlı isim
+- **Odak ortam:** Dalga / Kafe MP3; 20/40/60
+- **Çözüm:** testte ilk 4 ücretsiz
+- **NEDEN BİZ**, ders bazlı kota, panel `/panel/uygulama-durumu/`
 
 ### Sürüm notu (2026-08-20)
 
