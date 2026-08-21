@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../constants/brand_constants.dart';
@@ -242,42 +244,42 @@ class QuizHeaderStrip extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: leftMeta,
+          child: SizedBox(
+            height: math.max(badgeHeight, 58),
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: leftMeta,
+                      ),
+                    ),
+                    SizedBox(
+                      width: osymSordu
+                          ? badgeHeight * OsymBadge.aspectRatio + 8
+                          : 0,
+                    ),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: rightMeta,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              Expanded(
-                flex: 3,
-                child: ClipRect(
-                  child: Center(
-                    child: osymSordu
-                        ? FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: OsymBadge(
-                              height: successLabel != null
-                                  ? (compact ? 36.0 : 42.0)
-                                  : badgeHeight,
-                              variant: OsymBadgeVariant.premium,
-                            ),
-                          )
-                        : const SizedBox.shrink(),
+                // AppBar «Soru X/Y» ile aynı dikey eksen (ekran ortası).
+                if (osymSordu)
+                  OsymBadge(
+                    height: badgeHeight,
+                    variant: OsymBadgeVariant.premium,
                   ),
-                ),
-              ),
-              Expanded(
-                flex: 4,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: rightMeta,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 8),

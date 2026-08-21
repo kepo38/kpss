@@ -1961,17 +1961,14 @@ class _QuizScreenState extends State<QuizScreen>
                         )
                       : QuizZoomViewport(
                           controller: _contentZoom,
+                          scrollController: _scrollController,
                           zoomEnabled: !_isFinishing,
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
                               _buildQuestionBody(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  8,
-                                  20,
-                                  16,
-                                ),
+                                padding: EdgeInsets.zero,
                               ),
                               if ((_drawings[_currentQuestion.id] ??
                                       const [])

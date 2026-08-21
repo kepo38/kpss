@@ -59,25 +59,28 @@ class WrongNotebookShareCard extends StatelessWidget {
             children: [
               const IgnorePointer(child: _ShareBackdropMark()),
               Padding(
-                padding: const EdgeInsets.fromLTRB(56, 64, 56, 56),
+                padding: const EdgeInsets.fromLTRB(48, 52, 48, 48),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const _ShareHeader(),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 20),
+                    // Kısa soru da alanı doldursun (scaleDown boşluk bırakıyordu).
                     Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.topCenter,
-                        child: SizedBox(
-                          width: cardWidth - 112,
-                          child: bankQuestion != null
-                              ? _BankBody(question: bankQuestion!)
-                              : _ManualBody(item: manualQuestion!),
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          alignment: Alignment.center,
+                          child: SizedBox(
+                            width: cardWidth - 96,
+                            child: bankQuestion != null
+                                ? _BankBody(question: bankQuestion!)
+                                : _ManualBody(item: manualQuestion!),
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     const _ShareFooter(),
                   ],
                 ),

@@ -123,20 +123,50 @@ class WhyUsComparisonCard extends StatelessWidget {
 
   static const _priceTl = SavingsConstants.paywallMonthlyHighlightTl;
 
-  static const _bookBullets = [
-    'Her baskıda kapak ve düzen değişir; hangi sürümü aldığınız, hangi müfredata uyduğu belirsiz kalır.',
-    'Kitap + kargo + yeni baskı maliyeti yüksektir; bir hata için tüm seti yenilemek zorunda kalırsınız.',
-    'Çözümler çoğu zaman kısa ve yüzeyseldir; çeldirici şıkların neden yanlış olduğu anlatılmaz.',
-    'Baskı hatası veya müfredat değişikliği için aylar beklersiniz; elinizdeki kitap güncellenmez.',
-    'Yüzlerce soruyu bilmeseniz de hepsini taşırsınız — boşa zaman ve raf alanı.',
+  static const _appPoints = [
+    _WhyUsPoint(
+      'Kapak karmaşası yok, her an güncel',
+      'Sürekli değişen mevzuata ve ÖSYM formatına anında uyum sağlar; '
+          'her zaman en güncel içerikle çalışırsın.',
+    ),
+    _WhyUsPoint(
+      'Tek seferlik bütçe, sınırsız erişim',
+      'Her yeni baskı için tekrar kitap parası ödemez; '
+          'tek abonelikle tüm güncellemelere sınırsız ulaşırsın.',
+    ),
+    _WhyUsPoint(
+      'Akıllı çözümler ve detaylı analiz',
+      'Sadece doğru cevabı değil, yanlış şıkların neden yanlış olduğunu da '
+          'net ve anlaşılır şekilde öğrenirsin.',
+    ),
+    _WhyUsPoint(
+      'Anlık hata düzeltme',
+      'Bir soruda veya çözümde hata varsa anında bildirir; '
+          'anlık güncellemeyle içeriğin hep taze kalır.',
+    ),
+    _WhyUsPoint(
+      'Kişisel çalışma kasası',
+      'Yanlışların, özel notların ve tekrar listelerin telefonunda '
+          'düzenli bir şekilde elinin altındadır.',
+    ),
   ];
 
-  static const _appBullets = [
-    'Tek uygulama, tek sürüm: kapak karmaşası yok; herkes aynı güncel içeriği görür.',
-    'Abonelikle erişirsiniz; her yeni baskı için tekrar para vermezsiniz.',
-    'Detaylı çözümler: doğru cevap ve yanlış şıkların nedenleri net anlatılır.',
-    'Hata düzelince anlık bildirimle güncellenir; içerik sürekli taze kalır.',
-    'İlerlemeniz, yanlış defteriniz ve tekrar listeniz telefonunuzda — kes-yapıştır yok.',
+  static const _bookPoints = [
+    _WhyUsPoint(
+      'Eskiyen basımlar ve güncel olmayan sorular',
+      'Hangi baskıyı aldığın, müfredata tam uyup uymadığı belirsizdir; '
+          'güncellemeleri takip edemezsin.',
+    ),
+    _WhyUsPoint(
+      'Sürekli artan kitap ve kargo masrafı',
+      'Her sınav dönemi yeni kitaplar ve kargo ücretleri '
+          'bütçeni ciddi şekilde zorlar.',
+    ),
+    _WhyUsPoint(
+      'Tek taraflı ve hareketsiz içerik',
+      'Kitapta takıldığın soruyu sorabileceğin, detaylı çözümünü anında '
+          'görebileceğin veya kişiselleştirebileceğin bir alan yoktur.',
+    ),
   ];
 
   Future<void> _openPaywall(BuildContext context) async {
@@ -215,8 +245,9 @@ class WhyUsComparisonCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Kapak değişen, pahalı ve kısa çözümlü kitaplar yerine '
-                                'anında güncellenen, net anlatımlı çalışma.',
+                                'Güncel içerik, tek abonelik, akıllı çözümler ve '
+                                'kişisel çalışma kasası — klasik kitabın '
+                                'dezavantajları olmadan.',
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.manrope(
                                   fontSize: 12.5,
@@ -228,32 +259,33 @@ class WhyUsComparisonCard extends StatelessWidget {
                               const SizedBox(height: 16),
                               LayoutBuilder(
                                 builder: (context, constraints) {
-                                  final sideBySide = constraints.maxWidth >= 420;
-                                  const book = _CompareColumn(
-                                    title: 'Klasik Ders Kitapları',
-                                    bullets: WhyUsComparisonCard._bookBullets,
-                                    positive: false,
-                                  );
+                                  final sideBySide =
+                                      constraints.maxWidth >= 420;
                                   const app = _CompareColumn(
                                     title: 'HEDEF Kamu Uygulaması',
-                                    bullets: WhyUsComparisonCard._appBullets,
+                                    points: WhyUsComparisonCard._appPoints,
                                     positive: true,
                                   );
+                                  const book = _CompareColumn(
+                                    title: 'Klasik Ders Kitapları',
+                                    points: WhyUsComparisonCard._bookPoints,
+                                    positive: false,
+                                  );
                                   if (sideBySide) {
-                                    return Row(
+                                    return const Row(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         Expanded(child: app),
-                                        const SizedBox(width: 10),
+                                        SizedBox(width: 10),
                                         Expanded(child: book),
                                       ],
                                     );
                                   }
-                                  return Column(
+                                  return const Column(
                                     children: [
                                       app,
-                                      const SizedBox(height: 10),
+                                      SizedBox(height: 10),
                                       book,
                                     ],
                                   );
@@ -280,6 +312,13 @@ class WhyUsComparisonCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WhyUsPoint {
+  final String title;
+  final String body;
+
+  const _WhyUsPoint(this.title, this.body);
 }
 
 class _Header extends StatelessWidget {
@@ -320,12 +359,12 @@ class _Header extends StatelessWidget {
 
 class _CompareColumn extends StatelessWidget {
   final String title;
-  final List<String> bullets;
+  final List<_WhyUsPoint> points;
   final bool positive;
 
   const _CompareColumn({
     required this.title,
-    required this.bullets,
+    required this.points,
     required this.positive,
   });
 
@@ -341,6 +380,9 @@ class _CompareColumn extends StatelessWidget {
         ? const Color(0xFFE8F5F0)
         : const Color(0xFFF3E8E8);
     final mark = positive ? '✓' : '❌';
+    final markColor = positive
+        ? const Color(0xFF1F6F5B)
+        : const Color(0xFF8B3A3A);
 
     return Container(
       decoration: BoxDecoration(
@@ -380,8 +422,8 @@ class _CompareColumn extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
             child: Column(
               children: [
-                for (var i = 0; i < bullets.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 8),
+                for (var i = 0; i < points.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -390,21 +432,34 @@ class _CompareColumn extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           height: 1.35,
-                          color: positive
-                              ? const Color(0xFF1F6F5B)
-                              : const Color(0xFF8B3A3A),
+                          color: markColor,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                          bullets[i],
-                          style: GoogleFonts.manrope(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            height: 1.4,
-                            color: const Color(0xFF2A3344),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              points[i].title,
+                              style: GoogleFonts.manrope(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                height: 1.3,
+                                color: const Color(0xFF1C2434),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              points[i].body,
+                              style: GoogleFonts.manrope(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                height: 1.4,
+                                color: const Color(0xFF2A3344),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

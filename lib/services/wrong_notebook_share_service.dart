@@ -301,28 +301,31 @@ class WrongNotebookShareService {
       late OverlayEntry entry;
       entry = OverlayEntry(
         builder: (ctx) {
-          // Kart ekranda (görünmez) boyanır — negatif left bazı
-          // cihazlarda layer’ı rasterize etmiyor.
+          // Kartı ekrana sığdırarak boya (FittedBox) — taşan kısım
+          // clip olmasın; RepaintBoundary hâlâ 1080×1920 kalır.
+          const w = WrongNotebookShareCard.cardWidth;
+          const h = WrongNotebookShareCard.cardHeight;
           return Stack(
             fit: StackFit.expand,
             children: [
-              Positioned(
-                left: 0,
-                top: 0,
+              const ModalBarrier(
+                dismissible: false,
+                color: Color(0xB8000000),
+              ),
+              Positioned.fill(
                 child: Opacity(
-                  opacity: 0.02,
+                  opacity: 0.015,
                   child: IgnorePointer(
-                    child: Material(
-                      type: MaterialType.transparency,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
                       child: SizedBox(
-                        width: WrongNotebookShareCard.cardWidth,
-                        height: WrongNotebookShareCard.cardHeight,
-                        child: OverflowBox(
-                          alignment: Alignment.topLeft,
-                          minWidth: WrongNotebookShareCard.cardWidth,
-                          maxWidth: WrongNotebookShareCard.cardWidth,
-                          minHeight: WrongNotebookShareCard.cardHeight,
-                          maxHeight: WrongNotebookShareCard.cardHeight,
+                        width: w,
+                        height: h,
+                        child: MediaQuery(
+                          data: const MediaQueryData(
+                            size: Size(w, h),
+                            devicePixelRatio: 1,
+                          ),
                           child: RepaintBoundary(
                             key: boundaryKey,
                             child: card,
@@ -332,10 +335,6 @@ class WrongNotebookShareService {
                     ),
                   ),
                 ),
-              ),
-              const ModalBarrier(
-                dismissible: false,
-                color: Color(0xB8000000),
               ),
               const Center(
                 child: Card(
@@ -394,6 +393,18 @@ class WrongNotebookShareService {
             'RepaintBoundary ready değil lastSize=$lastSize',
           );
           return null;
+        }
+
+        final expected = const Size(
+          WrongNotebookShareCard.cardWidth,
+          WrongNotebookShareCard.cardHeight,
+        );
+        if ((boundary.size.width - expected.width).abs() > 2 ||
+            (boundary.size.height - expected.height).abs() > 2) {
+          _log(
+            'WARN size=${boundary.size} expected=$expected '
+            '(hikâye oranı bozulabilir)',
+          );
         }
 
         if (kDebugMode && boundary.debugNeedsPaint) {

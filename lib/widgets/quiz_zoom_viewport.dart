@@ -2,26 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// Soru / çözüm içeriği için pinch-to-zoom + çift dokunuş.
+/// Soru / çözüm için pinch-to-zoom; **1×’te normal dikey kaydırma** korunur.
 ///
-/// Çizim modu açıkken [zoomEnabled]=false → pan/zoom kilitlenir ve matris
-/// sıfırlanır; kalem kapatılınca InteractiveViewer yeniden aktif olur.
+/// - Ölçek ≈1 → [SingleChildScrollView] kaydırır; InteractiveViewer pan kapalı
+/// - Ölçek >1 → kaydırma kilit; InteractiveViewer pan açık
+/// - Çizim modunda [zoomEnabled]=false → matris sıfır, yalnızca kaydırma
 class QuizZoomViewport extends StatefulWidget {
   final Widget child;
   final bool zoomEnabled;
   final TransformationController? controller;
+  final ScrollController? scrollController;
   final double minScale;
   final double maxScale;
-  final EdgeInsets boundaryMargin;
+  final EdgeInsets padding;
 
   const QuizZoomViewport({
     super.key,
     required this.child,
     this.zoomEnabled = true,
     this.controller,
+    this.scrollController,
     this.minScale = 1,
     this.maxScale = 4,
-    this.boundaryMargin = const EdgeInsets.fromLTRB(48, 72, 48, 120),
+    this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 16),
   });
 
   @override
@@ -109,75 +112,73 @@ class _QuizZoomViewportState extends State<QuizZoomViewport>
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.deferToChild,
-              onDoubleTapDown: widget.zoomEnabled
-                  ? (d) => _doubleTapDetails = d
-                  : null,
-              onDoubleTap: widget.zoomEnabled ? _handleDoubleTap : null,
-              child: InteractiveViewer(
-                transformationController: _controller,
-                constrained: false,
-                clipBehavior: Clip.hardEdge,
-                alignment: Alignment.topCenter,
-                boundaryMargin: widget.boundaryMargin,
-                minScale: widget.minScale,
-                maxScale: widget.maxScale,
-                panEnabled: widget.zoomEnabled,
-                scaleEnabled: widget.zoomEnabled,
-                child: SizedBox(
-                  width: constraints.maxWidth,
-                  child: widget.child,
-                ),
-              ),
+    final zoomOn = widget.zoomEnabled;
+    final zoomed = zoomOn && _isZoomed;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.deferToChild,
+          onDoubleTapDown: zoomOn ? (d) => _doubleTapDetails = d : null,
+          onDoubleTap: zoomOn ? _handleDoubleTap : null,
+          child: InteractiveViewer(
+            transformationController: _controller,
+            // Viewport’a sığdır → içteki ScrollView düzgün kayar.
+            constrained: true,
+            clipBehavior: Clip.hardEdge,
+            minScale: widget.minScale,
+            maxScale: widget.maxScale,
+            // 1×’te pan kapalı → dikey kaydırma ScrollView’da kalır.
+            panEnabled: zoomed,
+            scaleEnabled: zoomOn,
+            child: SingleChildScrollView(
+              controller: widget.scrollController,
+              physics: zoomed
+                  ? const NeverScrollableScrollPhysics()
+                  : const ClampingScrollPhysics(),
+              padding: widget.padding,
+              child: widget.child,
             ),
-            if (widget.zoomEnabled && _isZoomed)
-              Positioned(
-                right: 12,
-                bottom: 12,
-                child: Material(
-                  color: const Color(0xFF132A5C).withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(999),
-                  elevation: 6,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => _animateTo(Matrix4.identity()),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
+          ),
+        ),
+        if (zoomed)
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: const Color(0xFF132A5C).withValues(alpha: 0.94),
+              borderRadius: BorderRadius.circular(999),
+              elevation: 6,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => _animateTo(Matrix4.identity()),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.zoom_out_map_rounded,
+                        size: 18,
+                        color: AppTheme.champagneLight,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.zoom_out_map_rounded,
-                            size: 18,
-                            color: AppTheme.champagneLight,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Sıfırla',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.champagneLight,
-                            ),
-                          ),
-                        ],
+                      SizedBox(width: 6),
+                      Text(
+                        'Sıfırla',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.champagneLight,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
-          ],
-        );
-      },
+            ),
+          ),
+      ],
     );
   }
 }
