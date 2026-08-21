@@ -21,13 +21,15 @@ class PomodoroSessionModel {
   int get sureSaniye => sureDakika * 60;
 }
 
-enum PomodoroPreset { kisa25, orta50, uzun90, ozel }
+enum PomodoroPreset { kisa25, orta30, orta50, uzun90, ozel }
 
 extension PomodoroPresetExtension on PomodoroPreset {
   int get dakika {
     switch (this) {
       case PomodoroPreset.kisa25:
         return 25;
+      case PomodoroPreset.orta30:
+        return 30;
       case PomodoroPreset.orta50:
         return 50;
       case PomodoroPreset.uzun90:
@@ -41,6 +43,8 @@ extension PomodoroPresetExtension on PomodoroPreset {
     switch (this) {
       case PomodoroPreset.kisa25:
         return '25 dk';
+      case PomodoroPreset.orta30:
+        return '30 dk';
       case PomodoroPreset.orta50:
         return '50 dk';
       case PomodoroPreset.uzun90:
@@ -51,20 +55,14 @@ extension PomodoroPresetExtension on PomodoroPreset {
   }
 }
 
-/// Ortam sesi kataloğu — doğa, ambiyans, binaural.
+/// Ortam sesi kataloğu — yalnızca Sessiz + doğa (yağmur / orman).
 enum AmbientSound {
   sessiz,
   yagmur,
   orman,
-  kafe,
-  kutuphane,
-  binaural40,
-  binaural60,
-  binaural80,
-  deniz,
 }
 
-enum AmbientSoundGroup { sessiz, doga, ambiyans, binaural }
+enum AmbientSoundGroup { sessiz, doga }
 
 extension AmbientSoundExtension on AmbientSound {
   String get label {
@@ -75,18 +73,6 @@ extension AmbientSoundExtension on AmbientSound {
         return 'Yağmur';
       case AmbientSound.orman:
         return 'Orman';
-      case AmbientSound.kafe:
-        return 'Kafe';
-      case AmbientSound.kutuphane:
-        return 'Kütüphane';
-      case AmbientSound.binaural40:
-        return '40 Hz';
-      case AmbientSound.binaural60:
-        return '60 Hz';
-      case AmbientSound.binaural80:
-        return '80 Hz';
-      case AmbientSound.deniz:
-        return 'Deniz';
     }
   }
 
@@ -98,18 +84,6 @@ extension AmbientSoundExtension on AmbientSound {
         return 'Doğa';
       case AmbientSound.orman:
         return 'Doğa';
-      case AmbientSound.kafe:
-        return 'Ambiyans';
-      case AmbientSound.kutuphane:
-        return 'Ambiyans';
-      case AmbientSound.binaural40:
-        return 'Binaural · odak';
-      case AmbientSound.binaural60:
-        return 'Binaural · denge';
-      case AmbientSound.binaural80:
-        return 'Binaural · uyanık';
-      case AmbientSound.deniz:
-        return 'Ambiyans';
     }
   }
 
@@ -120,14 +94,6 @@ extension AmbientSoundExtension on AmbientSound {
       case AmbientSound.yagmur:
       case AmbientSound.orman:
         return AmbientSoundGroup.doga;
-      case AmbientSound.kafe:
-      case AmbientSound.kutuphane:
-      case AmbientSound.deniz:
-        return AmbientSoundGroup.ambiyans;
-      case AmbientSound.binaural40:
-      case AmbientSound.binaural60:
-      case AmbientSound.binaural80:
-        return AmbientSoundGroup.binaural;
     }
   }
 
@@ -139,16 +105,6 @@ extension AmbientSoundExtension on AmbientSound {
         return Icons.water_drop_outlined;
       case AmbientSound.orman:
         return Icons.park_outlined;
-      case AmbientSound.kafe:
-        return Icons.local_cafe_outlined;
-      case AmbientSound.kutuphane:
-        return Icons.menu_book_outlined;
-      case AmbientSound.binaural40:
-      case AmbientSound.binaural60:
-      case AmbientSound.binaural80:
-        return Icons.graphic_eq_rounded;
-      case AmbientSound.deniz:
-        return Icons.waves_outlined;
     }
   }
 
@@ -161,18 +117,6 @@ extension AmbientSoundExtension on AmbientSound {
         return 'sounds/ambient_rain.wav';
       case AmbientSound.orman:
         return 'sounds/ambient_forest.wav';
-      case AmbientSound.kafe:
-        return 'sounds/ambient_cafe.wav';
-      case AmbientSound.kutuphane:
-        return 'sounds/ambient_library.wav';
-      case AmbientSound.binaural40:
-        return 'sounds/ambient_binaural_40.wav';
-      case AmbientSound.binaural60:
-        return 'sounds/ambient_binaural_60.wav';
-      case AmbientSound.binaural80:
-        return 'sounds/ambient_binaural_80.wav';
-      case AmbientSound.deniz:
-        return 'sounds/ambient_ocean.wav';
     }
   }
 }

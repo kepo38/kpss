@@ -8,19 +8,25 @@ class PomodoroService {
   PomodoroService._();
   static final PomodoroService instance = PomodoroService._();
 
+  static const deepWorkAssetPath = 'sounds/deep_work_music.mp3';
+
   final List<PomodoroSessionModel> _gecmis = [];
   final AudioPlayer _ambientPlayer = AudioPlayer();
+  final AudioPlayer _deepWorkPlayer = AudioPlayer();
   final AudioPlayer _chimePlayer = AudioPlayer();
 
   AmbientSound _selectedSound = AmbientSound.sessiz;
   bool _audioReady = false;
+  bool _deepWorkAudioReady = false;
   bool _ambientPlaying = false;
+  bool _deepWorkPlaying = false;
   double _ambientVolume = 0.42;
   bool _wakeLockHeld = false;
 
   List<PomodoroSessionModel> get gecmis => List.unmodifiable(_gecmis);
   AmbientSound get selectedSound => _selectedSound;
   bool get ambientPlaying => _ambientPlaying;
+  bool get deepWorkPlaying => _deepWorkPlaying;
   double get ambientVolume => _ambientVolume;
 
   int get bugunToplamDakika {
@@ -51,6 +57,7 @@ class PomodoroService {
     if (sound == AmbientSound.sessiz) {
       await stopAmbient();
     } else {
+      await stopDeepWork();
       await playAmbient();
     }
   }
@@ -97,6 +104,7 @@ class PomodoroService {
       return;
     }
     try {
+      await stopDeepWork();
       await _ensureAmbientAudio();
       await _ambientPlayer.stop();
       await _ambientPlayer.setVolume(0);
@@ -130,6 +138,60 @@ class PomodoroService {
     _ambientPlaying = false;
   }
 
+  Future<void> _ensureDeepWorkAudio() async {
+    if (_deepWorkAudioReady) return;
+    await _deepWorkPlayer.setAudioContext(
+      AudioContext(
+        android: const AudioContextAndroid(
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gain,
+          stayAwake: true,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+        ),
+      ),
+    );
+    await _deepWorkPlayer.setReleaseMode(ReleaseMode.loop);
+    await _deepWorkPlayer.setPlayerMode(PlayerMode.mediaPlayer);
+    _deepWorkAudioReady = true;
+  }
+
+  /// Deep Work müziği — uygulama asset'inden loop. Ortam sesini durdurur.
+  Future<void> playDeepWork() async {
+    try {
+      await stopAmbient();
+      _selectedSound = AmbientSound.sessiz;
+      await _ensureDeepWorkAudio();
+      await _deepWorkPlayer.stop();
+      await _deepWorkPlayer.setVolume(0.72);
+      await _deepWorkPlayer.play(AssetSource(deepWorkAssetPath));
+      _deepWorkPlaying = true;
+    } catch (e, st) {
+      _deepWorkPlaying = false;
+      if (kDebugMode) {
+        debugPrint('Deep Work çalınamadı: $e\n$st');
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> stopDeepWork() async {
+    try {
+      await _deepWorkPlayer.stop();
+    } catch (_) {}
+    _deepWorkPlaying = false;
+  }
+
+  Future<void> toggleDeepWork() async {
+    if (_deepWorkPlaying) {
+      await stopDeepWork();
+    } else {
+      await playDeepWork();
+    }
+  }
+
   /// Süre bitiş zili (kısa, loop değil).
   Future<void> playCompletionChime() async {
     try {
@@ -145,8 +207,11 @@ class PomodoroService {
   Future<void> dispose() async {
     await setSessionActive(false);
     await stopAmbient();
+    await stopDeepWork();
     await _ambientPlayer.dispose();
+    await _deepWorkPlayer.dispose();
     await _chimePlayer.dispose();
     _audioReady = false;
+    _deepWorkAudioReady = false;
   }
 }

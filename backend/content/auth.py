@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import secrets
@@ -21,12 +22,38 @@ logger = logging.getLogger(__name__)
 GUEST_EMAIL_DOMAIN = "guest.hedefkamu.app"
 GUEST_DISPLAY_NAME = "Misafir"
 
+_FIREBASE_ISS_MARKER = "securetoken.google.com"
+_FIREBASE_CONFIG_MSG = (
+    "Sunucu Firebase yapılandırması eksik. "
+    "Yönetici FIREBASE_CREDENTIALS (servis hesabı JSON) eklemeli."
+)
+
 
 class AuthError(Exception):
     def __init__(self, message: str, *, status: int = 401):
         super().__init__(message)
         self.message = message
         self.status = status
+
+
+def _jwt_iss(token: str) -> str:
+    """İmza doğrulamadan JWT iss alanını okur (yalnızca yönlendirme için)."""
+    try:
+        parts = (token or "").split(".")
+        if len(parts) < 2:
+            return ""
+        payload = parts[1]
+        pad = "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload + pad))
+        if isinstance(data, dict):
+            return str(data.get("iss") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
+
+
+def _is_firebase_id_token(token: str) -> bool:
+    return _FIREBASE_ISS_MARKER in _jwt_iss(token)
 
 
 def new_api_token() -> str:
@@ -86,7 +113,14 @@ def verify_id_token(id_token: str) -> dict[str, Any]:
     if not token:
         raise AuthError("Kimlik jetonu gerekli.")
 
-    ready, _ = firebase_ready()
+    ready, ready_err = firebase_ready()
+    looks_firebase = _is_firebase_id_token(token)
+
+    if not ready and looks_firebase:
+        # Firebase JWT ile gelindi ama servis hesabı yok — yanıltıcı
+        # "Geçersiz Google oturumu" yerine açık yapılandırma hatası.
+        raise AuthError(ready_err or _FIREBASE_CONFIG_MSG, status=503)
+
     if ready:
         try:
             _ensure_firebase_app()
@@ -102,7 +136,14 @@ def verify_id_token(id_token: str) -> dict[str, Any]:
                 "picture": str(decoded.get("picture") or ""),
                 "is_anonymous": provider == "anonymous",
             }
+        except AuthError:
+            raise
         except Exception as exc:  # noqa: BLE001
+            if looks_firebase:
+                logger.info("Firebase token doğrulama başarısız: %s", exc)
+                raise AuthError(
+                    "Geçersiz veya süresi dolmuş oturum. Tekrar giriş yapın."
+                ) from exc
             logger.info(
                 "Firebase token doğrulama başarısız, Google deneniyor: %s", exc
             )

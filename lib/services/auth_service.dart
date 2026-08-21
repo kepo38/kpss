@@ -67,6 +67,7 @@ class AuthService extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_ready) return;
+    debugPrint('[ApiConfig] baseUrl = ${ApiConfig.baseUrl}');
     final prefs = await AppPreferences.instance;
     _token = prefs.getString(_kToken);
     final raw = prefs.getString(_kUser);
@@ -176,7 +177,8 @@ class AuthService extends ChangeNotifier {
 
       return _activateLocalGuestSession(
         hint: _lastError ??
-            'Sunucuya ulaşılamadı. Çevrimdışı misafir modundasın.',
+            'Sunucuya ulaşılamadı (${ApiConfig.baseUrl}). '
+            'basla-telefon.bat çalıştırın; PC ve telefon aynı Wi-Fi ağında olsun.',
       );
     } on FirebaseAuthException catch (e) {
       debugPrint('Anonim giriş: $e');
@@ -309,13 +311,16 @@ class AuthService extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
     try {
-      final googleUser = await _googleSignIn.signIn();
+      final googleUser = await _googleSignIn
+          .signIn()
+          .timeout(const Duration(seconds: 15));
       if (googleUser == null) {
         _lastError = 'Giriş iptal edildi.';
         return false;
       }
 
-      final googleAuth = await googleUser.authentication;
+      final googleAuth = await googleUser.authentication
+          .timeout(const Duration(seconds: 15));
       var idToken = googleAuth.idToken;
       final accessToken = googleAuth.accessToken;
 
@@ -329,28 +334,45 @@ class AuthService extends ChangeNotifier {
           final fbUser = FirebaseAuth.instance.currentUser;
           final UserCredential cred;
           if (fbUser != null && fbUser.isAnonymous) {
-            cred = await fbUser.linkWithCredential(credential);
+            cred = await fbUser
+                .linkWithCredential(credential)
+                .timeout(const Duration(seconds: 15));
           } else {
-            cred = await FirebaseAuth.instance.signInWithCredential(credential);
+            cred = await FirebaseAuth.instance
+                .signInWithCredential(credential)
+                .timeout(const Duration(seconds: 15));
           }
-          final fbToken = await cred.user?.getIdToken(true);
-          if (fbToken != null && fbToken.isNotEmpty) {
-            idToken = fbToken;
+          final fbUserSigned = cred.user;
+          if (fbUserSigned != null) {
+            final fbToken = await fbUserSigned
+                .getIdToken(true)
+                .timeout(const Duration(seconds: 15));
+            if (fbToken != null && fbToken.isNotEmpty) {
+              idToken = fbToken;
+            }
           }
         }
       } catch (e) {
+        if (e is TimeoutException) rethrow;
         debugPrint('FirebaseAuth: $e');
         final msg = e.toString();
         if (msg.contains('credential-already-in-use') ||
             msg.contains('email-already-in-use')) {
           try {
-            final cred2 =
-                await FirebaseAuth.instance.signInWithCredential(credential!);
-            final fbToken = await cred2.user?.getIdToken(true);
-            if (fbToken != null && fbToken.isNotEmpty) {
-              idToken = fbToken;
+            final cred2 = await FirebaseAuth.instance
+                .signInWithCredential(credential!)
+                .timeout(const Duration(seconds: 15));
+            final fbUser2 = cred2.user;
+            if (fbUser2 != null) {
+              final fbToken = await fbUser2
+                  .getIdToken(true)
+                  .timeout(const Duration(seconds: 15));
+              if (fbToken != null && fbToken.isNotEmpty) {
+                idToken = fbToken;
+              }
             }
           } catch (e2) {
+            if (e2 is TimeoutException) rethrow;
             debugPrint('FirebaseAuth fallback signIn: $e2');
             _lastError = 'Google hesabı bağlanamadı. Tekrar deneyin.';
             return false;
@@ -375,6 +397,12 @@ class AuthService extends ChangeNotifier {
         accessToken: accessToken,
         displayName: googleUser.displayName,
       );
+    } on TimeoutException {
+      debugPrint('Google giriş: timeout');
+      _lastError =
+          'Giriş zaman aşımına uğradı (${ApiConfig.baseUrl}). '
+          'PC ve telefon aynı Wi-Fi ağında olsun; basla-telefon.bat çalışsın.';
+      return false;
     } catch (e) {
       debugPrint('Google giriş: $e');
       final msg = e.toString();
@@ -385,9 +413,11 @@ class AuthService extends ChangeNotifier {
       } else if (msg.contains('SocketException') ||
           msg.contains('Failed host lookup') ||
           msg.contains('Connection refused') ||
-          msg.contains('Timed out')) {
+          msg.contains('Timed out') ||
+          msg.contains('TimeoutException')) {
         _lastError =
-            'Sunucuya ulaşılamadı (${ApiConfig.baseUrl}). PC ve telefon aynı Wi‑Fi’de olsun; basla.bat çalışsın.';
+            'Sunucuya ulaşılamadı (${ApiConfig.baseUrl}). '
+            'PC ve telefon aynı Wi-Fi ağında olsun; basla-telefon.bat çalışsın.';
       } else {
         _lastError = 'Giriş başarısız. Tekrar deneyin.';
       }
@@ -420,16 +450,22 @@ class AuthService extends ChangeNotifier {
                 'display_name': trimmedName,
             }),
           )
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 15));
 
       if (res.statusCode != 200) {
-        String detail = 'Sunucu girişi reddetti (${res.statusCode}).';
+        // Body'deki `detail` yoksa: 4xx giriş, 5xx gerçek sunucu hatası.
+        String detail = res.statusCode >= 500
+            ? 'Sunucu hatası (${res.statusCode}).'
+            : 'Giriş reddedildi (${res.statusCode}).';
         try {
           final body = jsonDecode(utf8.decode(res.bodyBytes));
           if (body is Map && body['detail'] != null) {
             detail = body['detail'].toString();
           }
         } catch (_) {}
+        debugPrint(
+          'Auth exchange HTTP ${res.statusCode} @ ${ApiConfig.baseUrl}: $detail',
+        );
         _lastError = detail;
         return false;
       }
@@ -454,9 +490,10 @@ class AuthService extends ChangeNotifier {
       unawaited(PremiumSyncService.instance.syncIfYearlyActive());
       return true;
     } catch (e) {
-      debugPrint('Auth exchange: $e');
+      debugPrint('Auth exchange @ ${ApiConfig.baseUrl}: $e');
       _lastError =
-          'Sunucuya bağlanılamadı (${ApiConfig.baseUrl}). basla.bat ile paneli açın.';
+          'Sunucuya bağlanılamadı (${ApiConfig.baseUrl}). '
+          'basla-telefon.bat çalıştırın; PC ve telefon aynı Wi-Fi ağında olsun.';
       return false;
     }
   }

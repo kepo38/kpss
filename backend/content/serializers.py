@@ -51,6 +51,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     osymSordu = serializers.BooleanField(source="osym_sordu")
     difficulty = serializers.CharField()
     attemptCount = serializers.IntegerField(source="attempt_count")
+    viewCount = serializers.IntegerField(source="view_count", read_only=True)
     correctRate = serializers.SerializerMethodField()
     difficultyVisible = serializers.BooleanField(source="difficulty_visible")
     qualityScore = serializers.SerializerMethodField()
@@ -78,6 +79,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "osymSordu",
             "difficulty",
             "attemptCount",
+            "viewCount",
             "correctRate",
             "difficultyVisible",
             "qualityScore",

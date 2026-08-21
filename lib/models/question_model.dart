@@ -15,6 +15,7 @@ class QuestionModel {
   final bool osymSordu;
   final String difficulty;
   final int attemptCount;
+  final int viewCount;
   final double? correctRate;
   final bool difficultyVisible;
   final String? scenarioId;
@@ -39,6 +40,7 @@ class QuestionModel {
     this.osymSordu = false,
     this.difficulty = 'medium',
     this.attemptCount = 0,
+    this.viewCount = 0,
     this.correctRate,
     this.difficultyVisible = false,
     this.scenarioId,
@@ -112,6 +114,7 @@ class QuestionModel {
       osymSordu: json['osymSordu'] as bool? ?? false,
       difficulty: json['difficulty'] as String? ?? 'medium',
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
+      viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
       correctRate: (json['correctRate'] as num?)?.toDouble(),
       difficultyVisible: json['difficultyVisible'] as bool? ?? false,
       scenarioId: json['scenarioId'] as String?,
@@ -140,6 +143,7 @@ class QuestionModel {
         'osymSordu': osymSordu,
         'difficulty': difficulty,
         'attemptCount': attemptCount,
+        'viewCount': viewCount,
         'correctRate': correctRate,
         'difficultyVisible': difficultyVisible,
         'scenarioId': scenarioId,
@@ -165,6 +169,7 @@ class QuestionModel {
     bool? osymSordu,
     String? difficulty,
     int? attemptCount,
+    int? viewCount,
     double? correctRate,
     bool? difficultyVisible,
     String? scenarioId,
@@ -189,6 +194,7 @@ class QuestionModel {
       osymSordu: osymSordu ?? this.osymSordu,
       difficulty: difficulty ?? this.difficulty,
       attemptCount: attemptCount ?? this.attemptCount,
+      viewCount: viewCount ?? this.viewCount,
       correctRate: correctRate ?? this.correctRate,
       difficultyVisible: difficultyVisible ?? this.difficultyVisible,
       scenarioId: scenarioId ?? this.scenarioId,

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import IntegrityError, models, transaction
+from django.db.models import F
 
 
 class Subject(models.Model):
@@ -210,6 +211,7 @@ class Question(models.Model):
         verbose_name="Zorluk",
     )
     attempt_count = models.PositiveIntegerField(default=0, editable=False)
+    view_count = models.PositiveIntegerField(default=0)
     correct_count = models.PositiveIntegerField(default=0, editable=False)
     wrong_count = models.PositiveIntegerField(default=0, editable=False)
     blank_count = models.PositiveIntegerField(default=0, editable=False)
@@ -442,6 +444,38 @@ class QuestionAttempt(models.Model):
                 ]
             )
         return True
+
+
+class QuestionView(models.Model):
+    """Benzersiz kullanıcı başına soru görüntüleme (quiz'de açılma)."""
+
+    user = models.ForeignKey(
+        "AppUser", on_delete=models.CASCADE, related_name="question_views"
+    )
+    question = models.ForeignKey(
+        Question, on_delete=models.CASCADE, related_name="views"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("user", "question")]
+        verbose_name = "Soru görüntüleme"
+        verbose_name_plural = "Soru görüntülemeleri"
+
+    @classmethod
+    def record_view(cls, *, question: Question, user) -> int:
+        """İlk görüntülemede sayacı artır; tekrarlarda mevcut view_count döner."""
+        with transaction.atomic():
+            locked_question = Question.objects.select_for_update().get(pk=question.pk)
+            try:
+                cls.objects.create(user=user, question=locked_question)
+            except IntegrityError:
+                return locked_question.view_count
+            Question.objects.filter(pk=locked_question.pk).update(
+                view_count=F("view_count") + 1
+            )
+            locked_question.refresh_from_db(fields=["view_count"])
+            return locked_question.view_count
 
 
 class TopicTest(models.Model):

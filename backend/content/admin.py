@@ -160,6 +160,7 @@ class QuestionAdmin(ModelAdmin):
         "correct_option",
         "difficulty",
         "attempt_count",
+        "view_count",
         "average_rating",
         "rating_count",
         "is_published",
@@ -178,6 +179,7 @@ class QuestionAdmin(ModelAdmin):
     autocomplete_fields = ("topic",)
     readonly_fields = (
         "attempt_count",
+        "view_count",
         "correct_count",
         "wrong_count",
         "blank_count",
@@ -236,6 +238,7 @@ class QuestionAdmin(ModelAdmin):
                 "classes": ["tab"],
                 "fields": (
                     "attempt_count",
+                    "view_count",
                     "correct_count",
                     "wrong_count",
                     "blank_count",

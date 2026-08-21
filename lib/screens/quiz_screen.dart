@@ -23,6 +23,7 @@ import '../services/question_error_report_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/question_note_service.dart';
 import '../services/question_rating_service.dart';
+import '../services/question_view_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/exam_typography.dart';
 import '../utils/solution_preview.dart';
@@ -115,6 +116,8 @@ class _QuizScreenState extends State<QuizScreen>
   bool _errorReportLoading = false;
   bool _errorDailyLimitReached = false;
   final Map<String, QuestionAttemptSummary> _attemptSummaries = {};
+  final Set<String> _viewedIds = {};
+  final Map<String, int> _viewCounts = {};
   final Map<String, List<QuizStroke>> _drawings = {};
   bool _drawingEnabled = false;
   bool _noteCardOpen = false;
@@ -192,6 +195,7 @@ class _QuizScreenState extends State<QuizScreen>
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
+    unawaited(_recordCurrentView());
     unawaited(_persistProgress());
     ContentBankService.instance.addListener(_onContentBankUpdated);
     unawaited(_bootstrapWrongNotebookHint());
@@ -778,6 +782,28 @@ class _QuizScreenState extends State<QuizScreen>
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
+    unawaited(_recordCurrentView());
+  }
+
+  Future<void> _recordCurrentView() async {
+    if (!mounted || widget.questions.isEmpty) return;
+    final question = _currentQuestion;
+    final id = question.id;
+    if (!_viewedIds.add(id)) return;
+    final count = await QuestionViewService.instance.recordView(id);
+    if (!mounted || count == null) return;
+    final previous = _viewCounts[id] ?? question.viewCount;
+    if (count > previous) {
+      setState(() => _viewCounts[id] = count);
+    }
+  }
+
+  String _viewLabelForCurrent() {
+    if (widget.questions.isEmpty) return '0 kişi gördü';
+    final q = _currentQuestion;
+    final local = _viewCounts[q.id] ?? 0;
+    final n = local > q.viewCount ? local : q.viewCount;
+    return '$n kişi gördü';
   }
 
   Future<void> _toggleFavorite() async {
@@ -1056,6 +1082,7 @@ class _QuizScreenState extends State<QuizScreen>
       unawaited(_persistProgress());
       if (_selectedAnswer != null) unawaited(_loadRating());
       unawaited(_loadErrorReportState());
+      unawaited(_recordCurrentView());
     } else {
       if (widget.fromWrongNotebook) {
         _exitWrongNotebook();
@@ -1140,6 +1167,7 @@ class _QuizScreenState extends State<QuizScreen>
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
+    unawaited(_recordCurrentView());
   }
 
   Future<void> _showResultDialog(QuizResult result) {
@@ -1459,6 +1487,62 @@ class _QuizScreenState extends State<QuizScreen>
     );
   }
 
+  /// Test adı sola; Soru X/Y ekran ortasında (ÖSYM rozeti ile aynı eksen).
+  /// Boş başlıkta (ör. tüm yanlışları çöz) yalnızca Soru X/Y gösterilir.
+  Widget _buildTestAppBarTitle() {
+    const leadingW = 56.0;
+    final canReport =
+        QuestionErrorReportService.canReport(_currentQuestion.id);
+    final actionCount = 1 + (canReport ? 1 : 0) + 1;
+    final actionsW = actionCount * 40.0 + 2;
+    final titleW =
+        MediaQuery.sizeOf(context).width - leadingW - actionsW;
+    final testTitle = widget.title.trim();
+
+    return SizedBox(
+      width: titleW.clamp(120, 800),
+      height: kToolbarHeight,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          if (testTitle.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  testTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.champagne,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+            ),
+          Transform.translate(
+            offset: Offset((actionsW - leadingW) / 2, 0),
+            child: Text(
+              'Soru ${_currentIndex + 1}/${widget.questions.length}',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.92),
+                height: 1.15,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.questions.isEmpty) {
@@ -1498,7 +1582,7 @@ class _QuizScreenState extends State<QuizScreen>
           backgroundColor: AppTheme.inkSoft,
           foregroundColor: Colors.white,
           centerTitle: widget.dailyMiniRankingMode,
-          titleSpacing: 8,
+          titleSpacing: 0,
           leading: AppBackButton(onPressed: () async {
             if (widget.fromWrongNotebook) {
               _exitWrongNotebook();
@@ -1531,42 +1615,13 @@ class _QuizScreenState extends State<QuizScreen>
                       textAlign: TextAlign.start,
                       style: const TextStyle(
                         fontFamily: 'serif',
-                        fontSize: 16,
+                        fontSize: 17,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.champagne,
                         height: 1.15,
                       ),
                     )
-                  : Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            widget.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.start,
-                            style: const TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.champagne,
-                              height: 1.15,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Soru ${_currentIndex + 1}/${widget.questions.length}',
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withValues(alpha: 0.92),
-                            height: 1.15,
-                          ),
-                        ),
-                      ],
-                    ),
+                  : _buildTestAppBarTitle(),
           actionsPadding: const EdgeInsets.only(right: 2),
           actions: [
             SizedBox(
@@ -1628,8 +1683,7 @@ class _QuizScreenState extends State<QuizScreen>
                           : _successRateLabel(),
                       difficultyLabel: _difficultyLabel(),
                       difficultyOnRight: widget.fromWrongNotebook,
-                      // TODO: temporary preview – wire real view analytics before shipping
-                      attemptLabel: '7560 kişi gördü',
+                      attemptLabel: _viewLabelForCurrent(),
                       leading: widget.fromWrongNotebook
                           ? QuizTakeNoteButton(
                               hasNote: QuestionNoteService.instance

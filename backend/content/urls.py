@@ -30,6 +30,7 @@ from .views import (
     TestQuestionsView,
     TestAttemptView,
     QuestionAttemptView,
+    QuestionViewRecordView,
 )
 
 urlpatterns = [
@@ -54,6 +55,11 @@ urlpatterns = [
         "questions/<str:public_id>/attempt/",
         QuestionAttemptView.as_view(),
         name="question-attempt",
+    ),
+    path(
+        "questions/<str:public_id>/view/",
+        QuestionViewRecordView.as_view(),
+        name="question-view",
     ),
     path(
         "questions/<str:public_id>/error-report/",

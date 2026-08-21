@@ -42,6 +42,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   bool _isBreak = false;
   bool _fullscreen = false;
   bool _ambientBusy = false;
+  bool _deepWorkBusy = false;
   DateTime? _sessionEndAt;
 
   int get _totalSeconds {
@@ -186,6 +187,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     unawaited(NotificationService.instance.cancelFocusTimerComplete());
     unawaited(_pomodoro.setSessionActive(false));
     unawaited(_pomodoro.stopAmbient());
+    unawaited(_pomodoro.stopDeepWork());
     super.dispose();
   }
 
@@ -194,6 +196,38 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     setState(() => _ambientBusy = true);
     await _pomodoro.setSelectedSound(sound);
     if (mounted) setState(() => _ambientBusy = false);
+  }
+
+  Future<void> _toggleDeepWorkMusic() async {
+    if (_deepWorkBusy) return;
+
+    if (_pomodoro.deepWorkPlaying) {
+      setState(() => _deepWorkBusy = true);
+      await _pomodoro.stopDeepWork();
+      if (mounted) setState(() => _deepWorkBusy = false);
+      return;
+    }
+
+    setState(() => _deepWorkBusy = true);
+    try {
+      await _pomodoro.playDeepWork();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.inkSoft,
+          content: Text(
+            'Deep Work müziği çalınamadı.',
+            style: GoogleFonts.manrope(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+    if (mounted) setState(() => _deepWorkBusy = false);
   }
 
   @override
@@ -262,30 +296,16 @@ class _FocusModeScreenState extends State<FocusModeScreen>
         children: [
           const AppBackButton(),
           Expanded(
-            child: Column(
-              children: [
-                Text(
-                  'ODAK MODU',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.cormorantGaramond(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                    color: Colors.white,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Neon odak seansı',
-                  style: GoogleFonts.manrope(
-                    fontSize: 11,
-                    letterSpacing: 0.8,
-                    color: _Neon.cyan.withValues(alpha: 0.8),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              'ODAK MODU',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.cormorantGaramond(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.2,
+                color: Colors.white,
+                height: 1.1,
+              ),
             ),
           ),
           IconButton(
@@ -302,144 +322,139 @@ class _FocusModeScreenState extends State<FocusModeScreen>
 
   Widget _buildPlayControls() {
     final accent = _isBreak ? _Neon.pinkSoft : _Neon.cyan;
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ScaleButton(
-              onPressed: () => unawaited(_isRunning ? _pauseTimer() : _startTimer()),
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      accent.withValues(alpha: 0.35),
-                      _Neon.magenta.withValues(alpha: 0.25),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: accent.withValues(alpha: 0.85),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.45),
-                      blurRadius: 22,
-                      spreadRadius: 1,
-                    ),
-                    BoxShadow(
-                      color: _Neon.magenta.withValues(alpha: 0.22),
-                      blurRadius: 28,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  _isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 36,
-                ),
-              ),
+    return Center(
+      child: ScaleButton(
+        onPressed: () => unawaited(_isRunning ? _pauseTimer() : _startTimer()),
+        child: Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                accent.withValues(alpha: 0.35),
+                _Neon.magenta.withValues(alpha: 0.25),
+              ],
             ),
-            const SizedBox(width: 18),
-            ScaleButton(
-              onPressed: () => unawaited(_resetTimer()),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.06),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Icon(
-                  Icons.refresh_rounded,
-                  size: 20,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
-              ),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.85),
+              width: 2,
             ),
-          ],
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.45),
+                blurRadius: 22,
+                spreadRadius: 1,
+              ),
+              BoxShadow(
+                color: _Neon.magenta.withValues(alpha: 0.22),
+                blurRadius: 28,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Icon(
+            _isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: Colors.white,
+            size: 36,
+          ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildPresets() {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: PomodoroPreset.values.map((p) {
-        final selected = _preset == p;
-        final label = p == PomodoroPreset.ozel ? '$_customMinutes dk' : p.label;
-        return GestureDetector(
-          onTap: _isRunning
-              ? null
-              : () => setState(() {
-                    _preset = p;
-                    _remainingSeconds = _totalSeconds;
-                  }),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: selected
-                  ? const LinearGradient(
-                      colors: [
-                        Color(0xFF00E5FF),
-                        Color(0xFF2979FF),
-                        Color(0xFFD500F9),
-                      ],
-                    )
-                  : null,
-              color: selected ? null : Colors.white.withValues(alpha: 0.06),
-              border: Border.all(
-                color: selected
-                    ? _Neon.cyan
-                    : Colors.white.withValues(alpha: 0.12),
-                width: selected ? 1.2 : 1,
-              ),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: _Neon.cyan.withValues(alpha: 0.35),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (selected) ...[
-                  const Icon(Icons.check_rounded, size: 15, color: Colors.white),
-                  const SizedBox(width: 5),
-                ],
-                Text(
-                  label,
-                  style: GoogleFonts.manrope(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+    return Column(
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: PomodoroPreset.values.map((p) {
+            final selected = _preset == p;
+            final label = p == PomodoroPreset.ozel ? '$_customMinutes dk' : p.label;
+            return GestureDetector(
+              onTap: _isRunning
+                  ? null
+                  : () => setState(() {
+                        _preset = p;
+                        _remainingSeconds = _totalSeconds;
+                      }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: selected
+                      ? const LinearGradient(
+                          colors: [
+                            Color(0xFF00E5FF),
+                            Color(0xFF2979FF),
+                            Color(0xFFD500F9),
+                          ],
+                        )
+                      : null,
+                  color: selected ? null : Colors.white.withValues(alpha: 0.06),
+                  border: Border.all(
                     color: selected
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.88),
+                        ? _Neon.cyan
+                        : Colors.white.withValues(alpha: 0.12),
+                    width: selected ? 1.2 : 1,
                   ),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: _Neon.cyan.withValues(alpha: 0.35),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
                 ),
-              ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (selected) ...[
+                      const Icon(Icons.check_rounded, size: 15, color: Colors.white),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      label,
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: selected
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.88),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 10),
+        TextButton(
+          onPressed: () => unawaited(_resetTimer()),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.white.withValues(alpha: 0.55),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            'Sıfırla',
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
             ),
           ),
-        );
-      }).toList(),
+        ),
+      ],
     );
   }
 
@@ -481,7 +496,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          'Doğa · kafe · kütüphane · deniz · binaural Hz — kilitliyken de çalar',
+          'Yağmur · orman — tekrar dokununca durur; kilitliyken de çalar',
           style: GoogleFonts.manrope(
             fontSize: 12,
             color: _Neon.cyan.withValues(alpha: 0.65),
@@ -491,11 +506,11 @@ class _FocusModeScreenState extends State<FocusModeScreen>
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: AmbientSound.values.map((s) {
+          children: AmbientSound.values
+              .where((s) => s != AmbientSound.sessiz)
+              .map((s) {
             final selected = _pomodoro.selectedSound == s;
-            final playing = selected &&
-                _pomodoro.ambientPlaying &&
-                s != AmbientSound.sessiz;
+            final playing = selected && _pomodoro.ambientPlaying;
             return Opacity(
               opacity: _ambientBusy ? 0.55 : 1,
               child: GestureDetector(
@@ -608,7 +623,113 @@ class _FocusModeScreenState extends State<FocusModeScreen>
             ],
           ),
         ],
+        const SizedBox(height: 16),
+        _buildDeepWorkMusicButton(),
       ],
+    );
+  }
+
+  Widget _buildDeepWorkMusicButton() {
+    final playing = _pomodoro.deepWorkPlaying;
+    return Opacity(
+      opacity: _deepWorkBusy ? 0.55 : 1,
+      child: ScaleButton(
+        onPressed: _deepWorkBusy
+            ? null
+            : () => unawaited(_toggleDeepWorkMusic()),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                _Neon.magenta.withValues(alpha: playing ? 0.42 : 0.28),
+                _Neon.blue.withValues(alpha: playing ? 0.32 : 0.22),
+                _Neon.cyan.withValues(alpha: playing ? 0.28 : 0.18),
+              ],
+            ),
+            border: Border.all(
+              color: playing
+                  ? _Neon.cyan.withValues(alpha: 0.9)
+                  : _Neon.magenta.withValues(alpha: 0.75),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: (playing ? _Neon.cyan : _Neon.magenta)
+                    .withValues(alpha: 0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: _Neon.cyan.withValues(alpha: 0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _Neon.magenta.withValues(alpha: 0.22),
+                  border: Border.all(
+                    color: _Neon.cyan.withValues(alpha: 0.55),
+                  ),
+                ),
+                child: Icon(
+                  playing
+                      ? Icons.stop_rounded
+                      : Icons.headphones_rounded,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Deep Work Music',
+                      style: GoogleFonts.manrope(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      playing
+                          ? 'Çalıyor · durdurmak için dokun'
+                          : 'Cihazdan loop · herkese açık',
+                      style: GoogleFonts.manrope(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: _Neon.cyan.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                playing
+                    ? Icons.pause_circle_filled_rounded
+                    : Icons.play_circle_filled_rounded,
+                size: 22,
+                color: Colors.white.withValues(alpha: 0.85),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

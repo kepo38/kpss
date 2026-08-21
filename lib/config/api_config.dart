@@ -1,8 +1,9 @@
 /// Django içerik API tabanı.
 ///
 /// Emülatör → `http://10.0.2.2:8000`
-/// Fiziksel cihaz → PC LAN IP (aşağıdaki varsayılan)
-/// Özel: `--dart-define=KPSS_API_BASE=http://192.168.x.x:8000`
+/// Fiziksel cihaz → `basla-telefon.bat` otomatik `--dart-define=KPSS_API_BASE=...`
+/// Manuel: `--dart-define=KPSS_API_BASE=http://192.168.x.x:8000`
+/// [defaultValue] yalnızca dart-define verilmeden derlenince kullanılır.
 class ApiConfig {
   ApiConfig._();
 
@@ -74,6 +75,9 @@ class ApiConfig {
       );
   static Uri questionAttemptUri(String questionId) => Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/attempt/',
+      );
+  static Uri questionViewUri(String questionId) => Uri.parse(
+        '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/view/',
       );
   static Uri questionErrorReportUri(String questionId) => Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/error-report/',

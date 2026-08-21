@@ -694,7 +694,7 @@ class _ProfileModuleRow extends StatefulWidget {
 }
 
 class _ProfileModuleRowState extends State<_ProfileModuleRow> {
-  bool _open = true;
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {

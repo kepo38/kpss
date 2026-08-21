@@ -150,7 +150,7 @@ class AppShellTopBar extends StatelessWidget {
   }
 }
 
-/// Gelişim sağ üst — ink + champagne «ODAK» pill (Focus Mode marka dili).
+/// Gelişim sağ üst — mavi↔mor geçiş «ODAK» pill.
 class _PomodoroHeaderButton extends StatefulWidget {
   final VoidCallback? onTap;
 
@@ -162,6 +162,11 @@ class _PomodoroHeaderButton extends StatefulWidget {
 
 class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
     with SingleTickerProviderStateMixin {
+  static const _blue = Color(0xFF3B82F6);
+  static const _violet = Color(0xFF8B5CF6);
+  static const _violetDeep = Color(0xFF6D28D9);
+  static const _lilac = Color(0xFFC4B5FD);
+
   late final AnimationController _pulse;
 
   @override
@@ -188,7 +193,7 @@ class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
         child: AnimatedBuilder(
           animation: _pulse,
           builder: (context, child) {
-            final glow = 0.22 + (_pulse.value * 0.28);
+            final glow = 0.28 + (_pulse.value * 0.32);
             return Container(
               height: 36,
               clipBehavior: Clip.antiAlias,
@@ -198,29 +203,34 @@ class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFF1A2740),
-                    AppTheme.ink,
-                    Color(0xFF070C14),
+                    _blue,
+                    Color(0xFF6366F1),
+                    _violet,
+                    _violetDeep,
                   ],
-                  stops: [0.0, 0.5, 1.0],
+                  stops: [0.0, 0.35, 0.72, 1.0],
                 ),
                 border: Border.all(
                   color: Color.lerp(
-                    const Color(0xFFC9A44E),
-                    AppTheme.champagneLight,
+                    const Color(0xFF93C5FD),
+                    _lilac,
                     _pulse.value,
                   )!,
                   width: 1.35,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.champagne.withValues(alpha: glow),
+                    color: Color.lerp(
+                      _blue.withValues(alpha: glow),
+                      _violet.withValues(alpha: glow),
+                      _pulse.value,
+                    )!,
                     blurRadius: 12 + (_pulse.value * 6),
                     spreadRadius: -1,
                     offset: const Offset(0, 3),
                   ),
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
+                    color: Colors.black.withValues(alpha: 0.28),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -242,7 +252,7 @@ class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withValues(alpha: 0.14),
+                        Colors.white.withValues(alpha: 0.22),
                         Colors.white.withValues(alpha: 0.0),
                       ],
                     ),
@@ -255,7 +265,7 @@ class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
                 child: Icon(
                   Icons.timer_outlined,
                   size: 28,
-                  color: AppTheme.champagne.withValues(alpha: 0.08),
+                  color: Colors.white.withValues(alpha: 0.12),
                 ),
               ),
               Padding(
@@ -276,7 +286,7 @@ class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.6,
                             height: 1,
-                            color: AppTheme.champagneLight,
+                            color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -287,7 +297,7 @@ class _PomodoroHeaderButtonState extends State<_PomodoroHeaderButton>
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.6,
                             height: 1,
-                            color: AppTheme.champagne.withValues(alpha: 0.72),
+                            color: Colors.white.withValues(alpha: 0.78),
                           ),
                         ),
                       ],
@@ -318,18 +328,19 @@ class _TimerJewel extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFFF3E2B8),
-            AppTheme.champagne,
-            Color(0xFFA67C3D),
+            Color(0xFFE0E7FF),
+            Color(0xFF93C5FD),
+            Color(0xFF818CF8),
+            Color(0xFF7C3AED),
           ],
         ),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.35),
+          color: Colors.white.withValues(alpha: 0.45),
           width: 0.9,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.champagne.withValues(alpha: 0.45),
+            color: const Color(0xFF6366F1).withValues(alpha: 0.45),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -338,7 +349,7 @@ class _TimerJewel extends StatelessWidget {
       child: const Icon(
         Icons.timer_rounded,
         size: 13,
-        color: AppTheme.ink,
+        color: Color(0xFF1E1B4B),
       ),
     );
   }

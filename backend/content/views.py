@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+import logging
+
 from .auth import (
     AuthError,
     get_user_from_request,
@@ -26,6 +28,7 @@ from .models import (
     QuestionErrorReport,
     ERROR_REPORT_CATEGORY_CHOICES,
     QuestionRating,
+    QuestionView,
     Subject,
     TopicLesson,
     TopicSummaryCard,
@@ -47,6 +50,8 @@ from .serializers import (
     TopicTestSerializer,
     UserMessageSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class HealthView(APIView):
@@ -497,6 +502,26 @@ class QuestionAttemptView(APIView):
         )
 
 
+class QuestionViewRecordView(APIView):
+    """Quiz'de soru açıldığında benzersiz görüntüleme sayacı."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, public_id: str):
+        question = get_object_or_404(
+            Question,
+            public_id=public_id,
+            is_published=True,
+            topic__is_active=True,
+        )
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"viewCount": question.view_count})
+        view_count = QuestionView.record_view(question=question, user=user)
+        return Response({"viewCount": view_count})
+
+
 def _rating_payload(question: Question, user) -> dict:
     aggregate = question.ratings.aggregate(
         average=Avg("stars"),
@@ -884,9 +909,18 @@ class GoogleAuthView(APIView):
                 claims["name"] = client_name
             user = upsert_firebase_user(claims)
         except AuthError as exc:
+            logger.info(
+                "Google auth AuthError status=%s detail=%s",
+                exc.status,
+                exc.message,
+            )
             return Response({"detail": exc.message}, status=exc.status)
         except Exception:  # noqa: BLE001
-            return Response({"detail": "Giriş başarısız."}, status=400)
+            logger.exception("Google auth beklenmeyen sunucu hatası")
+            return Response(
+                {"detail": "Sunucu hatası. Tekrar deneyin."},
+                status=500,
+            )
 
         return Response(
             {
