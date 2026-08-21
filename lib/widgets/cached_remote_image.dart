@@ -22,12 +22,27 @@ class CachedRemoteImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final layoutW = (width != null && width!.isFinite && width! > 0)
+        ? width!
+        : size.width;
+    final layoutH = (height != null && height!.isFinite && height! > 0)
+        ? height!
+        : null;
+    final cacheW = (layoutW * dpr).round().clamp(1, 4096);
+    final cacheH = layoutH == null
+        ? null
+        : (layoutH * dpr).round().clamp(1, 4096);
+
     Widget image = CachedNetworkImage(
       imageUrl: imageUrl,
       width: width,
       height: height,
       fit: fit,
-      filterQuality: FilterQuality.high,
+      memCacheWidth: cacheW,
+      memCacheHeight: cacheH,
+      filterQuality: FilterQuality.medium,
       fadeInDuration: const Duration(milliseconds: 180),
       placeholder: (_, __) => const _ImageShimmer(),
       errorWidget: (_, __, ___) => const _ImagePlaceholder(),

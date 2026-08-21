@@ -21,8 +21,20 @@ class LocalDatabase {
   Database? _db;
   SharedPreferences? _prefs;
 
-  Future<void> initialize() async {
-    if (_db != null || _prefs != null) return;
+  /// Concurrent callers share one open; public APIs await this first.
+  Future<void>? _initFuture;
+
+  bool get isReady => _db != null || _prefs != null;
+
+  Future<void> initialize() {
+    if (isReady) return Future<void>.value();
+    return _initFuture ??= _open();
+  }
+
+  Future<void> _ensureReady() => initialize();
+
+  Future<void> _open() async {
+    if (isReady) return;
 
     if (kIsWeb) {
       _prefs = await SharedPreferences.getInstance();
@@ -83,6 +95,7 @@ class LocalDatabase {
     );
     await _createStudyNotesTable(db);
     await _createManualWrongQuestionsTable(db);
+    await _createContentQuestionsTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -97,6 +110,9 @@ class LocalDatabase {
         'ALTER TABLE ${StorageConstants.tableManualWrongQuestions} '
         'ADD COLUMN annotation_json TEXT',
       );
+    }
+    if (oldVersion < 5) {
+      await _createContentQuestionsTable(db);
     }
   }
 
@@ -126,6 +142,61 @@ class LocalDatabase {
       updated_at TEXT NOT NULL
     )
   ''');
+
+  Future<void> _createContentQuestionsTable(Database db) => db.execute('''
+    CREATE TABLE ${StorageConstants.tableContentQuestions} (
+      slot INTEGER PRIMARY KEY CHECK (slot = 0),
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  /// Tam soru bankası JSON (prefs yerine SQLite). Web → SharedPreferences.
+  Future<String?> loadContentQuestionsJson() async {
+    await _ensureReady();
+    if (kIsWeb) {
+      final raw = _prefs!.getString(StorageConstants.webContentQuestionsKey);
+      if (raw == null || raw.isEmpty) return null;
+      return raw;
+    }
+    final rows = await _db!.query(
+      StorageConstants.tableContentQuestions,
+      columns: ['payload'],
+      where: 'slot = ?',
+      whereArgs: const [0],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final payload = rows.first['payload'] as String?;
+    if (payload == null || payload.isEmpty) return null;
+    return payload;
+  }
+
+  Future<void> saveContentQuestionsJson(String payload) async {
+    await _ensureReady();
+    if (kIsWeb) {
+      await _prefs!.setString(StorageConstants.webContentQuestionsKey, payload);
+      return;
+    }
+    await _db!.insert(
+      StorageConstants.tableContentQuestions,
+      {
+        'slot': 0,
+        'payload': payload,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> clearContentQuestionsJson() async {
+    await _ensureReady();
+    if (kIsWeb) {
+      await _prefs!.remove(StorageConstants.webContentQuestionsKey);
+      return;
+    }
+    await _db!.delete(StorageConstants.tableContentQuestions);
+  }
 
   DateTime get _retentionCutoff => DateTime.now().subtract(
         const Duration(days: StorageConstants.retentionDays),
@@ -183,6 +254,7 @@ class LocalDatabase {
   // ── Deneme sınavları ──────────────────────────────────────────────
 
   Future<List<PracticeExamModel>> getAllExams() async {
+    await _ensureReady();
     if (kIsWeb) {
       final exams = await _readWebExams();
       exams.sort((a, b) => b.tarih.compareTo(a.tarih));
@@ -198,6 +270,7 @@ class LocalDatabase {
   }
 
   Future<void> insertExam(PracticeExamModel exam) async {
+    await _ensureReady();
     if (kIsWeb) {
       final exams = await _readWebExams();
       exams.removeWhere((e) => e.id == exam.id);
@@ -215,6 +288,7 @@ class LocalDatabase {
   }
 
   Future<void> deleteExam(String id) async {
+    await _ensureReady();
     if (kIsWeb) {
       final exams = await _readWebExams();
       exams.removeWhere((e) => e.id == id);
@@ -231,6 +305,7 @@ class LocalDatabase {
   }
 
   Future<bool> isExamTableEmpty() async {
+    await _ensureReady();
     if (kIsWeb) {
       return (await _readWebExams()).isEmpty;
     }
@@ -275,6 +350,7 @@ class LocalDatabase {
   // ── Yanlış defteri ────────────────────────────────────────────────
 
   Future<List<WrongNotebookEntry>> getAllNotebookEntries() async {
+    await _ensureReady();
     if (kIsWeb) {
       final entries = await _readWebNotebook();
       entries.sort(
@@ -292,6 +368,7 @@ class LocalDatabase {
   }
 
   Future<void> insertNotebookEntry(WrongNotebookEntry entry) async {
+    await _ensureReady();
     if (kIsWeb) {
       final entries = await _readWebNotebook();
       entries.removeWhere((e) => e.id == entry.id);
@@ -309,6 +386,7 @@ class LocalDatabase {
   }
 
   Future<void> updateNotebookEntry(WrongNotebookEntry entry) async {
+    await _ensureReady();
     if (kIsWeb) {
       final entries = await _readWebNotebook();
       final index = entries.indexWhere((e) => e.id == entry.id);
@@ -329,6 +407,7 @@ class LocalDatabase {
   }
 
   Future<void> deleteNotebookEntry(String id) async {
+    await _ensureReady();
     if (kIsWeb) {
       final entries = await _readWebNotebook();
       entries.removeWhere((e) => e.id == id);
@@ -345,6 +424,7 @@ class LocalDatabase {
   }
 
   Future<bool> isNotebookTableEmpty() async {
+    await _ensureReady();
     if (kIsWeb) {
       return (await _readWebNotebook()).isEmpty;
     }
@@ -363,6 +443,7 @@ class LocalDatabase {
   Future<List<ManualQuestionModel>> getManualWrongQuestionsForUser(
     String userId,
   ) async {
+    await _ensureReady();
     if (kIsWeb) {
       final all = await _readWebManualWrongQuestions();
       final rows = all.where((e) => e.userId == userId).toList()
@@ -381,6 +462,7 @@ class LocalDatabase {
   }
 
   Future<void> upsertManualWrongQuestion(ManualQuestionModel item) async {
+    await _ensureReady();
     if (kIsWeb) {
       final all = await _readWebManualWrongQuestions();
       all.removeWhere((e) => e.id == item.id);
@@ -398,6 +480,7 @@ class LocalDatabase {
   }
 
   Future<void> deleteManualWrongQuestion(String id) async {
+    await _ensureReady();
     if (kIsWeb) {
       final all = await _readWebManualWrongQuestions();
       all.removeWhere((e) => e.id == id);
@@ -418,6 +501,7 @@ class LocalDatabase {
     required String toUserId,
   }) async {
     if (fromUserId == toUserId) return;
+    await _ensureReady();
     if (kIsWeb) {
       final all = await _readWebManualWrongQuestions();
       var changed = false;
@@ -448,6 +532,7 @@ class LocalDatabase {
   // ── Çalışma notları ───────────────────────────────────────────────
 
   Future<List<StudyNote>> getAllStudyNotes() async {
+    await _ensureReady();
     final db = _db!;
     final rows = await db.query(
       StorageConstants.tableStudyNotes,
@@ -457,6 +542,7 @@ class LocalDatabase {
   }
 
   Future<void> upsertStudyNote(StudyNote note) async {
+    await _ensureReady();
     await _db!.insert(
       StorageConstants.tableStudyNotes,
       _studyNoteToRow(note),
@@ -464,11 +550,14 @@ class LocalDatabase {
     );
   }
 
-  Future<void> deleteStudyNote(String id) => _db!.delete(
-        StorageConstants.tableStudyNotes,
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+  Future<void> deleteStudyNote(String id) async {
+    await _ensureReady();
+    await _db!.delete(
+      StorageConstants.tableStudyNotes,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 
   Map<String, Object?> _studyNoteToRow(StudyNote note) => {
         'id': note.id,

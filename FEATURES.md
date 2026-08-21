@@ -28,11 +28,17 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
 | **Akıllı Tekrar** | «AKILLI TEKRARI BAŞLAT» yalnızca **Premium**; tıklanınca `PremiumGate` → paywall; CTA’da kilit + **PRO** rozeti | `smart_review_screen.dart`, `premium_gate.dart` |
-| **Kitaptaki yanlışlarım** | Kalem/annotate **ücretsiz**; **1. foto ücretsiz**, **2.+ foto** Pro değilse ödüllü reklam | `wrong_notebook_manual_screen.dart`, `manual_question_annotate_viewer.dart` |
-| **Açılış splash** | Siyah daire gölge (220) + içinde soluk `app_icon` (188); üstte HEDEF KAMU, altta Ataman + kayan çizgi | `boot_splash_screen.dart` |
+| **Kitaptaki yanlışlarım** | Kalem/annotate **ücretsiz**; **1. foto ücretsiz**, **2.+ foto** Pro değilse ödüllü reklam; istatistik rozeti ders adının yanında | `wrong_notebook_manual_screen.dart`, `manual_question_annotate_viewer.dart`, `wrong_notebook_stats_row.dart` |
+| **Annotate toolbar** | Sol çizim araçları, ayırıcı, sağda Undo + çöp; aktif renk belirgin | `quiz_drawing_overlay.dart` |
+| **Açılış splash** | 657 + defne çelengi **parlak altın** (`#FFE08A`); daire **tam ekran ortası** (Y); üstte HEDEF KAMU, altta Ataman + kayan çizgi | `boot_splash_screen.dart` |
 | **Stüdyo hero** | Üst sağ **Premium’u keşfet**; ortada **STÜDYO** pill; alt yazı kaldırıldı | `home_hero_section.dart` |
-| **ÖDÜL UI** | BUGÜNÜN KÜRSÜSÜ üzerinde sarkan ÖDÜL madalyon; ödüller doğrudan Premium günü (promosyon kodu değil) | `daily_mini_odul_button.dart`, `daily_mini_rewards_screen.dart` |
-| **FEATURES** | Premium alanlar matrisi genişletildi (aşağıda) | `FEATURES.md` |
+| **ÖDÜL UI** | Kürsüde/CTA’da sarkan madalyon; Premium 1–2–3 + haftalık/aylık sütun butonları; «Senin sıran» gold CTA | `daily_mini_odul_button.dart`, `daily_mini_rewards_screen.dart` |
+| **Konuyu Öğren** | Konu detayından gömülü deste kaldırıldı; geniş **Konuyu Öğren** → `TopicSummaryStudyScreen` (Unuttum/Biliyorum) | `topic_detail_screen.dart`, `topic_summary_study_screen.dart` |
+| **İstatistik** | Başlık **Deneme İstatistiklerim**; alt yazı **Netlerine göre tahmini**; Pazar 10:00 deneme hatırlatması | `statistics_overview_tab.dart`, `notification_service.dart` |
+| **Destek UI** | Bilgi satırları butonumsu değil; UYARI amber/bronz; başlık ortalı; e-posta metni yok | `support_contact_screen.dart` |
+| **ContentBank performans** | Pack/metadata + JSON decode **Isolate**; sorular SQLite `content_question_bank` (db v5); notify debounce 80ms | `content_bank_isolate.dart`, `content_bank_service.dart`, `local_database.dart` |
+| **Yeniden çizim / kilit** | Theme-only `ListenableBuilder`; Auth/KPSS gated `setState`; MainShell IndexedStack; ads soft-init; paywall/smart-review/daily-mini mounted guard | `main.dart`, `main_shell.dart`, `ad_manager.dart`, `study_hub_screen.dart` |
+| **FEATURES** | Premium alanlar matrisi + bu günün maddeleri | `FEATURES.md` |
 
 ### 20 Ağustos 2026 — işlenen ekleme ve değişiklikler
 
@@ -72,7 +78,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
 | **Favori özet kart** | Tıklanınca `SummaryCardFace.showViewer()`; konuya gitmez | `favorites_screen.dart`, `topic_summary_swipe_deck.dart` |
-| **Konu detayı** | Özet deste «Konuyu öğren» içinde; alt yazıda özet/bilgi sayısı | `topic_detail_screen.dart` |
+| **Konu detayı** | Geniş **Konuyu Öğren** CTA → ayrı çalışma ekranı (`TopicSummaryStudyScreen`); gömülü deste yok | `topic_detail_screen.dart`, `topic_summary_study_screen.dart` |
 
 #### Panel — ödül, markdown, harita fırça
 
@@ -168,7 +174,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne değişti | Dosyalar |
 |---|---|---|
-| **Açılış splash** | Ortada 657 `app_icon` gölge daireyi doldurur (soluk / solgun altın); üstte HEDEF KAMU biraz yukarı (yan logo yok), altta «Ataman Gerçekleşiyor» + kayan çizgi ikonun biraz daha altında (3,5 sn) | `boot_splash_screen.dart` |
+| **Açılış splash** | Ortada 657 + defne **parlak altın**; daire tam ekran Y ortası; üstte HEDEF KAMU, altta «Ataman Gerçekleşiyor» + kayan çizgi (3,5 sn) | `boot_splash_screen.dart` |
 | **Yanlış defteri balonu** | Yalnızca **Google hesabı** + **en az 1 konu testi bitmiş** + **defterde en az 1 yanlış** varken; panel açıkken. Günün Denemesi / yarım test tetiklemez. Sol yaslı; YANLIŞ→DEFTERİM 3D; teal çerçeve | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
 | **Yanlış defteri UI** | Header alt başlığı («X soru · Y ders») yok; en çok yanlış derste kırmızı adet rozeti; kart: konu chip sol üst, kalp+sil sağ üst; metin «İstediğiniz zaman silebilirsiniz»; karttan onaylı silme; silince alt SnackBar yok, ortada şampanya çerçeveli kutu (~3 sn): onay ikonu, «Defterden kaldırıldı», soru önizlemesi | `wrong_questions_screen.dart`, `wrong_notebook_*` |
 | **Defter soru notu** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış** (onaysız deftere dönüş); testte işaretlediği şık işaretli; normal testte aynı soru işaretsiz + mavi «Daha önce». Sağda seviye; solda **Not Al** + «KAYITLI KALIR». Bitmiş testte yanlış kalan sorular sonradan doğru cevaplansa istatistik güncellenmez | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart`, `content_bank_service.dart` |
@@ -208,7 +214,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Stüdyo (Daha fazla)** | Pro Üyelik solundaki kare ikon → ink/champagne **Stüdyo** hub: çalışma araçları + Premium suite + Profil; görev/ders ızgarası yok | `home_screen.dart`, `home_hero_section.dart`, `home_module_row.dart`, `app_shell_top_bar.dart` |
 | **Giriş yönlendirme** | Sınav seçilmemişse hemen onboarding → seçimden sonra «Ataman Gerçekleşiyor» (**3,5 sn**) → ana kabuk; oturum hatasında yeniden deneme | `lib/navigation/app_entry.dart`, `lib/main.dart`, `lib/screens/exam_track_onboarding_screen.dart` |
 | **Derin link / bildirim** | Push veya yerel bildirimden duyuru, mesaj, paywall yönlendirmesi | `lib/navigation/app_navigator.dart` |
-| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: **siyah daire gölge** + içinde soluk 657 `app_icon` (ikon diskten biraz küçük); üstünde HEDEF KAMU (yan logo yok), altında «Ataman Gerçekleşiyor» + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
+| **Hızlı açılış** | İlk açılış: sınav tipi seçimi hemen. Seçimden sonra veya kayıtlı kullanıcıda splash: **parlak altın 657** daire (tam ekran ortası); üstte HEDEF KAMU, altta Ataman + kayan çizgi (**3,5 sn**) | `lib/services/boot_store.dart`, `lib/widgets/boot_splash_screen.dart`, `lib/main.dart` |
 | **Dikey ekran kilidi** | Tüm cihazlarda yalnızca portrait | `lib/services/orientation_policy.dart`, `android/.../AndroidManifest.xml` |
 | **Web önizleme çerçevesi** | Masaüstü web’de telefon boyutunda kart | `lib/main.dart` |
 
@@ -380,7 +386,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Bildirim ayarları** | Sabah/akşam/haftalık aç-kapa (duyuru ve tasarruf sabit açık) | `lib/widgets/notification_settings_section.dart`, `lib/services/notification_preference_service.dart` |
 | **Duyurular** | Admin yayınları; **Okundu** yalnızca kullanıcı açınca. **İlk kurulumdan önceki** duyurular profil listesinde yok | `lib/screens/announcements_screen.dart`, `lib/services/announcement_service.dart` |
 | **Mesajlarım** | Doğrudan admin mesajları; **kurulumdan önceki** mesajlar profilde yok | `lib/screens/user_messages_screen.dart`, `lib/services/user_message_service.dart` |
-| **Destek ve İletişim** | Deneme paketi talepleri; soru hata bildirimi (uyarı kartı); **İletişime Geç** ile destek e-postası (alıcı, konu, cihaz/sürüm/üyelik otomatik) — ekranda adres gösterilmez | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
+| **Destek ve İletişim** | Bilgi satırları (buton değil); soru hata **UYARI** amber; başlık ortalı; **İletişime Geç** → mailto (ekranda e-posta yok) | `lib/screens/support_contact_screen.dart`, `lib/services/support_contact_service.dart` |
 | **Çıkış** | Oturumu kapat (misafir değilse) | `profile_screen.dart` |
 
 ---

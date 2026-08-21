@@ -106,7 +106,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 11),
+      padding: const EdgeInsets.fromLTRB(10, 12, 16, 11),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         color: card.withValues(alpha: 0.82),
@@ -119,71 +119,70 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Icon(icon, size: 16, color: AppTheme.champagne),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: AppTheme.champagne),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                maxLines: compactValue ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: compactValue ? null : 'serif',
-                  fontSize: compactValue ? 13 : 20,
-                  fontWeight: FontWeight.w700,
-                  height: 1.1,
-                  color: on,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
-                  color: muted,
-                ),
-              ),
-            ],
-          ),
-          if (cornerBadge != null)
-            Positioned(
-              top: -2,
-              right: -2,
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE85D4C),
-                  borderRadius: BorderRadius.circular(99),
-                  border: Border.all(color: Colors.white, width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFE85D4C).withValues(alpha: 0.28),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
+              Flexible(
                 child: Text(
-                  cornerBadge!,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    height: 1,
-                    color: Colors.white,
+                  value,
+                  maxLines: compactValue ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: compactValue ? null : 'serif',
+                    fontSize: compactValue ? 13 : 20,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                    color: on,
                   ),
                 ),
               ),
+              if (cornerBadge != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE85D4C),
+                    borderRadius: BorderRadius.circular(99),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE85D4C).withValues(alpha: 0.28),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    cornerBadge!,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+              color: muted,
             ),
+          ),
         ],
       ),
     );

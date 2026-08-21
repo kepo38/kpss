@@ -202,7 +202,7 @@ class _AddExamSheetState extends State<AddExamSheet> {
     );
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     for (final entry in _scores.entries) {
@@ -228,7 +228,7 @@ class _AddExamSheetState extends State<AddExamSheet> {
         ),
     };
 
-    PracticeExamService.instance.addExam(PracticeExamModel(
+    await PracticeExamService.instance.addExam(PracticeExamModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       denemeAdi: _nameCtrl.text.trim(),
       yayinEvi: _publisher,
@@ -237,6 +237,7 @@ class _AddExamSheetState extends State<AddExamSheet> {
       notlar: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     ));
 
+    if (!mounted) return;
     Navigator.pop(context, true);
   }
 }

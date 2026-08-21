@@ -20,10 +20,10 @@ import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/daily_test_quota_dialog.dart';
 import '../widgets/premium_gate.dart';
-import '../widgets/topic_summary_swipe_deck.dart';
 import '../services/summary_card_progress_service.dart';
 import 'lesson_reader_screen.dart';
 import 'quiz_screen.dart';
+import 'topic_summary_study_screen.dart';
 
 class TopicDetailScreen extends StatefulWidget {
   final KpssType kpssType;
@@ -85,22 +85,6 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     if (mounted) setState(() {});
   }
 
-  static String _learnSectionSubtitle(
-    List<TopicLessonModel> lessons,
-    List<TopicSummaryCardModel> summaryCards,
-  ) {
-    if (lessons.isNotEmpty && summaryCards.isNotEmpty) {
-      return '${lessons.length} bilgi kartı · ${summaryCards.length} özet kart';
-    }
-    if (lessons.isNotEmpty) {
-      return '${lessons.length} bilgi kartı';
-    }
-    if (summaryCards.isNotEmpty) {
-      return '${summaryCards.length} özet kart';
-    }
-    return 'Henüz bilgi kartı yok';
-  }
-
   @override
   Widget build(BuildContext context) {
     final subject =
@@ -110,8 +94,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final stats = _bank.topicStats(widget.topicId);
     final lessons = _bank.lessonsForTopic(widget.topicId);
     final summaryCards = _bank.summaryCardsForTopic(widget.topicId);
-    final learnSubtitle = _learnSectionSubtitle(lessons, summaryCards);
-    final canOpenLessons = lessons.isNotEmpty;
+    final canLearn = summaryCards.isNotEmpty || lessons.isNotEmpty;
     final progress =
         _bank.topicQuestionProgress(widget.kpssType, widget.topicId);
 
@@ -164,116 +147,32 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
               unsolved: progress.unsolved,
               totalQuestions: progress.total,
             ),
-            const SizedBox(height: 24),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.05),
-                    Colors.white.withValues(alpha: 0.02),
-                  ],
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: canOpenLessons
-                          ? () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => LessonReaderScreen(
-                                    topicName: topic?.name ?? 'Konu',
-                                    lessons: lessons,
-                                  ),
-                                ),
-                              )
-                          : null,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                          horizontal: 2,
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Konuyu öğren',
-                                    style: TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.3,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    learnSubtitle,
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      color: Colors.white.withValues(alpha: 0.48),
-                                    ),
-                                  ),
-                                ],
-                              ),
+            const SizedBox(height: 20),
+            _KonuyuOgrenButton(
+              enabled: canLearn,
+              onTap: !canLearn
+                  ? null
+                  : () {
+                      if (summaryCards.isNotEmpty) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => TopicSummaryStudyScreen(
+                              topicName: topic?.name ?? 'Konu',
+                              cards: summaryCards,
                             ),
-                            Container(
-                              width: 40,
-                              height: 40,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: canOpenLessons
-                                    ? AppTheme.champagne.withValues(alpha: 0.14)
-                                    : Colors.white.withValues(alpha: 0.04),
-                                border: Border.all(
-                                  color: canOpenLessons
-                                      ? AppTheme.champagne.withValues(alpha: 0.45)
-                                      : Colors.white.withValues(alpha: 0.1),
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.menu_book_rounded,
-                                size: 20,
-                                color: canOpenLessons
-                                    ? AppTheme.champagneLight
-                                    : Colors.white.withValues(alpha: 0.25),
-                              ),
-                            ),
-                          ],
+                          ),
+                        );
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => LessonReaderScreen(
+                            topicName: topic?.name ?? 'Konu',
+                            lessons: lessons,
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                  if (summaryCards.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Divider(
-                        height: 1,
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    TopicSummarySwipeDeck(
-                      cards: summaryCards,
-                      embedded: true,
-                    ),
-                  ],
-                ],
-              ),
+                      );
+                    },
             ),
             const SizedBox(height: 20),
             const Text(
@@ -522,6 +421,77 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     } finally {
       if (mounted) setState(() => _startingTest = false);
     }
+  }
+}
+
+class _KonuyuOgrenButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _KonuyuOgrenButton({
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: enabled
+                  ? AppTheme.champagne.withValues(alpha: 0.45)
+                  : Colors.white.withValues(alpha: 0.1),
+            ),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: enabled
+                  ? [
+                      Colors.white.withValues(alpha: 0.08),
+                      Colors.white.withValues(alpha: 0.03),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: 0.03),
+                      Colors.white.withValues(alpha: 0.015),
+                    ],
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Konuyu Öğren',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    color: enabled
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 28,
+                color: enabled
+                    ? AppTheme.champagneLight
+                    : Colors.white.withValues(alpha: 0.22),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

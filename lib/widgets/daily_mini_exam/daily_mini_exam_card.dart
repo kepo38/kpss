@@ -165,9 +165,11 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
     final service = DailyMiniExamService.instance;
     if (service.guestMustSignIn) {
       await _openProfileForLogin();
+      if (!mounted) return;
       return;
     }
     if (service.formallyFinished) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Bugünkü mini denemeyi tamamladın.'),
@@ -176,6 +178,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
       return;
     }
     if (!_window.isOpen) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -226,7 +229,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
         ),
       ),
     );
-    if (result == null) return;
+    if (!mounted || result == null) return;
 
     if (result.submitDailyMiniRanking ||
         (result.completed && !service.rankingLocked)) {
@@ -440,30 +443,46 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                                     : 'Denemeyi bitirince sıralamana burada yer verilir.',
                                 onOdul: _openOdulInfo,
                               ),
-                            ] else ...[
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: DailyMiniOdulHangBadge(
-                                    onPressed: _openOdulInfo,
-                                  ),
+                              const SizedBox(height: 14),
+                              ScaleButton(
+                                onPressed: guestMustSignIn
+                                    ? _openProfileForLogin
+                                    : _startOrResume,
+                                child: DailyMiniExamCta(
+                                  label: ctaLabel,
+                                  enabled: guestMustSignIn || _window.isOpen,
+                                  twoLineStart: ctaLabel ==
+                                      DailyMiniExamConstants.ctaStart,
                                 ),
                               ),
-                            ],
-                            const SizedBox(height: 14),
-                            ScaleButton(
-                              onPressed: guestMustSignIn
-                                  ? _openProfileForLogin
-                                  : _startOrResume,
-                              child: DailyMiniExamCta(
-                                label: ctaLabel,
-                                enabled: guestMustSignIn || _window.isOpen,
-                                twoLineStart: ctaLabel ==
-                                    DailyMiniExamConstants.ctaStart,
+                            ] else ...[
+                              // Kürsü yok: ÖDÜL, Denemeye Başla üst sağ kenarından sarksın.
+                              const SizedBox(height: 14),
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  ScaleButton(
+                                    onPressed: guestMustSignIn
+                                        ? _openProfileForLogin
+                                        : _startOrResume,
+                                    child: DailyMiniExamCta(
+                                      label: ctaLabel,
+                                      enabled:
+                                          guestMustSignIn || _window.isOpen,
+                                      twoLineStart: ctaLabel ==
+                                          DailyMiniExamConstants.ctaStart,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: DailyMiniOdulHangBadge(
+                                      onPressed: _openOdulInfo,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
+                            ],
                           ] else if (attempt != null) ...[
                             const SizedBox(height: 10),
                             const DailyMiniExamSubjectMix(),

@@ -75,7 +75,6 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
 
   Color _color = _colors.first;
   double _width = _widths[1];
-  bool _eraser = false;
   bool _highlighter = false;
   final _points = <Offset>[];
 
@@ -103,8 +102,8 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
         points: List.of(_points),
         color: _highlighter ? _highlighterColor : _color,
         width: _highlighter ? _highlighterWidth : _width,
-        eraser: _eraser,
-        highlighter: _highlighter && !_eraser,
+        eraser: false,
+        highlighter: _highlighter,
       ),
     );
     _points.clear();
@@ -138,8 +137,8 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                       points: _points,
                       color: _highlighter ? _highlighterColor : _color,
                       width: _highlighter ? _highlighterWidth : _width,
-                      eraser: _eraser,
-                      highlighter: _highlighter && !_eraser,
+                      eraser: false,
+                      highlighter: _highlighter,
                     ),
                 ],
                 scrollOffset: widget.scrollOffset,
@@ -175,137 +174,163 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                  for (final color in _colors)
+                    // Sol: çizim araçları
+                    for (final color in _colors)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: _ToolButton(
+                          selected:
+                              !_highlighter && _color == color,
+                          tooltip: 'Kalem rengi',
+                          onTap: () => setState(() {
+                            _color = color;
+                            _highlighter = false;
+                          }),
+                          child: _ColorSwatch(
+                            color: color,
+                            selected: !_highlighter && _color == color,
+                          ),
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
                       child: _ToolButton(
-                        selected: !_eraser && !_highlighter && _color == color,
+                        selected: _highlighter,
+                        tooltip: 'Yeşil fosfor',
+                        highlight: true,
                         onTap: () => setState(() {
-                          _color = color;
-                          _eraser = false;
-                          _highlighter = false;
+                          _highlighter = true;
                         }),
                         child: Container(
-                          width: 16,
-                          height: 16,
+                          width: 24,
+                          height: 14,
                           decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
+                            color: _highlighterColor.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              width: 1.4,
+                              color: _highlighter
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.7),
+                              width: _highlighter ? 2 : 1.2,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _highlighterColor.withValues(
+                                  alpha: _highlighter ? 0.7 : 0.35,
+                                ),
+                                blurRadius: _highlighter ? 10 : 6,
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: _ToolButton(
-                      selected: _highlighter && !_eraser,
-                      tooltip: 'Yeşil fosfor',
-                      highlight: true,
-                      onTap: () => setState(() {
-                        _highlighter = true;
-                        _eraser = false;
-                      }),
-                      child: Container(
-                        width: 24,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: _highlighterColor.withValues(alpha: 0.72),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.95),
-                            width: 1.4,
+                    _ToolbarDivider(),
+                    for (final width in _widths)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: _ToolButton(
+                          selected: !_highlighter && _width == width,
+                          tooltip: 'Kalem kalınlığı',
+                          onTap: () => setState(() {
+                            _width = width;
+                            _highlighter = false;
+                          }),
+                          child: Icon(
+                            Icons.circle,
+                            size: width + 2,
+                            color: Colors.white,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _highlighterColor.withValues(alpha: 0.45),
-                              blurRadius: 6,
-                            ),
-                          ],
                         ),
                       ),
-                    ),
-                  ),
-                  _ToolbarDivider(),
-                  for (final width in _widths)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 2),
-                      child: _ToolButton(
-                        selected: !_eraser && !_highlighter && _width == width,
-                        onTap: () => setState(() {
-                          _width = width;
-                          _eraser = false;
-                          _highlighter = false;
-                        }),
+                    // Ayırıcı + sağ: aksiyonlar
+                    _ToolbarDivider(tall: true),
+                    if (widget.onUndo != null) ...[
+                      _ToolButton(
+                        selected: false,
+                        tooltip: 'Son çizimi geri al',
+                        onTap: widget.onUndo!,
                         child: Icon(
-                          Icons.circle,
-                          size: width + 2,
-                          color: Colors.white,
+                          Icons.undo_rounded,
+                          size: 22,
+                          color: Colors.white.withValues(alpha: 0.98),
                         ),
                       ),
-                    ),
-                  _ToolbarDivider(),
-                  _ToolButton(
-                    selected: _eraser,
-                    tooltip: 'Silgi',
-                    onTap: () => setState(() {
-                      _eraser = true;
-                      _highlighter = false;
-                    }),
-                    child: Icon(
-                      Icons.backspace_rounded,
-                      size: 22,
-                      color: _eraser
-                          ? AppTheme.champagneLight
-                          : Colors.white.withValues(alpha: 0.98),
-                    ),
-                  ),
-                  if (widget.onUndo != null) ...[
-                    const SizedBox(width: 4),
+                      const SizedBox(width: 4),
+                    ],
                     _ToolButton(
                       selected: false,
-                      tooltip: 'Son çizimi geri al',
-                      onTap: widget.onUndo!,
-                      child: Icon(
-                        Icons.undo_rounded,
+                      tooltip: 'Tüm çizimi temizle',
+                      onTap: widget.onClear,
+                      child: const Icon(
+                        Icons.delete_outline_rounded,
                         size: 22,
-                        color: Colors.white.withValues(alpha: 0.98),
+                        color: Color(0xFFFF8A80),
                       ),
                     ),
                   ],
-                  const SizedBox(width: 4),
-                  _ToolButton(
-                    selected: false,
-                    tooltip: 'Tüm çizimi temizle',
-                    onTap: widget.onClear,
-                    child: Icon(
-                      Icons.delete_sweep_rounded,
-                      size: 22,
-                      color: const Color(0xFFFF8A80),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ],
     );
   }
 }
 
+class _ColorSwatch extends StatelessWidget {
+  final Color color;
+  final bool selected;
+
+  const _ColorSwatch({required this.color, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      width: selected ? 20 : 16,
+      height: selected ? 20 : 16,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? AppTheme.champagneLight : Colors.white,
+          width: selected ? 2.4 : 1.4,
+        ),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.55),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: AppTheme.champagne.withValues(alpha: 0.45),
+                  blurRadius: 6,
+                ),
+              ]
+            : null,
+      ),
+    );
+  }
+}
+
 class _ToolbarDivider extends StatelessWidget {
+  final bool tall;
+
+  const _ToolbarDivider({this.tall = false});
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 1,
-      height: 22,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      color: Colors.white.withValues(alpha: 0.22),
+      width: tall ? 1.2 : 1,
+      height: tall ? 26 : 22,
+      margin: EdgeInsets.symmetric(horizontal: tall ? 8 : 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        color: Colors.white.withValues(alpha: tall ? 0.32 : 0.2),
+      ),
     );
   }
 }

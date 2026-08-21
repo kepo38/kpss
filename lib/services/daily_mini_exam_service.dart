@@ -28,6 +28,7 @@ class DailyMiniExamService extends ChangeNotifier {
   static final DailyMiniExamService instance = DailyMiniExamService._();
 
   bool _initialized = false;
+  Future<void>? _initFuture;
   KpssType _kpssType = KpssType.lisans;
   DailyMiniExamSnapshot? _remote;
   List<String> _questionIds = const [];
@@ -216,7 +217,22 @@ class DailyMiniExamService extends ChangeNotifier {
   }
 
   Future<void> initialize({KpssType? kpssType}) async {
-    _kpssType = kpssType ?? _kpssType;
+    final typeChanged = kpssType != null && kpssType != _kpssType;
+    if (kpssType != null) _kpssType = kpssType;
+
+    if (!_initialized) {
+      await (_initFuture ??= _initializeBody());
+      return;
+    }
+
+    if (typeChanged) {
+      _resetDayIfNeeded();
+      notifyListeners();
+      await refresh();
+    }
+  }
+
+  Future<void> _initializeBody() async {
     final prefs = await SharedPreferences.getInstance();
     await _migrateLegacyPrefsIfNeeded(prefs);
     _loadMonthly(prefs);
@@ -230,6 +246,15 @@ class DailyMiniExamService extends ChangeNotifier {
     notifyListeners();
     unawaited(refresh());
     unawaited(_retryPendingRankingSubmitIfNeeded());
+  }
+
+  Future<void> setKpssType(KpssType type) async {
+    await initialize(kpssType: type);
+    if (_kpssType == type) return;
+    _kpssType = type;
+    _resetDayIfNeeded();
+    notifyListeners();
+    await refresh();
   }
 
   void _loadRankingFlags(SharedPreferences prefs) {
@@ -275,14 +300,6 @@ class DailyMiniExamService extends ChangeNotifier {
       _scopedKey(DailyMiniExamConstants.prefsPendingRankingSubmit),
       _pendingRankingSubmit,
     );
-  }
-
-  Future<void> setKpssType(KpssType type) async {
-    if (_kpssType == type) return;
-    _kpssType = type;
-    _resetDayIfNeeded();
-    notifyListeners();
-    await refresh();
   }
 
   /// Oturum değişince (çıkış, misafir→Google) o kullanıcının durumunu yükle.

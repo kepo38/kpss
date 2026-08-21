@@ -63,6 +63,15 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     try {
       await QuestionFetchService.instance.fetchByIds(missing);
       await ContentBankService.instance.persistWrongQuestionBodiesNow();
+    } catch (e, st) {
+      debugPrint('Wrong notebook hydrate error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bazı yanlış sorular yüklenemedi. Tekrar dene.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _hydrating = false);
     }
@@ -498,61 +507,114 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                               setState(() => _subjectFilter = value),
                         ),
                       Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                          children: [
-                            if (allQuestions.isEmpty)
-                              Padding(
+                        child: Builder(
+                          builder: (context) {
+                            if (allQuestions.isEmpty) {
+                              return ListView(
                                 padding:
-                                    const EdgeInsets.fromLTRB(4, 12, 4, 18),
-                                child: Text(
-                                  'Test yanlışın yok. Kitap soruların için '
-                                  'yukarıdaki pembe alana dokun.',
-                                  style: TextStyle(
-                                    color:
-                                        AppTheme.slate.withValues(alpha: 0.68),
+                                    const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      4,
+                                      12,
+                                      4,
+                                      18,
+                                    ),
+                                    child: Text(
+                                      'Test yanlışın yok. Kitap soruların için '
+                                      'yukarıdaki pembe alana dokun.',
+                                      style: TextStyle(
+                                        color: AppTheme.slate
+                                            .withValues(alpha: 0.68),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              )
-                            else if (questions.isEmpty)
-                              Padding(
+                                ],
+                              );
+                            }
+                            if (questions.isEmpty) {
+                              return ListView(
                                 padding:
-                                    const EdgeInsets.fromLTRB(4, 12, 4, 18),
-                                child: Text(
-                                  'Bu derste yanlış soru yok.',
-                                  style: TextStyle(
-                                    color:
-                                        AppTheme.slate.withValues(alpha: 0.68),
+                                    const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      4,
+                                      12,
+                                      4,
+                                      18,
+                                    ),
+                                    child: Text(
+                                      'Bu derste yanlış soru yok.',
+                                      style: TextStyle(
+                                        color: AppTheme.slate
+                                            .withValues(alpha: 0.68),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              )
-                            else
-                              for (final entry in grouped.entries) ...[
-                                WrongNotebookSubjectHeader(
-                                  subject: entry.key,
-                                  count: entry.value.length,
-                                ),
-                                for (final q in entry.value)
-                                  WrongNotebookQuestionCard(
-                                    question: q,
-                                    isFavorite: favs.isFavorite(q.id),
-                                    similarLoading: _similarLoadingId == q.id,
-                                    showProBadge:
-                                        !PremiumService.instance.isPremium,
-                                    frostStem: guestLocked,
-                                    onSignIn: () {
-                                      unawaited(
-                                        _unlockGuestQuestion(context, q),
-                                      );
-                                    },
-                                    onToggleFavorite: () =>
-                                        _toggleFavorite(q.id),
-                                    onSimilar: () => _openSimilar(context, q),
-                                    onTap: () => _openQuestion(context, q.id),
-                                    onRemove: () => _confirmRemoveQuestion(q),
-                                  ),
-                              ],
-                          ],
+                                ],
+                              );
+                            }
+
+                            // Header + kart satırlarını düzleştir — lazy build.
+                            final rows =
+                                <({bool isHeader, String? subject, int? count, QuestionModel? question})>[];
+                            for (final entry in grouped.entries) {
+                              rows.add((
+                                isHeader: true,
+                                subject: entry.key,
+                                count: entry.value.length,
+                                question: null,
+                              ));
+                              for (final q in entry.value) {
+                                rows.add((
+                                  isHeader: false,
+                                  subject: null,
+                                  count: null,
+                                  question: q,
+                                ));
+                              }
+                            }
+
+                            return ListView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                              itemCount: rows.length,
+                              itemBuilder: (context, index) {
+                                final row = rows[index];
+                                if (row.isHeader) {
+                                  return WrongNotebookSubjectHeader(
+                                    subject: row.subject!,
+                                    count: row.count!,
+                                  );
+                                }
+                                final q = row.question!;
+                                return WrongNotebookQuestionCard(
+                                  question: q,
+                                  isFavorite: favs.isFavorite(q.id),
+                                  similarLoading:
+                                      _similarLoadingId == q.id,
+                                  showProBadge:
+                                      !PremiumService.instance.isPremium,
+                                  frostStem: guestLocked,
+                                  onSignIn: () {
+                                    unawaited(
+                                      _unlockGuestQuestion(context, q),
+                                    );
+                                  },
+                                  onToggleFavorite: () =>
+                                      _toggleFavorite(q.id),
+                                  onSimilar: () =>
+                                      _openSimilar(context, q),
+                                  onTap: () =>
+                                      _openQuestion(context, q.id),
+                                  onRemove: () =>
+                                      _confirmRemoveQuestion(q),
+                                );
+                              },
+                            );
+                          },
                         ),
                       ),
                       if (questions.isNotEmpty)

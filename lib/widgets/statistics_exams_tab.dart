@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -25,8 +27,11 @@ class StatisticsExamsTab extends StatelessWidget {
         return _ExamDetailCard(
           exam: exam,
           onDelete: () {
-            PracticeExamService.instance.deleteExam(exam.id);
-            onRefresh();
+            unawaited(
+              PracticeExamService.instance.deleteExam(exam.id).then((_) {
+                onRefresh();
+              }),
+            );
           },
         );
       },

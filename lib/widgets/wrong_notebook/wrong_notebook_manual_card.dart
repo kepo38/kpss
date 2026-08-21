@@ -35,7 +35,7 @@ class WrongNotebookManualCard extends StatelessWidget {
           border: Border.all(color: AppTheme.hairline(context)),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          padding: const EdgeInsets.fromLTRB(12, 12, 16, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -47,6 +47,12 @@ class WrongNotebookManualCard extends StatelessWidget {
                   const Spacer(),
                   IconButton(
                     onPressed: onRemove,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                     icon: Icon(
                       Icons.delete_outline_rounded,
                       color: muted.withValues(alpha: 0.7),

@@ -80,7 +80,7 @@ class PuanHesaplamaButton extends StatelessWidget {
                       ),
                       SizedBox(height: compact ? 1 : 2),
                       Text(
-                        'Netlerine göre tahmini KPSS puanı',
+                        'Netlerine göre tahmini',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

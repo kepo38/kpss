@@ -109,7 +109,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _navigateTo(Widget screen) async {
-    await AdManager.instance.onPageTransition();
+    // Navigasyonu reklam yüklemesiyle bloklama — interstitial arka planda.
+    unawaited(AdManager.instance.onPageTransition());
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => screen),

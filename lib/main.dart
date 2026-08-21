@@ -78,12 +78,14 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   bool _showAssignmentSplash = false;
   bool? _routedSignedIn;
   String? _routedUserId;
+  bool? _routedHasChosenExam;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AuthService.instance.addListener(_onAuthChanged);
+    KpssPreferenceService.instance.addListener(_onKpssRouteChanged);
     PlayBillingService.instance.premiumNotifier
         .addListener(_liftVpnLockIfPremium);
     // Varsayılan tercihler — ilk karede UI çizebilsin.
@@ -116,6 +118,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   }
 
   void _beginAssignmentSplash() {
+    if (!mounted) return;
     setState(() => _showAssignmentSplash = true);
   }
 
@@ -127,6 +130,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     AuthService.instance.removeListener(_onAuthChanged);
+    KpssPreferenceService.instance.removeListener(_onKpssRouteChanged);
     PlayBillingService.instance.premiumNotifier
         .removeListener(_liftVpnLockIfPremium);
     WidgetsBinding.instance.removeObserver(this);
@@ -144,13 +148,21 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
         unawaited(AppNavigator.consumePending());
       });
     }
-    // İsim/premium gibi profil güncellemelerinde MaterialApp'i yeniden
-    // kurma — kapanan dialog overlay'i _dependents.isEmpty hatası verir.
+    // İsim/premium gibi profil güncellemelerinde kök ağacı yeniden kurma.
     final signedIn = auth.isSignedIn;
     final userId = user?.id;
     if (signedIn == _routedSignedIn && userId == _routedUserId) return;
     _routedSignedIn = signedIn;
     _routedUserId = userId;
+    setState(() {});
+  }
+
+  /// Yalnızca sınav seçimi kapısı değişince kök home'u yenile.
+  void _onKpssRouteChanged() {
+    if (!mounted || !_bootReady) return;
+    final chosen = KpssPreferenceService.instance.hasChosenExam;
+    if (chosen == _routedHasChosenExam) return;
+    _routedHasChosenExam = chosen;
     setState(() {});
   }
 
@@ -188,9 +200,13 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
     if (!mounted) return;
     final needsExamChoice = !KpssPreferenceService.instance.hasChosenExam;
+    final auth = AuthService.instance;
     setState(() {
       _bootReady = true;
       _bootDataReady = true;
+      _routedHasChosenExam = !needsExamChoice;
+      _routedSignedIn = auth.isSignedIn;
+      _routedUserId = auth.user?.id;
       if (needsExamChoice) _showLaunchSplash = false;
     });
     if (needsExamChoice) {
@@ -357,39 +373,42 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     if (nav != null && nav.canPop()) nav.pop();
   }
 
+  Widget _buildRoutedHome() {
+    final auth = AuthService.instance;
+    if (_isConnectionBlocked && _securityChecked) {
+      return const _BlockedHomeScreen();
+    }
+    if (!_bootReady) {
+      return const SizedBox.shrink();
+    }
+    if (_showLaunchSplash) {
+      return const BootSplashScreen();
+    }
+    if (_showAssignmentSplash) {
+      return BootSplashScreen(onComplete: _finishAssignmentSplash);
+    }
+    if (!KpssPreferenceService.instance.hasChosenExam) {
+      return AppEntry(onExamChosen: _beginAssignmentSplash);
+    }
+    if (!auth.isSignedIn) {
+      return _SessionRetryScreen(
+        message: auth.lastError,
+        onRetry: () async {
+          await auth.ensureAnonymousSession();
+          if (mounted) setState(() {});
+        },
+      );
+    }
+    return const AppEntry();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Tema değişince yalnızca MaterialApp (themeMode); Auth/KPSS kapısı
+    // setState ile — profil notify'ları tüm ağacı yeniden kurmaz.
     return ListenableBuilder(
-      listenable: Listenable.merge([
-        ThemePreferenceService.instance,
-        AuthService.instance,
-        KpssPreferenceService.instance,
-      ]),
+      listenable: ThemePreferenceService.instance,
       builder: (context, _) {
-        final auth = AuthService.instance;
-        final Widget home;
-        if (_isConnectionBlocked && _securityChecked) {
-          home = const _BlockedHomeScreen();
-        } else if (!_bootReady) {
-          home = const SizedBox.shrink();
-        } else if (_showLaunchSplash) {
-          home = const BootSplashScreen();
-        } else if (_showAssignmentSplash) {
-          home = BootSplashScreen(onComplete: _finishAssignmentSplash);
-        } else if (!KpssPreferenceService.instance.hasChosenExam) {
-          home = AppEntry(onExamChosen: _beginAssignmentSplash);
-        } else if (!auth.isSignedIn) {
-          home = _SessionRetryScreen(
-            message: auth.lastError,
-            onRetry: () async {
-              await auth.ensureAnonymousSession();
-              if (mounted) setState(() {});
-            },
-          );
-        } else {
-          home = const AppEntry();
-        }
-
         return MaterialApp(
           title: BrandConstants.appName,
           navigatorKey: AppNavigator.key,
@@ -418,7 +437,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
               ),
             );
           },
-          home: home,
+          home: _buildRoutedHome(),
         );
       },
     );

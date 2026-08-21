@@ -136,24 +136,12 @@ class _MainShellState extends State<MainShell> {
                 child: ValueListenableBuilder<KpssType>(
                   valueListenable: _selectedType,
                   builder: (context, type, _) {
-                    switch (_index) {
-                      case 1:
-                        return StudyHubScreen(
-                          kpssType: type,
-                          embedded: true,
-                          pane: StudyHubPane.subjects,
-                          shellTopBarVisible: true,
-                        );
-                      case 2:
-                        return AnalyticsHubScreen(
-                          kpssType: type,
-                          embedded: true,
-                        );
-                      case 3:
-                        return const StatisticsScreen(embedded: true);
-                      case 0:
-                      default:
-                        return StudyHubScreen(
+                    return IndexedStack(
+                      index: _index,
+                      sizing: StackFit.expand,
+                      children: [
+                        StudyHubScreen(
+                          key: const PageStorageKey<String>('shell_home'),
                           kpssType: type,
                           embedded: true,
                           pane: StudyHubPane.home,
@@ -163,8 +151,25 @@ class _MainShellState extends State<MainShell> {
                           onPremiumTap: _openPaywall,
                           onMoreTap: _openMore,
                           shellTopBarVisible: true,
-                        );
-                    }
+                        ),
+                        StudyHubScreen(
+                          key: const PageStorageKey<String>('shell_subjects'),
+                          kpssType: type,
+                          embedded: true,
+                          pane: StudyHubPane.subjects,
+                          shellTopBarVisible: true,
+                        ),
+                        AnalyticsHubScreen(
+                          key: const PageStorageKey<String>('shell_analytics'),
+                          kpssType: type,
+                          embedded: true,
+                        ),
+                        const StatisticsScreen(
+                          key: PageStorageKey<String>('shell_stats'),
+                          embedded: true,
+                        ),
+                      ],
+                    );
                   },
                 ),
               ),

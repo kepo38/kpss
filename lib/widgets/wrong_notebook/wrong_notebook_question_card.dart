@@ -41,7 +41,7 @@ class WrongNotebookSubjectHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
+          Flexible(
             child: Text(
               subject,
               style: TextStyle(
@@ -52,19 +52,23 @@ class WrongNotebookSubjectHeader extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: accent.withValues(alpha: 0.12),
-              border: Border.all(color: accent.withValues(alpha: 0.28)),
+              borderRadius: BorderRadius.circular(99),
+              color: accent.withValues(alpha: 0.16),
+              border: Border.all(color: accent.withValues(alpha: 0.4)),
             ),
             child: Text(
-              '$count soru',
+              '$count',
               style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: on.withValues(alpha: 0.75),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                height: 1,
+                color: on.withValues(alpha: 0.85),
               ),
             ),
           ),
@@ -138,7 +142,7 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                     ),
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                        padding: const EdgeInsets.fromLTRB(14, 12, 16, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [

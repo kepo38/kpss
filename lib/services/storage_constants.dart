@@ -6,15 +6,17 @@ class StorageConstants {
   static const int retentionDays = 365;
 
   static const String dbName = 'kpss_akademi.db';
-  static const int dbVersion = 4;
+  static const int dbVersion = 5;
 
   static const String tablePracticeExams = 'practice_exams';
   static const String tableWrongNotebook = 'wrong_notebook';
   static const String tableStudyNotes = 'study_notes';
   static const String tableManualWrongQuestions = 'manual_wrong_questions';
+  static const String tableContentQuestions = 'content_question_bank';
 
   /// Web önizlemesi için SharedPreferences anahtarları.
   static const String webExamsKey = 'web_practice_exams';
   static const String webNotebookKey = 'web_wrong_notebook';
   static const String webManualWrongQuestionsKey = 'web_manual_wrong_questions';
+  static const String webContentQuestionsKey = 'web_content_questions';
 }

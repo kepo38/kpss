@@ -17,6 +17,7 @@ class PracticeExamService {
   Future<void> initialize() async {
     if (_initialized) return;
 
+    await LocalDatabase.instance.initialize();
     _exams.clear();
     _exams.addAll(await LocalDatabase.instance.getAllExams());
 
@@ -42,9 +43,10 @@ class PracticeExamService {
 
   void setPublisherFilter(String? publisher) => _publisherFilter = publisher;
 
-  void addExam(PracticeExamModel exam) {
+  Future<void> addExam(PracticeExamModel exam) async {
+    await initialize();
     _exams.insert(0, exam);
-    LocalDatabase.instance.insertExam(exam);
+    await LocalDatabase.instance.insertExam(exam);
     unawaited(
       GamificationService.instance.onPracticeExamAdded(
         totalExams: _exams.length,
@@ -52,9 +54,10 @@ class PracticeExamService {
     );
   }
 
-  void deleteExam(String id) {
+  Future<void> deleteExam(String id) async {
+    await initialize();
     _exams.removeWhere((e) => e.id == id);
-    LocalDatabase.instance.deleteExam(id);
+    await LocalDatabase.instance.deleteExam(id);
   }
 
   List<double> get netTrend {

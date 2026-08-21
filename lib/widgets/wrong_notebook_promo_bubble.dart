@@ -58,7 +58,7 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
   }
 
   Future<void> _openWrongNotebook(BuildContext context) async {
-    await AdManager.instance.onPageTransition();
+    unawaited(AdManager.instance.onPageTransition());
     if (!context.mounted) return;
     unawaited(
       Navigator.of(context).push(
@@ -102,7 +102,8 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
       listenable: Listenable.merge([
         AppConfigService.instance,
         AuthService.instance,
-        ContentBankService.instance,
+        ContentBankService.instance.progressRevision,
+        ContentBankService.instance.catalogRevision,
       ]),
       builder: (context, _) {
         final cfg = AppConfigService.instance;

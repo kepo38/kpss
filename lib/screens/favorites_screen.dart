@@ -63,17 +63,23 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     if (question == null) return;
 
     final test = bank.testContainingQuestion(questionId);
-    late final List<QuestionModel> questions;
-    late final String title;
+    List<QuestionModel> questions;
+    String title;
     var initialIndex = 0;
     var timeLimit = 0;
 
     if (test != null) {
       questions = bank.questionsForTest(test);
-      title = test.title;
-      timeLimit = test.timeLimitMinutes;
-      initialIndex = questions.indexWhere((q) => q.id == questionId);
-      if (initialIndex < 0) initialIndex = 0;
+      if (questions.isEmpty) {
+        // Katalogda test var ama gövdeler henüz yüklenmemiş — tek soru aç.
+        questions = [question];
+        title = 'Favori soru';
+      } else {
+        title = test.title;
+        timeLimit = test.timeLimitMinutes;
+        initialIndex = questions.indexWhere((q) => q.id == questionId);
+        if (initialIndex < 0) initialIndex = 0;
+      }
     } else {
       questions = [question];
       title = 'Favori soru';

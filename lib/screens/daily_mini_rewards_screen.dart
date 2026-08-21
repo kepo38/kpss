@@ -262,29 +262,34 @@ class _RewardHero extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.62),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
+                flex: 10,
                 child: _MedalChip(
-                  place: '1.',
-                  label: '${rewardDays[1] ?? 3} gün',
-                  tone: _MedalTone.gold,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MedalChip(
-                  place: '2.',
-                  label: '${rewardDays[2] ?? 2} gün',
+                  place: 2,
+                  label: '${rewardDays[2] ?? 2} gün Premium',
                   tone: _MedalTone.silver,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
+                flex: 11,
                 child: _MedalChip(
-                  place: '3.',
-                  label: '${rewardDays[3] ?? 1} gün',
+                  place: 1,
+                  label: '${rewardDays[1] ?? 3} gün Premium',
+                  tone: _MedalTone.gold,
+                  featured: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 10,
+                child: _MedalChip(
+                  place: 3,
+                  label: '${rewardDays[3] ?? 1} gün Premium',
                   tone: _MedalTone.bronze,
                 ),
               ),
@@ -299,48 +304,135 @@ class _RewardHero extends StatelessWidget {
 enum _MedalTone { gold, silver, bronze }
 
 class _MedalChip extends StatelessWidget {
-  final String place;
+  final int place;
   final String label;
   final _MedalTone tone;
+  final bool featured;
 
   const _MedalChip({
     required this.place,
     required this.label,
     required this.tone,
+    this.featured = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = switch (tone) {
-      _MedalTone.gold => const [Color(0xFFFFF1D0), Color(0xFFE8C878)],
-      _MedalTone.silver => const [Color(0xFFE8EEF5), Color(0xFFA8B4C4)],
-      _MedalTone.bronze => const [Color(0xFFF0D4B8), Color(0xFFC4895A)],
+      _MedalTone.gold => const [
+          Color(0xFFFFF8EE),
+          Color(0xFFF3E2B8),
+          Color(0xFFE8C878),
+          Color(0xFFB8860B),
+        ],
+      _MedalTone.silver => const [
+          Color(0xFFF7FAFC),
+          Color(0xFFE2E8F0),
+          Color(0xFFA8B4C4),
+          Color(0xFF64748B),
+        ],
+      _MedalTone.bronze => const [
+          Color(0xFFFFF1E6),
+          Color(0xFFF0D4B8),
+          Color(0xFFC4895A),
+          Color(0xFF8B5A2B),
+        ],
     };
+    final icon = switch (place) {
+      1 => Icons.emoji_events_rounded,
+      2 => Icons.military_tech_rounded,
+      _ => Icons.workspace_premium_rounded,
+    };
+    final padV = featured ? 14.0 : 10.0;
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      padding: EdgeInsets.fromLTRB(8, padV, 8, padV - 2),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.black.withValues(alpha: 0.22),
-        border: Border.all(color: colors.last.withValues(alpha: 0.55)),
+        borderRadius: BorderRadius.circular(featured ? 16 : 13),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colors[0].withValues(alpha: 0.22),
+            colors[2].withValues(alpha: 0.14),
+            Colors.black.withValues(alpha: 0.35),
+          ],
+        ),
+        border: Border.all(
+          color: colors[2].withValues(alpha: featured ? 0.9 : 0.65),
+          width: featured ? 1.6 : 1.15,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors[2].withValues(alpha: featured ? 0.42 : 0.22),
+            blurRadius: featured ? 18 : 10,
+            offset: const Offset(0, 5),
+          ),
+          if (featured)
+            BoxShadow(
+              color: colors[0].withValues(alpha: 0.18),
+              blurRadius: 24,
+              spreadRadius: 1,
+            ),
+        ],
       ),
       child: Column(
         children: [
-          Text(
-            place,
-            style: TextStyle(
-              fontFamily: 'serif',
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: colors.first,
+          Container(
+            width: featured ? 42 : 34,
+            height: featured ? 42 : 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: colors,
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.55),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colors[2].withValues(alpha: 0.5),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              size: featured ? 22 : 17,
+              color: AppTheme.ink,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: featured ? 8 : 6),
+          Text(
+            '$place.',
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontSize: featured ? 22 : 16,
+              fontWeight: FontWeight.w900,
+              height: 1,
+              color: colors[0],
+              shadows: [
+                Shadow(
+                  color: colors[2].withValues(alpha: 0.55),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
           Text(
             label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: colors.first.withValues(alpha: 0.92),
+              fontSize: featured ? 11 : 10,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+              color: colors[0].withValues(alpha: 0.95),
             ),
           ),
         ],
@@ -357,42 +449,36 @@ class _PeriodTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _PeriodTab(
-              label: 'Haftalık',
-              selected: period == LeaderboardPeriod.haftalik,
-              onTap: () => onChanged(LeaderboardPeriod.haftalik),
-            ),
-          ),
-          Expanded(
-            child: _PeriodTab(
-              label: 'Aylık',
-              selected: period == LeaderboardPeriod.aylik,
-              onTap: () => onChanged(LeaderboardPeriod.aylik),
-            ),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PeriodTab(
+          label: 'Haftalık sıralama',
+          icon: Icons.calendar_view_week_rounded,
+          selected: period == LeaderboardPeriod.haftalik,
+          onTap: () => onChanged(LeaderboardPeriod.haftalik),
+        ),
+        const SizedBox(height: 10),
+        _PeriodTab(
+          label: 'Aylık sıralama',
+          icon: Icons.calendar_month_rounded,
+          selected: period == LeaderboardPeriod.aylik,
+          onTap: () => onChanged(LeaderboardPeriod.aylik),
+        ),
+      ],
     );
   }
 }
 
 class _PeriodTab extends StatelessWidget {
   final String label;
+  final IconData icon;
   final bool selected;
   final VoidCallback onTap;
 
   const _PeriodTab({
     required this.label,
+    required this.icon,
     required this.selected,
     required this.onTap,
   });
@@ -403,38 +489,78 @@ class _PeriodTab extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(14),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(vertical: 11),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(14),
             gradient: selected
                 ? const LinearGradient(
-                    colors: [Color(0xFFFFF4DE), AppTheme.champagne],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFFFF8EE),
+                      Color(0xFFF3E2B8),
+                      AppTheme.champagne,
+                    ],
                   )
-                : null,
+                : LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.07),
+                      Colors.white.withValues(alpha: 0.03),
+                    ],
+                  ),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFFD4AF6A)
+                  : Colors.white.withValues(alpha: 0.12),
+              width: selected ? 1.35 : 1,
+            ),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppTheme.champagne.withValues(alpha: 0.28),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+                      color: AppTheme.champagne.withValues(alpha: 0.32),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
                   ]
                 : null,
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 13.5,
-              color: selected
-                  ? AppTheme.ink
-                  : Colors.white.withValues(alpha: 0.55),
-            ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: selected
+                    ? AppTheme.ink
+                    : Colors.white.withValues(alpha: 0.55),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14.5,
+                    letterSpacing: 0.2,
+                    color: selected
+                        ? AppTheme.ink
+                        : Colors.white.withValues(alpha: 0.62),
+                  ),
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.chevron_right_rounded,
+                size: 20,
+                color: selected
+                    ? AppTheme.ink.withValues(alpha: 0.75)
+                    : Colors.white.withValues(alpha: 0.35),
+              ),
+            ],
           ),
         ),
       ),
@@ -469,68 +595,100 @@ class _PeriodMeta extends StatelessWidget {
             ),
           ),
         if (myRank != null) ...[
-          if (label.isNotEmpty) const SizedBox(height: 10),
+          if (label.isNotEmpty) const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppTheme.champagne.withValues(alpha: 0.4),
+                color: const Color(0xFFD4AF6A),
+                width: 1.5,
               ),
-              gradient: LinearGradient(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
                 colors: [
-                  AppTheme.champagne.withValues(alpha: 0.16),
-                  Colors.white.withValues(alpha: 0.04),
+                  Color(0xFFFFF8EE),
+                  Color(0xFFF3E2B8),
+                  Color(0xFFE8C878),
+                  AppTheme.champagne,
                 ],
+                stops: [0, 0.35, 0.72, 1],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.champagne.withValues(alpha: 0.45),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 52,
+                  height: 52,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppTheme.ink.withValues(alpha: 0.45),
+                    color: AppTheme.ink.withValues(alpha: 0.88),
                     border: Border.all(
-                      color: AppTheme.champagne.withValues(alpha: 0.55),
+                      color: const Color(0xFFFFF1D0),
+                      width: 2,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.ink.withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
                   ),
                   child: Text(
-                    '$myRank',
+                    '#$myRank',
                     style: const TextStyle(
                       fontFamily: 'serif',
-                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
                       color: AppTheme.champagneLight,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Senin sıran',
+                        'SENİN SIRAN',
                         style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.4,
-                          color: AppTheme.champagne,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.4,
+                          color: AppTheme.ink,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         '$myCorrect doğru · ${formatExamDuration(myDuration)}',
                         style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.ink,
                         ),
                       ),
                     ],
                   ),
+                ),
+                const Icon(
+                  Icons.person_pin_circle_rounded,
+                  color: AppTheme.ink,
+                  size: 26,
                 ),
               ],
             ),

@@ -41,6 +41,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       isScrollControlled: true,
       builder: (_) => const AddExamSheet(),
     );
+    if (!mounted) return;
     if (saved == true) {
       setState(() {});
       NotificationService.instance.refreshWeeklySummaryContent();
@@ -69,7 +70,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   );
                 },
               )
-            : const Text('Deneme Analizi'),
+            : const Text('Deneme İstatistiklerim'),
         titleSpacing: embedded ? 0 : null,
         toolbarHeight: embedded ? 64 : null,
         bottom: TabBar(

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/practice_exam_model.dart';
 import '../services/content_bank_service.dart';
+import '../services/notification_service.dart';
 import '../services/practice_exam_service.dart';
 import '../theme/app_theme.dart';
 import 'net_development_chart.dart';
@@ -35,6 +36,25 @@ class StatisticsOverviewTab extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          Text(
+            'Deneme İstatistiklerim',
+            style: GoogleFonts.inter(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: AppTheme.lightPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Genel bakış',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.lightPrimary.withValues(alpha: 0.55),
+            ),
+          ),
+          const SizedBox(height: 16),
           _WeeklySummaryCard(
             summary: summary,
             dueCount: ContentBankService.instance.wrongQuestionCount,
@@ -100,6 +120,47 @@ class _WeeklySummaryCard extends StatelessWidget {
 
   const _WeeklySummaryCard({required this.summary, required this.dueCount});
 
+  Future<void> _toggleExamReminder(BuildContext context) async {
+    final service = NotificationService.instance;
+    final enabled = await service.isExamReminderEnabled();
+    if (!context.mounted) return;
+
+    final wantEnable = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(enabled ? 'Deneme hatırlatıcısı' : 'Deneme hatırlatıcısı kur'),
+        content: Text(
+          enabled
+              ? 'Pazar 10:00 deneme hatırlatıcısı açık. Kapatmak ister misin?'
+              : 'Her Pazar saat 10:00’da “deneme çöz” hatırlatması göndereyim mi?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(enabled ? 'Açık kalsın' : 'Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(enabled ? 'Kapat' : 'Hatırlat'),
+          ),
+        ],
+      ),
+    );
+    if (wantEnable != true || !context.mounted) return;
+
+    final nowEnabled = await service.setExamReminderEnabled(!enabled);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          nowEnabled
+              ? 'Pazar 10:00 deneme hatırlatıcısı açıldı.'
+              : 'Deneme hatırlatıcısı kapatıldı.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final change = summary.netDegisim;
@@ -133,10 +194,20 @@ class _WeeklySummaryCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Icon(
-                  Icons.notifications_outlined,
-                  color: Colors.white.withValues(alpha: 0.7),
-                  size: 18,
+                IconButton(
+                  onPressed: () => _toggleExamReminder(context),
+                  tooltip: 'Pazar 10:00 deneme hatırlatıcısı',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  icon: Icon(
+                    Icons.notifications_active_outlined,
+                    color: Colors.white.withValues(alpha: 0.85),
+                    size: 20,
+                  ),
                 ),
               ],
             ),

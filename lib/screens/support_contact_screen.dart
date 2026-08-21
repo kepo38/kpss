@@ -17,10 +17,10 @@ class SupportContactScreen extends StatelessWidget {
     if (!context.mounted) return;
     if (!opened) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            'E-posta uygulaması açılamadı. '
-            '${SupportContactService.supportEmail} adresine yazabilirsiniz.',
+            'E-posta uygulaması açılamadı. Lütfen cihazınızın '
+            'posta ayarlarını kontrol edin.',
           ),
         ),
       );
@@ -67,16 +67,20 @@ class SupportContactScreen extends StatelessWidget {
           children: [
             const _HeroCard(),
             const SizedBox(height: 28),
-            Text(
-              'Nasıl yardımcı olabiliriz?',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.95),
+            SizedBox(
+              width: double.infinity,
+              child: Text(
+                'Nasıl yardımcı olabiliriz?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withValues(alpha: 0.95),
+                ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             const _InfoBlock(
               icon: Icons.school_outlined,
               title: 'Deneme paketleri',
@@ -84,9 +88,9 @@ class SupportContactScreen extends StatelessWidget {
                   'Özel okul ve kurs deneme paketleri talepleri için '
                   'ekibimizle iletişime geçebilirsiniz.',
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             const _InfoBlock(
-              icon: Icons.report_rounded,
+              icon: Icons.report_outlined,
               title: 'Soru hata bildirimi',
               body:
                   'Sorulardaki hatalar için soru ekranında sağ üstten '
@@ -167,7 +171,8 @@ class _HeroCard extends StatelessWidget {
 }
 
 class _InfoBlock extends StatelessWidget {
-  static const _warn = Color(0xFFFF8A4C);
+  /// Soft amber / bronz — marka champagne ailesi.
+  static const _warn = Color(0xFFC9A66B);
 
   final IconData icon;
   final String title;
@@ -183,40 +188,29 @@ class _InfoBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final neon = warning ? _warn : SupportContactScreen._gold;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: warning
-          ? BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF3A2218).withValues(alpha: 0.98),
-                  AppTheme.smokeDeep.withValues(alpha: 0.96),
-                ],
-              ),
-              border: Border.all(color: _warn.withValues(alpha: 0.72), width: 1.35),
-              boxShadow: SubjectNeonPalette.glow(_warn, blur: 18),
-            )
-          : SubjectNeonPalette.darkGlassCard(neon: neon, radius: 16),
+    final accent = warning ? _warn : SupportContactScreen._gold;
+    // Bilgi satırı — büyük çerçeveli buton gibi durmasın.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 3,
+            height: 52,
+            margin: const EdgeInsets.only(top: 4),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: neon.withValues(alpha: warning ? 0.22 : 0.14),
-              border: Border.all(
-                color: neon.withValues(alpha: warning ? 0.55 : 0.32),
-              ),
+              borderRadius: BorderRadius.circular(99),
+              color: accent.withValues(alpha: 0.75),
             ),
-            child: Icon(icon, color: neon, size: 22),
           ),
           const SizedBox(width: 14),
+          Icon(
+            icon,
+            size: 22,
+            color: accent.withValues(alpha: 0.9),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,25 +220,27 @@ class _InfoBlock extends StatelessWidget {
                     Expanded(
                       child: Text(
                         title,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: 'serif',
-                          fontSize: 17,
+                          fontSize: 16.5,
                           fontWeight: FontWeight.w600,
-                          color: warning ? _warn : Colors.white,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                    if (warning)
+                    if (warning) ...[
+                      const SizedBox(width: 10),
                       Container(
+                        margin: const EdgeInsets.only(right: 2),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
+                          horizontal: 10,
+                          vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: _warn.withValues(alpha: 0.18),
+                          color: _warn.withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: _warn.withValues(alpha: 0.55),
+                            color: _warn.withValues(alpha: 0.4),
                           ),
                         ),
                         child: const Text(
@@ -257,15 +253,16 @@ class _InfoBlock extends StatelessWidget {
                           ),
                         ),
                       ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   body,
                   style: TextStyle(
-                    fontSize: 14,
-                    height: 1.55,
-                    color: Colors.white.withValues(alpha: 0.86),
+                    fontSize: 13.5,
+                    height: 1.5,
+                    color: Colors.white.withValues(alpha: 0.68),
                   ),
                 ),
               ],

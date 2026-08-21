@@ -39,16 +39,29 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final pack = await _service.ensureTodayPack(
-      widget.kpssType,
-      subjectId: _subjectId,
-    );
     if (!mounted) return;
-    setState(() {
-      _pack = pack;
-      _loading = false;
-    });
+    setState(() => _loading = true);
+    try {
+      final pack = await _service.ensureTodayPack(
+        widget.kpssType,
+        subjectId: _subjectId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pack = pack;
+        _loading = false;
+      });
+    } catch (e, st) {
+      debugPrint('SmartReview _load error: $e\n$st');
+      if (!mounted) return;
+      setState(() {
+        _pack = null;
+        _loading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Akıllı tekrar paketi yüklenemedi.')),
+      );
+    }
   }
 
   void _selectSubject(String? subjectId) {
@@ -66,33 +79,42 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
     if (!allowed || !mounted) return;
 
     setState(() => _starting = true);
-    final questions =
-        await _service.fetchQuestionsForTodayPack(widget.kpssType);
-    if (!mounted) return;
-    if (questions.isEmpty) {
-      setState(() => _starting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bugün için soru bulunamadı.')),
-      );
-      return;
-    }
+    try {
+      final questions =
+          await _service.fetchQuestionsForTodayPack(widget.kpssType);
+      if (!mounted) return;
+      if (questions.isEmpty) {
+        setState(() => _starting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bugün için soru bulunamadı.')),
+        );
+        return;
+      }
 
-    AdManager.instance.skipNextPageTransition();
-    final result = await Navigator.of(context).push<QuizResult>(
-      MaterialPageRoute<QuizResult>(
-        builder: (_) => QuizScreen(
-          title: 'Akıllı Tekrar',
-          questions: questions,
-          suppressWrongNotebookHint: true,
+      AdManager.instance.skipNextPageTransition();
+      final result = await Navigator.of(context).push<QuizResult>(
+        MaterialPageRoute<QuizResult>(
+          builder: (_) => QuizScreen(
+            title: 'Akıllı Tekrar',
+            questions: questions,
+            suppressWrongNotebookHint: true,
+          ),
         ),
-      ),
-    );
-
-    if (result != null && result.completed) {
-      await _service.recordSessionOutcome(
-        correctIds: result.correctQuestionIds,
-        wrongIds: result.wrongQuestionIds,
       );
+
+      if (result != null && result.completed) {
+        await _service.recordSessionOutcome(
+          correctIds: result.correctQuestionIds,
+          wrongIds: result.wrongQuestionIds,
+        );
+      }
+    } catch (e, st) {
+      debugPrint('SmartReview _start error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Akıllı tekrar başlatılamadı.')),
+        );
+      }
     }
     if (!mounted) return;
     setState(() => _starting = false);

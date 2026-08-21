@@ -1,19 +1,13 @@
 import 'dart:async';
-
 import 'dart:convert';
-
-
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
-
 import 'package:http/http.dart' as http;
 
-
-
 import '../config/api_config.dart';
-
+import 'content_bank_isolate.dart';
 import 'content_bank_service.dart';
-
 
 
 /// Django yayın paketini çeker; sürüm değişince anında günceller.
@@ -272,8 +266,9 @@ class ContentSyncService {
         return false;
       }
 
-      final body =
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final body = await Isolate.run(
+        () => decodeJsonUtf8Bytes(response.bodyBytes),
+      );
       await ContentBankService.instance.applyCatalogPack(body);
       _lastSyncAt = DateTime.now();
       debugPrint(
@@ -353,9 +348,9 @@ class ContentSyncService {
 
 
 
-      final body =
-
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final body = await Isolate.run(
+        () => decodeJsonUtf8Bytes(response.bodyBytes),
+      );
 
       await ContentBankService.instance.applyPublishedPack(body);
 

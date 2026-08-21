@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,7 +14,9 @@ import '../utils/daily_mission_copy.dart';
 import '../widgets/countdown_widget.dart';
 import 'user_savings_insight_service.dart';
 import 'auth_service.dart';
+import 'content_bank_isolate.dart';
 import 'favorites_service.dart';
+import 'local_database.dart';
 
 /// Öğrenci tarafı soru bankası, konu testleri ve istatistikler.
 /// İçerik üretimi Django web panelindedir; mobil yalnızca yayın paketini okur.
@@ -68,8 +71,59 @@ class ContentBankService extends ChangeNotifier {
   int? _packVersion;
   bool _loaded = false;
   bool _fullQuestionBankPersisted = false;
+  Future<void>? _initFuture;
+
+  /// Katalog / pack değişince artar — StudyHub yapısal dinleyici.
+  final ValueNotifier<int> catalogRevision = ValueNotifier(0);
+
+  /// Çözüm / yanlış / kota değişince artar — ilerleme satırları.
+  final ValueNotifier<int> progressRevision = ValueNotifier(0);
+
+  Timer? _catalogNotifyTimer;
+  Timer? _progressNotifyTimer;
+  static const _notifyDebounce = Duration(milliseconds: 80);
 
   int? get packVersion => _packVersion;
+
+  void _bumpCatalog() {
+    catalogRevision.value++;
+  }
+
+  void _bumpProgress() {
+    progressRevision.value++;
+  }
+
+  void _notifyCatalog({bool urgent = false}) {
+    if (urgent) {
+      _catalogNotifyTimer?.cancel();
+      _catalogNotifyTimer = null;
+      _bumpCatalog();
+      notifyListeners();
+      return;
+    }
+    _catalogNotifyTimer?.cancel();
+    _catalogNotifyTimer = Timer(_notifyDebounce, () {
+      _catalogNotifyTimer = null;
+      _bumpCatalog();
+      notifyListeners();
+    });
+  }
+
+  void _notifyProgress({bool urgent = false}) {
+    if (urgent) {
+      _progressNotifyTimer?.cancel();
+      _progressNotifyTimer = null;
+      _bumpProgress();
+      notifyListeners();
+      return;
+    }
+    _progressNotifyTimer?.cancel();
+    _progressNotifyTimer = Timer(_notifyDebounce, () {
+      _progressNotifyTimer = null;
+      _bumpProgress();
+      notifyListeners();
+    });
+  }
 
   /// Test listesi ve müfredat yerelde var mı?
   bool get hasCachedCatalog =>
@@ -111,7 +165,7 @@ class ContentBankService extends ChangeNotifier {
     }
     await _migrateLegacyWrongNotebookKeys(prefs);
     _loadUserWrongNotebookFromPrefs(prefs);
-    notifyListeners();
+    _notifyProgress();
   }
 
   bool _shouldMigrateGuestWrongNotebook(String? fromUserId, String toUserId) {
@@ -270,94 +324,66 @@ class ContentBankService extends ChangeNotifier {
     _activeUserScopeId = _userScopeId;
   }
 
-  Future<void> initialize() async {
-    if (_loaded) return;
+  Future<void> initialize() {
+    if (_loaded) return Future<void>.value();
+    return _initFuture ??= _initializeBody();
+  }
+
+  Future<void> _initializeBody() async {
     final prefs = await SharedPreferences.getInstance();
     _packVersion = prefs.getInt(_kPackVersion);
 
-    final configsRaw = prefs.getString(_kConfigs);
-    if (configsRaw != null) {
-      final map = jsonDecode(configsRaw) as Map<String, dynamic>;
-      for (final e in map.entries) {
-        _configs[e.key] = TopicTestConfig.fromJson(
-          Map<String, dynamic>.from(e.value as Map),
-        );
-      }
+    // Sorular: SQLite (tercih) → legacy SharedPreferences.
+    String? questionsRaw;
+    try {
+      await LocalDatabase.instance.initialize();
+      questionsRaw = await LocalDatabase.instance.loadContentQuestionsJson();
+    } catch (e, st) {
+      debugPrint('ContentBank SQLite question load: $e\n$st');
+    }
+    final legacyQuestions = prefs.getString(_kQuestions);
+    if (questionsRaw == null || questionsRaw.isEmpty) {
+      questionsRaw = legacyQuestions;
+    } else if (legacyQuestions != null && legacyQuestions.isNotEmpty) {
+      // SQLite'a taşındı — prefs şişmesini kes.
+      unawaited(prefs.remove(_kQuestions));
     }
 
-    final testsRaw = prefs.getString(_kTests);
-    if (testsRaw != null) {
-      final list = jsonDecode(testsRaw) as List<dynamic>;
-      _tests
-        ..clear()
-        ..addAll(
-          list.map(
-            (e) => TopicTestModel.fromJson(Map<String, dynamic>.from(e as Map)),
-          ),
-        );
-    }
+    // Prefs string'leri main'de oku; decode+fromJson arka isolate'ta.
+    final raw = ContentBankRawBundle(
+      configs: prefs.getString(_kConfigs),
+      tests: prefs.getString(_kTests),
+      attempts: prefs.getString(_kAttempts),
+      solved: prefs.getString(_kSolvedQuestions),
+      questions: questionsRaw,
+      lessons: prefs.getString(_kLessons),
+      summaryCards: prefs.getString(_kSummaryCards),
+    );
+    final parsed = await Isolate.run(() => parseContentBankBundle(raw));
 
-    final attemptsRaw = prefs.getString(_kAttempts);
-    if (attemptsRaw != null) {
-      final list = jsonDecode(attemptsRaw) as List<dynamic>;
-      _attempts
-        ..clear()
-        ..addAll(
-          list.map(
-            (e) =>
-                TestAttemptModel.fromJson(Map<String, dynamic>.from(e as Map)),
-          ),
-        );
-    }
-
-    final solvedRaw = prefs.getString(_kSolvedQuestions);
-    if (solvedRaw != null) {
-      final list = jsonDecode(solvedRaw) as List<dynamic>;
-      _solvedQuestionIds
-        ..clear()
-        ..addAll(list.map((e) => e.toString()));
-    }
+    _configs
+      ..clear()
+      ..addAll(parsed.configs);
+    _tests
+      ..clear()
+      ..addAll(parsed.tests);
+    _attempts
+      ..clear()
+      ..addAll(parsed.attempts);
+    _solvedQuestionIds
+      ..clear()
+      ..addAll(parsed.solvedIds);
+    _questions
+      ..clear()
+      ..addAll(parsed.questions);
+    _lessons
+      ..clear()
+      ..addAll(parsed.lessons);
+    _summaryCards
+      ..clear()
+      ..addAll(parsed.summaryCards);
 
     _loadDailyAdBonuses(prefs.getString(_kDailyAdBonuses));
-
-    final questionsRaw = prefs.getString(_kQuestions);
-    if (questionsRaw != null) {
-      final list = jsonDecode(questionsRaw) as List<dynamic>;
-      _questions
-        ..clear()
-        ..addAll(
-          list.map(
-            (e) => QuestionModel.fromJson(Map<String, dynamic>.from(e as Map)),
-          ),
-        );
-    }
-
-    final lessonsRaw = prefs.getString(_kLessons);
-    if (lessonsRaw != null) {
-      final list = jsonDecode(lessonsRaw) as List<dynamic>;
-      _lessons
-        ..clear()
-        ..addAll(
-          list.map(
-            (e) =>
-                TopicLessonModel.fromJson(Map<String, dynamic>.from(e as Map)),
-          ),
-        );
-    }
-
-    final summaryRaw = prefs.getString(_kSummaryCards);
-    if (summaryRaw != null) {
-      final list = jsonDecode(summaryRaw) as List<dynamic>;
-      _summaryCards
-        ..clear()
-        ..addAll(
-          list.map(
-            (e) => TopicSummaryCardModel.fromJson(
-              Map<String, dynamic>.from(e as Map),
-            ),
-          ),
-        );
-    }
 
     if (_questions.isEmpty && kDebugMode) {
       _seedSampleQuestions();
@@ -392,10 +418,16 @@ class ContentBankService extends ChangeNotifier {
     );
 
     _loaded = true;
+    _notifyCatalog(urgent: true);
     if (prunedSeed ||
         restoredBodies ||
         (_questions.isEmpty && kDebugMode)) {
       unawaited(_persistAll(skipQuestions: !_fullQuestionBankPersisted));
+    } else if (_fullQuestionBankPersisted &&
+        legacyQuestions != null &&
+        legacyQuestions.isNotEmpty) {
+      // Prefs → SQLite migrasyonu (arka plan).
+      unawaited(_persistQuestions());
     }
   }
 
@@ -413,21 +445,26 @@ class ContentBankService extends ChangeNotifier {
     _fullQuestionBankPersisted = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kQuestions);
+    try {
+      await LocalDatabase.instance.clearContentQuestionsJson();
+    } catch (e, st) {
+      debugPrint('ContentBank clear questions: $e\n$st');
+    }
     await Future.wait([
       _persistAll(skipQuestions: true),
       _persistWrongQuestionBodies(),
     ]);
-    notifyListeners();
+    _notifyCatalog();
   }
 
   /// Django tam yayın paketini yerel cache'e uygular (offline premium).
   Future<void> applyPublishedPack(Map<String, dynamic> pack) async {
     await initialize();
-    final parserQuestions = (pack['questions'] as List<dynamic>? ?? const [])
-        .map(
-          (e) => QuestionModel.fromJson(Map<String, dynamic>.from(e as Map)),
-        )
-        .toList();
+    final rawQuestions = pack['questions'];
+    final parserQuestions = await Isolate.run(() {
+      final list = rawQuestions as List<dynamic>? ?? const [];
+      return parseQuestionMaps(list);
+    });
 
     await _applyPackMetadata(pack);
 
@@ -437,7 +474,7 @@ class ContentBankService extends ChangeNotifier {
     _fullQuestionBankPersisted = parserQuestions.isNotEmpty;
 
     await _persistAll();
-    notifyListeners();
+    _notifyCatalog();
   }
 
   /// Oturum içi sorular — yanlış defterindekiler ayrıca diske yazılır.
@@ -461,92 +498,30 @@ class ContentBankService extends ChangeNotifier {
   }
 
   Future<void> _applyPackMetadata(Map<String, dynamic> pack) async {
-    final parserTests = <TopicTestModel>[];
-    for (final raw in (pack['tests'] as List<dynamic>? ?? const [])) {
-      final json = Map<String, dynamic>.from(raw as Map);
-      for (final type in KpssType.values) {
-        parserTests.add(
-          TopicTestModel(
-            id: '${json['id']}_${type.name}',
-            topicId: json['topicId'] as String,
-            kpssType: type,
-            title: json['title'] as String,
-            description: json['description'] as String?,
-            questionCount: json['questionCount'] as int? ??
-                ((json['questionIds'] as List?)?.length ?? 0),
-            timeLimitMinutes: json['timeLimitMinutes'] as int? ?? 0,
-            questionIds: (json['questionIds'] as List<dynamic>?)
-                    ?.map((e) => e as String)
-                    .toList() ??
-                const [],
-            createdAt: DateTime.parse(json['createdAt'] as String),
-            published: json['published'] as bool? ?? true,
-          ),
-        );
-      }
-    }
+    final parsed = await Isolate.run(() => parseContentPackMetadata(pack));
 
     final subjectsRaw = pack['subjects'] as List<dynamic>? ?? const [];
     if (subjectsRaw.isNotEmpty) {
       KpssCurriculum.applyCatalogFromJson(subjectsRaw);
     }
 
-    final parserConfigs = <String, TopicTestConfig>{};
-    for (final s in subjectsRaw) {
-      final subject = Map<String, dynamic>.from(s as Map);
-      for (final t in (subject['topics'] as List<dynamic>? ?? const [])) {
-        final topic = Map<String, dynamic>.from(t as Map);
-        final topicId = topic['slug'] as String;
-        for (final type in KpssType.values) {
-          parserConfigs['${type.name}_$topicId'] = TopicTestConfig(
-            topicId: topicId,
-            kpssType: type,
-            questionsPerTest: topic['questions_per_test'] as int? ?? 20,
-            timeLimitMinutes: topic['time_limit_minutes'] as int? ?? 0,
-            shuffleQuestions: topic['shuffle_questions'] as bool? ?? true,
-            shuffleOptions: topic['shuffle_options'] as bool? ?? true,
-            showSolutionAfterEach:
-                topic['show_solution_after_each'] as bool? ?? false,
-          );
-        }
-      }
-    }
-
-    final parserLessons = (pack['lessons'] as List<dynamic>? ?? const [])
-        .map(
-          (e) => TopicLessonModel.fromJson(Map<String, dynamic>.from(e as Map)),
-        )
-        .toList();
-    final parserSummary = (pack['summaryCards'] as List<dynamic>? ?? const [])
-        .map(
-          (e) => TopicSummaryCardModel.fromJson(
-            Map<String, dynamic>.from(e as Map),
-          ),
-        )
-        .toList();
-
     _tests
       ..clear()
-      ..addAll(parserTests);
-    if (parserConfigs.isNotEmpty) {
+      ..addAll(parsed.tests);
+    if (parsed.configs.isNotEmpty) {
       _configs
         ..clear()
-        ..addAll(parserConfigs);
+        ..addAll(parsed.configs);
     }
     _lessons
       ..clear()
-      ..addAll(parserLessons);
+      ..addAll(parsed.lessons);
     _summaryCards
       ..clear()
-      ..addAll(parserSummary);
+      ..addAll(parsed.summaryCards);
 
-    final version = pack['version'];
-    if (version is int) {
-      _packVersion = version;
-    } else if (version is num) {
-      _packVersion = version.toInt();
-    }
-    if (_packVersion != null) {
+    if (parsed.packVersion != null) {
+      _packVersion = parsed.packVersion;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kPackVersion, _packVersion!);
     }
@@ -745,7 +720,7 @@ class ContentBankService extends ChangeNotifier {
       futures.add(_persistStatLockedWrongQuestions());
     }
     await Future.wait(futures);
-    notifyListeners();
+    _notifyProgress();
     unawaited(UserSavingsInsightService.instance.handleTestCompleted());
   }
 
@@ -859,7 +834,7 @@ class ContentBankService extends ChangeNotifier {
     if (current >= dailyAdBonusPerSubject) return;
     _dailyAdBonuses[key] = current + 1;
     await _persistDailyAdBonuses();
-    notifyListeners();
+    _notifyProgress();
   }
 
   @visibleForTesting
@@ -994,7 +969,7 @@ class ContentBankService extends ChangeNotifier {
       _persistWrongSelections(),
       FavoritesService.instance.remove(questionId),
     ]);
-    notifyListeners();
+    _notifyProgress();
   }
 
   String? wrongSelectionFor(String questionId) =>
@@ -1049,7 +1024,7 @@ class ContentBankService extends ChangeNotifier {
     }
     if (futures.isEmpty) return;
     await Future.wait(futures);
-    notifyListeners();
+    _notifyProgress();
   }
 
   /// Konudaki yayınlanmış testlerdeki toplam / çözülen / çözülmeyen soru.
@@ -1196,23 +1171,22 @@ class ContentBankService extends ChangeNotifier {
   Future<void> _persistConfigs() async {
     final prefs = await SharedPreferences.getInstance();
     final map = {for (final e in _configs.entries) e.key: e.value.toJson()};
-    await prefs.setString(_kConfigs, jsonEncode(map));
+    final encoded = await Isolate.run(() => encodeJsonMap(map));
+    await prefs.setString(_kConfigs, encoded);
   }
 
   Future<void> _persistTests() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kTests,
-      jsonEncode(_tests.map((e) => e.toJson()).toList()),
-    );
+    final maps = _tests.map((e) => e.toJson()).toList();
+    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    await prefs.setString(_kTests, encoded);
   }
 
   Future<void> _persistAttempts() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kAttempts,
-      jsonEncode(_attempts.map((e) => e.toJson()).toList()),
-    );
+    final maps = _attempts.map((e) => e.toJson()).toList();
+    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    await prefs.setString(_kAttempts, encoded);
   }
 
   Future<void> _persistSolvedQuestions() async {
@@ -1264,7 +1238,8 @@ class ContentBankService extends ChangeNotifier {
     if (bodies.isEmpty) {
       await prefs.remove(key);
     } else {
-      await prefs.setString(key, jsonEncode(bodies));
+      final encoded = await Isolate.run(() => encodeJsonMaps(bodies));
+      await prefs.setString(key, encoded);
     }
   }
 
@@ -1272,31 +1247,38 @@ class ContentBankService extends ChangeNotifier {
   Future<void> persistWrongQuestionBodiesNow() async {
     await initialize();
     await _persistWrongQuestionBodies();
-    notifyListeners();
+    _notifyProgress();
   }
 
   Future<void> _persistQuestions() async {
+    final snapshot = List<QuestionModel>.from(_questions);
+    final encoded =
+        await Isolate.run(() => encodeQuestionsJson(snapshot));
+    try {
+      await LocalDatabase.instance.saveContentQuestionsJson(encoded);
+    } catch (e, st) {
+      debugPrint('ContentBank SQLite question save: $e\n$st');
+      // Fallback: prefs (eski yol).
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kQuestions, encoded);
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kQuestions,
-      jsonEncode(_questions.map((e) => e.toJson()).toList()),
-    );
+    await prefs.remove(_kQuestions);
   }
 
   Future<void> _persistLessons() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kLessons,
-      jsonEncode(_lessons.map((e) => e.toJson()).toList()),
-    );
+    final maps = _lessons.map((e) => e.toJson()).toList();
+    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    await prefs.setString(_kLessons, encoded);
   }
 
   Future<void> _persistSummaryCards() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kSummaryCards,
-      jsonEncode(_summaryCards.map((e) => e.toJson()).toList()),
-    );
+    final maps = _summaryCards.map((e) => e.toJson()).toList();
+    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    await prefs.setString(_kSummaryCards, encoded);
   }
 
   void _seedSampleQuestions() {

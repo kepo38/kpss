@@ -101,7 +101,8 @@ class _QuizScreenState extends State<QuizScreen>
   late DateTime _startedAt;
   late final List<String?> _answers;
   late final bool _isCountdown;
-  late Duration _displayDuration;
+  /// Timer UI only — do not drive full-screen setState from the ticker.
+  late final ValueNotifier<Duration> _durationNotifier;
   Timer? _ticker;
   bool _timerPaused = false;
   Duration _frozenElapsed = Duration.zero;
@@ -137,30 +138,6 @@ class _QuizScreenState extends State<QuizScreen>
   @override
   void initState() {
     super.initState();
-    final maxIdx = widget.questions.isEmpty ? 0 : widget.questions.length - 1;
-    _currentIndex = widget.initialIndex.clamp(0, maxIdx);
-    final resume = widget.initialAnswers;
-    if (resume != null && resume.length == widget.questions.length) {
-      _answers = List<String?>.from(resume);
-    } else {
-      _answers = List<String?>.filled(widget.questions.length, null);
-    }
-    _selectedAnswer = widget.questions.isEmpty ? null : _answers[_currentIndex];
-    final elapsed = widget.initialElapsed.isNegative
-        ? Duration.zero
-        : widget.initialElapsed;
-    _startedAt = DateTime.now().subtract(elapsed);
-    _frozenElapsed = elapsed;
-    _isCountdown = widget.timeLimitMinutes > 0;
-    if (_isCountdown) {
-      final limit = Duration(minutes: widget.timeLimitMinutes);
-      final left = limit - elapsed;
-      _displayDuration = left.isNegative ? Duration.zero : left;
-    } else {
-      _displayDuration = elapsed;
-    }
-    // Devam edilen oturumda mevcut soru cevaplıysa süre bekletilir.
-    _timerPaused = _selectedAnswer != null || widget.fromWrongNotebook;
     _flashCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 520),
@@ -169,6 +146,45 @@ class _QuizScreenState extends State<QuizScreen>
       TweenSequenceItem(tween: Tween(begin: 0, end: 0.42), weight: 18),
       TweenSequenceItem(tween: Tween(begin: 0.42, end: 0), weight: 82),
     ]).animate(CurvedAnimation(parent: _flashCtrl, curve: Curves.easeOut));
+
+    if (widget.questions.isEmpty) {
+      _currentIndex = 0;
+      _answers = <String?>[];
+      _selectedAnswer = null;
+      _startedAt = DateTime.now();
+      _frozenElapsed = Duration.zero;
+      _isCountdown = false;
+      _durationNotifier = ValueNotifier(Duration.zero);
+      _timerPaused = true;
+      return;
+    }
+
+    final maxIdx = widget.questions.length - 1;
+    _currentIndex = widget.initialIndex.clamp(0, maxIdx);
+    final resume = widget.initialAnswers;
+    if (resume != null && resume.length == widget.questions.length) {
+      _answers = List<String?>.from(resume);
+    } else {
+      _answers = List<String?>.filled(widget.questions.length, null);
+    }
+    _selectedAnswer = _answers[_currentIndex];
+    final elapsed = widget.initialElapsed.isNegative
+        ? Duration.zero
+        : widget.initialElapsed;
+    _startedAt = DateTime.now().subtract(elapsed);
+    _frozenElapsed = elapsed;
+    _isCountdown = widget.timeLimitMinutes > 0;
+    Duration initialDisplay;
+    if (_isCountdown) {
+      final limit = Duration(minutes: widget.timeLimitMinutes);
+      final left = limit - elapsed;
+      initialDisplay = left.isNegative ? Duration.zero : left;
+    } else {
+      initialDisplay = elapsed;
+    }
+    _durationNotifier = ValueNotifier(initialDisplay);
+    // Devam edilen oturumda mevcut soru cevaplıysa süre bekletilir.
+    _timerPaused = _selectedAnswer != null || widget.fromWrongNotebook;
     FavoritesService.instance.initialize();
     QuestionNoteService.instance.initialize();
     AnswerFeedbackService.instance.ensureReady();
@@ -212,6 +228,7 @@ class _QuizScreenState extends State<QuizScreen>
     _wrongNotebookHintTimer?.cancel();
     _wrongNotebookHintDelayTimer?.cancel();
     _ticker?.cancel();
+    _durationNotifier.dispose();
     _flashCtrl.dispose();
     _scrollController.dispose();
     AdManager.instance.endTestSession();
@@ -222,12 +239,16 @@ class _QuizScreenState extends State<QuizScreen>
       _timerPaused ? _frozenElapsed : DateTime.now().difference(_startedAt);
 
   void _syncDisplayFromElapsed(Duration elapsed) {
+    final Duration next;
     if (_isCountdown) {
       final limit = Duration(minutes: widget.timeLimitMinutes);
       final left = limit - elapsed;
-      _displayDuration = left.isNegative ? Duration.zero : left;
+      next = left.isNegative ? Duration.zero : left;
     } else {
-      _displayDuration = elapsed;
+      next = elapsed;
+    }
+    if (_durationNotifier.value != next) {
+      _durationNotifier.value = next;
     }
   }
 
@@ -261,6 +282,7 @@ class _QuizScreenState extends State<QuizScreen>
     _wrongNotebookHintTimer?.cancel();
     _wrongNotebookHintDelayTimer?.cancel();
     _showWrongNotebookHint = false;
+    if (widget.questions.isEmpty) return;
     final hide = widget.fromWrongNotebook || widget.suppressWrongNotebookHint;
     final inNotebook = !hide &&
         ContentBankService.instance.isInWrongNotebook(_currentQuestion.id);
@@ -347,20 +369,18 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _tick() {
-    if (!mounted || _timerPaused) return;
+    if (!mounted || _timerPaused || widget.questions.isEmpty) return;
     final elapsed = DateTime.now().difference(_startedAt);
     if (_isCountdown) {
       final limit = Duration(minutes: widget.timeLimitMinutes);
       final left = limit - elapsed;
-      setState(() {
-        _displayDuration = left.isNegative ? Duration.zero : left;
-      });
+      _syncDisplayFromElapsed(elapsed);
       if (left <= Duration.zero && !_timeUpHandled) {
         _timeUpHandled = true;
         _onTimeUp();
       }
     } else {
-      setState(() => _displayDuration = elapsed);
+      _syncDisplayFromElapsed(elapsed);
     }
   }
 
@@ -779,6 +799,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Future<void> _loadErrorReportState() async {
+    if (!mounted || widget.questions.isEmpty) return;
     final questionId = _currentQuestion.id;
     if (!QuestionErrorReportService.canReport(questionId) ||
         !AuthService.instance.hasPermanentAccount) {
@@ -900,6 +921,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Future<void> _loadRating() async {
+    if (!mounted || widget.questions.isEmpty) return;
     if (!AuthService.instance.isSignedIn ||
         !QuestionRatingService.canRate(_currentQuestion.id)) {
       return;
@@ -910,6 +932,7 @@ class _QuizScreenState extends State<QuizScreen>
       return;
     }
     final cached = QuestionRatingService.instance.cached(questionId);
+    if (!mounted) return;
     setState(() {
       _ratingQuestionId = questionId;
       _ratingSummary = cached;
@@ -1424,7 +1447,6 @@ class _QuizScreenState extends State<QuizScreen>
       );
     }
     final isFav = FavoritesService.instance.isFavorite(_currentQuestion.id);
-    final urgent = _isCountdown && _displayDuration.inSeconds <= 60;
 
     return PopScope(
       canPop: false,
@@ -1534,25 +1556,32 @@ class _QuizScreenState extends State<QuizScreen>
           children: [
             Column(
               children: [
-                QuizHeaderStrip(
-                  osymSordu: _currentQuestion.osymSordu,
-                  durationText: _formatDuration(_displayDuration),
-                  isCountdown: _isCountdown,
-                  urgent: urgent,
-                  showTimer: !widget.fromWrongNotebook,
-                  questionLabel: widget.fromWrongNotebook
-                      ? null
-                      : 'Soru ${_currentIndex + 1} / ${widget.questions.length}',
-                  difficultyLabel: _difficultyLabel(),
-                  difficultyOnRight: widget.fromWrongNotebook,
-                  attemptLabel: '$_visibleAttemptCount kişi cevapladı',
-                  leading: widget.fromWrongNotebook
-                      ? QuizTakeNoteButton(
-                          hasNote: QuestionNoteService.instance
-                              .hasNote(_currentQuestion.id),
-                          onTap: _openQuestionNote,
-                        )
-                      : null,
+                ValueListenableBuilder<Duration>(
+                  valueListenable: _durationNotifier,
+                  builder: (context, duration, _) {
+                    final urgent =
+                        _isCountdown && duration.inSeconds <= 60;
+                    return QuizHeaderStrip(
+                      osymSordu: _currentQuestion.osymSordu,
+                      durationText: _formatDuration(duration),
+                      isCountdown: _isCountdown,
+                      urgent: urgent,
+                      showTimer: !widget.fromWrongNotebook,
+                      questionLabel: widget.fromWrongNotebook
+                          ? null
+                          : 'Soru ${_currentIndex + 1} / ${widget.questions.length}',
+                      difficultyLabel: _difficultyLabel(),
+                      difficultyOnRight: widget.fromWrongNotebook,
+                      attemptLabel: '$_visibleAttemptCount kişi cevapladı',
+                      leading: widget.fromWrongNotebook
+                          ? QuizTakeNoteButton(
+                              hasNote: QuestionNoteService.instance
+                                  .hasNote(_currentQuestion.id),
+                              onTap: _openQuestionNote,
+                            )
+                          : null,
+                    );
+                  },
                 ),
                 if (!widget.fromWrongNotebook) ...[
                   SizedBox(

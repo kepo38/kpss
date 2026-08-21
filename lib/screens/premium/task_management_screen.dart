@@ -68,54 +68,67 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     final dersCtrl = TextEditingController(text: 'Türkçe');
     var priority = TaskPriority.orta;
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Yeni Görev'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(labelText: 'Görev'),
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('Yeni Görev'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Görev'),
+                ),
+                TextField(
+                  controller: dersCtrl,
+                  decoration: const InputDecoration(labelText: 'Ders etiketi'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<TaskPriority>(
+                  value: priority,
+                  decoration: const InputDecoration(labelText: 'Öncelik'),
+                  items: TaskPriority.values
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p,
+                          child: Text(p.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => priority = v!),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('İptal'),
               ),
-              TextField(
-                controller: dersCtrl,
-                decoration: const InputDecoration(labelText: 'Ders etiketi'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<TaskPriority>(
-                value: priority,
-                decoration: const InputDecoration(labelText: 'Öncelik'),
-                items: TaskPriority.values
-                    .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => priority = v!),
+              FilledButton(
+                onPressed: () {
+                  _service.addTask(StudyTaskModel(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    baslik: titleCtrl.text,
+                    dersEtiketi: dersCtrl.text,
+                    oncelik: priority,
+                    hedefTarih: DateTime.now().add(const Duration(days: 7)),
+                    olusturmaTarihi: DateTime.now(),
+                  ));
+                  Navigator.pop(ctx);
+                  if (mounted) setState(() {});
+                },
+                child: const Text('Ekle'),
               ),
             ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
-            FilledButton(
-              onPressed: () {
-                _service.addTask(StudyTaskModel(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  baslik: titleCtrl.text,
-                  dersEtiketi: dersCtrl.text,
-                  oncelik: priority,
-                  hedefTarih: DateTime.now().add(const Duration(days: 7)),
-                  olusturmaTarihi: DateTime.now(),
-                ));
-                Navigator.pop(ctx);
-                setState(() {});
-              },
-              child: const Text('Ekle'),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      titleCtrl.dispose();
+      dersCtrl.dispose();
+    }
   }
 }
 

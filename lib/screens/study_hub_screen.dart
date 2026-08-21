@@ -62,154 +62,179 @@ class StudyHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
+    final showHome = embedded && pane == StudyHubPane.home;
 
-    return ListenableBuilder(
-      listenable: ContentBankService.instance,
-      builder: (context, _) {
-        final subjects = KpssCurriculum.subjectsFor(kpssType);
-        final bank = ContentBankService.instance;
-        final showHome = embedded && pane == StudyHubPane.home;
-        final showSubjects = pane == StudyHubPane.subjects;
-
-        return Scaffold(
-          backgroundColor: AppTheme.page(context),
-          appBar: embedded
-              ? null
-              : AppBar(
-                  backgroundColor: AppTheme.page(context),
-                  foregroundColor: AppTheme.onPage(context),
-                  leading: const AppBackButton(),
-                  title: Text(
-                    'TÜM DERSLER',
-                    style: TextStyle(
-                      fontFamily: 'serif',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 20,
-                      color: AppTheme.onPage(context),
-                    ),
+    // Ana sayfa paneli katalog dinlemez — syncCatalog tüm home ağacını
+    // yeniden çizmesin. Dersler paneli yalnızca ilerleme/katalog satırlarını yeniler.
+    if (showHome) {
+      return Scaffold(
+        backgroundColor: AppTheme.page(context),
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppTheme.pageTop(context),
+                AppTheme.pageDeep(context),
+                AppTheme.page(context),
+              ],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+          ),
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              if (selectedType != null && isPremium != null)
+                SliverToBoxAdapter(
+                  child: _SoruHeader(
+                    topPad: topPad,
+                    selectedType: selectedType!,
+                    isPremium: isPremium!,
+                    onPremiumTap: onPremiumTap,
+                    onMoreTap: onMoreTap,
+                    hideBrandRow: shellTopBarVisible,
+                    onKpssTypeChanged: onKpssTypeChanged,
                   ),
                 ),
-          body: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppTheme.pageTop(context),
-                  AppTheme.pageDeep(context),
-                  AppTheme.page(context),
-                ],
-                stops: const [0.0, 0.45, 1.0],
+              const SliverToBoxAdapter(child: SizedBox(height: 28)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.page(context),
+      appBar: embedded
+          ? null
+          : AppBar(
+              backgroundColor: AppTheme.page(context),
+              foregroundColor: AppTheme.onPage(context),
+              leading: const AppBackButton(),
+              title: Text(
+                'TÜM DERSLER',
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 20,
+                  color: AppTheme.onPage(context),
+                ),
               ),
             ),
-            child: RefreshIndicator(
-              color: AppTheme.champagne,
-              backgroundColor: AppTheme.surfaceCard(context),
-              onRefresh: () =>
-                  ContentSyncService.instance.syncCatalog(force: true),
-              child: CustomScrollView(
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppTheme.pageTop(context),
+              AppTheme.pageDeep(context),
+              AppTheme.page(context),
+            ],
+            stops: const [0.0, 0.45, 1.0],
+          ),
+        ),
+        child: RefreshIndicator(
+          color: AppTheme.champagne,
+          backgroundColor: AppTheme.surfaceCard(context),
+          onRefresh: () =>
+              ContentSyncService.instance.syncCatalog(force: true),
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              ContentBankService.instance.catalogRevision,
+              ContentBankService.instance.progressRevision,
+            ]),
+            builder: (context, _) {
+              final subjects = KpssCurriculum.subjectsFor(kpssType);
+              final bank = ContentBankService.instance;
+              return CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
                 slivers: [
-                  if (showHome)
-                    SliverToBoxAdapter(
-                      child: _SoruHeader(
-                        topPad: topPad,
-                        selectedType: selectedType!,
-                        isPremium: isPremium!,
-                        onPremiumTap: onPremiumTap,
-                        onMoreTap: onMoreTap,
-                        hideBrandRow: shellTopBarVisible,
-                        onKpssTypeChanged: onKpssTypeChanged,
-                      ),
-                    ),
-                  if (showSubjects) ...[
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: _SubjectsHeader(
-                          totalQuestions: subjects.fold<int>(
-                            0,
-                            (sum, s) =>
-                                sum +
-                                bank.catalogQuestionCountForSubject(
-                                  kpssType,
-                                  s.id,
-                                ),
-                          ),
-                          kpssType: kpssType,
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: _SubjectsHeader(
+                        totalQuestions: subjects.fold<int>(
+                          0,
+                          (sum, s) =>
+                              sum +
+                              bank.catalogQuestionCountForSubject(
+                                kpssType,
+                                s.id,
+                              ),
                         ),
+                        kpssType: kpssType,
                       ),
                     ),
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        embedded ? 8 : 12,
-                        16,
-                        0,
-                      ),
-                      sliver: const SliverToBoxAdapter(
-                        child: ContinueStudyCard(),
-                      ),
+                  ),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      embedded ? 8 : 12,
+                      16,
+                      0,
                     ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 1.28,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final subject = subjects[index];
-                            final progress = bank.subjectQuestionProgress(
-                              kpssType,
-                              subject.id,
-                            );
-                            return _SubjectTile(
-                              subjectId: subject.id,
-                              name: subject.name,
-                              icon: subjectIcon(subject.id),
-                              subtitle: '${progress.total} soru',
-                              progress: progress.total == 0
-                                  ? 0
-                                  : progress.solved / progress.total,
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => SubjectTopicsScreen(
-                                      kpssType: kpssType,
-                                      subject: subject,
-                                    ),
+                    sliver: const SliverToBoxAdapter(
+                      child: ContinueStudyCard(),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.28,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final subject = subjects[index];
+                          final progress = bank.subjectQuestionProgress(
+                            kpssType,
+                            subject.id,
+                          );
+                          return _SubjectTile(
+                            subjectId: subject.id,
+                            name: subject.name,
+                            icon: subjectIcon(subject.id),
+                            subtitle: '${progress.total} soru',
+                            progress: progress.total == 0
+                                ? 0
+                                : progress.solved / progress.total,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => SubjectTopicsScreen(
+                                    kpssType: kpssType,
+                                    subject: subject,
                                   ),
-                                );
-                              },
-                            );
-                          },
-                          childCount: subjects.length,
-                        ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        childCount: subjects.length,
                       ),
                     ),
-                    SliverToBoxAdapter(
-                      child: ExamPackShowcase(kpssType: kpssType),
-                    ),
-                    SliverToBoxAdapter(
-                      child: SpecialTestsEntry(kpssType: kpssType),
-                    ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
-                  ],
-                  if (showHome)
-                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                  ),
+                  SliverToBoxAdapter(
+                    child: ExamPackShowcase(kpssType: kpssType),
+                  ),
+                  SliverToBoxAdapter(
+                    child: SpecialTestsEntry(kpssType: kpssType),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
                 ],
-              ),
-            ),
+              );
+            },
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -228,7 +253,10 @@ class SubjectTopicsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ContentBankService.instance,
+      listenable: Listenable.merge([
+        ContentBankService.instance.catalogRevision,
+        ContentBankService.instance.progressRevision,
+      ]),
       builder: (context, _) {
         final bank = ContentBankService.instance;
 

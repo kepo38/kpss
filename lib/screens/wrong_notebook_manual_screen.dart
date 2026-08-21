@@ -455,7 +455,7 @@ class _SubjectHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
+          Flexible(
             child: Text(
               subject,
               style: TextStyle(
@@ -466,21 +466,27 @@ class _SubjectHeader extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
+              color: accent.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: accent.withValues(alpha: 0.35)),
             ),
             child: Text(
               '$count',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
+                height: 1,
                 color: accent,
               ),
             ),
           ),
+          const Spacer(),
         ],
       ),
     );

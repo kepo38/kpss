@@ -53,55 +53,69 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
   Widget build(BuildContext context) {
     return Tooltip(
       message: 'Ödül kuralları',
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedBuilder(
-          animation: _ctrl,
-          builder: (context, child) {
-            final sway = math.sin(_ctrl.value * math.pi) * 0.06;
-            return Transform.rotate(
-              angle: sway,
-              alignment: Alignment.topCenter,
-              child: child,
-            );
-          },
-          child: SizedBox(
-            width: 52,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFE8C878),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.champagne.withValues(alpha: 0.55),
-                        blurRadius: 6,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, child) {
+          final sway = math.sin(_ctrl.value * math.pi) * 0.06;
+          return Transform.rotate(
+            angle: sway,
+            alignment: Alignment.topCenter,
+            child: child,
+          );
+        },
+        child: SizedBox(
+          width: 52,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // İğne / ip — tıklama geçirsin (CTA sol/orta alanı kapanmasın).
+              IgnorePointer(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFE8C878),
+                        border: Border.all(
+                          color: const Color(0xFF8F6E32),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.champagne.withValues(alpha: 0.55),
+                            blurRadius: 6,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 2.2,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(99),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFFF5E6BC),
-                        AppTheme.champagne,
-                        Color(0xFF8F6E32),
-                      ],
                     ),
-                  ),
+                    Container(
+                      width: 2.2,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(99),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0xFFF5E6BC),
+                            AppTheme.champagne,
+                            Color(0xFF8F6E32),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
+              ),
+              // Yalnızca madalya hit-test — ÖDÜL ekranı.
+              GestureDetector(
+                onTap: widget.onPressed,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
@@ -154,8 +168,8 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -390,10 +404,10 @@ class _OdulInfoCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              height: 44,
-              child: FilledButton(
-                onPressed: () {
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
                   Navigator.of(context).pop();
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
@@ -401,16 +415,64 @@ class _OdulInfoCard extends StatelessWidget {
                     ),
                   );
                 },
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.champagne,
-                  foregroundColor: AppTheme.ink,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
+                child: Ink(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFFFF8EE),
+                        Color(0xFFF3E2B8),
+                        Color(0xFFE8C878),
+                        AppTheme.champagne,
+                      ],
+                      stops: [0.0, 0.35, 0.72, 1.0],
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFFD4AF6A).withValues(alpha: 0.75),
+                      width: 1.15,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.champagne.withValues(alpha: 0.42),
+                        blurRadius: 16,
+                        offset: const Offset(0, 5),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.28),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
                   ),
-                ),
-                child: const Text(
-                  'Sıralamayı gör',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  child: const Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.leaderboard_rounded,
+                          size: 18,
+                          color: AppTheme.ink,
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Sıralamayı gör',
+                          style: TextStyle(
+                            fontFamily: 'serif',
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                            height: 1.1,
+                            color: AppTheme.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

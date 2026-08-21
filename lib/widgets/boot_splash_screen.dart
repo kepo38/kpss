@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -11,7 +11,7 @@ import 'brand_mark.dart';
 /// Boot / atama splash süresi.
 const kAssignmentSplashDuration = Duration(milliseconds: 3500);
 
-/// Boot sırasında — koyu zemin, premium kayan çizgi ve atama mesajı.
+/// Boot sırasında - koyu zemin, premium kayan çizgi ve atama mesajı.
 class BootSplashScreen extends StatefulWidget {
   final VoidCallback? onComplete;
 
@@ -75,15 +75,17 @@ class _BootSplashScreenState extends State<BootSplashScreen>
               ),
             ),
           ),
+          // 657 dairesi — tam ekranın matematiksel ortası (SafeArea dışı)
+          const Center(child: _SplashAppIcon()),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-              child: Column(
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  const Spacer(flex: 3),
-                  Transform.translate(
-                    offset: const Offset(0, -40),
-                    child: const BrandMark(
+                  const Align(
+                    alignment: Alignment(0, -0.72),
+                    child: BrandMark(
                       dark: true,
                       showLogo: false,
                       logoSize: 56,
@@ -92,24 +94,31 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                       line2FontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  const _SplashAppIcon(),
-                  const SizedBox(height: 52),
-                  const Text(
-                    'Ataman Gerçekleşiyor',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.3,
-                      height: 1.1,
-                      color: AppTheme.champagneLight,
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Ataman Gerçekleşiyor',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.3,
+                              height: 1.1,
+                              color: AppTheme.champagneLight,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _PremiumSlidingLine(progress: _ctrl),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _PremiumSlidingLine(progress: _ctrl),
-                  const Spacer(flex: 1),
                 ],
               ),
             ),
@@ -126,12 +135,14 @@ class _SplashAppIcon extends StatelessWidget {
   /// Siyah gölge daire (dış).
   static const _disc = 220.0;
 
-  /// app_icon bunun içinde — biraz küçük ki siyah disk kenarı görünsün.
+  /// app_icon bunun içinde - biraz küçük ki siyah disk kenarı görünsün.
   static const _icon = 188.0;
+
+  /// Düşük parlaklıkta bile okunur parlak altın.
+  static const _brightGold = Color(0xFFFFE08A);
 
   @override
   Widget build(BuildContext context) {
-    // Siyah daire gölge + içinde soluk app_icon (ikon diski tamamen örtmesin).
     return SizedBox(
       width: _disc,
       height: _disc,
@@ -151,6 +162,11 @@ class _SplashAppIcon extends StatelessWidget {
                   blurRadius: 36,
                   spreadRadius: 6,
                 ),
+                BoxShadow(
+                  color: _brightGold.withValues(alpha: 0.18),
+                  blurRadius: 28,
+                  spreadRadius: 2,
+                ),
               ],
             ),
           ),
@@ -159,17 +175,14 @@ class _SplashAppIcon extends StatelessWidget {
               width: _icon,
               height: _icon,
               child: ColorFiltered(
-                colorFilter: ColorFilter.mode(
-                  const Color(0xFF6A7680).withValues(alpha: 0.55),
+                colorFilter: const ColorFilter.mode(
+                  _brightGold,
                   BlendMode.modulate,
                 ),
-                child: Opacity(
-                  opacity: 0.52,
-                  child: Image.asset(
-                    BrandConstants.appIconAsset,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.high,
-                  ),
+                child: Image.asset(
+                  BrandConstants.appIconAsset,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
             ),
@@ -194,7 +207,7 @@ class _PremiumSlidingLine extends StatelessWidget {
       animation: progress,
       builder: (context, _) {
         final t = Curves.easeInOut.transform(progress.value);
-        final travel = _trackWidth + _beamWidth;
+        const travel = _trackWidth + _beamWidth;
         final left = -_beamWidth + travel * t;
 
         return SizedBox(

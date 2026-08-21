@@ -43,7 +43,9 @@ class NotificationService {
   static const int dailyMiniExamId = 1002;
   static const int morningMotivationId = 1003;
   static const int eveningFomoId = 1004;
+  static const int examReminderId = 1005;
   static const _eveningSentKey = 'evening_fomo_sent_date_v1';
+  static const _examReminderKey = 'exam_sunday_reminder_v1';
 
   Future<void> initialize() async {
     if (kIsWeb || _initialized) return;
@@ -95,6 +97,48 @@ class NotificationService {
     await scheduleWeeklySummary();
     await scheduleMorningMotivation();
     await scheduleEveningFomo();
+    await scheduleExamReminderIfEnabled();
+  }
+
+  Future<bool> isExamReminderEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_examReminderKey) ?? false;
+  }
+
+  /// Pazar 10:00 deneme hatırlatıcısını aç/kapa.
+  Future<bool> setExamReminderEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_examReminderKey, enabled);
+    if (enabled) {
+      await scheduleExamReminderIfEnabled();
+    } else {
+      await _plugin.cancel(examReminderId);
+    }
+    return enabled;
+  }
+
+  Future<void> scheduleExamReminderIfEnabled() async {
+    if (!_initialized) return;
+    await _plugin.cancel(examReminderId);
+    if (!await isExamReminderEnabled()) return;
+
+    await _plugin.zonedSchedule(
+      examReminderId,
+      '${BrandConstants.appName} — Deneme zamanı',
+      'Pazar deneme hatırlatması: bugün bir deneme çöz, netlerini güncelle.',
+      _nextWeeklyAt(weekday: DateTime.sunday, hour: 10),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'exam_reminder',
+          'Deneme Hatırlatıcısı',
+          channelDescription: 'Her Pazar 10:00 deneme çözme hatırlatması',
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
   }
 
   bool _pref(NotificationKind kind) =>

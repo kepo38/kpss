@@ -60,7 +60,10 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
     }
   }
 
-  void _onUiStateChanged() => setState(() {});
+  void _onUiStateChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   ProductDetails? get _selectedProduct {
     return _selected == _PlanKind.yearly

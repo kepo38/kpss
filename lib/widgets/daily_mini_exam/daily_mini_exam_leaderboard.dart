@@ -304,7 +304,8 @@ class _LeaderboardShell extends StatelessWidget {
         ),
         if (onOdul != null)
           Positioned(
-            top: -22,
+            // İğne tepesi = koyu kürsü kartının üst border'ı; madalya aşağı sarkar.
+            top: 0,
             right: 14,
             child: DailyMiniOdulHangBadge(onPressed: onOdul!),
           ),

@@ -24,6 +24,7 @@ class AdManager {
   bool _adFreeTestSession = false;
   bool _skipNextPageTransition = false;
   int _pageTransitionCount = 0;
+  bool _sdkReady = false;
 
   BannerAd? _bannerAd;
   InterstitialAd? _interstitialAd;
@@ -33,6 +34,7 @@ class AdManager {
   final Set<String> _unlockedSolutionIds = {};
 
   bool get isPremium => _isPremium;
+  bool get isSdkReady => _sdkReady || _bypassAllAds;
   bool get isInTestSession => _isInTestSession;
   bool get isAdFreeActive => AdFreeCampaignService.instance.isAdFreeActive;
   bool get _bypassAllAds => _isPremium || kIsWeb;
@@ -48,10 +50,19 @@ class AdManager {
   }
 
   Future<void> initialize() async {
-    if (_bypassAllAds) return;
-    await MobileAds.instance.initialize();
-    _loadInterstitial();
-    _loadRewarded();
+    if (_bypassAllAds) {
+      _sdkReady = true;
+      return;
+    }
+    try {
+      await MobileAds.instance.initialize();
+      _sdkReady = true;
+      _loadInterstitial();
+      _loadRewarded();
+    } catch (e, st) {
+      _sdkReady = false;
+      debugPrint('AdManager initialize failed: $e\n$st');
+    }
   }
 
   /// Quiz veya test ekranına giderken bir sonraki geçiş reklamını atla.
@@ -79,7 +90,7 @@ class AdManager {
 
   /// Sayfa geçişlerinde sayaç — her 3'te bir interstitial.
   Future<void> onPageTransition({VoidCallback? onAdDismissed}) async {
-    if (_bypassAllAds || _isInTestSession) return;
+    if (_bypassAllAds || _isInTestSession || !_sdkReady) return;
 
     if (_skipNextPageTransition) {
       _skipNextPageTransition = false;
@@ -91,7 +102,8 @@ class AdManager {
       return;
     }
 
-    await _showInterstitial(onDismissed: onAdDismissed);
+    // Navigasyonu bekletme — gösterim arka planda (fail-open).
+    unawaited(_showInterstitial(onDismissed: onAdDismissed));
   }
 
   /// 12 saat reklamsız kampanya — ana sayfa progress bar.
@@ -126,7 +138,7 @@ class AdManager {
   }
 
   Future<bool> _showRewardedVideo() async {
-    if (_bypassAllAds) return false;
+    if (_bypassAllAds || !_sdkReady) return false;
 
     final cachedAd = _rewardedAd;
     if (cachedAd != null) {
@@ -135,25 +147,30 @@ class AdManager {
     }
 
     final loadCompleter = Completer<RewardedAd?>();
-    RewardedAd.load(
-      adUnitId: AdConstants.rewardedAdUnitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          if (loadCompleter.isCompleted) {
-            ad.dispose();
-          } else {
-            loadCompleter.complete(ad);
-          }
-        },
-        onAdFailedToLoad: (_) {
-          if (!loadCompleter.isCompleted) loadCompleter.complete(null);
-        },
-      ),
-    );
+    try {
+      RewardedAd.load(
+        adUnitId: AdConstants.rewardedAdUnitId,
+        request: const AdRequest(),
+        rewardedAdLoadCallback: RewardedAdLoadCallback(
+          onAdLoaded: (ad) {
+            if (loadCompleter.isCompleted) {
+              ad.dispose();
+            } else {
+              loadCompleter.complete(ad);
+            }
+          },
+          onAdFailedToLoad: (_) {
+            if (!loadCompleter.isCompleted) loadCompleter.complete(null);
+          },
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('RewardedAd.load failed: $e\n$st');
+      return false;
+    }
 
     final loadedAd = await loadCompleter.future.timeout(
-      const Duration(seconds: 20),
+      const Duration(seconds: 8),
       onTimeout: () => null,
     );
     if (loadedAd == null) return false;
@@ -200,7 +217,7 @@ class AdManager {
 
   /// Test bitişinde (Bitir) premium olmayan kullanıcılara tam ekran reklam.
   Future<void> showTestCompletionInterstitial() async {
-    if (_bypassAllAds || _adFreeTestSession) return;
+    if (_bypassAllAds || _adFreeTestSession || !_sdkReady) return;
 
     final ad = _interstitialAd;
     if (ad == null) {
@@ -241,49 +258,63 @@ class AdManager {
   }
 
   void _loadBanner() {
-    if (_suppressBanners) return;
-    _bannerAd?.dispose();
-    _bannerAd = BannerAd(
-      adUnitId: AdConstants.bannerAdUnitId,
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdFailedToLoad: (ad, _) => ad.dispose(),
-      ),
-    )..load();
+    if (_suppressBanners || !_sdkReady) return;
+    try {
+      _bannerAd?.dispose();
+      _bannerAd = BannerAd(
+        adUnitId: AdConstants.bannerAdUnitId,
+        size: AdSize.banner,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdFailedToLoad: (ad, _) => ad.dispose(),
+        ),
+      )..load();
+    } catch (e, st) {
+      debugPrint('BannerAd load failed: $e\n$st');
+      _bannerAd = null;
+    }
   }
 
   void _loadInterstitial() {
-    if (_bypassAllAds) return;
-    InterstitialAd.load(
-      adUnitId: AdConstants.interstitialAdUnitId,
-      request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: (ad) {
-          _interstitialAd?.dispose();
-          _interstitialAd = ad;
-        },
-        onAdFailedToLoad: (_) {},
-      ),
-    );
+    if (_bypassAllAds || !_sdkReady) return;
+    try {
+      InterstitialAd.load(
+        adUnitId: AdConstants.interstitialAdUnitId,
+        request: const AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          onAdLoaded: (ad) {
+            _interstitialAd?.dispose();
+            _interstitialAd = ad;
+          },
+          onAdFailedToLoad: (_) {},
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('InterstitialAd.load failed: $e\n$st');
+    }
   }
 
   void _loadRewarded() {
-    if (_bypassAllAds) return;
-    RewardedAd.load(
-      adUnitId: AdConstants.rewardedAdUnitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          _rewardedAd?.dispose();
-          _rewardedAd = ad;
-        },
-        onAdFailedToLoad: (_) {},
-      ),
-    );
+    if (_bypassAllAds || !_sdkReady) return;
+    try {
+      RewardedAd.load(
+        adUnitId: AdConstants.rewardedAdUnitId,
+        request: const AdRequest(),
+        rewardedAdLoadCallback: RewardedAdLoadCallback(
+          onAdLoaded: (ad) {
+            _rewardedAd?.dispose();
+            _rewardedAd = ad;
+          },
+          onAdFailedToLoad: (_) {},
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('RewardedAd.load failed: $e\n$st');
+    }
   }
 
   Future<void> _showInterstitial({VoidCallback? onDismissed}) async {
+    if (!_sdkReady) return;
     final ad = _interstitialAd;
     if (ad == null) {
       _loadInterstitial();
@@ -301,10 +332,19 @@ class AdManager {
         ad.dispose();
         _interstitialAd = null;
         _loadInterstitial();
+        onDismissed?.call();
       },
     );
 
-    await ad.show();
+    try {
+      await ad.show();
+    } catch (e, st) {
+      debugPrint('Interstitial show failed: $e\n$st');
+      ad.dispose();
+      _interstitialAd = null;
+      _loadInterstitial();
+      onDismissed?.call();
+    }
   }
 
   void _disposeBanner() {
