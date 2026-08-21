@@ -330,6 +330,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
   Future<void> _practiceAll(List<QuestionModel> questions) async {
     if (questions.isEmpty) return;
+    if (!AuthService.instance.hasPermanentAccount) {
+      final ok = await AccountLinkCard.prompt(
+        context,
+        title: 'Giriş yap',
+        subtitle: 'Tüm yanlışları çözmek için Google hesabını bağla.',
+      );
+      if (!ok || !mounted) return;
+      await ContentBankService.instance.onUserSessionChanged();
+      if (!mounted) return;
+    }
     AdManager.instance.skipNextPageTransition();
     final result = await Navigator.of(context).push<QuizResult>(
       MaterialPageRoute<QuizResult>(

@@ -23,7 +23,25 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
-### 21 Ağustos 2026 — Deneme / Profil / ÖDÜL / Quiz / Push (bu commit)
+### 21 Ağustos 2026 — Quiz / ContentBank / mini sonuç / konu detay (bu commit)
+
+Önceki aynı gün commit'inin (6a6f501 günlük sıra/ÖDÜL/TDK/quiz scroll) üstüne eklenen şık tablosu, isolate, filigran, misafir kapısı ve sonuç UI düzeltmeleri.
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Şık tablosu 2+** | Eşleştirme eşiği 
+>=2; varsayılan başlık **Olay / Sonuç**; 3+ sütun aynı; panel option-table.js?v=7 | option-table.js, question_form.html, option_column_layout.dart, exam_text_parity_test.dart |
+| **ContentBank isolate** | Isolate.run → compute + yalnızca gönderilebilir harita/liste; **Illegal argument in isolate message** (Future/closure) düzeltmesi | content_bank_service.dart |
+| **Kök filigran** | Metin bloklarında harita ile uyumlu stem watermark (watermarkOnText varsayılan açık, centered) | question_stem_content.dart, watermark_widget.dart, quiz_screen.dart |
+| **Çözüm frost** | Kilit overlay'de **Reklam izle** üstte (MainAxisAlignment.start) | quiz_screen.dart |
+| **SENİN SIRAN** | Kart başlığı/footer rafine; günlük mini önizleme | daily_mini_exam_card.dart, daily_mini_exam_leaderboard.dart |
+| **Konu detay** | Ortalı ders/konu başlıkları; premium **Konuyu Öğren** CTA | 	opic_detail_screen.dart |
+| **Misafir / reklam** | Tüm yanlışları çöz → hesap bağlama kapısı; ödüllü reklam uture.timeout(90s) | wrong_questions_screen.dart, d_manager.dart |
+| **Günlük mini sonuç** | **GÜNÜN SIRALAMASI** / **GENEL SIRALAMA**; sıra çerçevesi yok; alt CTA'lar | daily_mini_exam_result_screen.dart |
+| **ÖDÜL asma** | Hang madalyon CTA üst sağında; paylaş ikonundan sola kaydırma; kürsü önizlemesinde ÖDÜL yok | daily_mini_exam_card.dart, daily_mini_exam_leaderboard.dart, daily_mini_rewards_screen.dart |
+| **ÖDÜL ekranı** | Yerleşim / sol kaydırma ve SENİN SIRAN polish | daily_mini_rewards_screen.dart |
+
+### 21 Ağustos 2026 — Deneme / Profil / ÖDÜL / Quiz / Push (önceki commit)
 
 Önceki aynı gün commit'inin (`b18dc23` Stüdyo/Gelişim/görev/splash) üstüne eklenen UI, sıralama, OCR ve araç düzeltmeleri.
 
@@ -39,6 +57,7 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | **Günlük mini** | 10 sn sıra reveal yarış düzeltmesi; tamamlandı UI vs Denemeye Başla; **Senin sıran** + Haftalık\|Aylık Row; EN BAŞARILILAR → günlük liste; AppBar **ÖDÜL** butonu kaldırıldı; TR tarih aralığı; eşitlik metni; ÖDÜL modal madalyalar, Kapat yok, anında navigasyon | `daily_mini_exam_*`, `daily_mini_rewards_screen.dart`, `daily_mini_odul_button.dart`, `daily_mini_exam_constants.dart`, `daily_mini_exam_logic.dart` |
 | **Push** | FCM topic+token çift gönderim düzeltmesi (önce topic; OK ise multicast yok) | `push.py`, `tests.py` |
 | **Quiz** | ÖSYM rozeti ortada; şıklar sola + TR soft-hyphen; watermark clip; **Çözümü Gör** şık seçilmeden kapalı | `quiz_screen.dart`, `exam_option_view.dart`, `exam_stem_view.dart`, `watermark_widget.dart`, `turkish_hyphenation.dart`, `formatted_text_test.dart` |
+| **Şık tablosu 2+** | Eşleştirme eşiği `n>=2`; Olay/Sonuç varsayılan başlık; 3+ sütun aynı | `option-table.js` (`?v=7`), `option_column_layout.dart`, `exam_text_parity_test.dart` |
 | **OCR / ğ** | Mojibake onarımı (`Ä`/`ğ`); `gerekti ini` vb. güvenli kalıplar; tarama komutu | `ocr.py`, `scan_missing_gbreve.py` |
 | **basla.bat** | Orphan `runserver` temizliği; venv/Python bulma; port 8000 kontrolü; güvenilir start | `basla.bat`, `scripts/stop-django-runserver.ps1` |
 
@@ -154,7 +173,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Eşleştirme şıkları** | Panel: `option-table.js` + CSS (değerler sütun, etiket başlık, dikey çizgi yok). Mobil: `option_column_layout.dart` | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
+| **Eşleştirme şıkları** | **2+ sütun** (Olay/Sonuç veya 3+ İnanç/Mağara/Termal): Panel `option-table.js` + CSS (değerler sütun, etiket başlık, dikey çizgi yok). Mobil: `option_column_layout.dart` | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart`, `question-preview.js` |
 | **Yapıştırma** | Eşleştirme oku `->` / `\\rightarrow` → `→` | `rich-format.js` |
 
 #### Panel — menü, promosyon, kullanıcılar
@@ -301,7 +320,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
 | Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
 
-Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni soldan hizalı. Eşleştirme şıkları (`Şehir - Şehir - Şehir` veya `İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar`) `option-table.js`: değerler sütunda, etiketler başlıkta.
+Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni soldan hizalı. Eşleştirme şıkları **2+ sütun**: `Olay — Sonuç`, `Şehir - Şehir - Şehir` veya `İnanç: …, Mağara: …, Termal: …`; başlık yoksa 2 sütunda **Olay / Sonuç** (`option-table.js` / `option_column_layout.dart`).
 
 ---
 
@@ -490,7 +509,7 @@ Sol menü bölümleri: **İçerik** · **Deneme & sınav** · **Kullanıcı & sa
 | Soru kopyalama | `/panel/soru/<id>/kopyala/` |
 | Toplu soru silme | `/panel/konu/<id>/soru/toplu-sil/` |
 | **Uygulama önizlemesi** | Canlı mobil benzeri önizleme — `question-preview.js`, `math-render.js`, `rich-format.js` |
-| Tablo / eşleştirme şıkları | `A - B - C` veya `İnanç: …, Mağara: …, Termal: …`; başlık şıktan; dikey çizgi yok | `option-table.js`, `option-table.css` |
+| Tablo / eşleştirme şıkları | **2+ sütun**: `X — Y` (varsayılan başlık **Olay / Sonuç**) veya `A - B - C` / `İnanç: …, Mağara: …, Termal: …`; stem pipe / `<!--optcols:…-->` varsa onlar; dikey çizgi yok | `option-table.js`, `option-table.css`, `option_column_layout.dart` |
 | Biçim araç çubuğu | Kalın / italik / altı çizili / renk (K, I, A, G, R, M) |
 | Zengin yapıştırma | Word/Docs/sohbet HTML panosu `**` / `__` işaretine çevrilir (CF_HTML dahil); iç içe kalın ve kalın+altı çizili (`**__**kelime**__**`) tek işarete iner; kalın+altı çizili kelimeye renk (`**__{green}…{/green}__**`) önizleme ve uygulamada korunur; sohbet kopyasında çift madde işareti (`- -`) ve fazladan tire temizlenir; eşleştirme oku `->` / `\\rightarrow` sınav `→` olur | `rich-format.js` |
 

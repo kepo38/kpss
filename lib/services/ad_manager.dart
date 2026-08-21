@@ -206,7 +206,10 @@ class AdManager {
       if (!completer.isCompleted) completer.complete(false);
     }
 
-    return completer.future;
+    return completer.future.timeout(
+      const Duration(seconds: 90),
+      onTimeout: () => rewardEarned,
+    );
   }
 
   bool isSolutionUnlocked(String questionId) {

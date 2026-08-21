@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -359,7 +358,8 @@ class ContentBankService extends ChangeNotifier {
       lessons: prefs.getString(_kLessons),
       summaryCards: prefs.getString(_kSummaryCards),
     );
-    final parsed = await Isolate.run(() => parseContentBankBundle(raw));
+    // compute: top-level fn + sendable payload (no async-closure / this capture).
+    final parsed = await compute(parseContentBankBundle, raw);
 
     _configs
       ..clear()
@@ -461,10 +461,10 @@ class ContentBankService extends ChangeNotifier {
   Future<void> applyPublishedPack(Map<String, dynamic> pack) async {
     await initialize();
     final rawQuestions = pack['questions'];
-    final parserQuestions = await Isolate.run(() {
-      final list = rawQuestions as List<dynamic>? ?? const [];
-      return parseQuestionMaps(list);
-    });
+    final questionList = List<dynamic>.from(
+      rawQuestions as List<dynamic>? ?? const <dynamic>[],
+    );
+    final parserQuestions = await compute(parseQuestionMaps, questionList);
 
     await _applyPackMetadata(pack);
 
@@ -498,7 +498,8 @@ class ContentBankService extends ChangeNotifier {
   }
 
   Future<void> _applyPackMetadata(Map<String, dynamic> pack) async {
-    final parsed = await Isolate.run(() => parseContentPackMetadata(pack));
+    final packPayload = Map<String, dynamic>.from(pack);
+    final parsed = await compute(parseContentPackMetadata, packPayload);
 
     final subjectsRaw = pack['subjects'] as List<dynamic>? ?? const [];
     if (subjectsRaw.isNotEmpty) {
@@ -1171,21 +1172,21 @@ class ContentBankService extends ChangeNotifier {
   Future<void> _persistConfigs() async {
     final prefs = await SharedPreferences.getInstance();
     final map = {for (final e in _configs.entries) e.key: e.value.toJson()};
-    final encoded = await Isolate.run(() => encodeJsonMap(map));
+    final encoded = await compute(encodeJsonMap, map);
     await prefs.setString(_kConfigs, encoded);
   }
 
   Future<void> _persistTests() async {
     final prefs = await SharedPreferences.getInstance();
     final maps = _tests.map((e) => e.toJson()).toList();
-    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    final encoded = await compute(encodeJsonMaps, maps);
     await prefs.setString(_kTests, encoded);
   }
 
   Future<void> _persistAttempts() async {
     final prefs = await SharedPreferences.getInstance();
     final maps = _attempts.map((e) => e.toJson()).toList();
-    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    final encoded = await compute(encodeJsonMaps, maps);
     await prefs.setString(_kAttempts, encoded);
   }
 
@@ -1230,15 +1231,17 @@ class ContentBankService extends ChangeNotifier {
   Future<void> _persistWrongQuestionBodies() async {
     final prefs = await SharedPreferences.getInstance();
     final key = _scopedKey(_kWrongQuestionBodies);
-    final bodies = _questions
-        .where((q) => _wrongQuestionIds.contains(q.id))
-        .where((q) => !_sampleSeedQuestionIds.contains(q.id))
-        .map((q) => q.toJson())
-        .toList();
+    // Plain JSON maps only — never close over this / Futures in isolate entry.
+    final bodies = <Map<String, dynamic>>[
+      for (final q in _questions)
+        if (_wrongQuestionIds.contains(q.id) &&
+            !_sampleSeedQuestionIds.contains(q.id))
+          Map<String, dynamic>.from(q.toJson()),
+    ];
     if (bodies.isEmpty) {
       await prefs.remove(key);
     } else {
-      final encoded = await Isolate.run(() => encodeJsonMaps(bodies));
+      final encoded = await compute(encodeJsonMaps, bodies);
       await prefs.setString(key, encoded);
     }
   }
@@ -1251,9 +1254,11 @@ class ContentBankService extends ChangeNotifier {
   }
 
   Future<void> _persistQuestions() async {
-    final snapshot = List<QuestionModel>.from(_questions);
-    final encoded =
-        await Isolate.run(() => encodeQuestionsJson(snapshot));
+    // Encode from JSON maps so isolate message stays primitives-only.
+    final maps = <Map<String, dynamic>>[
+      for (final q in _questions) Map<String, dynamic>.from(q.toJson()),
+    ];
+    final encoded = await compute(encodeJsonMaps, maps);
     try {
       await LocalDatabase.instance.saveContentQuestionsJson(encoded);
     } catch (e, st) {
@@ -1270,14 +1275,14 @@ class ContentBankService extends ChangeNotifier {
   Future<void> _persistLessons() async {
     final prefs = await SharedPreferences.getInstance();
     final maps = _lessons.map((e) => e.toJson()).toList();
-    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    final encoded = await compute(encodeJsonMaps, maps);
     await prefs.setString(_kLessons, encoded);
   }
 
   Future<void> _persistSummaryCards() async {
     final prefs = await SharedPreferences.getInstance();
     final maps = _summaryCards.map((e) => e.toJson()).toList();
-    final encoded = await Isolate.run(() => encodeJsonMaps(maps));
+    final encoded = await compute(encodeJsonMaps, maps);
     await prefs.setString(_kSummaryCards, encoded);
   }
 

@@ -619,6 +619,12 @@ class _SeninSiranButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasRank = myRank != null && myRank! > 0;
+    final statsText = loading
+        ? 'Sıralaman yükleniyor…'
+        : hasRank
+            ? '$myCorrect doğru · ${formatExamDuration(myDuration)}'
+            : 'Sınava Girmedin!';
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -633,64 +639,77 @@ class _SeninSiranButton extends StatelessWidget {
                   ),
                 );
               },
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Ink(
-          padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+          padding: const EdgeInsets.fromLTRB(14, 11, 14, 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: const Color(0xFFD4AF6A),
-              width: 1.5,
+              color: const Color(0xFFD4AF6A).withValues(alpha: 0.85),
+              width: 1.15,
             ),
             gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
               colors: [
-                Color(0xFFFFF8EE),
-                Color(0xFFF3E2B8),
+                Color(0xFFFFF9F0),
+                Color(0xFFF5E6C4),
                 Color(0xFFE8C878),
-                AppTheme.champagne,
+                Color(0xFFD4AF6A),
               ],
-              stops: [0, 0.35, 0.72, 1],
+              stops: [0, 0.4, 0.82, 1],
             ),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.champagne.withValues(alpha: 0.45),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
+                color: AppTheme.champagne.withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              const Text(
+                'SENİN SIRAN',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
+                  color: AppTheme.ink,
+                ),
+              ),
+              const SizedBox(height: 8),
               Container(
-                width: 52,
-                height: 52,
+                width: 42,
+                height: 42,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppTheme.ink.withValues(alpha: 0.88),
+                  color: AppTheme.ink.withValues(alpha: 0.86),
                   border: Border.all(
-                    color: const Color(0xFFFFF1D0),
-                    width: 2,
+                    color: const Color(0xFFFFF1D0).withValues(alpha: 0.9),
+                    width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.ink.withValues(alpha: 0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+                      color: AppTheme.ink.withValues(alpha: 0.28),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
                 child: loading
                     ? const SizedBox(
-                        width: 18,
-                        height: 18,
+                        width: 16,
+                        height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: AppTheme.champagneLight,
@@ -700,46 +719,36 @@ class _SeninSiranButton extends StatelessWidget {
                         hasRank ? '#$myRank' : '—',
                         style: const TextStyle(
                           fontFamily: 'serif',
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w900,
                           color: AppTheme.champagneLight,
                         ),
                       ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'SENİN SIRAN',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.4,
-                        color: AppTheme.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      loading
-                          ? 'Sıralaman yükleniyor…'
-                          : hasRank
-                              ? '$myCorrect doğru · ${formatExamDuration(myDuration)}'
-                              : 'Sınava Girmedin!',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.ink,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 7),
+              Text(
+                statsText,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                  color: AppTheme.ink.withValues(alpha: 0.92),
                 ),
               ),
-              const Icon(
-                Icons.person_pin_circle_rounded,
-                color: AppTheme.ink,
-                size: 26,
+              const SizedBox(height: 8),
+              Text(
+                'SIRALAMA SÜREKLİ GÜNCELLENMEKTEDİR',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.55,
+                  height: 1.15,
+                  color: AppTheme.ink.withValues(alpha: 0.48),
+                ),
               ),
             ],
           ),

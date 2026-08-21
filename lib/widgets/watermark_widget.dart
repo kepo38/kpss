@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 ///
 /// [fitToChild] açıkken işaret çocuk kutusuna göre küçülür.
 /// [overlay] açıkken işaret çocuğun üstüne biner (harita/görsel).
+/// [centered] açıkken (veya [overlay]) işaret çocuğun ortasına hizalanır.
 class WatermarkWidget extends StatelessWidget {
   static const logoAsset = BrandConstants.watermarkAsset;
 
@@ -16,6 +17,7 @@ class WatermarkWidget extends StatelessWidget {
   final double opacity;
   final bool fitToChild;
   final bool overlay;
+  final bool centered;
 
   const WatermarkWidget({
     super.key,
@@ -23,6 +25,7 @@ class WatermarkWidget extends StatelessWidget {
     this.opacity = 0.26,
     this.fitToChild = false,
     this.overlay = false,
+    this.centered = false,
   });
 
   @override
@@ -49,7 +52,7 @@ class WatermarkWidget extends StatelessWidget {
                 )
                 .clamp(minSize, maxSize);
             return Align(
-              alignment: overlay
+              alignment: (overlay || centered)
                   ? Alignment.center
                   : (fitToChild
                       ? const Alignment(-0.42, 0.0)

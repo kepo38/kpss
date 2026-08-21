@@ -42,8 +42,6 @@ import '../widgets/quiz_question_note_card.dart';
 import '../widgets/quiz_take_note_button.dart';
 import '../widgets/quiz_wrong_notebook_banner.dart';
 import '../widgets/shareable_result_card.dart';
-import '../widgets/watermark_widget.dart';
-
 /// Test / soru çözme ekranı — süre, navigator, favori.
 class QuizScreen extends StatefulWidget {
   final String title;
@@ -1687,13 +1685,11 @@ class _QuizScreenState extends State<QuizScreen>
                               const SizedBox(height: 16),
                             ],
                             QuestionStemPanel(
-                              child: WatermarkWidget(
-                                opacity: 0.28,
-                                child: QuestionStemContent(
-                                  stem: _currentQuestion.soruMetni,
-                                  imageUrl: _currentQuestion.imageUrl,
-                                  sekilKodu: _currentQuestion.sekilKodu,
-                                ),
+                              // Filigran metin/harita bloklarında QuestionStemContent içinde.
+                              child: QuestionStemContent(
+                                stem: _currentQuestion.soruMetni,
+                                imageUrl: _currentQuestion.imageUrl,
+                                sekilKodu: _currentQuestion.sekilKodu,
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -2022,9 +2018,9 @@ class _SolutionPanel extends StatelessWidget {
                   ),
                   Positioned.fill(
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
                           Icon(
                             Icons.lock_outline,

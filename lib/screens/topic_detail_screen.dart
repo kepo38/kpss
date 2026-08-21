@@ -121,25 +121,37 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
           children: [
             Text(
-              subject?.name ?? '',
+              (subject?.name ?? '').toUpperCase(),
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 12,
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.champagne.withValues(alpha: 0.8),
+                fontFamily: 'serif',
+                fontSize: 13,
+                height: 1.2,
+                letterSpacing: 3.2,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.champagneLight.withValues(alpha: 0.92),
+                shadows: [
+                  Shadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.28),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             Text(
               topic?.name ?? '',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'serif',
                 fontSize: 28,
+                height: 1.15,
                 fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             _StatStrip(
               accuracy: stats.averageAccuracy,
               attempts: stats.attemptCount,
@@ -435,57 +447,75 @@ class _KonuyuOgrenButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = enabled
+        ? AppTheme.champagne.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.1);
+    final labelColor = enabled
+        ? AppTheme.champagneLight
+        : Colors.white.withValues(alpha: 0.35);
+    final chevronColor = enabled
+        ? AppTheme.champagne
+        : Colors.white.withValues(alpha: 0.22);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.12),
+        highlightColor: AppTheme.champagne.withValues(alpha: 0.06),
         child: Ink(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: enabled
-                  ? AppTheme.champagne.withValues(alpha: 0.45)
-                  : Colors.white.withValues(alpha: 0.1),
-            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor, width: 1.15),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: enabled
                   ? [
-                      Colors.white.withValues(alpha: 0.08),
-                      Colors.white.withValues(alpha: 0.03),
+                      AppTheme.champagne.withValues(alpha: 0.22),
+                      Colors.white.withValues(alpha: 0.06),
+                      AppTheme.inkSoft.withValues(alpha: 0.55),
                     ]
                   : [
                       Colors.white.withValues(alpha: 0.03),
                       Colors.white.withValues(alpha: 0.015),
                     ],
+              stops: enabled ? const [0.0, 0.45, 1.0] : null,
             ),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: AppTheme.champagne.withValues(alpha: 0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             children: [
+              const SizedBox(width: 28),
               Expanded(
                 child: Text(
                   'Konuyu Öğren',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontFamily: 'serif',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    color: enabled
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.35),
+                    fontSize: 19,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                    height: 1.1,
+                    color: labelColor,
                   ),
                 ),
               ),
               Icon(
                 Icons.chevron_right_rounded,
                 size: 28,
-                color: enabled
-                    ? AppTheme.champagneLight
-                    : Colors.white.withValues(alpha: 0.22),
+                color: chevronColor,
               ),
             ],
           ),

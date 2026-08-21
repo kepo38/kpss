@@ -16,6 +16,9 @@ class QuestionStemContent extends StatelessWidget {
   final String? imageUrl;
   final String? sekilKodu;
   final TextStyle? style;
+
+  /// Metin bloklarına (harita öncesi/sonrası) filigran uygula.
+  /// Harita/SVG kendi overlay filigranını ayrı tutar.
   final bool watermarkOnText;
 
   const QuestionStemContent({
@@ -24,7 +27,7 @@ class QuestionStemContent extends StatelessWidget {
     this.imageUrl,
     this.sekilKodu,
     this.style,
-    this.watermarkOnText = false,
+    this.watermarkOnText = true,
   });
 
   static bool hasInlineImage(String stem) {
@@ -48,7 +51,12 @@ class QuestionStemContent extends StatelessWidget {
   Widget _stemText(String text) {
     final view = ExamStemView(text: text);
     if (!watermarkOnText) return view;
-    return WatermarkWidget(fitToChild: true, child: view);
+    // Harita ile aynı marka; metnin arkasında ortalanmış (overlay değil).
+    return WatermarkWidget(
+      fitToChild: true,
+      centered: true,
+      child: view,
+    );
   }
 
   @override

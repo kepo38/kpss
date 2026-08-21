@@ -85,7 +85,7 @@ void main() {
     expect(spans, isNotEmpty);
   });
 
-  test('dash-separated options become three columns', () {
+  test('dash-separated options become two or three columns', () {
     expect(
       OptionColumnLayout.cellsOf(
         'İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar',
@@ -142,6 +142,48 @@ void main() {
         'Soru metni\n<!--optcols:İnanç|Mağara|Termal-->',
       ),
       'Soru metni',
+    );
+
+    // 2-column Olay/Sonuç (n >= 2 consensus)
+    const olaySonuc = [
+      "Belgrad'ın Fethi — Avrupa seferlerinde üs kazanıldı",
+      'Mohaç Meydan Muharebesi — Macaristan hâkimiyeti',
+      'Preveze Deniz Savaşı — Akdeniz’de üstünlük',
+      'İstanbul’un Fethi — Ortaçağ kapandı',
+      'Kanuni dönemi — İmparatorluk zirvesi',
+    ];
+    expect(
+      OptionColumnLayout.cellsOf(olaySonuc.first),
+      ["Belgrad'ın Fethi", 'Avrupa seferlerinde üs kazanıldı'],
+    );
+    expect(OptionColumnLayout.alignedCount(olaySonuc), 2);
+    expect(
+      OptionColumnLayout.headersFor('Soru kökü metni', olaySonuc, 2),
+      ['Olay', 'Sonuç'],
+    );
+    expect(
+      OptionColumnLayout.headersFor(
+        'Olay | Sonuç\nHangisi doğrudur?',
+        olaySonuc,
+        2,
+      ),
+      ['Olay', 'Sonuç'],
+    );
+    expect(
+      OptionColumnLayout.headersFor(
+        'Soru\n<!--optcols:Olay|Sonuç-->',
+        olaySonuc,
+        2,
+      ),
+      ['Olay', 'Sonuç'],
+    );
+    expect(
+      OptionColumnLayout.alignedCount([
+        'A - B - C',
+        'D - E - F',
+        'G - H - I',
+      ]),
+      3,
     );
   });
 }

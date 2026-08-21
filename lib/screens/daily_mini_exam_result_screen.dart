@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/savings_constants.dart';
+import '../screens/daily_mini_rewards_screen.dart';
 import '../screens/premium/premium_paywall_screen.dart';
 import '../services/daily_mini_exam_service.dart';
 import '../services/play_billing_service.dart';
@@ -169,57 +170,75 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
             ),
           ],
           if (showRank) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppTheme.champagne.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.champagne.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('🏆', style: TextStyle(fontSize: 22)),
-                      const SizedBox(width: 10),
-                      Text(
-                        '$rank. sıradasın',
-                        style: const TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.champagneLight,
-                          height: 1.15,
-                        ),
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('🏆', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
+                    Text(
+                      '$rank. sıradasın',
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.champagneLight,
+                        height: 1.15,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Gün içinde sürekli güncellenmektedir',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.2,
-                      color: Colors.white.withValues(alpha: 0.78),
-                      height: 1.25,
-                      fontStyle: FontStyle.italic,
                     ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Gün içinde sürekli güncellenmektedir',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                    color: Colors.white.withValues(alpha: 0.78),
+                    height: 1.25,
+                    fontStyle: FontStyle.italic,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const DailyMiniRewardsScreen(),
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.champagneLight,
+              side: BorderSide(
+                color: AppTheme.champagne.withValues(alpha: 0.55),
+              ),
+              minimumSize: const Size.fromHeight(42),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            child: const Text(
+              'GENEL SIRALAMA',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.4,
+              ),
+            ),
+          ),
           const SizedBox(height: 28),
           Text(
-            'EN BAŞARILI ADAYLAR',
+            'GÜNÜN SIRALAMASI',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 10,
               letterSpacing: 1.8,
@@ -336,7 +355,7 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
               SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 12),
+                  padding: const EdgeInsets.fromLTRB(22, 10, 22, 14),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -348,7 +367,7 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
                               PremiumService.instance.isPremium;
                           if (isPremium) return const SizedBox.shrink();
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.only(bottom: 10),
                             child: _PdfUpsellRow(
                               onTap: () => Navigator.of(context).push<void>(
                                 MaterialPageRoute<void>(
@@ -366,17 +385,21 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
                           elevation: 0,
                           backgroundColor: AppTheme.champagne,
                           foregroundColor: AppTheme.ink,
-                          minimumSize: const Size.fromHeight(40),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          minimumSize: const Size.fromHeight(48),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(11),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.borderRadius,
+                            ),
                           ),
                         ),
                         child: const Text(
                           'Devam Et',
                           style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13.5,
+                            fontFamily: 'serif',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            letterSpacing: 0.2,
                           ),
                         ),
                       ),
@@ -405,62 +428,53 @@ class _PdfUpsellRow extends StatelessWidget {
       onPressed: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        height: 48,
+        padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFFEDB0),
-              Color(0xFFE8C878),
-              AppTheme.champagne,
-            ],
-          ),
+          borderRadius: BorderRadius.circular(AppTheme.borderRadius),
+          color: AppTheme.inkSoft,
           border: Border.all(
-            color: const Color(0xFFFFE5A0).withValues(alpha: 0.85),
+            color: AppTheme.champagne.withValues(alpha: 0.45),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.neonGold.withValues(alpha: 0.16),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.picture_as_pdf_rounded,
-              color: AppTheme.ink,
-              size: 18,
+              color: AppTheme.champagneLight.withValues(alpha: 0.95),
+              size: 20,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 12),
             const Expanded(
               child: Text(
                 'Bu ayın yanlış çözümleri',
                 style: TextStyle(
                   fontFamily: 'serif',
-                  fontSize: 13,
+                  fontSize: 14,
                   height: 1.2,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.ink,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 0.1,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.ink,
-                borderRadius: BorderRadius.circular(7),
+                color: AppTheme.champagne.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.champagne.withValues(alpha: 0.35),
+                ),
               ),
-              child: Text(
+              child: const Text(
                 '$priceTl TL',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                   color: AppTheme.champagneLight,
+                  letterSpacing: 0.2,
                 ),
               ),
             ),

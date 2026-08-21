@@ -65,7 +65,6 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
   final int totalQuestions;
   final String headline;
   final String footer;
-  final VoidCallback? onOdul;
 
   const DailyMiniExamLeaderboardPreview({
     super.key,
@@ -74,7 +73,6 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
     required this.totalQuestions,
     this.headline = 'BUGÜNÜN KÜRSÜSÜ',
     this.footer = 'Denemeyi bitirince sıralamana burada yer verilir.',
-    this.onOdul,
   });
 
   @override
@@ -82,7 +80,6 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
     final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
 
     return _LeaderboardShell(
-      onOdul: onOdul,
       child: Column(
         children: [
           Row(
@@ -100,8 +97,7 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
                   ),
                 ),
               ),
-              // ÖDÜL madalyonu sağ üstte (pin); başlık çarpmasın.
-              const SizedBox(width: 56),
+              // Önizlemede ÖDÜL CTA'da; başlık + kişi rozeti yan yana.
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -329,7 +325,7 @@ class _LeaderboardShell extends StatelessWidget {
           Positioned(
             // İğne tepesi = koyu kürsü üst kenarı; paylaş ikonundan sola kaydır.
             top: 0,
-            right: showShare ? 40 : 14,
+            right: showShare ? 54 : 14,
             child: DailyMiniOdulHangBadge(onPressed: onOdul!),
           ),
       ],
