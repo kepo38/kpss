@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../constants/brand_constants.dart';
 import '../models/user_model.dart';
 import '../widgets/countdown_widget.dart';
 import '../services/ad_manager.dart';
@@ -13,13 +12,11 @@ import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/home_hero_section.dart';
-import '../widgets/home_module_row.dart';
 import '../widgets/home_premium_module_list.dart';
 import '../widgets/home_section_header.dart';
 import '../widgets/home_tools_module_list.dart';
 import '../widgets/premium_gate.dart';
 import 'premium/premium_paywall_screen.dart';
-import 'profile_screen.dart';
 
 /// Stüdyo — üst bardaki kare ikondan açılan araçlar & Premium hub.
 class HomeScreen extends StatefulWidget {
@@ -217,7 +214,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             ContainedSliverFade(
               fade: _fadeLate,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 48),
               child: ValueListenableBuilder<bool>(
                 valueListenable: _isPremium,
                 builder: (context, premium, _) {
@@ -233,21 +230,6 @@ class _HomeScreenState extends State<HomeScreen>
                     },
                   );
                 },
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
-              sliver: SliverToBoxAdapter(
-                child: FadeTransition(
-                  opacity: _fadeLate,
-                  child: HomeModuleRow(
-                    icon: Icons.person_outline_rounded,
-                    title: 'Profil',
-                    subtitle: 'Hesap · ${BrandConstants.appName}',
-                    tint: const Color(0xFF94A3B8),
-                    onTap: () => _navigateTo(ProfileScreen(user: widget.user)),
-                  ),
-                ),
               ),
             ),
           ],

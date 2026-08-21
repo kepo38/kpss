@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/brand_constants.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/google_g_mark.dart';
 
 /// Yalnızca Google / Play Store hesabı ile giriş.
 class LoginScreen extends StatefulWidget {
@@ -129,8 +130,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       : const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.g_mobiledata, size: 28),
-                            SizedBox(width: 6),
+                            GoogleGMark(size: 22),
+                            SizedBox(width: 10),
                             Text(
                               'Google ile devam et',
                               style: TextStyle(

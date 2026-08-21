@@ -399,126 +399,151 @@ class _SubjectMissionRowState extends State<_SubjectMissionRow>
 
   @override
   Widget build(BuildContext context) {
-    final statusStyle = TextStyle(
-      fontSize: 10,
-      fontWeight: FontWeight.w600,
-      color: widget.completed
-          ? const Color(0xFF15803D)
-          : AppTheme.mutedOnPage(context),
-    );
+    final ink = AppTheme.onPage(context);
+    final actionColor = widget.completed
+        ? const Color(0xFF15803D)
+        : AppTheme.champagne.withValues(alpha: 0.95);
 
-    return GestureDetector(
-      onTap: widget.completed ? null : widget.onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: widget.completed ? null : widget.onTap,
+        borderRadius: BorderRadius.circular(10),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.14),
+        highlightColor: AppTheme.champagne.withValues(alpha: 0.06),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Text(
-                  widget.subject.name,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.onPage(context),
-                  ),
-                ),
-              ),
-              if (widget.completed)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: const Color(0xFF22C55E).withValues(alpha: 0.55),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.subject.name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.15,
+                        color: ink.withValues(alpha: 0.92),
+                      ),
                     ),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'TAMAMLANDI',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.4,
-                          color: Color(0xFF15803D),
+                  if (widget.completed)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF22C55E).withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color:
+                              const Color(0xFF22C55E).withValues(alpha: 0.55),
                         ),
                       ),
-                      SizedBox(width: 3),
-                      Icon(
-                        Icons.check_rounded,
-                        size: 12,
-                        color: Color(0xFF15803D),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Text(
-                  widget.remainingQuota > 0
-                      ? 'Görevi Yap · ${widget.remainingQuota} Test'
-                      : 'Görevi Yap',
-                  style: statusStyle,
-                ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          AnimatedBuilder(
-            animation: _fill,
-            builder: (context, _) {
-              final t = widget.completed ? _fill.value : 0.0;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: SizedBox(
-                  height: 6,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: AppTheme.ink.withValues(alpha: 0.1),
-                      ),
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: t.clamp(0.0, 1.0),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color.lerp(
-                                  const Color(0xFF86EFAC),
-                                  const Color(0xFF22C55E),
-                                  t,
-                                )!,
-                                Color.lerp(
-                                  const Color(0xFF4ADE80),
-                                  const Color(0xFF15803D),
-                                  t,
-                                )!,
-                              ],
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'TAMAMLANDI',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.4,
+                              color: Color(0xFF15803D),
                             ),
-                            boxShadow: t > 0.85
-                                ? [
-                                    BoxShadow(
-                                      color: const Color(0xFF22C55E)
-                                          .withValues(alpha: 0.55 * t),
-                                      blurRadius: 8,
-                                    ),
-                                  ]
-                                : null,
+                          ),
+                          SizedBox(width: 3),
+                          Icon(
+                            Icons.check_rounded,
+                            size: 12,
+                            color: Color(0xFF15803D),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.remainingQuota > 0
+                              ? 'Görevi Yap · ${widget.remainingQuota} Test'
+                              : 'Görevi Yap',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                            color: actionColor,
                           ),
                         ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: actionColor,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              AnimatedBuilder(
+                animation: _fill,
+                builder: (context, _) {
+                  final t = widget.completed ? _fill.value : 0.0;
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(
+                      height: 6,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ColoredBox(
+                            color: AppTheme.ink.withValues(alpha: 0.1),
+                          ),
+                          FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: t.clamp(0.0, 1.0),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color.lerp(
+                                      const Color(0xFF86EFAC),
+                                      const Color(0xFF22C55E),
+                                      t,
+                                    )!,
+                                    Color.lerp(
+                                      const Color(0xFF4ADE80),
+                                      const Color(0xFF15803D),
+                                      t,
+                                    )!,
+                                  ],
+                                ),
+                                boxShadow: t > 0.85
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(0xFF22C55E)
+                                              .withValues(alpha: 0.55 * t),
+                                          blurRadius: 8,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

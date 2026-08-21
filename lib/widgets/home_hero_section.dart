@@ -206,47 +206,35 @@ class HomeHeroSection extends StatelessWidget {
                 opacity: fadeEarly,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: _studioTitleWidth(),
+                      ),
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppTheme.neonEdge.withValues(alpha: 0.45),
                           ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: AppTheme.neonEdge.withValues(alpha: 0.45),
-                            ),
-                            color: AppTheme.neonEdge.withValues(alpha: 0.12),
-                          ),
-                          child: Text(
-                            'STÜDYO',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2.4,
-                              color: AppTheme.neonEdge.withValues(alpha: 0.95),
-                            ),
+                          color: AppTheme.neonEdge.withValues(alpha: 0.12),
+                        ),
+                        child: Text(
+                          'STÜDYO',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2.8,
+                            color: AppTheme.neonEdge.withValues(alpha: 0.95),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Stüdyo',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 44,
-                          fontWeight: FontWeight.w700,
-                          height: 1.0,
-                          letterSpacing: -1.4,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -259,5 +247,24 @@ class HomeHeroSection extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Eski beyaz «Stüdyo» başlığının genişliği — pill aynı min genişlikte.
+  static double _studioTitleWidth() {
+    final tp = TextPainter(
+      text: const TextSpan(
+        text: 'Stüdyo',
+        style: TextStyle(
+          fontFamily: 'serif',
+          fontSize: 44,
+          fontWeight: FontWeight.w700,
+          height: 1.0,
+          letterSpacing: -1.4,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return tp.width;
   }
 }

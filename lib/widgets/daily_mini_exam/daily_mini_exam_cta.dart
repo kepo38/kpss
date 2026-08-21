@@ -71,15 +71,15 @@ class _DailyMiniExamCtaState extends State<DailyMiniExamCta>
         borderRadius: BorderRadius.circular(radius - 1.5),
         gradient: widget.enabled
             ? const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
                 colors: [
-                  Color(0xFFFFF8EE),
-                  Color(0xFFF3E2B8),
-                  Color(0xFFE8C878),
                   AppTheme.champagne,
+                  Color(0xFFE8C878),
+                  Color(0xFFF3E2B8),
+                  Color(0xFFFFF8EE),
                 ],
-                stops: [0.0, 0.35, 0.72, 1.0],
+                stops: [0.0, 0.32, 0.68, 1.0],
               )
             : null,
         color: widget.enabled ? null : disabledFill,
@@ -106,34 +106,26 @@ class _DailyMiniExamCtaState extends State<DailyMiniExamCta>
             : null,
       ),
       child: widget.twoLineStart && widget.enabled
-          ? const Row(
+          ? const Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        DailyMiniExamConstants.ctaStartLine1,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 16.5,
-                          height: 1.08,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.15,
-                          color: AppTheme.ink,
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(vertical: 5),
-                        child: _CtaGoldDivider(),
-                      ),
-                      _CtaStartLine2(),
-                    ],
+                Text(
+                  DailyMiniExamConstants.ctaStartLine1,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 16.5,
+                    height: 1.08,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.15,
+                    color: AppTheme.ink,
                   ),
                 ),
-                SizedBox(width: 10),
-                _CtaPremiumMedallion(size: 34),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 5),
+                  child: _CtaGoldDivider(),
+                ),
+                _CtaStartLine2(),
               ],
             )
           : Row(
@@ -154,10 +146,6 @@ class _DailyMiniExamCtaState extends State<DailyMiniExamCta>
                     ),
                   ),
                 ),
-                if (widget.enabled && !widget.twoLineStart) ...[
-                  const SizedBox(width: 10),
-                  const _CtaPremiumMedallion(size: 28),
-                ],
               ],
             ),
     );
@@ -284,63 +272,4 @@ class _RunningGoldBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RunningGoldBorderPainter oldDelegate) =>
       oldDelegate.progress != progress;
-}
-
-class _CtaPremiumMedallion extends StatelessWidget {
-  final double size;
-
-  const _CtaPremiumMedallion({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFF8EE),
-            Color(0xFFF3E2B8),
-            Color(0xFFE8C878),
-            Color(0xFFC9A86C),
-          ],
-          stops: [0.0, 0.34, 0.72, 1.0],
-        ),
-        border: Border.all(
-          color: const Color(0xFFD4AF6A).withValues(alpha: 0.92),
-          width: 1.15,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.neonGold.withValues(alpha: 0.4),
-            blurRadius: 10,
-            spreadRadius: -1,
-            offset: const Offset(0, 3),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.55),
-            blurRadius: 0,
-            spreadRadius: 0.35,
-            offset: const Offset(-0.5, -0.5),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: Image.asset(
-          'assets/images/app_icon.png',
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Icon(
-            Icons.emoji_events_rounded,
-            size: size * 0.45,
-            color: AppTheme.ink,
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import 'google_g_mark.dart';
 
 /// Misafir kullanıcıya Google hesabı bağlama CTA'sı.
 class AccountLinkCard extends StatelessWidget {
@@ -349,12 +350,8 @@ class _LinkButtonState extends State<_LinkButton> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.g_mobiledata_rounded,
-                          size: 28,
-                          color: AppTheme.ink.withValues(alpha: 0.92),
-                        ),
-                        const SizedBox(width: 2),
+                        const GoogleGMark(size: 20),
+                        const SizedBox(width: 10),
                         Text(
                           'Google ile giriş yap',
                           style: TextStyle(

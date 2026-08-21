@@ -184,28 +184,47 @@ class _SubjectCarouselSection extends StatefulWidget {
 }
 
 class _SubjectCarouselSectionState extends State<_SubjectCarouselSection> {
-  static const _cardWidth = 272.0;
   static const _gap = 10.0;
+  /// Sonraki karttan ekranda kalan peep (kaydırılabilir ipucu).
+  static const _peek = 56.0;
 
   late final ScrollController _scrollCtrl;
   int _activeIndex = 0;
+  bool _canScrollMore = false;
 
   @override
   void initState() {
     super.initState();
-    _scrollCtrl = ScrollController()..addListener(_syncActiveIndex);
+    _scrollCtrl = ScrollController()..addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncFade();
+    });
   }
 
   @override
   void dispose() {
-    _scrollCtrl.removeListener(_syncActiveIndex);
+    _scrollCtrl.removeListener(_onScroll);
     _scrollCtrl.dispose();
     super.dispose();
   }
 
+  void _onScroll() {
+    _syncActiveIndex();
+    _syncFade();
+  }
+
+  void _syncFade() {
+    if (!_scrollCtrl.hasClients) return;
+    final max = _scrollCtrl.position.maxScrollExtent;
+    final more = max > 4 && _scrollCtrl.offset < max - 4;
+    if (more == _canScrollMore) return;
+    setState(() => _canScrollMore = more);
+  }
+
   void _syncActiveIndex() {
     if (!_scrollCtrl.hasClients || widget.subjects.isEmpty) return;
-    const stride = _cardWidth + _gap;
+    final cardWidth = _cardWidth(context);
+    final stride = cardWidth + _gap;
     final next = (_scrollCtrl.offset / stride)
         .round()
         .clamp(0, widget.subjects.length - 1);
@@ -213,9 +232,14 @@ class _SubjectCarouselSectionState extends State<_SubjectCarouselSection> {
     setState(() => _activeIndex = next);
   }
 
+  double _cardWidth(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context).width - 40; // ListView pad
+    return (viewport - _peek).clamp(220.0, 300.0);
+  }
+
   void _jumpToIndex(int index) {
     if (!_scrollCtrl.hasClients) return;
-    const stride = _cardWidth + _gap;
+    final stride = _cardWidth(context) + _gap;
     _scrollCtrl.animateTo(
       index * stride,
       duration: const Duration(milliseconds: 260),
@@ -225,26 +249,57 @@ class _SubjectCarouselSectionState extends State<_SubjectCarouselSection> {
 
   @override
   Widget build(BuildContext context) {
+    final cardWidth = _cardWidth(context);
+    // Fade rengi sayfa zeminiyle uyumlu
+    final fadeEdge = AppTheme.page(context);
+
     return Column(
       children: [
         SizedBox(
           height: 168,
-          child: ListView.separated(
-            controller: _scrollCtrl,
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: widget.subjects.length,
-            separatorBuilder: (_, __) => const SizedBox(width: _gap),
-            itemBuilder: (context, index) {
-              return SizedBox(
-                width: _cardWidth,
-                child: _SubjectCard(
-                  performance: widget.subjects[index],
-                  kpssType: widget.kpssType,
-                  compact: true,
+          child: Stack(
+            children: [
+              ListView.separated(
+                controller: _scrollCtrl,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: widget.subjects.length,
+                separatorBuilder: (_, __) => const SizedBox(width: _gap),
+                itemBuilder: (context, index) {
+                  return SizedBox(
+                    width: cardWidth,
+                    child: _SubjectCard(
+                      performance: widget.subjects[index],
+                      kpssType: widget.kpssType,
+                      compact: true,
+                    ),
+                  );
+                },
+              ),
+              if (_canScrollMore)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 40,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            fadeEdge.withValues(alpha: 0),
+                            fadeEdge.withValues(alpha: 0.72),
+                            fadeEdge,
+                          ],
+                          stops: const [0, 0.45, 1],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              );
-            },
+            ],
           ),
         ),
         if (widget.subjects.length > 1) ...[

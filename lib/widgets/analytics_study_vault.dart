@@ -66,7 +66,6 @@ class AnalyticsStudyVault extends StatelessWidget {
                     icon: Icons.menu_book_rounded,
                     label: 'Yanlış',
                     count: wrongCount,
-                    unit: 'soru',
                     accent: const Color(0xFFF87171),
                     onTap: onWrongTap,
                   ),
@@ -77,7 +76,6 @@ class AnalyticsStudyVault extends StatelessWidget {
                     icon: Icons.favorite_rounded,
                     label: 'Favoriler',
                     count: favoriteCount,
-                    unit: 'soru',
                     accent: AppTheme.champagneLight,
                     onTap: onFavoritesTap,
                   ),
@@ -88,7 +86,6 @@ class AnalyticsStudyVault extends StatelessWidget {
                     icon: Icons.sticky_note_2_rounded,
                     label: 'Notlarım',
                     count: notesCount,
-                    unit: 'not',
                     accent: AppTheme.neonEdge,
                     onTap: onNotesTap,
                   ),
@@ -119,7 +116,6 @@ class _VaultCell extends StatelessWidget {
   final IconData icon;
   final String label;
   final int count;
-  final String unit;
   final Color accent;
   final VoidCallback onTap;
 
@@ -127,7 +123,6 @@ class _VaultCell extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.count,
-    required this.unit,
     required this.accent,
     required this.onTap,
   });
@@ -137,7 +132,7 @@ class _VaultCell extends StatelessWidget {
     return ScaleButton(
       onPressed: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 16, 10, 14),
+        padding: const EdgeInsets.fromLTRB(10, 16, 10, 16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -182,16 +177,6 @@ class _VaultCell extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.1,
                 color: accent,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              unit,
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.onPage(context).withValues(alpha: 0.38),
               ),
             ),
           ],

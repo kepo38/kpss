@@ -97,7 +97,7 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                   Align(
                     alignment: Alignment.bottomCenter,
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 28),
+                      padding: const EdgeInsets.only(bottom: 72),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
