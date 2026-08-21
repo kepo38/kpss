@@ -141,6 +141,23 @@ void main() {
     expect(formatted.split('\n\n').length, greaterThanOrEqualTo(3));
   });
 
+  test('prepareExamJustifyText preserves Turkish g-breve', () {
+    const stem =
+        'onun zorla mahkemeye getirilmesi gerektiğini ifade etmiştir.\n\n'
+        '**Buna göre Nizamülmülk’ün aşağıdakilerden hangisini '
+        'gerçekleştirmeyi hedeflediği söylenemez?**';
+    final cleaned = FormattedText.prepareExamJustifyText(stem);
+    expect(cleaned, contains('gerektiğini'));
+    expect(cleaned, isNot(contains('gerekti ini')));
+    expect(cleaned, contains('aşağıdakilerden'));
+    // Soft newline merge keeps ğ (may insert a space after the line join).
+    final softBroken = FormattedText.prepareExamJustifyText(
+      'getirilmesi gerektiğ\nini ifade etmiştir.',
+    );
+    expect(softBroken, contains('ğ'));
+    expect(softBroken, isNot(contains(RegExp(r'gerekti\s+ini'))));
+  });
+
   testWidgets('renders bold wrapped underline markdown', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

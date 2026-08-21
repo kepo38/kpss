@@ -45,15 +45,6 @@ class StatisticsOverviewTab extends StatelessWidget {
               color: AppTheme.lightPrimary,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Genel bakış',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.lightPrimary.withValues(alpha: 0.55),
-            ),
-          ),
           const SizedBox(height: 16),
           _WeeklySummaryCard(
             summary: summary,
@@ -329,6 +320,15 @@ class _SubjectBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxQ = PracticeExamModel.soruSayisi(ders);
+    final maxNet = maxQ > 0 ? maxQ.toDouble() : 30.0;
+    final avgNet = sonuc.net.clamp(0.0, maxNet);
+    final fill = (avgNet / maxNet).clamp(0.0, 1.0);
+    // Yuksek net -> yesil; orta/dusuk -> champagne gold; track acik gri.
+    final fillColor = fill >= 0.7
+        ? const Color(0xFF2F9E6A)
+        : AppTheme.champagne;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -341,10 +341,10 @@ class _SubjectBar extends StatelessWidget {
               children: [
                 Text(ders, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
                 Text(
-                  '${sonuc.net.toStringAsFixed(1)} net',
+                  '${avgNet.toStringAsFixed(1)} net',
                   style: GoogleFonts.inter(
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.lightPrimary,
+                    color: AppTheme.champagne,
                   ),
                 ),
               ],
@@ -353,9 +353,9 @@ class _SubjectBar extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: (sonuc.net / 30).clamp(0.0, 1.0),
-                backgroundColor: AppTheme.lightAccent.withValues(alpha: 0.2),
-                color: AppTheme.lightPrimary,
+                value: fill,
+                backgroundColor: AppTheme.mist,
+                color: fillColor,
                 minHeight: 6,
               ),
             ),

@@ -36,14 +36,16 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
   Timer? _rankPoll;
   bool _celebrateRank = false;
   bool _awaitingRankAfterCountdown = false;
+  bool _countdownDone = false;
+  int _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
   late final AnimationController _pulseCtrl;
   late final AnimationController _shimmerCtrl;
 
   DailyMiniExamService get _service => DailyMiniExamService.instance;
 
-  bool get _showCountdown => _service.rankRevealCountdownVisible;
-
-  int get _secondsLeft => _service.rankRevealSecondsLeft;
+  /// Servis bayrağı + yerel 10 sn: panel görünür görünmez sayaç başlar.
+  bool get _showCountdown =>
+      _service.rankRevealActive && !_countdownDone;
 
   int? get _resolvedRank {
     if (_showCountdown) return null;
@@ -75,11 +77,29 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
       duration: const Duration(milliseconds: 2600),
     );
     _service.addListener(_onServiceChanged);
+    _bootstrapCountdown();
     _syncPulse();
     _ensureTimer();
   }
 
+  void _bootstrapCountdown() {
+    if (!_service.rankRevealActive || _countdownDone) return;
+    // Panel görünür görünmez 10 sn yerelden başlar (ağ gecikmesi yemez).
+    _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
+  }
+
   void _onServiceChanged() {
+    // Yeni bitirme: servis tekrar armed olduysa yerel sayacı yeniden kur.
+    if (_service.rankRevealActive && _countdownDone) {
+      _countdownDone = false;
+      _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
+      _celebrateRank = false;
+    } else if (_service.rankRevealActive &&
+        !_countdownDone &&
+        _timer == null &&
+        _secondsLeft <= 0) {
+      _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
+    }
     _syncPulse();
     _ensureTimer();
     if (mounted) setState(() {});
@@ -160,10 +180,12 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
 
   Future<void> _tick() async {
     if (!mounted || !_showCountdown) return;
-    final wasLastSecond = _secondsLeft <= 1;
-    _service.tickRankRevealCountdown();
-    if (!mounted) return;
-    if (wasLastSecond) {
+    if (_secondsLeft <= 1) {
+      _secondsLeft = 0;
+      _countdownDone = true;
+      _timer?.cancel();
+      _timer = null;
+      _service.clearRankReveal();
       _awaitingRankAfterCountdown = true;
       if (_hasRank) {
         _awaitingRankAfterCountdown = false;
@@ -179,8 +201,11 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
           setState(() {});
         }));
       }
+    } else {
+      _secondsLeft -= 1;
+      _service.tickRankRevealCountdown();
     }
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   @override

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../constants/daily_mini_exam_constants.dart';
 import '../../screens/daily_mini_rewards_screen.dart';
 import '../../theme/app_theme.dart';
 
@@ -379,7 +380,7 @@ class _OdulInfoCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Günün mini denemesinde haftalık ve aylık toplam doğruya göre '
-              'ilk 3’e Premium verilir. Eşitlikte daha kısa süre önde.',
+              'ilk 3’e Premium verilir. ${DailyMiniExamConstants.tieBreakCopy}',
               style: TextStyle(
                 fontSize: 13,
                 height: 1.4,
@@ -387,11 +388,11 @@ class _OdulInfoCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const _RewardRow(place: '1.', days: '3 gün Premium'),
+            const _RewardRow(place: 1, days: '3 gün Premium'),
             const SizedBox(height: 8),
-            const _RewardRow(place: '2.', days: '2 gün Premium'),
+            const _RewardRow(place: 2, days: '2 gün Premium'),
             const SizedBox(height: 8),
-            const _RewardRow(place: '3.', days: '1 gün Premium'),
+            const _RewardRow(place: 3, days: '1 gün Premium'),
             const SizedBox(height: 14),
             Text(
               'Haftalık ve aylık dönemlerde aynı ödüller geçerlidir. '
@@ -407,9 +408,11 @@ class _OdulInfoCard extends StatelessWidget {
             Material(
               color: Colors.transparent,
               child: InkWell(
+                // Navigate immediately — ranking loads on DailyMiniRewardsScreen.
                 onTap: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).push(
+                  final navigator = Navigator.of(context);
+                  navigator.pop();
+                  navigator.push(
                     MaterialPageRoute<void>(
                       builder: (_) => const DailyMiniRewardsScreen(),
                     ),
@@ -476,17 +479,6 @@ class _OdulInfoCard extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Kapat',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.65),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -495,34 +487,95 @@ class _OdulInfoCard extends StatelessWidget {
 }
 
 class _RewardRow extends StatelessWidget {
-  final String place;
+  final int place;
   final String days;
 
   const _RewardRow({required this.place, required this.days});
 
   @override
   Widget build(BuildContext context) {
+    final medal = switch (place) {
+      1 => (
+          icon: Icons.emoji_events_rounded,
+          colors: const [
+            Color(0xFFFFF8EE),
+            Color(0xFFF3E2B8),
+            Color(0xFFE8C878),
+            Color(0xFFB8860B),
+          ],
+          border: const Color(0xFFD4AF6A),
+        ),
+      2 => (
+          icon: Icons.military_tech_rounded,
+          colors: const [
+            Color(0xFFF7FAFC),
+            Color(0xFFE2E8F0),
+            Color(0xFFA8B4C4),
+            Color(0xFF64748B),
+          ],
+          border: const Color(0xFF94A3B8),
+        ),
+      _ => (
+          icon: Icons.workspace_premium_rounded,
+          colors: const [
+            Color(0xFFFFF1E6),
+            Color(0xFFF0D4B8),
+            Color(0xFFC4895A),
+            Color(0xFF8B5A2B),
+          ],
+          border: const Color(0xFFC4895A),
+        ),
+    };
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         color: Colors.white.withValues(alpha: 0.05),
         border: Border.all(
-          color: AppTheme.champagne.withValues(alpha: 0.28),
+          color: medal.border.withValues(alpha: 0.45),
         ),
       ),
       child: Row(
         children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: medal.colors,
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.45),
+                width: 1.1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: medal.colors[2].withValues(alpha: 0.45),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: Icon(
+              medal.icon,
+              size: 18,
+              color: AppTheme.ink,
+            ),
+          ),
+          const SizedBox(width: 10),
           Text(
-            place,
-            style: const TextStyle(
+            '$place.',
+            style: TextStyle(
               fontFamily: 'serif',
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: AppTheme.champagneLight,
+              color: medal.colors[0],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Text(
             days,
             style: const TextStyle(

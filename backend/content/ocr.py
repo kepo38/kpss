@@ -255,6 +255,55 @@ def _normalize_option_key(raw_key: str) -> str | None:
     return None
 
 
+# Yüksek güven: ğ kaybolup yerine boşluk/satır kırığı gelmiş yaygın kalıplar.
+# Yalnızca kanıtlı OCR/yazım bozulmaları; genel "g → ğ" yeniden yazımı yok.
+_MISSING_GBREVE_REPAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"gerekti[\s\u00a0]+ini", re.IGNORECASE), "gerektiğini"),
+    (re.compile(r"oldugu[\s\u00a0]+una", re.IGNORECASE), "olduğuna"),
+    (re.compile(r"oldugu[\s\u00a0]+unu", re.IGNORECASE), "olduğunu"),
+)
+
+
+def _mojibake_marker_count(text: str) -> int:
+    return sum(text.count(ch) for ch in ("Ã", "Â", "Ä", "Å"))
+
+
+def _turkish_letter_count(text: str) -> int:
+    return sum(text.count(ch) for ch in "çğıöşüÇĞİÖŞÜ")
+
+
+def _repair_utf8_mojibake(text: str) -> str:
+    """UTF-8'in latin-1/cp1252 olarak okunmasından doğan bozulmayı düzelt.
+
+    Eski kapı yalnızca ``Ã`` azalmasını kabul ediyordu; ``ğ`` (C4 9F → Ä+…)
+    için ``Ã`` sayısı 0 kalır ve onarım reddedilirdi.
+    """
+    if not re.search(r"Ã.|Â.|Ä.|Å.", text):
+        return text
+    best = text
+    best_score = (_mojibake_marker_count(text), -_turkish_letter_count(text))
+    for encoding in ("latin-1", "cp1252"):
+        try:
+            repaired = text.encode(encoding).decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            continue
+        repaired = unicodedata.normalize("NFC", repaired)
+        score = (
+            _mojibake_marker_count(repaired),
+            -_turkish_letter_count(repaired),
+        )
+        if score < best_score:
+            best, best_score = repaired, score
+    return best
+
+
+def _repair_missing_gbreve(text: str) -> str:
+    """``gerekti ini`` gibi ğ→boşluk bozulmalarını güvenli kalıplarla onar."""
+    for pattern, replacement in _MISSING_GBREVE_REPAIRS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def normalize_turkish_text(text: str) -> str:
     """UTF-8 NFC + yaygın Türkçe OCR/encoding düzeltmeleri."""
     if not text:
@@ -262,13 +311,8 @@ def normalize_turkish_text(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     text = text.translate(_CP1254_MOJIBAKE)
     text = text.translate(_OCR_CHAR_FIXES)
-    if re.search(r"Ã.|Â.|Ä.|Å.", text):
-        try:
-            repaired = text.encode("latin-1").decode("utf-8")
-            if repaired.count("Ã") < text.count("Ã"):
-                text = unicodedata.normalize("NFC", repaired)
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            pass
+    text = _repair_utf8_mojibake(text)
+    text = _repair_missing_gbreve(text)
     lines = [
         ln.rstrip()
         for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")

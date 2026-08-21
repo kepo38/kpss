@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../constants/daily_mini_exam_constants.dart';
 import '../../models/quiz_result.dart';
-import '../../screens/daily_mini_rewards_screen.dart';
+import '../../screens/daily_mini_exam_result_screen.dart';
 import '../../screens/profile_screen.dart';
 import '../../screens/quiz_screen.dart';
 import '../../services/ad_manager.dart';
@@ -145,14 +145,10 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
   }
 
   Future<void> _openResult() async {
-    // Günlük kürsü kartta zaten var; EN BAŞARILILAR → hafta/ay ödül sıralaması.
-    await _openRewards();
-  }
-
-  Future<void> _openRewards() async {
+    // EN BAŞARILILAR → günün sıralama listesi; hafta/ay ÖDÜL ayrı kalır.
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => const DailyMiniRewardsScreen(),
+        builder: (_) => const DailyMiniExamResultScreen(),
       ),
     );
   }
@@ -262,11 +258,13 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
         final guestMustSignIn = service.guestMustSignIn;
         final ctaLabel = guestMustSignIn
             ? DailyMiniExamConstants.ctaGuestSignIn
-            : (service.hasInProgress && service.canResumeQuiz
-                ? DailyMiniExamConstants.ctaResume
-                : (_window.isOpen
-                    ? DailyMiniExamConstants.ctaStart
-                    : '${DailyMiniExamConstants.opensClock}’de açılır'));
+            : (submittedRanking
+                ? DailyMiniExamConstants.ctaCompleted
+                : (service.hasInProgress && service.canResumeQuiz
+                    ? DailyMiniExamConstants.ctaResume
+                    : (_window.isOpen
+                        ? DailyMiniExamConstants.ctaStart
+                        : '${DailyMiniExamConstants.opensClock}’de açılır')));
         final rank = service.rankForCurrentUser();
         final dark = AppTheme.isDark(context);
 

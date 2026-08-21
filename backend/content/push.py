@@ -97,8 +97,10 @@ def notify_content_updated(version: int) -> bool:
 def send_announcement_push(announcement) -> PushResult:
     """
     Duyuruyu FCM ile gönder.
-    1) Konu (topic): tüm abone cihazlar
-    2) Kayıtlı DeviceToken listesi (multicast)
+
+    Tek yol: önce konu (topic). Topic başarısızsa kayıtlı DeviceToken
+    multicast. App hem topic abonesi hem token kaydettiği için ikisini
+    birden göndermek aynı cihaza çift bildirim düşürür.
     """
     ready, err = firebase_ready()
     if not ready:
@@ -167,48 +169,49 @@ def send_announcement_push(announcement) -> PushResult:
         logger.warning("FCM topic send failed: %s", exc)
         failure += 1
 
-    tokens = list(
-        DeviceToken.objects.filter(is_active=True).values_list("token", flat=True)
-    )
-    # Multicast max 500
-    for i in range(0, len(tokens), 500):
-        chunk = tokens[i : i + 500]
-        if not chunk:
-            continue
-        try:
-            resp = messaging.send_each_for_multicast(
-                messaging.MulticastMessage(
-                    tokens=chunk,
-                    notification=note,
-                    data=data,
-                    android=android,
+    # Topic OK ise multicast atla — aksi halde abone cihazlar çift bildirim alır.
+    if not topic_ok:
+        tokens = list(
+            DeviceToken.objects.filter(is_active=True).values_list("token", flat=True)
+        )
+        # Multicast max 500
+        for i in range(0, len(tokens), 500):
+            chunk = tokens[i : i + 500]
+            if not chunk:
+                continue
+            try:
+                resp = messaging.send_each_for_multicast(
+                    messaging.MulticastMessage(
+                        tokens=chunk,
+                        notification=note,
+                        data=data,
+                        android=android,
+                    )
                 )
-            )
-            success += resp.success_count
-            failure += resp.failure_count
-            # Geçersiz jetonları pasifleştir
-            for idx, send_resp in enumerate(resp.responses):
-                if send_resp.success:
-                    continue
-                err_code = ""
-                if send_resp.exception is not None:
-                    err_code = getattr(send_resp.exception, "code", "") or str(
-                        send_resp.exception
-                    )
-                if any(
-                    x in err_code
-                    for x in (
-                        "registration-token-not-registered",
-                        "invalid-registration-token",
-                        "NOT_FOUND",
-                        "UNREGISTERED",
-                    )
-                ):
-                    DeviceToken.objects.filter(token=chunk[idx]).update(is_active=False)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("FCM multicast failed")
-            failure += len(chunk)
-            if not topic_ok:
+                success += resp.success_count
+                failure += resp.failure_count
+                # Geçersiz jetonları pasifleştir
+                for idx, send_resp in enumerate(resp.responses):
+                    if send_resp.success:
+                        continue
+                    err_code = ""
+                    if send_resp.exception is not None:
+                        err_code = getattr(send_resp.exception, "code", "") or str(
+                            send_resp.exception
+                        )
+                    if any(
+                        x in err_code
+                        for x in (
+                            "registration-token-not-registered",
+                            "invalid-registration-token",
+                            "NOT_FOUND",
+                            "UNREGISTERED",
+                        )
+                    ):
+                        DeviceToken.objects.filter(token=chunk[idx]).update(is_active=False)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("FCM multicast failed")
+                failure += len(chunk)
                 return PushResult(
                     ok=False,
                     success=success,

@@ -6,7 +6,11 @@ from django.test import SimpleTestCase, TestCase
 from PIL import Image, ImageDraw
 
 from content.models import Question
-from content.ocr import parse_question_text, strip_option_emphasis
+from content.ocr import (
+    normalize_turkish_text,
+    parse_question_text,
+    strip_option_emphasis,
+)
 
 
 class OptionParseTests(SimpleTestCase):
@@ -1010,3 +1014,29 @@ class QuestionOsymSorduTests(TestCase):
         )
         data = QuestionSerializer(question).data
         self.assertTrue(data["osymSordu"])
+
+
+class NormalizeTurkishTextTests(SimpleTestCase):
+    def test_preserves_real_gbreve(self):
+        src = "mahkemeye getirilmesi gerektiğini ifade etmiştir"
+        self.assertEqual(normalize_turkish_text(src), src)
+        self.assertIn("\u011f", normalize_turkish_text(src))
+
+    def test_repairs_gerekti_space_ini(self):
+        src = "getirilmesi gerekti ini ifade etmiştir"
+        out = normalize_turkish_text(src)
+        self.assertIn("gerektiğini", out)
+        self.assertNotIn("gerekti ini", out)
+
+    def test_repairs_utf8_mojibake_gbreve_latin1(self):
+        # UTF-8 C4 9F (ğ) mis-decoded as latin-1 → U+00C4 U+009F
+        src = "gerekti" + bytes([0xC4, 0x9F]).decode("latin-1") + "ini"
+        out = normalize_turkish_text(src)
+        self.assertIn("gerektiğini", out)
+        self.assertNotIn("\u00c4", out)
+
+    def test_repairs_utf8_mojibake_gbreve_cp1252(self):
+        # cp1252 maps 0x9F → Ÿ
+        src = "gerekti\u00c4\u0178ini"
+        out = normalize_turkish_text(src)
+        self.assertIn("gerektiğini", out)

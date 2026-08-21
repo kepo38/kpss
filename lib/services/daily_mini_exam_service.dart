@@ -60,16 +60,22 @@ class DailyMiniExamService extends ChangeNotifier {
   DailyMiniExamSnapshot? get remote => _remote;
   bool get rankingLocked =>
       _rankedAttempt(_remote?.myAttempt) != null ||
-      (_rankingLocked && _rankedAttempt(_localAttempt) != null);
+      _rankingLocked ||
+      (_formallyFinished && _localAttempt != null);
   bool get rankRevealActive => _rankRevealActive;
   bool get rankRevealCountdownVisible =>
       _rankRevealActive && _rankRevealSecondsLeft > 0;
   int get rankRevealSecondsLeft => _rankRevealSecondsLeft;
   bool get rankRevealCelebrated => _rankRevealCelebrated;
   bool get formallyFinished => _formallyFinished;
+  /// Bugün bitti / kilitli / gönderim bekliyor — UI asla "Denemeye Başla" göstermemeli.
   bool get hasSubmittedRanking =>
-      rankingLocked ||
-      (_pendingRankingSubmit && _rankedAttempt(_localAttempt) != null);
+      _formallyFinished ||
+      _completed ||
+      _rankingLocked ||
+      _rankedAttempt(_remote?.myAttempt) != null ||
+      (_pendingRankingSubmit && _localAttempt != null) ||
+      (_rankRevealActive && _localAttempt != null);
   bool get completed => hasSubmittedRanking;
 
   /// Misafir yalnızca ilk gün katılır; sonraki günlerde profil girişi gerekir.
@@ -89,8 +95,16 @@ class DailyMiniExamService extends ChangeNotifier {
   DailyMiniAttempt? get attempt {
     final remote = _rankedAttempt(_remote?.myAttempt);
     if (remote != null) return remote;
-    if (_pendingRankingSubmit || _rankingLocked || _completed) {
-      return _rankedAttempt(_localAttempt);
+    if (_remote?.myAttempt != null &&
+        (_completed || _formallyFinished || _rankingLocked)) {
+      return _remote!.myAttempt;
+    }
+    if (_pendingRankingSubmit ||
+        _rankingLocked ||
+        _completed ||
+        _formallyFinished) {
+      // Bitmiş denemede boş puanlı yerel deneme de kalsın (kürsü/pending UI).
+      return _localAttempt;
     }
     return null;
   }
@@ -260,17 +274,27 @@ class DailyMiniExamService extends ChangeNotifier {
   void _loadRankingFlags(SharedPreferences prefs) {
     final today = isoDate(window.examDate);
     if (prefs.getString(_scopedKey(_kRankingFlagDate)) != today) {
+      // Progress zaten bugünkü tamamlanmayı yüklediyse bayrakları silme
+      // (eski kurulum / yarış: flag date yok ama state JSON var).
+      if (_storedDate == today &&
+          (_rankingLocked ||
+              _completed ||
+              _formallyFinished ||
+              _pendingRankingSubmit ||
+              _localAttempt != null)) {
+        return;
+      }
       _rankingLocked = false;
       _pendingRankingSubmit = false;
       return;
     }
     _rankingLocked =
         prefs.getBool(_scopedKey(DailyMiniExamConstants.prefsRankingLocked)) ??
-            false;
+            _rankingLocked;
     _pendingRankingSubmit = prefs.getBool(
           _scopedKey(DailyMiniExamConstants.prefsPendingRankingSubmit),
         ) ??
-        false;
+        _pendingRankingSubmit;
   }
 
   static const _kRankingFlagDate = 'daily_mini_ranking_flag_date_v1';
@@ -362,13 +386,31 @@ class DailyMiniExamService extends ChangeNotifier {
           if (_remote!.questionIds.isNotEmpty && !_completed) {
             _questionIds = _remote!.questionIds;
           }
-          final rankedRemote = _rankedAttempt(_remote!.myAttempt);
+          final remoteAttempt = _remote!.myAttempt;
+          final rankedRemote = _rankedAttempt(remoteAttempt);
           if (rankedRemote != null) {
             _completed = true;
+            _formallyFinished = true;
             _localAttempt = rankedRemote;
             _rankingLocked = true;
             _pendingRankingSubmit = false;
-          } else if (!_pendingRankingSubmit) {
+          } else if (remoteAttempt != null &&
+              (_completed ||
+                  _formallyFinished ||
+                  _rankingLocked ||
+                  _pendingRankingSubmit)) {
+            // Sunucu denemeyi döndürdü ama skor filtresi kaçırdı — yine tamamlandı.
+            _completed = true;
+            _formallyFinished = true;
+            _localAttempt = remoteAttempt;
+            _rankingLocked = true;
+            _pendingRankingSubmit = false;
+          } else if (!_pendingRankingSubmit &&
+              !_rankRevealActive &&
+              !_completed &&
+              !_formallyFinished &&
+              !_rankingLocked) {
+            // Bitirme sonrasi 10 sn sayac / yerel deneme surerken GET yarisi silmesin.
             _localAttempt = null;
             _completed = false;
             _rankingLocked = false;
@@ -540,6 +582,9 @@ class DailyMiniExamService extends ChangeNotifier {
     _rankRevealActive = true;
     _rankRevealSecondsLeft = 10;
     _rankRevealCelebrated = false;
+    // Kürsü + sayaç hemen görünsün; refresh yarışı da silmesin.
+    _pendingRankingSubmit = true;
+    notifyListeners();
 
     await ContentBankService.instance.recordAttempt(
       TestAttemptModel(
@@ -611,8 +656,7 @@ class DailyMiniExamService extends ChangeNotifier {
     if (ok) {
       _rankingLocked = true;
       _pendingRankingSubmit = false;
-      _rankRevealActive = false;
-      _rankRevealSecondsLeft = 0;
+      // Bekleyen gönderim başarılı olsa bile 10 sn sıra açılışını koru.
       _syncRankSnapshot();
       await _persistRankSnapshot();
       await _persist();

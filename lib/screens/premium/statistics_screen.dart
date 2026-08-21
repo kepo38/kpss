@@ -54,6 +54,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     return Scaffold(
       backgroundColor: embedded ? AppTheme.page(context) : null,
       appBar: AppBar(
+        // Shell already owns the status inset; avoid double top gap.
+        primary: !embedded,
         backgroundColor: embedded ? AppTheme.page(context) : null,
         foregroundColor: embedded ? AppTheme.ink : null,
         leading: embedded ? null : const AppBackButton(),
@@ -72,7 +74,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               )
             : const Text('Deneme İstatistiklerim'),
         titleSpacing: embedded ? 0 : null,
-        toolbarHeight: embedded ? 64 : null,
+        toolbarHeight: embedded ? 52 : null,
         bottom: TabBar(
           controller: _tabController,
           labelColor: embedded ? AppTheme.ink : null,

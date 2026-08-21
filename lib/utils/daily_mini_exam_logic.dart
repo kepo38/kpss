@@ -1,5 +1,22 @@
+import 'package:intl/intl.dart';
+
 import '../constants/brand_constants.dart';
 import '../constants/daily_mini_exam_constants.dart';
+
+/// API ISO tarih aralığını Türkçe gösterir: `17 Ağustos - 23 Ağustos 2026`.
+String formatTurkishPeriodRange(String startIso, String endIso) {
+  if (startIso.isEmpty || endIso.isEmpty) return '';
+  final start = DateTime.tryParse(startIso);
+  final end = DateTime.tryParse(endIso);
+  if (start == null || end == null) return '$startIso - $endIso';
+
+  final dayMonth = DateFormat('d MMMM', 'tr');
+  final dayMonthYear = DateFormat('d MMMM yyyy', 'tr');
+  if (start.year == end.year) {
+    return '${dayMonth.format(start)} - ${dayMonthYear.format(end)}';
+  }
+  return '${dayMonthYear.format(start)} - ${dayMonthYear.format(end)}';
+}
 
 /// Python backend ile aynı LCG Fisher-Yates.
 List<String> lcgShuffle(List<String> items, int seed) {

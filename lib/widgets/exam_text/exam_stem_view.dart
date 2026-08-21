@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
+import '../../utils/turkish_hyphenation.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
 
@@ -12,8 +13,10 @@ class ExamStemView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cleaned = FormattedText.prepareExamJustifyText(
-      OptionColumnLayout.visibleStem(text),
+    final cleaned = TurkishHyphenation.hyphenate(
+      FormattedText.prepareExamJustifyText(
+        OptionColumnLayout.visibleStem(text),
+      ),
     );
     return FormattedText(
       cleaned,

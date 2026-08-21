@@ -60,8 +60,9 @@ class WatermarkWidget extends StatelessWidget {
         ),
       ),
     );
+    // Clip.hardEdge rotated mark'ı kısa kök metinde kesiyordu → filigran kayboluyordu.
     return Stack(
-      clipBehavior: Clip.hardEdge,
+      clipBehavior: Clip.none,
       children: overlay ? [child, mark] : [mark, child],
     );
   }

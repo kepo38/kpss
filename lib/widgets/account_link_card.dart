@@ -108,7 +108,9 @@ class AccountLinkCard extends StatelessWidget {
             ],
           ),
           child: Material(
-            color: Colors.transparent,
+            // Solid base — transparent Material + Ink let underlying scroll
+            // layers (AppBar "Profil", stacked labels) show through as ghosts.
+            color: const Color(0xFF101828),
             clipBehavior: Clip.antiAlias,
             borderRadius: BorderRadius.circular(16),
             child: Ink(
@@ -230,16 +232,6 @@ class AccountLinkCard extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
-                                    'HESAP',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 1.8,
-                                      color: AppTheme.champagne,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
                                   Text(
                                     title,
                                     style: const TextStyle(

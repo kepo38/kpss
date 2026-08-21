@@ -26,10 +26,18 @@ import 'support_contact_screen.dart';
 import 'user_messages_screen.dart';
 
 /// Öğrenci profili — ana sayfa ile aynı neon modül dili.
+///
+/// [embedded] true iken (ör. alt sekme) geri tuşu gizlenir; Navigator ile
+/// push edildiğinde [AppBackButton] gösterilir ve başlıkta avatar ikonu yok.
 class ProfileScreen extends StatefulWidget {
   final UserModel user;
+  final bool embedded;
 
-  const ProfileScreen({super.key, required this.user});
+  const ProfileScreen({
+    super.key,
+    required this.user,
+    this.embedded = false,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -244,6 +252,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final msgUnread = _messages.unreadCount;
     final annUnread = _announcements.unreadCount;
     final topPad = MediaQuery.paddingOf(context).top;
+    final routeCanPop = ModalRoute.of(context)?.canPop ?? false;
+    final showBack = !widget.embedded && routeCanPop;
+    final barBg = AppTheme.pageTop(context);
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
@@ -272,31 +283,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   pinned: true,
                   elevation: 0,
                   scrolledUnderElevation: 0,
-                  backgroundColor: Colors.transparent,
+                  // Opaque bar: transparent pinned bar let body text ("HESAP",
+                  // card titles) bleed under the "Profil" title as ghost layers.
+                  backgroundColor: barBg,
+                  surfaceTintColor: Colors.transparent,
                   foregroundColor: AppTheme.onPage(context),
-                  leading: const AppBackButton(),
+                  automaticallyImplyLeading: false,
+                  leading: showBack
+                      ? const AppBackButton()
+                      : null,
+                  leadingWidth: showBack ? null : 0,
                   centerTitle: false,
-                  titleSpacing: 0,
+                  titleSpacing: showBack ? 0 : 16,
                   title: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.person_rounded,
-                        size: 22,
-                        color: AppTheme.champagneLight.withValues(alpha: 0.95),
-                      ),
-                      const SizedBox(width: 8),
-                      ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [_cyan, AppTheme.champagneLight],
-                        ).createShader(bounds),
-                        child: Text(
-                          'Profil',
-                          style: TextStyle(
-                            fontFamily: 'serif',
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.onPage(context),
-                          ),
+                      // Only when there is no back control — avoids stacking
+                      // person icon on top of AppBackButton in the leading slot.
+                      if (!showBack) ...[
+                        Icon(
+                          Icons.person_rounded,
+                          size: 22,
+                          color: AppTheme.champagneLight.withValues(alpha: 0.95),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        'Profil',
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.onPage(context),
                         ),
                       ),
                     ],

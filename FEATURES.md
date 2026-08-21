@@ -23,7 +23,26 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
-### 21 Ağustos 2026 — işlenen ekleme ve değişiklikler (bu commit)
+### 21 Ağustos 2026 — Deneme / Profil / ÖDÜL / Quiz / Push (bu commit)
+
+Önceki aynı gün commit'inin (`b18dc23` Stüdyo/Gelişim/görev/splash) üstüne eklenen UI, sıralama, OCR ve araç düzeltmeleri.
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Deneme istatistik** | Ortalama net (kümülatif değil); mist track + altın/yeşil dolum; **PUAN HESAPLAMA** üst bara yakın; «Genel bakış» alt yazısı kaldırıldı | `statistics_overview_tab.dart`, `statistics_screen.dart`, `practice_exam_service.dart` |
+| **Profil** | AppBar taşması / hayalet HESAP–Profil bleed düzeltmesi; `AccountLinkCard` opak/solid | `profile_screen.dart`, `account_link_card.dart` |
+| **Stüdyo** *(önceki commit)* | Araç listesinden Profil satırı kaldırıldı; **STÜDYO** pill genişliği; beyaz «Stüdyo» başlığı yok | `home_screen.dart`, `home_hero_section.dart` |
+| **Gelişim** *(önceki commit)* | Google **G** markası; gereksiz soru/not etiketleri kaldırıldı; ders carousel peek + fade | `analytics_hub_screen.dart`, `analytics_study_vault.dart`, `google_g_mark.dart` |
+| **Günlük görev** *(önceki commit)* | Chevron + kontrast; **Denemeye Başla** gradyan tersi; 657 madalyon kaldırıldı | `daily_mission_center.dart`, `daily_mini_exam_cta.dart` |
+| **Splash** *(önceki commit)* | Ataman metni yukarı (lift) | `boot_splash_screen.dart` |
+| **Destek mailto** | `From` hardcode yok; kurumsal gövde şablonu (yazma alanı + teknik footer) | `support_contact_service.dart` |
+| **Günlük mini** | 10 sn sıra reveal yarış düzeltmesi; tamamlandı UI vs Denemeye Başla; **Senin sıran** + Haftalık\|Aylık Row; EN BAŞARILILAR → günlük liste; AppBar **ÖDÜL** butonu kaldırıldı; TR tarih aralığı; eşitlik metni; ÖDÜL modal madalyalar, Kapat yok, anında navigasyon | `daily_mini_exam_*`, `daily_mini_rewards_screen.dart`, `daily_mini_odul_button.dart`, `daily_mini_exam_constants.dart`, `daily_mini_exam_logic.dart` |
+| **Push** | FCM topic+token çift gönderim düzeltmesi (önce topic; OK ise multicast yok) | `push.py`, `tests.py` |
+| **Quiz** | ÖSYM rozeti ortada; şıklar sola + TR soft-hyphen; watermark clip; **Çözümü Gör** şık seçilmeden kapalı | `quiz_screen.dart`, `exam_option_view.dart`, `exam_stem_view.dart`, `watermark_widget.dart`, `turkish_hyphenation.dart`, `formatted_text_test.dart` |
+| **OCR / ğ** | Mojibake onarımı (`Ä`/`ğ`); `gerekti ini` vb. güvenli kalıplar; tarama komutu | `ocr.py`, `scan_missing_gbreve.py` |
+| **basla.bat** | Orphan `runserver` temizliği; venv/Python bulma; port 8000 kontrolü; güvenilir start | `basla.bat`, `scripts/stop-django-runserver.ps1` |
+
+### 21 Ağustos 2026 — ContentBank / Premium kapı / splash (önceki commit)
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
+import '../../utils/turkish_hyphenation.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
 
@@ -21,8 +22,8 @@ class ExamOptionView extends StatelessWidget {
             if (i > 0) const SizedBox(width: 6),
             Expanded(
               child: Text(
-                cells[i],
-                textAlign: TextAlign.center,
+                TurkishHyphenation.hyphenate(cells[i]),
+                textAlign: TextAlign.start,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: style.copyWith(fontSize: 12, height: 1.2),
@@ -33,10 +34,12 @@ class ExamOptionView extends StatelessWidget {
       );
     }
     return FormattedText(
-      FormattedText.wrapBareLatex(FormattedText.stripMarkup(text)),
+      TurkishHyphenation.hyphenate(
+        FormattedText.wrapBareLatex(FormattedText.stripMarkup(text)),
+      ),
       examLayout: true,
       examWrap: true,
-      textAlign: TextAlign.center,
+      textAlign: TextAlign.start,
       style: ExamTypography.option(color: Colors.white),
     );
   }

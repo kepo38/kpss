@@ -8,8 +8,8 @@ import '../services/daily_mini_ranking_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/daily_mini_exam_logic.dart';
 import '../widgets/app_back_button.dart';
-import '../widgets/daily_mini_exam/daily_mini_odul_button.dart';
 import '../widgets/frosted_email.dart';
+import '../constants/daily_mini_exam_constants.dart';
 
 /// Haftalık/aylık mini deneme sıralaması + geçmiş ödül kazananları.
 class DailyMiniRewardsScreen extends StatefulWidget {
@@ -57,66 +57,89 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
             ),
             child: Column(
               children: [
-                _PremiumAppBar(
-                  onOdul: () => showDailyMiniOdulInfoCard(context),
-                ),
+                const _PremiumAppBar(),
                 Expanded(
-                  child: service.loading && snap == null
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: AppTheme.champagne,
-                          ),
-                        )
-                      : RefreshIndicator(
-                          color: AppTheme.champagne,
-                          backgroundColor: AppTheme.inkSoft,
-                          onRefresh: () => service.refresh(force: true),
-                          child: ListView(
-                            padding: const EdgeInsets.fromLTRB(18, 8, 18, 36),
-                            children: [
-                              _RewardHero(rewardDays: rewards),
-                              const SizedBox(height: 18),
-                              _PeriodTabs(
-                                period: _period,
-                                onChanged: (p) => setState(() => _period = p),
-                              ),
-                              if (snap != null) ...[
-                                const SizedBox(height: 14),
-                                _PeriodMeta(
-                                  label: _periodLabel(
-                                    snap.periodStart,
-                                    snap.periodEnd,
-                                  ),
-                                  myRank: snap.myRank,
-                                  myCorrect: snap.myTotalCorrect,
-                                  myDuration: snap.myTotalDurationSeconds,
-                                ),
-                                const SizedBox(height: 14),
-                                if (snap.leaderboard.isEmpty)
-                                  const _EmptyHint(
-                                    'Bu dönemde henüz sıralama yok.',
-                                  )
-                                else
-                                  ...snap.leaderboard.map(
-                                    (row) => _PeriodRow(
-                                      row: row,
-                                      rewardDays: rewards,
-                                      isMe: snap.myRank == row.rank,
-                                    ),
-                                  ),
-                              ],
-                              const SizedBox(height: 28),
-                              const _SectionEyebrow('Geçmiş kazananlar'),
-                              const SizedBox(height: 12),
-                              if (history == null || history.periods.isEmpty)
-                                const _EmptyHint(
-                                  'Henüz finalize edilmiş dönem yok.',
-                                )
-                              else
-                                ...history.periods.map(_HistoryPeriodCard.new),
-                            ],
-                          ),
+                  child: RefreshIndicator(
+                    color: AppTheme.champagne,
+                    backgroundColor: AppTheme.inkSoft,
+                    onRefresh: () => service.refresh(force: true),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 8, 18, 36),
+                      children: [
+                        _RewardHero(rewardDays: rewards),
+                        const SizedBox(height: 18),
+                        _SeninSiranButton(
+                          myRank: snap?.myRank,
+                          myCorrect: snap?.myTotalCorrect ?? 0,
+                          myDuration: snap?.myTotalDurationSeconds ?? 0,
+                          loading: service.loading && snap == null,
                         ),
+                        const SizedBox(height: 12),
+                        _PeriodTabs(
+                          period: _period,
+                          onChanged: (p) => setState(() => _period = p),
+                        ),
+                        if (service.loading && snap == null) ...[
+                          const SizedBox(height: 28),
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: CircularProgressIndicator(
+                                color: AppTheme.champagne,
+                              ),
+                            ),
+                          ),
+                        ] else if (snap != null) ...[
+                          if (snap.periodStart.isNotEmpty &&
+                              snap.periodEnd.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            _PeriodDateLabel(
+                              label: _periodLabel(
+                                snap.periodStart,
+                                snap.periodEnd,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 14),
+                          if (snap.leaderboard.isEmpty)
+                            const _EmptyHint(
+                              'Bu dönemde henüz sıralama yok.',
+                            )
+                          else
+                            ...snap.leaderboard.map(
+                              (row) => _PeriodRow(
+                                row: row,
+                                rewardDays: rewards,
+                                isMe: snap.myRank == row.rank,
+                              ),
+                            ),
+                        ],
+                        const SizedBox(height: 28),
+                        const _SectionEyebrow('Geçmiş kazananlar'),
+                        const SizedBox(height: 12),
+                        if (service.loading && history == null)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: AppTheme.champagne,
+                                ),
+                              ),
+                            ),
+                          )
+                        else if (history == null || history.periods.isEmpty)
+                          const _EmptyHint(
+                            'Henüz finalize edilmiş dönem yok.',
+                          )
+                        else
+                          ...history.periods.map(_HistoryPeriodCard.new),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -127,25 +150,22 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
   }
 
   String _periodLabel(String start, String end) {
-    if (start.isEmpty || end.isEmpty) return '';
-    return '$start – $end';
+    return formatTurkishPeriodRange(start, end);
   }
 }
 
 class _PremiumAppBar extends StatelessWidget {
-  final VoidCallback onOdul;
-
-  const _PremiumAppBar({required this.onOdul});
+  const _PremiumAppBar();
 
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
     return Padding(
       padding: EdgeInsets.fromLTRB(8, top + 4, 12, 8),
-      child: Row(
+      child: const Row(
         children: [
-          const AppBackButton(),
-          const Expanded(
+          AppBackButton(),
+          Expanded(
             child: Text(
               'ÖDÜL · Sıralama',
               textAlign: TextAlign.center,
@@ -158,7 +178,8 @@ class _PremiumAppBar extends StatelessWidget {
               ),
             ),
           ),
-          DailyMiniOdulButton(size: 42, onPressed: onOdul),
+          // AppBackButton (IconButton) ile denge — sağda ÖDÜL yok.
+          SizedBox(width: 48),
         ],
       ),
     );
@@ -255,7 +276,7 @@ class _RewardHero extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            'Toplam doğru · eşitlikte daha kısa süre önde.',
+            DailyMiniExamConstants.tieBreakCopy,
             style: TextStyle(
               fontSize: 12.5,
               height: 1.35,
@@ -449,21 +470,24 @@ class _PeriodTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Row(
       children: [
-        _PeriodTab(
-          label: 'Haftalık sıralama',
-          icon: Icons.calendar_view_week_rounded,
-          selected: period == LeaderboardPeriod.haftalik,
-          onTap: () => onChanged(LeaderboardPeriod.haftalik),
+        Expanded(
+          child: _PeriodTab(
+            label: 'Haftalık',
+            icon: Icons.calendar_view_week_rounded,
+            selected: period == LeaderboardPeriod.haftalik,
+            onTap: () => onChanged(LeaderboardPeriod.haftalik),
+          ),
         ),
-        const SizedBox(height: 10),
-        _PeriodTab(
-          label: 'Aylık sıralama',
-          icon: Icons.calendar_month_rounded,
-          selected: period == LeaderboardPeriod.aylik,
-          onTap: () => onChanged(LeaderboardPeriod.aylik),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _PeriodTab(
+            label: 'Aylık',
+            icon: Icons.calendar_month_rounded,
+            selected: period == LeaderboardPeriod.aylik,
+            onTap: () => onChanged(LeaderboardPeriod.aylik),
+          ),
         ),
       ],
     );
@@ -493,7 +517,7 @@ class _PeriodTab extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             gradient: selected
@@ -528,7 +552,8 @@ class _PeriodTab extends StatelessWidget {
                   ]
                 : null,
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
@@ -537,28 +562,20 @@ class _PeriodTab extends StatelessWidget {
                     ? AppTheme.ink
                     : Colors.white.withValues(alpha: 0.55),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14.5,
-                    letterSpacing: 0.2,
-                    color: selected
-                        ? AppTheme.ink
-                        : Colors.white.withValues(alpha: 0.62),
-                  ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  letterSpacing: 0.15,
+                  color: selected
+                      ? AppTheme.ink
+                      : Colors.white.withValues(alpha: 0.62),
                 ),
-              ),
-              Icon(
-                selected
-                    ? Icons.check_circle_rounded
-                    : Icons.chevron_right_rounded,
-                size: 20,
-                color: selected
-                    ? AppTheme.ink.withValues(alpha: 0.75)
-                    : Colors.white.withValues(alpha: 0.35),
               ),
             ],
           ),
@@ -568,133 +585,167 @@ class _PeriodTab extends StatelessWidget {
   }
 }
 
-class _PeriodMeta extends StatelessWidget {
+class _PeriodDateLabel extends StatelessWidget {
   final String label;
+
+  const _PeriodDateLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.white.withValues(alpha: 0.45),
+      ),
+    );
+  }
+}
+
+/// Altın CTA — haftalık/aylık sekmelerinin üstünde "Senin sıran".
+class _SeninSiranButton extends StatelessWidget {
   final int? myRank;
   final int myCorrect;
   final int myDuration;
+  final bool loading;
 
-  const _PeriodMeta({
-    required this.label,
+  const _SeninSiranButton({
     required this.myRank,
     required this.myCorrect,
     required this.myDuration,
+    this.loading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (label.isNotEmpty)
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.45),
+    final hasRank = myRank != null && myRank! > 0;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: hasRank || loading
+            ? null
+            : () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Bu dönemde henüz sıralaman oluşmadı. '
+                      'Günün mini denemesini tamamla.',
+                    ),
+                  ),
+                );
+              },
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFD4AF6A),
+              width: 1.5,
             ),
-          ),
-        if (myRank != null) ...[
-          if (label.isNotEmpty) const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFFD4AF6A),
-                width: 1.5,
-              ),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFF8EE),
-                  Color(0xFFF3E2B8),
-                  Color(0xFFE8C878),
-                  AppTheme.champagne,
-                ],
-                stops: [0, 0.35, 0.72, 1],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.champagne.withValues(alpha: 0.45),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFFFF8EE),
+                Color(0xFFF3E2B8),
+                Color(0xFFE8C878),
+                AppTheme.champagne,
               ],
+              stops: [0, 0.35, 0.72, 1],
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppTheme.ink.withValues(alpha: 0.88),
-                    border: Border.all(
-                      color: const Color(0xFFFFF1D0),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.ink.withValues(alpha: 0.35),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.champagne.withValues(alpha: 0.45),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.ink.withValues(alpha: 0.88),
+                  border: Border.all(
+                    color: const Color(0xFFFFF1D0),
+                    width: 2,
                   ),
-                  child: Text(
-                    '#$myRank',
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.champagneLight,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.ink.withValues(alpha: 0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'SENİN SIRAN',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.4,
-                          color: AppTheme.ink,
+                child: loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.champagneLight,
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '$myCorrect doğru · ${formatExamDuration(myDuration)}',
+                      )
+                    : Text(
+                        hasRank ? '#$myRank' : '—',
                         style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.ink,
+                          fontFamily: 'serif',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.champagneLight,
                         ),
                       ),
-                    ],
-                  ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'SENİN SIRAN',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                        color: AppTheme.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      loading
+                          ? 'Sıralaman yükleniyor…'
+                          : hasRank
+                              ? '$myCorrect doğru · ${formatExamDuration(myDuration)}'
+                              : 'Bu dönemde henüz sıralaman yok',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.ink,
+                      ),
+                    ),
+                  ],
                 ),
-                const Icon(
-                  Icons.person_pin_circle_rounded,
-                  color: AppTheme.ink,
-                  size: 26,
-                ),
-              ],
-            ),
+              ),
+              const Icon(
+                Icons.person_pin_circle_rounded,
+                color: AppTheme.ink,
+                size: 26,
+              ),
+            ],
           ),
-        ],
-      ],
+        ),
+      ),
     );
   }
 }
@@ -941,7 +992,7 @@ class _HistoryPeriodCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$label · ${period.periodStart} – ${period.periodEnd}',
+            '$label · ${formatTurkishPeriodRange(period.periodStart, period.periodEnd)}',
             style: const TextStyle(
               fontFamily: 'serif',
               fontWeight: FontWeight.w700,

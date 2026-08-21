@@ -1317,17 +1317,25 @@ class _QuizScreenState extends State<QuizScreen>
           ),
         );
 
-    final solutionStyle = OutlinedButton.styleFrom(
-      foregroundColor: AppTheme.champagneLight,
-      minimumSize: const Size(0, 46),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-      side: BorderSide(color: AppTheme.champagne.withValues(alpha: 0.45)),
-      textStyle: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-      ),
-    );
+    // Çözümü Gör: şık işaretlenmeden kapalı; Gizle her zaman açılabilir.
+    final canToggleSolution =
+        _showingSolution || (_selectedAnswer != null && !_isFinishing);
+    ButtonStyle solutionStyle({required bool enabled}) =>
+        OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.champagneLight,
+          disabledForegroundColor:
+              AppTheme.champagneLight.withValues(alpha: 0.35),
+          minimumSize: const Size(0, 46),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          side: BorderSide(
+            color: AppTheme.champagne.withValues(alpha: enabled ? 0.45 : 0.18),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        );
 
     return SafeArea(
       top: false,
@@ -1356,10 +1364,12 @@ class _QuizScreenState extends State<QuizScreen>
                   const SizedBox(width: 6),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _showingSolution
-                          ? () => setState(() => _showingSolution = false)
-                          : _requestSolution,
-                      style: solutionStyle,
+                      onPressed: !canToggleSolution
+                          ? null
+                          : _showingSolution
+                              ? () => setState(() => _showingSolution = false)
+                              : _requestSolution,
+                      style: solutionStyle(enabled: canToggleSolution),
                       child: Text(
                         _showingSolution ? 'Çözümü Gizle' : 'Çözümü Gör',
                         textAlign: TextAlign.center,
@@ -1466,8 +1476,12 @@ class _QuizScreenState extends State<QuizScreen>
         appBar: AppBar(
           backgroundColor: AppTheme.inkSoft,
           foregroundColor: Colors.white,
-          centerTitle: false,
+          centerTitle: true,
           titleSpacing: 8,
+          toolbarHeight: (!widget.dailyMiniRankingMode &&
+                  _currentQuestion.osymSordu)
+              ? 100
+              : 56,
           leading: AppBackButton(onPressed: () async {
             if (widget.fromWrongNotebook) {
               _exitWrongNotebook();
@@ -1492,27 +1506,31 @@ class _QuizScreenState extends State<QuizScreen>
                     height: 1.05,
                   ),
                 )
-              : Row(
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Spacer(),
-                    Flexible(
-                      child: Text(
-                        widget.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.champagne,
-                          height: 1.15,
-                        ),
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.champagne,
+                        height: 1.15,
                       ),
                     ),
+                    if (_currentQuestion.osymSordu) ...[
+                      const SizedBox(height: 4),
+                      const OsymBadge(
+                        height: 40,
+                        variant: OsymBadgeVariant.premium,
+                      ),
+                    ],
                   ],
                 ),
-          toolbarHeight: 56,
           actionsPadding: const EdgeInsets.only(right: 2),
           actions: [
             SizedBox(
@@ -1562,7 +1580,9 @@ class _QuizScreenState extends State<QuizScreen>
                     final urgent =
                         _isCountdown && duration.inSeconds <= 60;
                     return QuizHeaderStrip(
-                      osymSordu: _currentQuestion.osymSordu,
+                      // ÖSYM rozeti AppBar başlık yığınının altında (Test adı ile hizalı).
+                      osymSordu: widget.dailyMiniRankingMode &&
+                          _currentQuestion.osymSordu,
                       durationText: _formatDuration(duration),
                       isCountdown: _isCountdown,
                       urgent: urgent,
@@ -1671,22 +1691,14 @@ class _QuizScreenState extends State<QuizScreen>
                               const SizedBox(height: 16),
                             ],
                             QuestionStemPanel(
-                              child: (_currentQuestion.imageUrl ?? '')
-                                      .isNotEmpty
-                                  ? QuestionStemContent(
-                                      stem: _currentQuestion.soruMetni,
-                                      imageUrl: _currentQuestion.imageUrl,
-                                      sekilKodu: _currentQuestion.sekilKodu,
-                                      watermarkOnText: true,
-                                    )
-                                  : WatermarkWidget(
-                                      opacity: 0.26,
-                                      child: QuestionStemContent(
-                                        stem: _currentQuestion.soruMetni,
-                                        imageUrl: _currentQuestion.imageUrl,
-                                        sekilKodu: _currentQuestion.sekilKodu,
-                                      ),
-                                    ),
+                              child: WatermarkWidget(
+                                opacity: 0.28,
+                                child: QuestionStemContent(
+                                  stem: _currentQuestion.soruMetni,
+                                  imageUrl: _currentQuestion.imageUrl,
+                                  sekilKodu: _currentQuestion.sekilKodu,
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 20),
                             if (_showingSolution)

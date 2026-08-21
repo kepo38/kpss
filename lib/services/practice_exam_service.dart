@@ -84,23 +84,32 @@ class PracticeExamService {
     return sorted.map((e) => e.denemeAdi).toList();
   }
 
+  /// Ders bazli ortalama D/Y/B (ve net) — toplam degil.
+  /// Yalnizca o derste kaydi olan denemeler ortalamaya dahil edilir.
+  /// avgD/Y/B = sum / examCount (yuvarlanmis); net = avgD - avgY/4.
   Map<String, DersSonuc> get aggregateBySubject {
-    final map = <String, DersSonuc>{};
+    final sumDogru = <String, int>{};
+    final sumYanlis = <String, int>{};
+    final sumBos = <String, int>{};
+    final counts = <String, int>{};
+
     for (final exam in exams) {
       exam.dersSonuclari.forEach((ders, sonuc) {
-        final existing = map[ders];
-        if (existing == null) {
-          map[ders] = sonuc;
-        } else {
-          map[ders] = DersSonuc(
-            dogru: existing.dogru + sonuc.dogru,
-            yanlis: existing.yanlis + sonuc.yanlis,
-            bos: existing.bos + sonuc.bos,
-          );
-        }
+        sumDogru[ders] = (sumDogru[ders] ?? 0) + sonuc.dogru;
+        sumYanlis[ders] = (sumYanlis[ders] ?? 0) + sonuc.yanlis;
+        sumBos[ders] = (sumBos[ders] ?? 0) + sonuc.bos;
+        counts[ders] = (counts[ders] ?? 0) + 1;
       });
     }
-    return map;
+
+    return {
+      for (final ders in counts.keys)
+        ders: DersSonuc(
+          dogru: (sumDogru[ders]! / counts[ders]!).round(),
+          yanlis: (sumYanlis[ders]! / counts[ders]!).round(),
+          bos: (sumBos[ders]! / counts[ders]!).round(),
+        ),
+    };
   }
 
   List<PublisherStats> get publisherStats {

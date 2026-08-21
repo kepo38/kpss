@@ -32,7 +32,12 @@ class DailyMiniExamConstants {
   static const ctaStartLine2 = 'Sıralamanı Gör';
   static const ctaStart = 'Denemeye Başla · Sıralamanı Gör';
   static const ctaResume = 'Kaldığın Yerden Devam Et';
+  static const ctaCompleted = 'Bugün tamamlandı';
   static const ctaGuestSignIn = 'Denemeye katılmak için giriş yap';
+
+  /// Haftalık/aylık sıralamada eşitlik (doğru sayısı) kırılımı.
+  static const tieBreakCopy =
+      'Eşitlik durumunda, denemeyi daha hızlı bitiren öne geçer.';
 
   static String pdfUpsellMessage({int monthlyPriceTl = 299}) =>
       'Bu ay çözdüğün mini denemelerdeki tüm yanlışlarının detaylı '

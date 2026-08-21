@@ -18,6 +18,8 @@ class SupportContactService {
   static Future<bool> openSupportEmail() async {
     final body = await buildSupportEmailBody();
     final subject = '${BrandConstants.appName} Destek Talebi';
+    // Yalnızca to (path) + subject/body. From/cc/sender asla set edilmez;
+    // gönderen hesabı OS / e-posta uygulaması doldurur.
     // queryParameters ile encode; canLaunchUrl Android 11'de mailto için
     // sık false döner — doğrudan launch dene.
     final uri = Uri(
@@ -47,17 +49,22 @@ class SupportContactService {
   }
 
   /// Gmail / e-posta uygulamasına düşecek taslak metin.
+  /// Kullanıcı yazma alanı üstte; teknik blok altta footer olarak kalır.
   @visibleForTesting
   static Future<String> buildSupportEmailBody() async {
     final snapshot = await collectSupportDeviceSnapshot();
-    return '''Uygulama Bilgileri:
+    // Prompt sonrası tam 3 boş satır (yazma alanı), ardından teknik footer
+    // ile arada ek boşluk.
+    return '''Lütfen Destek Talebinizi Buraya Yazınız:
 
-- Sürüm: ${snapshot.version}
-- Cihaz: ${snapshot.device}
-- ${snapshot.platformLabel}: ${snapshot.platformVersion}
-- Üyelik: ${snapshot.membership}
 
-Merhaba,
+
+
+📋 TEKNİK UYGULAMA BİLGİLERİ (Lütfen Silmeyiniz)
+• Uygulama Sürümü: ${snapshot.version}
+• Cihaz Modeli: ${snapshot.device}
+• İşletim Sistemi: ${snapshot.platformLabel} ${snapshot.platformVersion}
+• Üyelik Durumu: ${snapshot.membership}
 ''';
   }
 
