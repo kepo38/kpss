@@ -267,7 +267,11 @@ class QuizHeaderStrip extends StatelessWidget {
                     Expanded(
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: rightMeta,
+                        child: Padding(
+                          // Başarı chip’i kenardan biraz içeride.
+                          padding: const EdgeInsets.only(right: 14),
+                          child: rightMeta,
+                        ),
                       ),
                     ),
                   ],

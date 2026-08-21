@@ -155,6 +155,7 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                     ],
                     scrollOffset: widget.scrollOffset,
                   ),
+                  child: const SizedBox.expand(),
                 ),
               ),
             ),
@@ -457,18 +458,27 @@ class QuizStrokePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.saveLayer(Offset.zero & size, Paint());
+    if (size.isEmpty) return;
+
+    // BlendMode.clear yalnızca saveLayer içinde çalışır. Boş/gereksiz
+    // saveLayer bazı cihazlarda (Impeller) soru metnini beyaz kaplıyor.
+    final needsClearLayer = strokes.any((s) => s.eraser);
+    if (needsClearLayer) {
+      canvas.saveLayer(Offset.zero & size, Paint());
+    }
+
     for (final stroke in strokes) {
       if (stroke.points.length < 2) continue;
       final paint = Paint()
         ..strokeWidth = stroke.width
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke;
+        ..style = PaintingStyle.stroke
+        ..isAntiAlias = true;
 
       if (stroke.eraser) {
         paint
-          ..color = stroke.color
+          ..color = const Color(0xFFFFFFFF)
           ..blendMode = BlendMode.clear;
       } else if (stroke.highlighter) {
         paint
@@ -490,7 +500,10 @@ class QuizStrokePainter extends CustomPainter {
       }
       canvas.drawPath(path, paint);
     }
-    canvas.restore();
+
+    if (needsClearLayer) {
+      canvas.restore();
+    }
   }
 
   @override

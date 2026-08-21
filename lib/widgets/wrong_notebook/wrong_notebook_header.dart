@@ -192,9 +192,9 @@ class WrongNotebookHeaderPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           color: filled ? null : AppTheme.champagne.withValues(alpha: 0.1),
           gradient: filled
               ? const LinearGradient(
@@ -226,15 +226,15 @@ class WrongNotebookHeaderPill extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 13, color: filled ? AppTheme.ink : on),
-              const SizedBox(width: 4),
+              Icon(icon, size: 16, color: filled ? AppTheme.ink : on),
+              const SizedBox(width: 5),
             ],
             Text(
               label,
               maxLines: 1,
               softWrap: false,
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.05,
                 height: 1.1,

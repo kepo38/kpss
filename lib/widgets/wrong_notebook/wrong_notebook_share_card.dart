@@ -59,28 +59,20 @@ class WrongNotebookShareCard extends StatelessWidget {
             children: [
               const IgnorePointer(child: _ShareBackdropMark()),
               Padding(
-                padding: const EdgeInsets.fromLTRB(48, 52, 48, 48),
+                padding: const EdgeInsets.fromLTRB(44, 40, 44, 40),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const _ShareHeader(),
-                    const SizedBox(height: 20),
-                    // Kısa soru da alanı doldursun (scaleDown boşluk bırakıyordu).
+                    const SizedBox(height: 12),
                     Expanded(
-                      child: Center(
-                        child: FittedBox(
-                          fit: BoxFit.contain,
-                          alignment: Alignment.center,
-                          child: SizedBox(
-                            width: cardWidth - 96,
-                            child: bankQuestion != null
-                                ? _BankBody(question: bankQuestion!)
-                                : _ManualBody(item: manualQuestion!),
-                          ),
-                        ),
+                      child: _ShareFillScaler(
+                        child: bankQuestion != null
+                            ? _BankBody(question: bankQuestion!)
+                            : _ManualBody(item: manualQuestion!),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     const _ShareFooter(),
                   ],
                 ),
@@ -93,78 +85,65 @@ class WrongNotebookShareCard extends StatelessWidget {
   }
 }
 
+/// İçeriği alanın tamamına yayar: kısa soru büyür, uzun soru küçülür.
+///
+/// Sabit tam genişlik + FittedBox.contain ölçeği ~1’de kilitliyordu;
+/// burada içerik biraz dar dizilip sonra alana sığacak şekilde büyütülür.
+class _ShareFillScaler extends StatelessWidget {
+  final Widget child;
+
+  const _ShareFillScaler({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Dar layout → FittedBox yükseklik doldurana kadar büyütebilir.
+        final layoutW = constraints.maxWidth * 0.72;
+        return Center(
+          child: FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+            child: SizedBox(
+              width: layoutW,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ShareHeader extends StatelessWidget {
   const _ShareHeader();
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Image.asset(
-              BrandConstants.logoAsset,
-              width: 56,
-              height: 56,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.track_changes_rounded,
-                size: 48,
-                color: AppTheme.champagneLight,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    BrandConstants.brandLine1,
-                    style: GoogleFonts.cormorantGaramond(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w700,
-                      height: 1,
-                      letterSpacing: 2.2,
-                      color: AppTheme.champagneLight,
-                    ),
-                  ),
-                  Text(
-                    BrandConstants.brandLine2,
-                    style: GoogleFonts.manrope(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 3.5,
-                      height: 1.2,
-                      color: Colors.white.withValues(alpha: 0.88),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        Text(
+          'HEDEF Kamu',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cormorantGaramond(
+            fontSize: 64,
+            fontWeight: FontWeight.w700,
+            height: 1.05,
+            letterSpacing: 1.2,
+            color: AppTheme.champagneLight,
+          ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         Container(
           height: 1.2,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
+                Colors.transparent,
                 AppTheme.champagne.withValues(alpha: 0.55),
-                AppTheme.champagne.withValues(alpha: 0.08),
                 Colors.transparent,
               ],
             ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          'YANLIŞ DEFTERİ',
-          style: GoogleFonts.manrope(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2.8,
-            color: AppTheme.champagne.withValues(alpha: 0.78),
           ),
         ),
       ],
@@ -181,25 +160,25 @@ class _ShareFooter extends StatelessWidget {
       children: [
         Container(
           height: 1,
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: 12),
           color: Colors.white.withValues(alpha: 0.1),
         ),
         Text(
           BrandConstants.shareHashtag,
           textAlign: TextAlign.center,
           style: GoogleFonts.manrope(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.4,
             color: AppTheme.champagne.withValues(alpha: 0.85),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           BrandConstants.appName,
           textAlign: TextAlign.center,
           style: GoogleFonts.manrope(
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
             color: Colors.white.withValues(alpha: 0.45),
           ),
@@ -231,13 +210,13 @@ class _BankBody extends StatelessWidget {
           Text(
             meta,
             style: GoogleFonts.manrope(
-              fontSize: 22,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-              color: AppTheme.champagne.withValues(alpha: 0.82),
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+              color: AppTheme.champagne.withValues(alpha: 0.9),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
         ],
         QuestionStemContent(
           stem: question.soruMetni,
@@ -245,9 +224,9 @@ class _BankBody extends StatelessWidget {
           sekilKodu: question.sekilKodu,
           watermarkOnText: false,
           style: ExamTypography.body(
-            color: Colors.white.withValues(alpha: 0.96),
-            fontSize: 28,
-            height: 1.45,
+            color: Colors.white.withValues(alpha: 0.97),
+            fontSize: 36,
+            height: 1.42,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -255,7 +234,7 @@ class _BankBody extends StatelessWidget {
           const SizedBox(height: 28),
           for (final key in keys) ...[
             _OptionRow(label: key, text: question.siklar[key] ?? ''),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
           ],
         ],
       ],
@@ -275,21 +254,21 @@ class _OptionRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 40,
-          height: 40,
+          width: 48,
+          height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: AppTheme.champagne.withValues(alpha: 0.55),
-              width: 1.4,
+              color: AppTheme.champagne.withValues(alpha: 0.6),
+              width: 1.6,
             ),
-            color: Colors.white.withValues(alpha: 0.04),
+            color: Colors.white.withValues(alpha: 0.05),
           ),
           child: Text(
             label.toUpperCase(),
             style: GoogleFonts.manrope(
-              fontSize: 18,
+              fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppTheme.champagneLight,
             ),
@@ -298,13 +277,13 @@ class _OptionRow extends StatelessWidget {
         const SizedBox(width: 16),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.only(top: 8),
             child: FormattedText(
               text,
               textAlign: TextAlign.start,
               style: ExamTypography.option(
-                color: Colors.white.withValues(alpha: 0.94),
-                fontSize: 26,
+                color: Colors.white.withValues(alpha: 0.95),
+                fontSize: 32,
               ),
             ),
           ),
@@ -328,12 +307,12 @@ class _ManualBody extends StatelessWidget {
         Text(
           '${item.subjectLabel} · ${item.topicLabel}',
           style: GoogleFonts.manrope(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.champagne.withValues(alpha: 0.82),
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.champagne.withValues(alpha: 0.9),
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 20),
         ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: AspectRatio(
@@ -349,7 +328,7 @@ class _ManualBody extends StatelessWidget {
                   style: GoogleFonts.manrope(
                     color: Colors.white54,
                     fontWeight: FontWeight.w600,
-                    fontSize: 22,
+                    fontSize: 24,
                   ),
                 ),
               ),
@@ -361,7 +340,7 @@ class _ManualBody extends StatelessWidget {
           Text(
             item.noteText,
             style: GoogleFonts.manrope(
-              fontSize: 22,
+              fontSize: 26,
               height: 1.4,
               color: Colors.white.withValues(alpha: 0.88),
             ),
@@ -385,8 +364,8 @@ class _ShareBackdropMark extends StatelessWidget {
           opacity: 0.07,
           child: Image.asset(
             WatermarkWidget.logoAsset,
-            width: 520,
-            height: 520,
+            width: 560,
+            height: 560,
             fit: BoxFit.contain,
             color: AppTheme.champagneLight,
             colorBlendMode: BlendMode.srcIn,

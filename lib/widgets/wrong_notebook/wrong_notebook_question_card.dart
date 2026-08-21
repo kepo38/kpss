@@ -113,108 +113,111 @@ class WrongNotebookQuestionCard extends StatelessWidget {
     final accent = wrongNotebookSubjectAccent(question.dersAdi);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: frostStem ? (onSignIn ?? onTap) : onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Ink(
-            decoration: BoxDecoration(
+      padding: const EdgeInsets.only(top: 12, bottom: 10),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: frostStem ? (onSignIn ?? onTap) : onTap,
               borderRadius: BorderRadius.circular(16),
-              color: card.withValues(alpha: 0.9),
-              border: Border.all(color: AppTheme.hairline(context)),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.ink.withValues(alpha: 0.05),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(
-                      width: 4,
-                      color: accent,
+              child: Ink(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: card.withValues(alpha: 0.9),
+                  border: Border.all(color: AppTheme.hairline(context)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.ink.withValues(alpha: 0.05),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 16, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          width: 4,
+                          color: accent,
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 16, 16, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _TopicChip(label: question.konuAdi),
-                                const Spacer(),
-                                if (onShare != null) ...[
-                                  _ShareButton(onTap: onShare!),
-                                  const SizedBox(width: 2),
-                                ],
-                                _FavoriteButton(
-                                  isFavorite: isFavorite,
-                                  onTap: onToggleFavorite,
+                                Row(
+                                  children: [
+                                    _TopicChip(label: question.konuAdi),
+                                    const Spacer(),
+                                    if (onShare != null) ...[
+                                      _ShareButton(onTap: onShare!),
+                                      const SizedBox(width: 2),
+                                    ],
+                                    _FavoriteButton(
+                                      isFavorite: isFavorite,
+                                      onTap: onToggleFavorite,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _RemoveButton(onTap: onRemove),
+                                  ],
                                 ),
-                                const SizedBox(width: 6),
-                                _RemoveButton(onTap: onRemove),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            WrongNotebookGuestFrost(
-                              locked: frostStem,
-                              child: Text(
-                                QuestionStemContent.previewText(
-                                  question.soruMetni,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: on,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.35,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
+                                const SizedBox(height: 8),
+                                WrongNotebookGuestFrost(
+                                  locked: frostStem,
                                   child: Text(
-                                    'SORUYA TEKRAR GÖZ AT',
-                                    maxLines: 1,
+                                    QuestionStemContent.previewText(
+                                      question.soruMetni,
+                                    ),
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: AppTheme.mutedOnPage(context)
-                                          .withValues(alpha: 0.7),
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w500,
+                                      color: on,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.35,
+                                      fontSize: 14,
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                _SimilarChip(
-                                  loading: similarLoading,
-                                  locked: showProBadge,
-                                  onTap: similarLoading ? null : onSimilar,
+                                const SizedBox(height: 8),
+                                Text(
+                                  'SORUYA TEKRAR GÖZ AT',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: AppTheme.mutedOnPage(context)
+                                        .withValues(alpha: 0.7),
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          // BENZER — panel üst kenarının ortasına oturan rozet.
+          Positioned(
+            top: -11,
+            child: _SimilarChip(
+              loading: similarLoading,
+              locked: showProBadge,
+              onTap: similarLoading ? null : onSimilar,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -385,94 +388,109 @@ class _SimilarChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 160),
-        opacity: loading ? 0.85 : 1,
-        child: Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: const Color(0xFF1A2740),
-            border: Border.all(
-              color: locked
-                  ? const Color(0xFFD4AF6A)
-                  : AppTheme.champagne.withValues(alpha: 0.35),
-              width: locked ? 1 : 0.5,
+    return Material(
+      color: Colors.transparent,
+      child: GestureDetector(
+        onTap: loading ? null : onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: loading ? 0.85 : 1,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF1E2F4A),
+                  const Color(0xFF152238).withValues(alpha: 0.98),
+                ],
+              ),
+              border: Border.all(
+                color: locked
+                    ? const Color(0xFFD4AF6A)
+                    : AppTheme.champagne.withValues(alpha: 0.55),
+                width: locked ? 1.1 : 0.9,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.ink.withValues(alpha: 0.22),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+                if (locked)
+                  BoxShadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.28),
+                    blurRadius: 8,
+                  ),
+              ],
             ),
-            boxShadow: locked
-                ? [
-                    BoxShadow(
-                      color: AppTheme.champagne.withValues(alpha: 0.28),
-                      blurRadius: 8,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (loading)
-                      const SizedBox(
-                        width: 11,
-                        height: 11,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(11, 7, 11, 7),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (loading)
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: AppTheme.champagneLight,
+                          ),
+                        )
+                      else
+                        Icon(
+                          locked
+                              ? Icons.lock_rounded
+                              : Icons.auto_awesome_rounded,
+                          size: 13,
                           color: AppTheme.champagneLight,
                         ),
-                      )
-                    else
-                      Icon(
-                        locked
-                            ? Icons.lock_rounded
-                            : Icons.auto_awesome_rounded,
-                        size: 11,
-                        color: AppTheme.champagneLight,
+                      const SizedBox(width: 5),
+                      const Text(
+                        'BENZER',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          color: AppTheme.champagneLight,
+                        ),
                       ),
-                    const SizedBox(width: 4),
-                    const Text(
-                      'BENZER',
+                    ],
+                  ),
+                ),
+                if (locked)
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(7, 7, 9, 7),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFFFF6E4),
+                          Color(0xFFE8CF98),
+                          Color(0xFFC9A86C),
+                        ],
+                      ),
+                    ),
+                    child: const Text(
+                      'PRO',
                       style: TextStyle(
                         fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
-                        color: AppTheme.champagneLight,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                        color: Color(0xFF3A2A10),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              if (locked)
-                Container(
-                  padding: const EdgeInsets.fromLTRB(6, 6, 7, 6),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFFFFF6E4),
-                        Color(0xFFE8CF98),
-                        Color(0xFFC9A86C),
-                      ],
-                    ),
                   ),
-                  child: const Text(
-                    'PRO',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.4,
-                      color: Color(0xFF3A2A10),
-                    ),
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

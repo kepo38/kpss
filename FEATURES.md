@@ -1,6 +1,6 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-08-21  
+> **Son güncelleme:** 2026-08-22  
 > **Dart paketi:** `kpss_akademi`  
 > **Android applicationId (Play Store):** `com.hedefkamu.hedef_kamu`  
 > **Sürüm (mobil):** `1.0.1+3`  
@@ -23,6 +23,25 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+
+### 22 Ağustos 2026 — Zoom ipucu · paylaşım başlık · NEDEN BİZ · yanlış defteri UI · çizim beyaz katman
+
+Bu tur: günlük zoom ipucu; paylaşım hikâyesi marka başlığı; NEDEN BİZ metinleri; yanlış defteri BENZER/Akıllı Tekrar; ÖSYM/splash/test AppBar cilası; kalem `saveLayer` beyaz örtü düzeltmesi.
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Zoom günlük ipucu** | Her gün / hesap kapsamında ilk testte ortada yumuşak toast: «Çift dokunarak SORU ve ÇÖZÜMLERİ yakınlaştır»; misafir ile Google ayrı slot | `quiz_zoom_daily_hint.dart`, `quiz_screen.dart` |
+| **Zoom 1× kaydırma** | Ölçek ≈1’te dikey `ScrollView`; yakınken pan InteractiveViewer’da | `quiz_zoom_viewport.dart`, `quiz_screen.dart` |
+| **Paylaşım kartı başlık** | Sol üst logo/YANLIŞ DEFTERİ yok; üst ortada büyük **HEDEF Kamu**; içerik alanı dolduran ölçekleyici | `wrong_notebook_share_card.dart`, `wrong_notebook_share_service.dart` |
+| **NEDEN BİZ metin** | 5 uygulama avantajı + 3 kitap dezavantajı (başlık+açıklama); alt özet cümle kaldırıldı | `why_us_comparison_card.dart` |
+| **Yanlış defteri BENZER** | Kart üst kenarının ortasına oturan rozet | `wrong_notebook_question_card.dart` |
+| **Akıllı Tekrar pill** | Sağ üst buton büyütüldü | `wrong_notebook_header.dart` |
+| **KAYITLI KALIR** | Not Al altında büyütülüp ortalandı | `quiz_take_note_button.dart` |
+| **ÖSYM rozeti** | Eski boyut (44/52); AppBar Soru X/Y ile aynı dikey eksen | `brand_mark.dart` |
+| **Başarı chip** | Sağa yaslıdan biraz içeride | `brand_mark.dart` |
+| **Test AppBar adı** | Serif başlık 14→16 | `quiz_screen.dart` |
+| **Splash 657 diski** | Siyah daire soluklaştırıldı | `boot_splash_screen.dart` |
+| **Kalem beyaz örtü** | Boş `saveLayer` yalnızca silgi gerektiğinde; Impeller’da soru metnini kaplayan beyaz alan giderildi | `quiz_drawing_overlay.dart` |
 
 ### 21 Ağustos 2026 — Quiz zoom · şık hizası · paylaşım 9:16 · Odak chip · çizim sürükle
 
@@ -247,14 +266,14 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Header / Akıllı Tekrar** | **Akıllı Tekrar** sağ üst pill; **Kitaptaki** butonu iki satır (KİTAPTAKİ / YANLIŞLARIM), dar; istatistik alt yazısı konu testlerine göre | `wrong_notebook_header.dart`, `wrong_questions_screen.dart` |
+| **Header / Akıllı Tekrar** | **Akıllı Tekrar** sağ üst pill (büyütülmüş); **Kitaptaki** butonu iki satır (KİTAPTAKİ / YANLIŞLARIM), dar; istatistik alt yazısı konu testlerine göre | `wrong_notebook_header.dart`, `wrong_questions_screen.dart` |
 | **Kitaptaki yanlışlarım** | Pembe giriş → ayrı ekran; üstte kompakt premium **SORU EKLE** foto butonu; boş ekran başlığı **Yanlış Sorularını Takip Et!** | `wrong_notebook_manual_screen.dart`, `WrongNotebookAddQuestionAction` |
 | **Manuel foto soru** | Kamera/galeri; meta sheet **YANLIŞ SORULARIM**; ders→konu müfredattan zorunlu; not opsiyonel; uygulama özel dizini (galeriye düşmez); durum: Yeni / Tekrar Et / Çözüldü | `manual_question_model.dart`, `manual_question_service.dart`, `wrong_notebook_manual_meta_sheet.dart` |
-| **Defter inceleme** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış**; işaretli şık; **Not Al** + «KAYITLI KALIR»; normal testte «Daha önce» | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart` |
+| **Defter inceleme** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış**; işaretli şık; **Not Al** + büyütülmüş ortalı «KAYITLI KALIR»; normal testte «Daha önce» | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart` |
 | **Defter kayıtlı toast** | Konu testi + günlük denemede ortada premium toast (~3 sn): «YANLIŞ DEFTERİMDE / KAYITLI»; **Akıllı Tekrar**’da yok (`suppressWrongNotebookHint`) | `quiz_wrong_notebook_banner.dart`, `quiz_screen.dart`, `smart_review_screen.dart` |
 | **Balon tetik** | Google + bitmiş konu testi + **defterde ≥1 yanlış**; Günün Denemesi / yarım test tetiklemez | `wrong_notebook_promo_bubble.dart`, `content_bank_service.dart` |
-| **Benzer sorular** | Embedding sonucu: kaynak soru ve kök metni ≥%88 benzer kopyalar elenir | `embeddings.py`, `test_embeddings.py`, `QuestionFetchService` |
-| **WhatsApp paylaşımı** | Google zorunlu; soru metni gitmez. **1080×1920 (9:16)** filigranlı hikâye PNG + yardım cümlesi. Ücretsiz: günde **1** (+ödüllü reklam); Premium: günde **3**. Capture: `ScreenshotGate`; hata kodları log+snackbar | `wrong_notebook_share_service.dart`, `wrong_notebook_share_card.dart`, `screenshot_gate.dart`, `ad_manager.dart` |
+| **Benzer sorular** | Embedding sonucu: kaynak soru ve kök metni ≥%88 benzer kopyalar elenir. Kartta **BENZER** üst kenar ortası rozet | `embeddings.py`, `test_embeddings.py`, `QuestionFetchService`, `wrong_notebook_question_card.dart` |
+| **WhatsApp paylaşımı** | Google zorunlu; soru metni gitmez. **1080×1920 (9:16)** hikâye PNG; üst ortada büyük **HEDEF Kamu**; yardım cümlesi. Ücretsiz: günde **1** (+ödüllü reklam); Premium: günde **3**. Capture: `ScreenshotGate` | `wrong_notebook_share_service.dart`, `wrong_notebook_share_card.dart`, `screenshot_gate.dart`, `ad_manager.dart` |
 
 #### Mobil — destek, güvenlik, kota, reklam
 
@@ -393,7 +412,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı; AppBar: **Test sola** + **Soru X/Y** ortada (ÖSYM ekseni); boş başlıkta yalnız Soru; şeritte yeşil **Başarı: %N** (veri yoksa `Başarı: —`), **N kişi gördü**; **pinch-to-zoom** (kalem kapalıyken) | `quiz_screen.dart`, `quiz_zoom_viewport.dart`, `brand_mark.dart`, `question_view_service.dart` | Ücretsiz; reklamlı |
+| **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı; AppBar: **Test sola** (16pt) + **Soru X/Y** ortada (ÖSYM ekseni); şeritte yeşil **Başarı**; **pinch-to-zoom** + günlük ortada zoom ipucu; kalem açıkken zoom kilit | `quiz_screen.dart`, `quiz_zoom_viewport.dart`, `quiz_zoom_daily_hint.dart`, `brand_mark.dart`, `question_view_service.dart` | Ücretsiz; reklamlı |
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil; soft satırlar birleşir; **TextAlign.justify** (Android/iOS) | `question_stem_content.dart`, `exam_stem_view.dart`, `formatted_text.dart` (`prepareExamJustifyText`) | Ücretsiz |
 | **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; üst şeritte **ekran ortası** (Stack); yer değiştirilmez | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
 | **Başarı oranı** | Şerit sağ üst: `Başarı: %49` veya veri yoksa `Başarı: —`; `correctRate` / canlı şık yüzdesi; yeşil `#34D399` | `quiz_screen.dart`, `QuizHeaderStrip.successLabel` | Ücretsiz |
@@ -515,7 +534,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
-| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; hero üst kenarında **NEDEN BİZ** rozeti (kitap vs uygulama karşılaştırması); premium değilse “Premium’a Geç” pill; Rozetler; Mesajlar/Duyurular; “Değerlendir”; modül listesi; **Görünüm** varsayılan kapalı | `profile_screen.dart`, `why_us_comparison_card.dart` |
+| **Profil ekranı** | Avatar, ad, XP/streak/PREMIUM chip’leri; hero üst kenarında **NEDEN BİZ** (5 avantaj / 3 kitap dezavantajı); premium değilse “Premium’a Geç” pill; Rozetler; Mesajlar/Duyurular; “Değerlendir”; modül listesi; **Görünüm** varsayılan kapalı | `profile_screen.dart`, `why_us_comparison_card.dart` |
 | **Premium üyelik bilgisi** | Hero’daki PREMIUM chip köşesindeki bilgi ikonu → veriliş/bitiş tarihi bottom sheet | `profile_screen.dart` |
 | **Google hesap bağlama** | Anonim → kalıcı Google hesabı | `lib/widgets/account_link_card.dart`, `lib/services/auth_service.dart` |
 | **Görünen ad düzenleme** | Bağlı hesap gerekir | `profile_screen.dart` |
@@ -876,6 +895,15 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 8. Canonical proje yolu **`D:\HEDEFKAMU`**; `D:\ozel\HEDEFKAMU` kopyası bat ile yönlendirilir — iki klonu aynı Gradle daemon ile açmayın.
 
 ---
+
+## Sürüm notu (2026-08-22)
+
+- **Zoom ipucu:** günlük ilk testte ortada yumuşak toast; misafir/Google ayrı
+- **Paylaşım kartı:** üst ortada büyük HEDEF Kamu; sol üst marka satırı yok
+- **NEDEN BİZ:** güncel avantaj/dezavantaj maddeleri
+- **Yanlış defteri:** BENZER üst rozet; Akıllı Tekrar büyütüldü
+- **Kalem:** boş saveLayer beyaz örtü düzeltmesi
+- **ÖSYM / splash / Test başlık / Başarı chip** cilası
 
 ## Sürüm notu (2026-08-21)
 

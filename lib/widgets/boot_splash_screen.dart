@@ -155,15 +155,16 @@ class _SplashAppIcon extends StatelessWidget {
             height: _disc,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0xFF05070C),
+              // Arka planla daha yumuşak kaynaşsın — saf siyah değil.
+              color: const Color(0xFF0C1420).withValues(alpha: 0.62),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.65),
-                  blurRadius: 36,
-                  spreadRadius: 6,
+                  color: Colors.black.withValues(alpha: 0.38),
+                  blurRadius: 32,
+                  spreadRadius: 4,
                 ),
                 BoxShadow(
-                  color: _brightGold.withValues(alpha: 0.18),
+                  color: _brightGold.withValues(alpha: 0.14),
                   blurRadius: 28,
                   spreadRadius: 2,
                 ),

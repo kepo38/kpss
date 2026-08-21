@@ -39,6 +39,7 @@ import '../widgets/question_rating_bar.dart';
 import '../widgets/osym_badge.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/quiz_drawing_overlay.dart';
+import '../widgets/quiz_zoom_daily_hint.dart';
 import '../widgets/quiz_zoom_viewport.dart';
 import '../widgets/quiz_question_note_card.dart';
 import '../widgets/quiz_take_note_button.dart';
@@ -1639,7 +1640,7 @@ class _QuizScreenState extends State<QuizScreen>
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: 'serif',
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.champagne,
                     height: 1.15,
@@ -2013,6 +2014,8 @@ class _QuizScreenState extends State<QuizScreen>
               ),
             ),
             QuizWrongNotebookBanner(visible: _showWrongNotebookHint),
+            if (!widget.fromWrongNotebook)
+              const QuizZoomDailyHint(),
             if (_noteCardOpen)
               QuizQuestionNoteCard(
                 initialText:

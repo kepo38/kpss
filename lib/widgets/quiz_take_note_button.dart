@@ -17,7 +17,7 @@ class QuizTakeNoteButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Material(
           color: Colors.transparent,
@@ -75,10 +75,11 @@ class QuizTakeNoteButton extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           'KAYITLI KALIR',
+          textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 8.5,
+            fontSize: 10.5,
             fontWeight: FontWeight.w800,
-            letterSpacing: 0.9,
+            letterSpacing: 0.85,
             color: AppTheme.champagne.withValues(alpha: 0.78),
           ),
         ),

@@ -243,19 +243,6 @@ class WhyUsComparisonCard extends StatelessWidget {
                                   color: const Color(0xFF1C2434),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Güncel içerik, tek abonelik, akıllı çözümler ve '
-                                'kişisel çalışma kasası — klasik kitabın '
-                                'dezavantajları olmadan.',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.manrope(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.4,
-                                  color: const Color(0xFF5A6578),
-                                ),
-                              ),
                               const SizedBox(height: 16),
                               LayoutBuilder(
                                 builder: (context, constraints) {
