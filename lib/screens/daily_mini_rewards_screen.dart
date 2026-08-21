@@ -103,7 +103,7 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
                           const SizedBox(height: 14),
                           if (snap.leaderboard.isEmpty)
                             const _EmptyHint(
-                              'Bu dönemde henüz sıralama yok.',
+                              'Sınava Girmedin!',
                             )
                           else
                             ...snap.leaderboard.map(
@@ -628,8 +628,7 @@ class _SeninSiranButton extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Bu dönemde henüz sıralaman oluşmadı. '
-                      'Günün mini denemesini tamamla.',
+                      'Sınava Girmedin!',
                     ),
                   ),
                 );
@@ -727,7 +726,7 @@ class _SeninSiranButton extends StatelessWidget {
                           ? 'Sıralaman yükleniyor…'
                           : hasRank
                               ? '$myCorrect doğru · ${formatExamDuration(myDuration)}'
-                              : 'Bu dönemde henüz sıralaman yok',
+                              : 'Sınava Girmedin!',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,

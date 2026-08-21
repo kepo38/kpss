@@ -62,6 +62,8 @@ class DailyMiniExamService extends ChangeNotifier {
       _rankedAttempt(_remote?.myAttempt) != null ||
       _rankingLocked ||
       (_formallyFinished && _localAttempt != null);
+  /// Sunucuya sıralama gönderimi hâlâ bekliyor (yerel bitiş ≠ sunucu kilidi).
+  bool get rankingSubmitPending => _pendingRankingSubmit;
   bool get rankRevealActive => _rankRevealActive;
   bool get rankRevealCountdownVisible =>
       _rankRevealActive && _rankRevealSecondsLeft > 0;
@@ -110,16 +112,20 @@ class DailyMiniExamService extends ChangeNotifier {
   }
   List<DailyMiniLeaderRow> get leaderboard {
     final remote = _remote?.leaderboard ?? const <DailyMiniLeaderRow>[];
-    if (remote.isNotEmpty) return _withoutDemoLeaders(remote);
+    final filtered = _withoutDemoLeaders(remote);
+    // Demo-only eski yanıtlarda remote dolu ama filtre boş kalmasın diye
+    // filtrelenmiş listeye bak; boşsa yerel denemeden tek satır üret.
+    if (filtered.isNotEmpty) return filtered;
     final attempt = this.attempt;
     final user = AuthService.instance.user;
-    if (attempt == null || user == null || attempt.rank == null) {
+    final rank = attempt?.rank ?? rankForCurrentUser();
+    if (attempt == null || user == null || rank == null || rank <= 0) {
       return const [];
     }
     final parts = splitFrostedEmail(user.eposta);
     return [
       DailyMiniLeaderRow(
-        rank: attempt.rank!,
+        rank: rank,
         userId: user.id,
         displayName: user.isim,
         emailPrefix: parts.prefix,
@@ -166,14 +172,16 @@ class DailyMiniExamService extends ChangeNotifier {
     return participantCount;
   }
 
-  /// Sıra: attempt → kürsü satırı.
+  /// Sıra: attempt → uzak/kürsü satırı (demo filtresi öncesi ham liste dahil).
   int? rankForCurrentUser() {
     final attemptRank = attempt?.rank;
     if (attemptRank != null && attemptRank > 0) return attemptRank;
     final userId = AuthService.instance.user?.id;
     if (userId == null) return null;
-    for (final row in leaderboard) {
-      if (row.userId == userId && row.rank > 0) return row.rank;
+    for (final row in _remote?.leaderboard ?? const <DailyMiniLeaderRow>[]) {
+      if (row.userId == userId && row.rank > 0 && !isDemoLeaderRow(row)) {
+        return row.rank;
+      }
     }
     return null;
   }
@@ -419,6 +427,7 @@ class DailyMiniExamService extends ChangeNotifier {
             _rankRevealSecondsLeft = 0;
             _rankRevealCelebrated = false;
           }
+          _applyRankFromRemoteIfNeeded();
         }
       }
     } catch (e) {
@@ -455,7 +464,7 @@ class DailyMiniExamService extends ChangeNotifier {
       _rankTrend = DailyMiniRankTrend.steady;
       return;
     }
-    final rank = attempt?.rank;
+    final rank = rankForCurrentUser() ?? attempt?.rank;
     final count = participantCount;
     if (rank == null || rank <= 0 || count <= 0) {
       return;
@@ -542,7 +551,19 @@ class DailyMiniExamService extends ChangeNotifier {
     required QuizResult result,
     required List<String?> answers,
   }) async {
-    if (rankingLocked) {
+    // Sunucuya kilitlendiyse tekrar gönderme. Yerel bitiş + pending ise yeniden dene.
+    if (_rankingLocked || _rankedAttempt(_remote?.myAttempt) != null) {
+      await saveProgress(
+        answers: answers,
+        currentIndex: _currentIndex,
+        elapsed: result.duration,
+      );
+      if (result.completed) {
+        await markFormallyFinished();
+      }
+      return;
+    }
+    if (rankingLocked && !_pendingRankingSubmit) {
       await saveProgress(
         answers: answers,
         currentIndex: _currentIndex,
@@ -577,6 +598,7 @@ class DailyMiniExamService extends ChangeNotifier {
       total: result.total,
       durationSeconds: result.duration.inSeconds,
       wrongQuestionIds: result.wrongQuestionIds,
+      rank: _localAttempt?.rank,
     );
     _mergeMonthlyWrongs(result.wrongQuestionIds);
     _rankRevealActive = true;
@@ -620,6 +642,7 @@ class DailyMiniExamService extends ChangeNotifier {
     if (ok) {
       _rankingLocked = true;
       _pendingRankingSubmit = false;
+      _applyRankFromRemoteIfNeeded();
       // Sıra ilk kez geldiyse (misafir→Google sonrası vb.) sayaçsız göster.
       if (_localAttempt?.rank != null &&
           _rankRevealSecondsLeft <= 0 &&
@@ -636,7 +659,11 @@ class DailyMiniExamService extends ChangeNotifier {
   }
 
   Future<void> _retryPendingRankingSubmitIfNeeded() async {
-    if (!_pendingRankingSubmit || _rankedAttempt(_localAttempt) == null || rankingLocked) {
+    // rankingLocked getter, yerel bitişte true olur; pending retry'ı engellemesin.
+    if (!_pendingRankingSubmit ||
+        _rankedAttempt(_localAttempt) == null ||
+        _rankingLocked ||
+        _rankedAttempt(_remote?.myAttempt) != null) {
       return;
     }
     if (_questionIds.isEmpty) return;
@@ -656,12 +683,43 @@ class DailyMiniExamService extends ChangeNotifier {
     if (ok) {
       _rankingLocked = true;
       _pendingRankingSubmit = false;
+      _applyRankFromRemoteIfNeeded();
       // Bekleyen gönderim başarılı olsa bile 10 sn sıra açılışını koru.
       _syncRankSnapshot();
       await _persistRankSnapshot();
       await _persist();
       notifyListeners();
     }
+  }
+
+  /// GET/POST sonrası sıra myAttempt'te yoksa kürsü satırından yaz.
+  void _applyRankFromRemoteIfNeeded() {
+    final current = _localAttempt;
+    if (current == null) return;
+    if (current.rank != null && current.rank! > 0) return;
+    final userId = AuthService.instance.user?.id;
+    if (userId == null) return;
+    int? fromBoard;
+    for (final row in _remote?.leaderboard ?? const <DailyMiniLeaderRow>[]) {
+      if (row.userId == userId && row.rank > 0 && !isDemoLeaderRow(row)) {
+        fromBoard = row.rank;
+        break;
+      }
+    }
+    final remoteRank = _remote?.myAttempt?.rank;
+    final resolved = (remoteRank != null && remoteRank > 0)
+        ? remoteRank
+        : fromBoard;
+    if (resolved == null) return;
+    _localAttempt = DailyMiniAttempt(
+      correct: current.correct,
+      wrong: current.wrong,
+      blank: current.blank,
+      total: current.total,
+      durationSeconds: current.durationSeconds,
+      wrongQuestionIds: current.wrongQuestionIds,
+      rank: resolved,
+    );
   }
 
   Future<bool> submitAnswers({
@@ -699,6 +757,7 @@ class DailyMiniExamService extends ChangeNotifier {
           if (_remote!.myAttempt != null) {
             _localAttempt = _remote!.myAttempt;
           }
+          _applyRankFromRemoteIfNeeded();
         }
         notifyListeners();
         await _persist();

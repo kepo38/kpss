@@ -742,9 +742,19 @@ class _QuizScreenState extends State<QuizScreen>
     );
   }
 
+  /// Stem → options share one [SingleChildScrollView]; keep offset across
+  /// question changes so "Sonraki" would otherwise open mid-scroll on options.
+  void _resetScrollToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(0);
+    });
+  }
+
   void _goTo(int index) {
     if (_isFinishing || widget.questions.isEmpty) return;
     if (index < 0 || index >= widget.questions.length) return;
+    if (index == _currentIndex) return;
     _answers[_currentIndex] = _selectedAnswer;
     setState(() {
       _currentIndex = index;
@@ -756,6 +766,7 @@ class _QuizScreenState extends State<QuizScreen>
       _syncTimerForCurrentQuestion();
       _refreshWrongNotebookHint();
     });
+    _resetScrollToTop();
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
@@ -1033,6 +1044,7 @@ class _QuizScreenState extends State<QuizScreen>
         _syncTimerForCurrentQuestion();
         _refreshWrongNotebookHint();
       });
+      _resetScrollToTop();
       unawaited(_persistProgress());
       if (_selectedAnswer != null) unawaited(_loadRating());
       unawaited(_loadErrorReportState());
@@ -1116,6 +1128,7 @@ class _QuizScreenState extends State<QuizScreen>
       _syncTimerForCurrentQuestion();
       _refreshWrongNotebookHint();
     });
+    _resetScrollToTop();
     unawaited(_persistProgress());
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
@@ -1478,10 +1491,6 @@ class _QuizScreenState extends State<QuizScreen>
           foregroundColor: Colors.white,
           centerTitle: true,
           titleSpacing: 8,
-          toolbarHeight: (!widget.dailyMiniRankingMode &&
-                  _currentQuestion.osymSordu)
-              ? 100
-              : 56,
           leading: AppBackButton(onPressed: () async {
             if (widget.fromWrongNotebook) {
               _exitWrongNotebook();
@@ -1506,30 +1515,18 @@ class _QuizScreenState extends State<QuizScreen>
                     height: 1.05,
                   ),
                 )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.champagne,
-                        height: 1.15,
-                      ),
-                    ),
-                    if (_currentQuestion.osymSordu) ...[
-                      const SizedBox(height: 4),
-                      const OsymBadge(
-                        height: 40,
-                        variant: OsymBadgeVariant.premium,
-                      ),
-                    ],
-                  ],
+              : Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.champagne,
+                    height: 1.15,
+                  ),
                 ),
           actionsPadding: const EdgeInsets.only(right: 2),
           actions: [
@@ -1580,9 +1577,8 @@ class _QuizScreenState extends State<QuizScreen>
                     final urgent =
                         _isCountdown && duration.inSeconds <= 60;
                     return QuizHeaderStrip(
-                      // ÖSYM rozeti AppBar başlık yığınının altında (Test adı ile hizalı).
-                      osymSordu: widget.dailyMiniRankingMode &&
-                          _currentQuestion.osymSordu,
+                      // ÖSYM rozeti üst şeritte, ekran ortasında (Test adı ile aynı dikey eksen).
+                      osymSordu: _currentQuestion.osymSordu,
                       durationText: _formatDuration(duration),
                       isCountdown: _isCountdown,
                       urgent: urgent,

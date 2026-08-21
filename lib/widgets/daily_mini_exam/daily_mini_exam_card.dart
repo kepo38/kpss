@@ -146,6 +146,7 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
 
   Future<void> _openResult() async {
     // EN BAŞARILILAR → günün sıralama listesi; hafta/ay ÖDÜL ayrı kalır.
+    unawaited(DailyMiniExamService.instance.refresh());
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => const DailyMiniExamResultScreen(),

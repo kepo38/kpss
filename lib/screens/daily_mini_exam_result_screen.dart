@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
@@ -12,9 +14,32 @@ import '../widgets/daily_mini_exam/daily_mini_odul_button.dart';
 import '../widgets/frosted_email.dart';
 import '../widgets/scale_button.dart';
 
-/// Günün Mini Denemesi tam sıralama ekranı.
-class DailyMiniExamResultScreen extends StatelessWidget {
+/// Günün Mini Denemesi tam sıralama ekranı (günlük liste; hafta/ay ÖDÜL ayrı).
+class DailyMiniExamResultScreen extends StatefulWidget {
   const DailyMiniExamResultScreen({super.key});
+
+  @override
+  State<DailyMiniExamResultScreen> createState() =>
+      _DailyMiniExamResultScreenState();
+}
+
+class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
+  bool _loadingBoard = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadTodayRanking());
+    });
+  }
+
+  Future<void> _loadTodayRanking() async {
+    setState(() => _loadingBoard = true);
+    await DailyMiniExamService.instance.refresh();
+    if (!mounted) return;
+    setState(() => _loadingBoard = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,8 +58,9 @@ class DailyMiniExamResultScreen extends StatelessWidget {
         }
         final participantCount = service.participantCount;
         final leaderboard = service.leaderboard;
-        final rank = attempt.rank;
+        final rank = service.rankForCurrentUser() ?? attempt.rank;
         final showRank = rank != null && rank > 0 && participantCount > 0;
+        final boardEmpty = leaderboard.isEmpty;
 
         return Scaffold(
           backgroundColor: AppTheme.ink,
@@ -51,6 +77,20 @@ class DailyMiniExamResultScreen extends StatelessWidget {
               ),
             ),
             actions: [
+              IconButton(
+                tooltip: 'Yenile',
+                onPressed: _loadingBoard ? null : _loadTodayRanking,
+                icon: _loadingBoard
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.champagne,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 10),
                 child: Center(
@@ -188,9 +228,18 @@ class DailyMiniExamResultScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if (leaderboard.isEmpty)
+          if (_loadingBoard && boardEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: CircularProgressIndicator(color: AppTheme.champagne),
+              ),
+            )
+          else if (boardEmpty)
             Text(
-              'Sıralama verileri yenileniyor. Kısa süre sonra tekrar bakabilirsin.',
+              service.rankingSubmitPending
+                  ? 'Sıralaman sunucuya iletiliyor. Biraz sonra yenile.'
+                  : 'Bugün henüz sıralama kaydı yok veya veriler yüklenemedi.',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.5),
               ),
@@ -205,7 +254,7 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     color: Colors.white.withValues(alpha: 0.04),
                     border: Border.all(
-                      color: row.rank == attempt.rank
+                      color: row.rank == rank
                           ? AppTheme.champagne.withValues(alpha: 0.45)
                           : Colors.white.withValues(alpha: 0.06),
                     ),

@@ -65,7 +65,7 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
           );
         },
         child: SizedBox(
-          width: 52,
+          width: 54,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -76,25 +76,38 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 10,
-                      height: 10,
+                      width: 11,
+                      height: 11,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFFE8C878),
+                        gradient: const RadialGradient(
+                          colors: [
+                            Color(0xFFFFF6DE),
+                            Color(0xFFE8C878),
+                            Color(0xFF9A7428),
+                          ],
+                          stops: [0.15, 0.55, 1],
+                        ),
                         border: Border.all(
-                          color: const Color(0xFF8F6E32),
-                          width: 1,
+                          color: const Color(0xFF6B4E1A),
+                          width: 1.15,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.champagne.withValues(alpha: 0.55),
-                            blurRadius: 6,
+                            color: AppTheme.champagne.withValues(alpha: 0.65),
+                            blurRadius: 8,
+                            spreadRadius: 0.5,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1),
                           ),
                         ],
                       ),
                     ),
                     Container(
-                      width: 2.2,
+                      width: 2.4,
                       height: 14,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(99),
@@ -102,11 +115,18 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Color(0xFFF5E6BC),
+                            Color(0xFFFFF4D4),
+                            Color(0xFFE8C878),
                             AppTheme.champagne,
-                            Color(0xFF8F6E32),
+                            Color(0xFF7A5A22),
                           ],
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.champagne.withValues(alpha: 0.4),
+                            blurRadius: 4,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -117,56 +137,101 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
                 onTap: widget.onPressed,
                 behavior: HitTestBehavior.opaque,
                 child: Container(
-                  width: 46,
-                  height: 46,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                    gradient: const SweepGradient(
+                      center: Alignment(-0.35, -0.45),
                       colors: [
-                        Color(0xFFFFF8EE),
-                        Color(0xFFF3E2B8),
-                        Color(0xFFE8C878),
-                        AppTheme.champagne,
+                        Color(0xFFFFFBF0),
+                        Color(0xFFF7E4A8),
+                        Color(0xFFE0B84A),
+                        Color(0xFFB8860B),
+                        Color(0xFFF0D78A),
+                        Color(0xFFFFF8E8),
+                        Color(0xFFD4A84A),
+                        Color(0xFFFFFBF0),
                       ],
+                      stops: [0.0, 0.14, 0.32, 0.48, 0.62, 0.78, 0.9, 1.0],
                     ),
                     border: Border.all(
-                      color: const Color(0xFFD4AF6A),
-                      width: 1.5,
+                      color: const Color(0xFFF5E6BC),
+                      width: 1.7,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.champagne.withValues(alpha: 0.45),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+                        color: const Color(0xFFFFD76A).withValues(alpha: 0.55),
+                        blurRadius: 16,
+                        spreadRadius: 1.5,
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                        color: AppTheme.champagne.withValues(alpha: 0.5),
+                        blurRadius: 10,
+                        spreadRadius: 0.5,
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
                       ),
                     ],
                   ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.emoji_events_rounded,
-                        size: 15,
-                        color: AppTheme.ink,
+                  child: Container(
+                    margin: const EdgeInsets.all(2.5),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFFFFCF5),
+                          Color(0xFFF8E9B8),
+                          Color(0xFFE8C878),
+                          Color(0xFFC9A227),
+                          Color(0xFF8F6E32),
+                        ],
+                        stops: [0.0, 0.28, 0.55, 0.82, 1.0],
                       ),
-                      Text(
-                        'ÖDÜL',
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                          height: 1,
-                          color: AppTheme.ink,
+                      border: Border.all(
+                        color: const Color(0xFF8F6E32).withValues(alpha: 0.55),
+                        width: 1.1,
+                      ),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.emoji_events_rounded,
+                          size: 16,
+                          color: Color(0xFF5C4314),
+                          shadows: [
+                            Shadow(
+                              color: Color(0x66FFF8EE),
+                              blurRadius: 3,
+                              offset: Offset(0, 0.5),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        Text(
+                          'ÖDÜL',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.55,
+                            height: 1,
+                            color: Color(0xFF4A3610),
+                            shadows: [
+                              Shadow(
+                                color: Color(0x55FFF8EE),
+                                blurRadius: 2,
+                                offset: Offset(0, 0.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

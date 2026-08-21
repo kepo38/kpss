@@ -100,7 +100,8 @@ class DailyMiniExamLeaderboardPreview extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 44),
+              // ÖDÜL madalyonu sağ üstte (pin); başlık çarpmasın.
+              const SizedBox(width: 56),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -174,6 +175,8 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
 
     return _LeaderboardShell(
       onOdul: onOdul,
+      onShare: onShare,
+      shareEnabled: shareEnabled,
       child: Column(
         children: [
           Stack(
@@ -189,14 +192,14 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
+                        const Row(
                           children: [
-                            const Text(
+                            Text(
                               '🏆',
                               style: TextStyle(fontSize: 25, height: 1),
                             ),
-                            const SizedBox(width: 8),
-                            const Expanded(
+                            SizedBox(width: 8),
+                            Expanded(
                               child: Text(
                                 'BUGÜNÜN KÜRSÜSÜ',
                                 style: TextStyle(
@@ -207,22 +210,8 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              onPressed: shareEnabled ? onShare : null,
-                              tooltip: 'Sıralamanı paylaş',
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 36,
-                                minHeight: 36,
-                              ),
-                              icon: const Icon(
-                                Icons.ios_share_rounded,
-                                size: 18,
-                                color: AppTheme.champagneLight,
-                              ),
-                            ),
-                            const SizedBox(width: 36),
+                            // Paylaş = shell sağ üst; ÖDÜL pin biraz solda.
+                            SizedBox(width: 72),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -234,7 +223,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                         DailyMiniExamRankReveal(
                           rank: rank,
                           participantCount: participantCount,
-                          leaders: topThree,
+                          leaders: leaders,
                           trend: trend,
                         ),
                       ],
@@ -266,11 +255,19 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
 class _LeaderboardShell extends StatelessWidget {
   final Widget child;
   final VoidCallback? onOdul;
+  final VoidCallback? onShare;
+  final bool shareEnabled;
 
-  const _LeaderboardShell({required this.child, this.onOdul});
+  const _LeaderboardShell({
+    required this.child,
+    this.onOdul,
+    this.onShare,
+    this.shareEnabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final showShare = onShare != null;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -302,11 +299,37 @@ class _LeaderboardShell extends StatelessWidget {
           ),
           child: child,
         ),
+        // Paylaş — koyu kürsü kartının mutlak sağ üst köşesi.
+        if (showShare)
+          Positioned(
+            top: 2,
+            right: 2,
+            child: Material(
+              color: Colors.transparent,
+              child: IconButton(
+                onPressed: shareEnabled ? onShare : null,
+                tooltip: 'Sıralamanı paylaş',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 32,
+                  minHeight: 32,
+                ),
+                icon: Icon(
+                  Icons.ios_share_rounded,
+                  size: 18,
+                  color: AppTheme.champagneLight.withValues(
+                    alpha: shareEnabled ? 1 : 0.4,
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (onOdul != null)
           Positioned(
-            // İğne tepesi = koyu kürsü kartının üst border'ı; madalya aşağı sarkar.
+            // İğne tepesi = koyu kürsü üst kenarı; paylaş ikonundan sola kaydır.
             top: 0,
-            right: 14,
+            right: showShare ? 40 : 14,
             child: DailyMiniOdulHangBadge(onPressed: onOdul!),
           ),
       ],

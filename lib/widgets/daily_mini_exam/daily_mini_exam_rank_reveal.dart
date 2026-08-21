@@ -37,9 +37,13 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
   bool _celebrateRank = false;
   bool _awaitingRankAfterCountdown = false;
   bool _countdownDone = false;
+  bool _rankUnavailable = false;
+  int _rankPollTicks = 0;
   int _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
   late final AnimationController _pulseCtrl;
   late final AnimationController _shimmerCtrl;
+
+  static const _maxRankPollTicks = 8;
 
   DailyMiniExamService get _service => DailyMiniExamService.instance;
 
@@ -50,6 +54,8 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
   int? get _resolvedRank {
     if (_showCountdown) return null;
     if (widget.rank != null && widget.rank! > 0) return widget.rank;
+    final fromService = _service.rankForCurrentUser();
+    if (fromService != null && fromService > 0) return fromService;
     final attemptRank = _service.attempt?.rank;
     if (attemptRank != null && attemptRank > 0) return attemptRank;
     final userId = AuthService.instance.user?.id;
@@ -94,14 +100,23 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
       _countdownDone = false;
       _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
       _celebrateRank = false;
+      _rankUnavailable = false;
+      _rankPollTicks = 0;
+      _awaitingRankAfterCountdown = false;
     } else if (_service.rankRevealActive &&
         !_countdownDone &&
         _timer == null &&
         _secondsLeft <= 0) {
       _secondsLeft = DailyMiniExamRankReveal.countdownSeconds;
     }
+    if (_hasRank && _awaitingRankAfterCountdown) {
+      _awaitingRankAfterCountdown = false;
+      _rankUnavailable = false;
+      _triggerRankCelebration();
+    }
     _syncPulse();
     _ensureTimer();
+    _ensureRankPoll();
     if (mounted) setState(() {});
   }
 
@@ -143,17 +158,28 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
       }
       if (_hasRank) {
         _awaitingRankAfterCountdown = false;
+        _rankUnavailable = false;
         _triggerRankCelebration();
         setState(() {});
         _rankPoll?.cancel();
         _rankPoll = null;
         return;
       }
+      _rankPollTicks += 1;
       await _service.refresh();
       if (!mounted || !_awaitingRankAfterCountdown) return;
       if (_hasRank) {
         _awaitingRankAfterCountdown = false;
+        _rankUnavailable = false;
         _triggerRankCelebration();
+        setState(() {});
+        _rankPoll?.cancel();
+        _rankPoll = null;
+        return;
+      }
+      if (_rankPollTicks >= _maxRankPollTicks) {
+        _awaitingRankAfterCountdown = false;
+        _rankUnavailable = true;
         setState(() {});
         _rankPoll?.cancel();
         _rankPoll = null;
@@ -187,6 +213,8 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
       _timer = null;
       _service.clearRankReveal();
       _awaitingRankAfterCountdown = true;
+      _rankPollTicks = 0;
+      _rankUnavailable = false;
       if (_hasRank) {
         _awaitingRankAfterCountdown = false;
         _triggerRankCelebration();
@@ -196,6 +224,7 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
           if (!mounted || !_awaitingRankAfterCountdown) return;
           if (_hasRank) {
             _awaitingRankAfterCountdown = false;
+            _rankUnavailable = false;
             _triggerRankCelebration();
           }
           setState(() {});
@@ -213,6 +242,7 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
     final rank = _resolvedRank;
     final showRank = _hasRank;
     final countdownActive = _showCountdown;
+    final pending = !countdownActive && !showRank && !_rankUnavailable;
     final glowAlpha = countdownActive
         ? 0.28 + (_pulseCtrl.value * 0.22)
         : (showRank ? 0.38 : 0.22);
@@ -306,12 +336,14 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
                         shimmer: _shimmerCtrl,
                         secondsLeft: _secondsLeft,
                       )
-                    : const Text(
-                        key: ValueKey('rank-label'),
-                        'BUGÜNKÜ SIRALAMAN',
+                    : Text(
+                        key: const ValueKey('rank-label'),
+                        _rankUnavailable
+                            ? 'SIRALAMA BEKLENİYOR'
+                            : 'BUGÜNKÜ SIRALAMAN',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: 'serif',
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
@@ -329,6 +361,7 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
               totalSeconds: DailyMiniExamRankReveal.countdownSeconds,
               rank: showRank ? rank : null,
               trend: widget.trend,
+              showUnavailable: _rankUnavailable && !pending,
             ),
           ],
         ),
@@ -426,6 +459,7 @@ class _RankRevealSlot extends StatelessWidget {
   final int totalSeconds;
   final int? rank;
   final DailyMiniRankTrend trend;
+  final bool showUnavailable;
 
   const _RankRevealSlot({
     required this.showCountdown,
@@ -433,6 +467,7 @@ class _RankRevealSlot extends StatelessWidget {
     required this.totalSeconds,
     required this.rank,
     required this.trend,
+    this.showUnavailable = false,
   });
 
   @override
@@ -462,7 +497,9 @@ class _RankRevealSlot extends StatelessWidget {
                     rank: rank!,
                     trend: trend,
                   )
-                : const _RankPendingDot(key: ValueKey('pending')),
+                : showUnavailable
+                    ? const _RankUnavailableBadge(key: ValueKey('unavailable'))
+                    : const _RankPendingDot(key: ValueKey('pending')),
       ),
     );
   }
@@ -567,6 +604,35 @@ class _RankPendingDot extends StatelessWidget {
           fontWeight: FontWeight.w700,
           height: 1,
           color: AppTheme.ink.withValues(alpha: 0.45),
+        ),
+      ),
+    );
+  }
+}
+
+class _RankUnavailableBadge extends StatelessWidget {
+  const _RankUnavailableBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46,
+      height: 46,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.ink.withValues(alpha: 0.06),
+        border: Border.all(
+          color: AppTheme.ink.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Text(
+        '—',
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          height: 1,
+          color: AppTheme.ink.withValues(alpha: 0.55),
         ),
       ),
     );

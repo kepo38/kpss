@@ -90,8 +90,8 @@ class _BootSplashScreenState extends State<BootSplashScreen>
                       showLogo: false,
                       logoSize: 56,
                       alignment: CrossAxisAlignment.center,
-                      line1FontSize: 26,
-                      line2FontSize: 14,
+                      line1FontSize: 31,
+                      line2FontSize: 17,
                     ),
                   ),
                   Align(
