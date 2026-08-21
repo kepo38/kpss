@@ -177,6 +177,16 @@ CURRICULUM = [
                     "Küreselleşen Dünya (1990'lardan Günümüze)",
                 ],
             },
+            {
+                "slug": "tarih_kronoloji",
+                "name": "Tarih Kronoloji",
+                "subtopics": [],
+            },
+            {
+                "slug": "tarih_padisah_antlasma",
+                "name": "Padişahlar ve Antlaşmalar",
+                "subtopics": [],
+            },
         ],
     },
     {

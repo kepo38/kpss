@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ad_constants.dart';
 import 'ad_free_campaign_service.dart';
+import 'app_config_service.dart';
 import 'app_preferences.dart';
 
 /// Reklam ve adil fiyatlandırma mimarisi.
@@ -17,6 +18,7 @@ import 'app_preferences.dart';
 /// - Ödüllü video ile çözüm kilidi (testte ilk 4 ücretsiz; 5.+ her biri reklam)
 /// - isPremium == true → tüm reklamlar bypass
 /// - 12 saat kampanya → yalnızca banner; çözüm/kota/interstitial durur
+/// - Panel `bannerAdsEnabled=false` → yalnızca quiz banner kapalı
 class AdManager {
   AdManager._();
   static final AdManager instance = AdManager._();
@@ -43,8 +45,11 @@ class AdManager {
   bool get isInTestSession => _isInTestSession;
   bool get isAdFreeActive => AdFreeCampaignService.instance.isAdFreeActive;
   bool get _bypassAllAds => _isPremium || kIsWeb;
+  bool get _panelBannersOff => !AppConfigService.instance.bannerAdsEnabled;
   bool get _suppressBanners =>
-      _bypassAllAds || AdFreeCampaignService.instance.isAdFreeActive;
+      _bypassAllAds ||
+      AdFreeCampaignService.instance.isAdFreeActive ||
+      _panelBannersOff;
   BannerAd? get bannerAd => _suppressBanners ? null : _bannerAd;
 
   void setPremium(bool value) {
@@ -82,8 +87,21 @@ class AdManager {
     _adFreeTestSession = adFreeExperience;
     _unlockedSolutionIds.clear();
     _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
-    if (_suppressBanners || adFreeExperience) return;
+    // Panel banner bayrağı bir sonraki teste yansısın.
+    unawaited(_startTestSessionAds(adFreeExperience: adFreeExperience));
+  }
+
+  Future<void> _startTestSessionAds({required bool adFreeExperience}) async {
+    await AppConfigService.instance.refresh();
+    if (!_isInTestSession) return;
+    if (_suppressBanners || adFreeExperience || _adFreeTestSession) {
+      _disposeBanner();
+      AppConfigService.instance.notifyListeners();
+      return;
+    }
     _loadBanner();
+    // BannerAd nesnesi oluştu; quiz alt çubuğu yeniden çizilsin.
+    AppConfigService.instance.notifyListeners();
   }
 
   /// Test oturumu bittiğinde çağrılır.
@@ -356,7 +374,10 @@ class AdManager {
   }
 
   void _loadBanner() {
-    if (_suppressBanners || !_sdkReady) return;
+    if (_suppressBanners || !_sdkReady) {
+      _disposeBanner();
+      return;
+    }
     try {
       _bannerAd?.dispose();
       _bannerAd = BannerAd(

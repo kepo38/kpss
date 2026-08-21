@@ -972,6 +972,7 @@ class MobileUiConfigView(APIView):
             {
                 "wrongNotebookBubbleEnabled": cfg.wrong_notebook_bubble_enabled,
                 "wrongNotebookBubbleLabel": cfg.wrong_notebook_bubble_label,
+                "bannerAdsEnabled": cfg.banner_ads_enabled,
                 "updatedAt": cfg.updated_at,
             }
         )

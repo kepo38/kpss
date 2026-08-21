@@ -24,12 +24,14 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
 
-### 22 Ağustos 2026 — Zoom ipucu · paylaşım başlık · NEDEN BİZ · yanlış defteri UI · çizim beyaz katman
+### 22 Ağustos 2026 — Banner panel · Özel test etiketleri · Zoom ipucu · paylaşım · NEDEN BİZ
 
-Bu tur: günlük zoom ipucu; paylaşım hikâyesi marka başlığı; NEDEN BİZ metinleri; yanlış defteri BENZER/Akıllı Tekrar; ÖSYM/splash/test AppBar cilası; kalem `saveLayer` beyaz örtü düzeltmesi.
+Bu tur: panelden quiz banner aç/kapa; özel test bayrakları + keyword (kronoloji / padişah / çeldirici); günlük zoom ipucu; paylaşım hikâyesi marka başlığı; NEDEN BİZ metinleri; yanlış defteri BENZER/Akıllı Tekrar; ÖSYM/splash/test AppBar cilası; kalem `saveLayer` beyaz örtü düzeltmesi.
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
+| **Banner panel aç/kapa** | Mobil arayüz sayfasında checkbox; `GET /api/v1/mobile-ui/` → `bannerAdsEnabled`; kapalıyken yalnızca quiz banner (ödüllü/interstitial etkilenmez) | `MobileUiConfig`, `mobile_ui.html`, `AppConfigService`, `ad_manager.dart`, `0049_…` |
+| **Özel test otomatik etiket** | `tag_kronoloji` / `tag_padisah_antlasma` / `tag_celdirici`; panel checkbox + keyword auto; yeni **Çeldiricisi Güçlü**; `retag_special_questions` | `special_question_tags.py`, `special_tests.py`, `0050_…`, panel form |
 | **Zoom günlük ipucu** | Her gün / hesap kapsamında ilk testte ortada yumuşak toast: «Çift dokunarak SORU ve ÇÖZÜMLERİ yakınlaştır»; misafir ile Google ayrı slot | `quiz_zoom_daily_hint.dart`, `quiz_screen.dart` |
 | **Zoom 1× kaydırma** | Ölçek ≈1’te dikey `ScrollView`; yakınken pan InteractiveViewer’da | `quiz_zoom_viewport.dart`, `quiz_screen.dart` |
 | **Paylaşım kartı başlık** | Sol üst logo/YANLIŞ DEFTERİ yok; üst ortada büyük **HEDEF Kamu**; içerik alanı dolduran ölçekleyici | `wrong_notebook_share_card.dart`, `wrong_notebook_share_service.dart` |
@@ -392,7 +394,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Ana Sayfa sekmesi** | Günün mini denemesi, günlük görevler, tasarruf banner’ı, sınav odağı | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (kırık beyaz zemin, siyah yazı) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler sekmesi** | 2 sütunlu ders ızgarası (daha alçak kartlar); kartta soru sayısı + ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
-| **Özel Testler** | Dersler altında ortalanmış, büyütülmüş 3D `ÖZEL TESTLER` butonu; ÖSYM Sordu tarzı ışıklı dönen çerçeve; kategori ızgarası (ilk: **HARİTALARLA COĞRAFYA**); Coğrafya `map_template` soruları 20’lik sanal testler | `special_tests_entry.dart`, `osym_badge.dart`, `special_tests_screen.dart`, `backend/content/special_tests.py` | Ücretsiz; Coğrafya günlük kota |
+| **Özel Testler** | Dersler altında 3D `ÖZEL TESTLER`; kategoriler: **HARİTALARLA COĞRAFYA**, **TARİH KRONOLOJİ**, **PADİŞAHLAR VE ANTLAŞMALAR**, **ÇELDİRİCİSİ GÜÇLÜ**; bayrak + keyword ile 20’lik sanal testler | `special_tests_entry.dart`, `special_tests_screen.dart`, `special_map_geography_screen.dart`, `backend/content/special_tests.py`, `special_question_tags.py` | Ücretsiz; ilgili ders günlük kotası |
 | **Gelişim sekmesi** | Genel doğruluk (yalnızca **konu testleri**; günün mini denemesi 20 sorusu sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
 | **Konu detayı** | İstatistik, **özet kart destesi** (kaydır: Biliyorum/Unuttum + kalp), bilgi kartları, test listesi | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` | Günlük kota |
@@ -568,7 +570,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad (haftada en fazla 1 değişiklik); `premiumProductId` / `isYearlyPremium` | `backend/content/views.py`, `auth.py` |
 | **Premium sync** | Play ürün id + süre → `POST /api/v1/premium/sync/` (Bearer); offline pack sunucu kapısı | `premium_sync_service.dart`, `play_billing_service.dart`, `PremiumSyncView` |
 | **Ağ güvenliği engeli** | VPN/DNS/reklam engelleyici tespiti → ücretsiz kullanıcıda kilit; Play veya panel Premium süresince serbest | `lib/services/network_security_service.dart`, `lib/services/network_security_gate.dart`, `lib/screens/security_warning_modal.dart` |
-| **Ekran görüntüsü yasağı** | Android `FLAG_SECURE` (release; debug/QA allowlist hariç). Paylaşım yakalama: `ScreenshotGate` geçici açar. iOS ekran kaydında siyah örtü. Yanlış defteri paylaşımı: ücretsiz **1/gün** (+reklam), Premium **3/gün**, filigranlı PNG | `MainActivity.kt`, `AppDelegate.swift`, `screenshot_gate.dart`, `wrong_notebook_share_service.dart`, `ad_manager.dart` |
+| **Ekran görüntüsü yasağı** | Android `FLAG_SECURE` (release; debug/QA allowlist hariç). Paylaşım yakalama: `ScreenshotGate` geçici açar. iOS ekran kaydında siyah örtü. Yanlış defteri paylaşımı: ücretsiz **1/gün** (+reklam), Premium **3/gün**, filigranlı PNG. Quiz banner: panel `bannerAdsEnabled` | `MainActivity.kt`, `AppDelegate.swift`, `screenshot_gate.dart`, `wrong_notebook_share_service.dart`, `ad_manager.dart`, `app_config_service.dart` |
 | **Pack indirme güvenliği** | Tam pack **Bearer + yıllık premium**; katalog hafif meta açık kalabilir; at-rest şifreleme yok (SQLite düz JSON) — DRM değil, scrape engeli | `ContentPackView`, `content_sync_service.dart` |
 
 ---
@@ -684,7 +686,7 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Premium ver / kaldır | `/panel/kullanici/<id>/premium/` |
 | **Promosyon kodları** (liste / yeni / düzenle / sil / aktif-pasif) | `/panel/promosyon/` |
 | Duyuru CRUD + big-picture push önizleme | `/panel/duyuru/...`, `announcement-push-preview.*` |
-| Mobil arayüz (yanlış defteri balonu aç/kapa, metin) | `/panel/mobil-arayuz/` |
+| Mobil arayüz (yanlış defteri balonu + quiz banner aç/kapa) | `/panel/mobil-arayuz/` |
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
 | Deneme paketi düzenle / sil / aktif-pasif (Dersler vitrini) + şablondan üret | `/panel/deneme-paket/...` |
@@ -760,7 +762,7 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET /tests/<id>/questions/` | Test soruları | Hayır | `QuestionFetchService` |
 | `POST /tests/<id>/attempt/` | Test tamamlama | Bearer | Quiz |
 | `GET /announcements/` | Aktif duyurular | Hayır | `AnnouncementService` |
-| `GET /mobile-ui/` | Mobil arayüz ayarları (yanlış defteri balonu) | Hayır | `AppConfigService` |
+| `GET /mobile-ui/` | Mobil arayüz (`wrongNotebookBubble*`, `bannerAdsEnabled`) | Hayır | `AppConfigService` |
 | `POST /device-tokens/` | FCM token | Opsiyonel | `PushNotificationService` |
 | `POST /auth/google/` | Google giriş | Hayır | `AuthService` |
 | `GET/PATCH /me/` | Profil | Bearer | `AuthService` |
@@ -898,6 +900,8 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ## Sürüm notu (2026-08-22)
 
+- **Banner panel:** Mobil arayüzden quiz banner aç/kapa (`bannerAdsEnabled`)
+- **Özel test etiketleri:** `tag_kronoloji` / `tag_padisah_antlasma` / `tag_celdirici`; keyword auto + panel; kategori **Çeldiricisi Güçlü**; `retag_special_questions`
 - **Zoom ipucu:** günlük ilk testte ortada yumuşak toast; misafir/Google ayrı
 - **Paylaşım kartı:** üst ortada büyük HEDEF Kamu; sol üst marka satırı yok
 - **NEDEN BİZ:** güncel avantaj/dezavantaj maddeleri

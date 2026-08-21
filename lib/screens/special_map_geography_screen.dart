@@ -24,7 +24,7 @@ import '../widgets/daily_test_quota_dialog.dart';
 import '../widgets/premium_gate.dart';
 import 'quiz_screen.dart';
 
-/// Özel Testler → Haritalarla Coğrafya.
+/// Özel Testler → kategori test listesi (harita / kronoloji / padişahlar…).
 class SpecialMapGeographyScreen extends StatefulWidget {
   final KpssType kpssType;
   final SpecialTestCategory category;
@@ -45,7 +45,45 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
   final _svc = SpecialTestsService.instance;
   bool _startingTest = false;
 
-  static const _subjectId = 'cografya';
+  String get _subjectId {
+    if (widget.category.subjectId.isNotEmpty) {
+      return widget.category.subjectId;
+    }
+    // Çeldirici tüm dersler — kota için güvenli varsayılan.
+    if (widget.category.id == SpecialTestsService.celdiriciId) {
+      return 'tarih';
+    }
+    return 'cografya';
+  }
+
+  String get _topicId => widget.category.id;
+
+  String get _subtitle {
+    switch (widget.category.id) {
+      case SpecialTestsService.tarihKronolojiId:
+        return 'OLAYLARI ZAMAN SIRASIYLA PEKİŞTİR';
+      case SpecialTestsService.padisahAntlasmaId:
+        return 'PADİŞAHLAR VE ANTLAŞMALAR';
+      case SpecialTestsService.celdiriciId:
+        return 'TUZAK ŞIKLARI AYIKLA';
+      case SpecialTestsService.mapGeographyId:
+      default:
+        return 'HARİTA OKUMA BECERİSİ';
+    }
+  }
+
+  String get _emptyMessage {
+    switch (widget.category.id) {
+      case SpecialTestsService.tarihKronolojiId:
+        return 'Henüz kronoloji sorusu yok. Panelde «Kronoloji» etiketini işaretleyin veya metinde kronoloji kalıbı olan soruları kaydedin.';
+      case SpecialTestsService.padisahAntlasmaId:
+        return 'Henüz padişah / antlaşma sorusu yok. Panelde ilgili etiketi işaretleyin veya metin kalıplarıyla otomatik etiketleyin.';
+      case SpecialTestsService.celdiriciId:
+        return 'Henüz çeldiricisi güçlü soru yok. Panelde «Çeldiricisi güçlü» etiketini işaretleyin.';
+      default:
+        return 'Henüz haritalı coğrafya sorusu yok.';
+    }
+  }
 
   @override
   void initState() {
@@ -223,7 +261,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
               testId: test.id,
               kpssType: widget.kpssType,
               subjectId: _subjectId,
-              topicId: SpecialTestsService.mapGeographyTopicId,
+              topicId: _topicId,
             ),
           ),
         ),
@@ -242,7 +280,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
         TestAttemptModel(
           id: 'att_${DateTime.now().millisecondsSinceEpoch}',
           testId: test.id,
-          topicId: SpecialTestsService.mapGeographyTopicId,
+          topicId: _topicId,
           kpssType: widget.kpssType,
           correct: result.correct,
           wrong: result.wrong,
@@ -317,7 +355,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: Text(
-                    'HARİTA OKUMA BECERİSİ',
+                    _subtitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
@@ -331,7 +369,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
             }
             if (tests.isEmpty) {
               return Text(
-                'Henüz haritalı coğrafya sorusu yok.',
+                _emptyMessage,
                 style: TextStyle(color: AppTheme.mutedOnPage(context)),
               );
             }

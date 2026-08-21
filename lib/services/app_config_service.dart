@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
 
-/// Sunucudan mobil arayüz ayarları — ana sayfa promosyon balonu.
+/// Sunucudan mobil arayüz ayarları — promosyon balonu, banner reklam vb.
 class AppConfigService extends ChangeNotifier {
   AppConfigService._();
   static final AppConfigService instance = AppConfigService._();
@@ -15,6 +15,8 @@ class AppConfigService extends ChangeNotifier {
   bool _loaded = false;
   bool _wrongNotebookBubbleEnabled = false;
   String _wrongNotebookBubbleLabel = 'YANLIŞ DEFTERİM';
+  /// API gelmezse / yüklenmeden önce banner açık (mevcut davranış).
+  bool _bannerAdsEnabled = true;
   DateTime? _updatedAt;
   bool _authListening = false;
 
@@ -24,6 +26,7 @@ class AppConfigService extends ChangeNotifier {
   bool get isLoaded => _loaded;
   bool get wrongNotebookBubbleEnabled => _wrongNotebookBubbleEnabled;
   String get wrongNotebookBubbleLabel => _wrongNotebookBubbleLabel;
+  bool get bannerAdsEnabled => _bannerAdsEnabled;
 
   String? _sessionDismissKey() {
     final userId = AuthService.instance.user?.id;
@@ -72,6 +75,10 @@ class AppConfigService extends ChangeNotifier {
       final label = map['wrongNotebookBubbleLabel']?.toString().trim();
       if (label != null && label.isNotEmpty) {
         _wrongNotebookBubbleLabel = label;
+      }
+      // Anahtar yoksa eski sunucular için banner açık kalsın.
+      if (map.containsKey('bannerAdsEnabled')) {
+        _bannerAdsEnabled = map['bannerAdsEnabled'] == true;
       }
       final rawUpdated = map['updatedAt']?.toString();
       if (rawUpdated != null && rawUpdated.isNotEmpty) {

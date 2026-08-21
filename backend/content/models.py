@@ -225,6 +225,24 @@ class Question(models.Model):
         verbose_name="ÖSYM sordu",
         help_text="İşaretlenirse uygulamada sorunun sağ üstünde ÖSYM rozeti görünür.",
     )
+    tag_kronoloji = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Özel test: Kronoloji",
+        help_text="Tarih Kronoloji özel test havuzuna dahil edilir.",
+    )
+    tag_padisah_antlasma = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Özel test: Padişahlar ve Antlaşmalar",
+        help_text="Padişahlar ve Antlaşmalar özel test havuzuna dahil edilir.",
+    )
+    tag_celdirici = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Özel test: Çeldiricisi güçlü",
+        help_text="Çeldiricisi güçlü / tuzak soru özel test havuzuna dahil edilir.",
+    )
     content_hash = models.CharField(
         max_length=64,
         blank=True,
@@ -298,6 +316,23 @@ class Question(models.Model):
 
     def save(self, *args, **kwargs):
         from .question_fingerprint import apply_fingerprints
+        from .special_question_tags import apply_auto_tags
+
+        update_fields = kwargs.get("update_fields")
+        content_fields = (
+            "stem",
+            "option_a",
+            "option_b",
+            "option_c",
+            "option_d",
+            "option_e",
+        )
+        if update_fields is None or any(f in update_fields for f in content_fields):
+            raised = apply_auto_tags(self, only_raise=True)
+            if update_fields is not None and raised:
+                kwargs["update_fields"] = list(
+                    set(update_fields) | raised | {"updated_at"}
+                )
 
         apply_fingerprints(self)
         super().save(*args, **kwargs)
@@ -677,6 +712,10 @@ class MobileUiConfig(models.Model):
         default="YANLIŞ DEFTERİM",
         verbose_name="Balon metni",
     )
+    banner_ads_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Quiz banner reklamları",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -684,8 +723,9 @@ class MobileUiConfig(models.Model):
         verbose_name_plural = "Mobil arayüz"
 
     def __str__(self) -> str:
-        state = "açık" if self.wrong_notebook_bubble_enabled else "kapalı"
-        return f"Mobil arayüz · yanlış balonu {state}"
+        bubble = "açık" if self.wrong_notebook_bubble_enabled else "kapalı"
+        banner = "açık" if self.banner_ads_enabled else "kapalı"
+        return f"Mobil arayüz · balon {bubble} · banner {banner}"
 
 
 def get_mobile_ui_config() -> MobileUiConfig:

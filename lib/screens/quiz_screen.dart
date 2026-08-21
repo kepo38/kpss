@@ -12,6 +12,7 @@ import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
 import '../services/ad_service.dart';
 import '../services/answer_feedback_service.dart';
+import '../services/app_config_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/daily_mini_exam_service.dart';
 import '../services/favorites_service.dart';
@@ -1468,7 +1469,6 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Widget _buildBottomActions() {
-    final bannerAd = AdManager.instance.bannerAd;
     final isLast = _currentIndex >= widget.questions.length - 1;
     final canGoBack = _currentIndex > 0 && !_isFinishing;
     final canAdvance = !_isFinishing;
@@ -1598,11 +1598,18 @@ class _QuizScreenState extends State<QuizScreen>
                 ],
               ),
             ),
-            if (bannerAd != null && !_isFinishing)
-              SizedBox(
-                width: double.infinity,
-                height: bannerAd.size.height.toDouble(),
-                child: AdWidget(ad: bannerAd),
+            if (!_isFinishing)
+              ListenableBuilder(
+                listenable: AppConfigService.instance,
+                builder: (context, _) {
+                  final bannerAd = AdManager.instance.bannerAd;
+                  if (bannerAd == null) return const SizedBox.shrink();
+                  return SizedBox(
+                    width: double.infinity,
+                    height: bannerAd.size.height.toDouble(),
+                    child: AdWidget(ad: bannerAd),
+                  );
+                },
               ),
           ],
         ),

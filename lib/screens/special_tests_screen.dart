@@ -102,17 +102,14 @@ class _SpecialTestsScreenState extends State<SpecialTestsScreen> {
                       return _SpecialCategoryTile(
                         category: category,
                         onTap: () {
-                          if (category.id ==
-                              SpecialTestsService.mapGeographyId) {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => SpecialMapGeographyScreen(
-                                  kpssType: widget.kpssType,
-                                  category: category,
-                                ),
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => SpecialMapGeographyScreen(
+                                kpssType: widget.kpssType,
+                                category: category,
                               ),
-                            );
-                          }
+                            ),
+                          );
                         },
                       );
                     },
@@ -135,6 +132,20 @@ class _SpecialCategoryTile extends StatelessWidget {
     required this.category,
     required this.onTap,
   });
+
+  IconData get _icon {
+    switch (category.id) {
+      case SpecialTestsService.tarihKronolojiId:
+        return Icons.timeline_rounded;
+      case SpecialTestsService.padisahAntlasmaId:
+        return Icons.account_balance_rounded;
+      case SpecialTestsService.celdiriciId:
+        return Icons.psychology_alt_rounded;
+      case SpecialTestsService.mapGeographyId:
+      default:
+        return Icons.public_rounded;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,8 +198,8 @@ class _SpecialCategoryTile extends StatelessWidget {
                     color: neonBlue.withValues(alpha: 0.18),
                     border: Border.all(color: neonBlue.withValues(alpha: 0.75)),
                   ),
-                  child: const Icon(
-                    Icons.public_rounded,
+                  child: Icon(
+                    _icon,
                     size: 18,
                     color: neonBlue,
                   ),

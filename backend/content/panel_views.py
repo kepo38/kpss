@@ -1736,6 +1736,14 @@ def panel_question_edit(
         question.solution = request.POST.get("solution", "").strip()
         question.is_published = request.POST.get("is_published") == "on"
         question.osym_sordu = request.POST.get("osym_sordu") == "on"
+        question.tag_kronoloji = request.POST.get("tag_kronoloji") == "on"
+        question.tag_padisah_antlasma = (
+            request.POST.get("tag_padisah_antlasma") == "on"
+        )
+        question.tag_celdirici = request.POST.get("tag_celdirici") == "on"
+        from .special_question_tags import apply_auto_tags
+
+        apply_auto_tags(question, only_raise=True)
         question.map_template = map_template
         question.map_markers = map_markers
         figure_svg = _sanitize_figure_svg(
@@ -1962,6 +1970,9 @@ def panel_question_copy(
         is_published=source.is_published,
         difficulty=Question.DIFFICULTY_MEDIUM,
         osym_sordu=source.osym_sordu,
+        tag_kronoloji=source.tag_kronoloji,
+        tag_padisah_antlasma=source.tag_padisah_antlasma,
+        tag_celdirici=source.tag_celdirici,
         content_hash=source.content_hash,
         stem_hash=source.stem_hash,
         source_image_hash=source.source_image_hash,
@@ -2797,6 +2808,9 @@ def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
         label = request.POST.get("wrong_notebook_bubble_label", "").strip()
         if label:
             cfg.wrong_notebook_bubble_label = label[:48]
+        cfg.banner_ads_enabled = (
+            request.POST.get("banner_ads_enabled") == "on"
+        )
         cfg.save()
         messages.success(request, "Mobil arayüz ayarları kaydedildi.")
         return redirect("panel_mobile_ui")

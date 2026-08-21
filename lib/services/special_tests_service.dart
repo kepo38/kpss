@@ -12,10 +12,13 @@ class SpecialTestsService extends ChangeNotifier {
   SpecialTestsService._();
   static final SpecialTestsService instance = SpecialTestsService._();
 
-  static const _cacheKey = 'special_tests_cache_v1';
+  static const _cacheKey = 'special_tests_cache_v3';
   static const mapGeographyId = 'haritalarla-cografya';
   static const mapGeographyTestPrefix = 'special_map_cografya';
   static const mapGeographyTopicId = 'haritalarla-cografya';
+  static const tarihKronolojiId = 'tarih-kronoloji';
+  static const padisahAntlasmaId = 'padisahlar-antlasmalar';
+  static const celdiriciId = 'celdiricisi-guclu';
 
   List<SpecialTestCategory> _categories = [];
   bool _loading = false;

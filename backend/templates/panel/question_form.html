@@ -197,6 +197,22 @@
       <input type="checkbox" name="osym_sordu" id="osym-sordu" {% if question.osym_sordu %}checked{% endif %}>
       ÖSYM sordu <span style="opacity:.7;font-weight:400">(uygulamada sorunun sağ üstünde ÖSYM rozeti)</span>
     </label>
+    <fieldset style="border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:12px 14px;margin:0 0 8px;">
+      <legend style="padding:0 6px;font-size:.9rem;opacity:.9;">Özel test etiketleri</legend>
+      <p class="hint" style="margin:0 0 10px;">Kayıtta metin kalıpları da otomatik işaretleyebilir. Çeldirici yalnızca elle işaretlenir.</p>
+      <label class="check">
+        <input type="checkbox" name="tag_kronoloji" {% if question.tag_kronoloji %}checked{% endif %}>
+        Kronoloji
+      </label>
+      <label class="check">
+        <input type="checkbox" name="tag_padisah_antlasma" {% if question.tag_padisah_antlasma %}checked{% endif %}>
+        Padişahlar ve Antlaşmalar
+      </label>
+      <label class="check">
+        <input type="checkbox" name="tag_celdirici" {% if question.tag_celdirici %}checked{% endif %}>
+        Çeldiricisi güçlü
+      </label>
+    </fieldset>
     <label class="check">
       <input type="checkbox" name="is_published" {% if not question or not question.pk or question.is_published %}checked{% endif %}>
       Yayında <span style="opacity:.7;font-weight:400">(işaretli değilse uygulamada görünmez)</span>

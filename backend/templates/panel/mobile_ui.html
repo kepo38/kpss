@@ -5,7 +5,7 @@
   {{ page_title }}
 </div>
 <h1>{{ page_title }}</h1>
-<p class="lead">Ana sayfadaki kenar promosyon balonunu buradan açıp kapatabilirsiniz.</p>
+<p class="lead">Ana sayfa balonu ve quiz banner reklamlarını buradan yönetin.</p>
 
 <form class="form" method="post" style="max-width:720px;">
   {% csrf_token %}
@@ -26,6 +26,21 @@
         placeholder="YANLIŞLARINI GÖR">
     </label>
   </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Quiz banner reklamları</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Test ekranının altındaki AdMob banner’ı. Kapalıyken yalnızca banner gizlenir;
+      ödüllü çözüm, interstitial ve kota reklamları etkilenmez. Premium ve 12 saat
+      reklamsız kampanya kuralları aynen geçerlidir.
+    </p>
+    <label class="check">
+      <input type="checkbox" name="banner_ads_enabled"
+        {% if config.banner_ads_enabled %}checked{% endif %}>
+      Banner reklamları göster (aktif)
+    </label>
+  </fieldset>
+
   <p class="media-hint">Son güncelleme: {{ config.updated_at|date:"d.m.Y H:i" }}</p>
   <button class="btn btn-primary" type="submit">Kaydet</button>
 </form>
