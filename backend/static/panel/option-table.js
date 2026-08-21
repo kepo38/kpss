@@ -294,7 +294,35 @@
     formHead.hidden = false;
   }
 
+  function readTableMode() {
+    var el = document.getElementById("option-table-mode");
+    if (!el) return "none";
+    var v = String(el.value || "none").trim();
+    if (v === "dual" || v === "triple") return v;
+    return "none";
+  }
+
+  function forcedColumns(mode) {
+    if (mode === "dual") return 2;
+    if (mode === "triple") return 3;
+    return 0;
+  }
+
+  function bindModeSelect() {
+    var el = document.getElementById("option-table-mode");
+    if (!el || el.getAttribute("data-optcols-mode-bound")) return;
+    el.setAttribute("data-optcols-mode-bound", "1");
+    el.addEventListener("change", function () {
+      if (global.KpssQuestionPreview && global.KpssQuestionPreview.sync) {
+        global.KpssQuestionPreview.sync();
+      }
+    });
+  }
+
   function apply(opts) {
+    bindModeSelect();
+    var mode = readTableMode();
+    var colN = forcedColumns(mode);
     var texts = opts.optionTexts || [];
     var els = opts.optionEls || [];
     var nonempty = [];
@@ -302,7 +330,7 @@
     for (i = 0; i < texts.length; i++) {
       if (stripMarkup(texts[i])) nonempty.push(texts[i]);
     }
-    var colN = alignedCount(nonempty);
+    // Yok: do not auto-detect dashed options for table mode / headers.
     var parsed = colN
       ? headersFor(opts.stem || "", nonempty, colN) || []
       : [];
@@ -313,6 +341,9 @@
     }
 
     ensureFormInputs(opts.formHead, colN, labels, opts.stemEl);
+    if (!colN && opts.stemEl) {
+      opts.stemEl.value = visibleStem(opts.stemEl.value);
+    }
 
     var previewHead = opts.previewHead;
     if (previewHead) {
@@ -359,7 +390,7 @@
         else el.textContent = "";
         continue;
       }
-      var cells = splitCells(t);
+      var cells = colN ? splitCells(t) : null;
       if (colN && cells && cells.length === colN) {
         renderCols(el, cells);
       } else if (opts.plainHtml) {
@@ -376,6 +407,8 @@
     headersFromStem: headersFromStem,
     headersFor: headersFor,
     visibleStem: visibleStem,
+    forcedColumns: forcedColumns,
+    readTableMode: readTableMode,
     apply: apply,
   };
 })(window);

@@ -132,6 +132,13 @@
 
     {% include "panel/_question_map_editor.html" %}
 
+    <label>Tablo sorusu
+      <select name="option_table" id="option-table-mode">
+        <option value="none" {% if question.option_table|default:'none' == 'none' %}selected{% endif %}>Yok</option>
+        <option value="dual" {% if question.option_table|default:'none' == 'dual' %}selected{% endif %}>İkili (2 sütun)</option>
+        <option value="triple" {% if question.option_table|default:'none' == 'triple' %}selected{% endif %}>Üçlü (3 sütun)</option>
+      </select>
+    </label>
     <div class="option-table-head" id="option-table-head" hidden></div>
     <label>A
       <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}" class="js-rich">
@@ -259,7 +266,7 @@
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=2"></script>
       <script src="{% static 'panel/map-question-editor.js' %}?v=16"></script>
-<script src="{% static 'panel/option-table.js' %}?v=7"></script>
+<script src="{% static 'panel/option-table.js' %}?v=8"></script>
 <script src="{% static 'panel/question-preview.js' %}?v=6"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
