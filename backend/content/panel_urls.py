@@ -276,6 +276,7 @@ urlpatterns = [
         panel_views.panel_exam_pack_delete,
         name="panel_exam_pack_delete",
     ),
+    path("uygulama-durumu/", panel_views.panel_app_stats, name="panel_app_stats"),
     path("kullanicilar/", panel_views.panel_users, name="panel_users"),
     path(
         "kullanicilar/toplu-sil/",

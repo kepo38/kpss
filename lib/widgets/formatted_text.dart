@@ -126,11 +126,81 @@ class FormattedText extends StatelessWidget {
     final size = base.fontSize ?? 16;
     return ExamTypography.mathFrom(
       base.copyWith(
-        fontSize: display ? size * 1.18 : size,
-        height: display ? 1.28 : base.height,
+        // x, y, z ve diğer harfler gövde ile aynı punto.
+        fontSize: size,
+        height: display ? 1.35 : base.height,
         color: base.color,
+        fontStyle: FontStyle.normal,
       ),
     );
+  }
+
+  /// Tek harfli değişken ($x$, $y$, $z$…) → Math değil gövde TextSpan.
+  static final RegExp _plainMathLetterRe = RegExp(
+    r'^[A-Za-zÇçĞğİıÖöŞşÜü]$',
+  );
+
+  static bool isPlainMathLetter(String tex) =>
+      _plainMathLetterRe.hasMatch(tex.trim());
+
+  /// Latin / Türkçe harfleri dik (\mathrm). Array/matrix ortamlarına dokunma.
+  static String uprightMathLetters(String tex) {
+    if (tex.isEmpty) return tex;
+    // array/matrix sütun spec ve hücreleri bozulmasın.
+    if (RegExp(r'\\begin\{').hasMatch(tex)) return tex;
+
+    final holders = <String>[];
+    // Placeholder'da Latin harf OLMAMALI: aksi halde aşağıdaki
+    // \mathrm sarmalayıcı `§§C0§§` içindeki C'yi bozup expand'i kırar →
+    // ekranda `§§C0§§` sızıntısı (örn. \cdot yerine).
+    String hold(String raw) {
+      holders.add(raw);
+      return '§§#${holders.length - 1}#§§';
+    }
+
+    var t = tex;
+    t = t.replaceAllMapped(RegExp(r'\\[a-zA-Z]+\*?'), (m) => hold(m.group(0)!));
+    var bracePass = 0;
+    while (bracePass < 8 && t.contains('{')) {
+      final next =
+          t.replaceAllMapped(RegExp(r'\{[^{}]*\}'), (m) => hold(m.group(0)!));
+      if (next == t) break;
+      t = next;
+      bracePass++;
+    }
+    t = t.replaceAllMapped(
+      RegExp(r'[A-Za-zÇçĞğİıÖöŞşÜü]'),
+      (m) => '\\mathrm{${m.group(0)}}',
+    );
+    t = _expandHolders(t, holders, r'§§#(\d+)#§§');
+    t = t.replaceAllMapped(RegExp(r'\{([A-Za-zÇçĞğİıÖöŞşÜü])\}'), (m) {
+      final letter = m.group(1)!;
+      if (letter == 'c' || letter == 'l' || letter == 'r') {
+        return m.group(0)!;
+      }
+      return '{\\mathrm{$letter}}';
+    });
+    return t;
+  }
+
+  /// İç içe placeholder'ları tamamen aç (tek geçişte içtekiler kaçmasın).
+  static String _expandHolders(
+    String src,
+    List<String> holders,
+    String pattern,
+  ) {
+    if (holders.isEmpty) return src;
+    final re = RegExp(pattern);
+    var out = src;
+    for (var guard = 0; guard < holders.length + 4; guard++) {
+      if (!re.hasMatch(out)) break;
+      out = out.replaceAllMapped(re, (m) {
+        final i = int.tryParse(m.group(1)!) ?? -1;
+        if (i < 0 || i >= holders.length) return m.group(0)!;
+        return holders[i];
+      });
+    }
+    return out;
   }
 
   /// flutter_math_fork \\hline siyah çizer; \\rule metin rengini kullanır.
@@ -154,8 +224,9 @@ class FormattedText extends StatelessWidget {
     required bool display,
   }) {
     final sized = prepareTex(tex, forceDisplayStyle: display);
+    final upright = uprightMathLetters(sized);
     return Math.tex(
-      sized,
+      upright,
       textStyle: mathTextStyle(base, display: display),
       mathStyle: display ? MathStyle.display : MathStyle.text,
       onErrorFallback: (err) => Text(
@@ -404,15 +475,7 @@ class FormattedText extends StatelessWidget {
       (m) => '${m.group(1)} ${m.group(2)}',
     );
 
-    src = src.replaceAllMapped(
-      RegExp(r'§§E(\d+)§§'),
-      (m) {
-        final i = int.tryParse(m.group(1)!) ?? -1;
-        if (i < 0 || i >= holders.length) return m.group(0)!;
-        return holders[i];
-      },
-    );
-    return src;
+    return _expandHolders(src, holders, r'§§E(\d+)§§');
   }
 
   static String _repairSplitBoldLines(String text) {
@@ -656,6 +719,14 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)'),
       (m) => '${m.group(1)}\n',
     );
+    // Pay / Payda / Kesrin değeri — formül yanına yapışmasın.
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?<!\n)\s*(?=(?:\*\*)?(?:Payda|Pay|Kesrin değeri)\s*:)',
+        caseSensitive: false,
+      ),
+      (_) => '\n',
+    );
     // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
     // "III. Selim … III. Selim Dönemi" gibi aynı rakam tekrarına dokunma.
     final romanMatches = RegExp(r'\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
@@ -668,14 +739,7 @@ class FormattedText extends StatelessWidget {
         (m) => '\n',
       );
     }
-    src = src.replaceAllMapped(
-      RegExp(r'§§K(\d+)§§'),
-      (m) {
-        final i = int.tryParse(m.group(1)!) ?? -1;
-        if (i < 0 || i >= mdHolders.length) return m.group(0)!;
-        return mdHolders[i];
-      },
-    );
+    src = _expandHolders(src, mdHolders, r'§§K(\d+)§§');
     src = src.replaceAllMapped(
       RegExp(r'(§§M\d+§§)\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))'),
       (m) => '${m.group(1)}\n',
@@ -686,12 +750,17 @@ class FormattedText extends StatelessWidget {
       ),
       (m) => '${m.group(1)}\n',
     );
+    src = _expandHolders(src, holders, r'§§M(\d+)§§');
+    // Display kesir vb. kendi satırında; yanındaki etiket (Payda:) sağa kaymasın.
     src = src.replaceAllMapped(
-      RegExp(r'§§M(\d+)§§'),
+      RegExp(r'\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$'),
       (m) {
-        final i = int.tryParse(m.group(1)!) ?? -1;
-        if (i < 0 || i >= holders.length) return m.group(0)!;
-        return holders[i];
+        final full = m.group(0)!;
+        final inner = (m.group(1) ?? m.group(2) ?? '').trim();
+        if (m.group(1) != null || usesDisplayMath(inner)) {
+          return '\n$full\n';
+        }
+        return full;
       },
     );
     src = src.replaceAllMapped(
@@ -901,18 +970,23 @@ class FormattedText extends StatelessWidget {
       }
       final raw = (m.group(1) ?? m.group(2) ?? '').trim();
       if (raw.isNotEmpty) {
-        final isBlock = m.group(1) != null;
-        final display =
-            forceDisplayMath || isBlock || usesDisplayMath(raw);
-        spans.add(
-          WidgetSpan(
-            alignment: isBlock && display
-                ? PlaceholderAlignment.middle
-                : PlaceholderAlignment.baseline,
-            baseline: TextBaseline.alphabetic,
-            child: buildMathWidget(raw, base: base, display: display),
-          ),
-        );
+        // Tek harf: gövde fontu / punto (Math WidgetSpan şişirmesin).
+        if (m.group(1) == null && isPlainMathLetter(raw)) {
+          spans.add(TextSpan(text: raw, style: base));
+        } else {
+          final isBlock = m.group(1) != null;
+          final display =
+              forceDisplayMath || isBlock || usesDisplayMath(raw);
+          spans.add(
+            WidgetSpan(
+              alignment: isBlock && display
+                  ? PlaceholderAlignment.middle
+                  : PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: buildMathWidget(raw, base: base, display: display),
+            ),
+          );
+        }
       }
       i = m.end;
     }
@@ -1399,6 +1473,12 @@ class _DocumentText extends StatelessWidget {
       if (RegExp(r'^#{1,3}\s+').hasMatch(trimmed)) return true;
       if (FormattedText._isStructuralLine(trimmed)) return true;
       if (RegExp(r'^\*\*\s*\d+\.\s+Adım:.+\*\*$').hasMatch(trimmed)) {
+        return true;
+      }
+      if (RegExp(
+        r'^(?:\*\*)?(?:Payda|Pay|Kesrin değeri)\s*:',
+        caseSensitive: false,
+      ).hasMatch(trimmed)) {
         return true;
       }
       if (RegExp(r'^(?:\s*)(?:[-•*◦○–—]\s+)+').hasMatch(trimmed)) {

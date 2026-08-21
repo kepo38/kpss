@@ -755,6 +755,13 @@ class AppUser(models.Model):
     last_login_at = models.DateTimeField(
         null=True, blank=True, verbose_name="Son giriş"
     )
+    last_active_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Son aktivite",
+        help_text="Uygulamada API kullanıldığı son an (canlı oturum için).",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Kayıt")
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -964,6 +971,39 @@ class TopicTestCompletion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user_id} · {self.topic_test_id}"
+
+
+class DailySubjectFreeUsage(models.Model):
+    """Google hesabının ders başına günlük ücretsiz test hakkı (cihazlar arası)."""
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="daily_subject_free_usages",
+        verbose_name="Öğrenci",
+    )
+    subject_slug = models.SlugField(max_length=64, verbose_name="Ders slug")
+    day = models.DateField(verbose_name="Gün (İstanbul)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "subject_slug", "day"],
+                name="unique_daily_subject_free_usage",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "day"],
+                name="daily_free_user_day",
+            ),
+        ]
+        verbose_name = "Günlük ücretsiz ders hakkı"
+        verbose_name_plural = "Günlük ücretsiz ders hakları"
+
+    def __str__(self) -> str:
+        return f"{self.user_id} · {self.subject_slug} · {self.day}"
 
 
 class QuestionErrorReport(models.Model):

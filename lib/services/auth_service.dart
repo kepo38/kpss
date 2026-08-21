@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import 'content_bank_service.dart';
 import 'daily_mini_exam_service.dart';
+import 'daily_quota_service.dart';
 import '../models/user_model.dart';
 import 'ad_manager.dart';
 import 'app_preferences.dart';
@@ -93,12 +94,25 @@ class AuthService extends ChangeNotifier {
     if (_user != null) {
       _syncPremiumSideEffects();
     }
-    if (hasBackendSession) {
+    if (hasPermanentAccount) {
+      // Profil yenile; 401 olsa bile Google oturumu silinmez — sessiz yenile.
+      unawaited(_refreshOrRestorePermanentSession());
+    } else if (hasBackendSession) {
       refreshProfile().then((_) {}, onError: (_) {});
-    }
-    if (!hasBackendSession) {
+    } else {
       unawaited(ensureAnonymousSession());
     }
+  }
+
+  Future<void> _refreshOrRestorePermanentSession() async {
+    final ok = await refreshProfile();
+    if (ok || hasPermanentAccount) {
+      if (!ok) {
+        await _trySilentGoogleRestore();
+      }
+      return;
+    }
+    await _trySilentGoogleRestore();
   }
 
   void _seedLocalGuestSession(SharedPreferences prefs) {
@@ -208,11 +222,19 @@ class AuthService extends ChangeNotifier {
     if (isLocalGuest) return false;
     final t = _token;
     if (t == null || t.isEmpty) return false;
+    final keepPermanent = _shouldKeepPermanentSession;
     try {
       final res = await http
           .get(ApiConfig.meUri(), headers: authHeaders)
           .timeout(const Duration(seconds: 12));
       if (res.statusCode == 401) {
+        // Profil’den çıkış yapılmadıkça Google oturumunu otomatik silme.
+        if (keepPermanent) {
+          debugPrint(
+            'Profil 401: kalıcı Google oturumu korunuyor (sessiz yenileme).',
+          );
+          return false;
+        }
         await _clearLocal();
         notifyListeners();
         return false;
@@ -229,6 +251,14 @@ class AuthService extends ChangeNotifier {
       debugPrint('Profil yenileme: $e');
       return false;
     }
+  }
+
+  /// Yerelde kayıtlı kalıcı (Google) hesap — uygulama kapanınca da tutulur.
+  bool get _shouldKeepPermanentSession {
+    if (isLocalGuest) return false;
+    final u = _user;
+    if (u == null) return false;
+    return !u.isAnonymous;
   }
 
   Future<bool> updateDisplayName(String name) async {
@@ -262,6 +292,11 @@ class AuthService extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 12));
       if (res.statusCode == 401) {
+        if (_shouldKeepPermanentSession) {
+          _lastError = 'Oturum doğrulanamadı. Bağlantıyı kontrol edin.';
+          unawaited(_trySilentGoogleRestore());
+          return false;
+        }
         await _clearLocal();
         _lastError = 'Oturum sona erdi. Tekrar giriş yapın.';
         return false;
@@ -498,6 +533,59 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Uygulama yeniden açılınca Google’ı arka planda yenile (UI yok).
+  Future<bool> _trySilentGoogleRestore() async {
+    if (isLocalGuest && !_shouldKeepPermanentSession) return false;
+    try {
+      await _ensureFirebaseReady();
+      final fbUser = FirebaseAuth.instance.currentUser;
+      if (fbUser != null && !fbUser.isAnonymous) {
+        final idToken = await fbUser.getIdToken(true);
+        if (idToken != null &&
+            idToken.isNotEmpty &&
+            await _exchangeWithBackend(idToken: idToken)) {
+          return true;
+        }
+      }
+
+      final googleUser = await _googleSignIn.signInSilently();
+      if (googleUser == null) return false;
+      final googleAuth = await googleUser.authentication;
+      var idToken = googleAuth.idToken;
+      final accessToken = googleAuth.accessToken;
+
+      if (accessToken != null || idToken != null) {
+        final credential = GoogleAuthProvider.credential(
+          accessToken: accessToken,
+          idToken: idToken,
+        );
+        final cred =
+            await FirebaseAuth.instance.signInWithCredential(credential);
+        final signed = cred.user;
+        if (signed != null) {
+          final fbToken = await signed.getIdToken(true);
+          if (fbToken != null && fbToken.isNotEmpty) {
+            idToken = fbToken;
+          }
+        }
+      }
+
+      if ((idToken == null || idToken.isEmpty) &&
+          (accessToken == null || accessToken.isEmpty)) {
+        return false;
+      }
+
+      return _exchangeWithBackend(
+        idToken: idToken,
+        accessToken: accessToken,
+        displayName: googleUser.displayName,
+      );
+    } catch (e) {
+      debugPrint('Silent Google restore: $e');
+      return false;
+    }
+  }
+
   Future<void> signOut() async {
     final permanent = hasPermanentAccount;
     try {
@@ -553,6 +641,7 @@ class AuthService extends ChangeNotifier {
 
   Future<void> _relayUserScopedServices() async {
     await ContentBankService.instance.onUserSessionChanged();
+    await DailyQuotaService.instance.onUserSessionChanged();
     await ManualQuestionService.instance.onUserSessionChanged();
     await QuestionNoteService.instance.onUserSessionChanged();
     await SummaryCardProgressService.instance.onUserSessionChanged();

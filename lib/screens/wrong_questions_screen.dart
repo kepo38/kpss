@@ -13,6 +13,7 @@ import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../services/kpss_preference_service.dart';
 import '../services/manual_question_service.dart';
+import '../services/wrong_notebook_share_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/account_link_card.dart';
 import '../widgets/app_back_button.dart';
@@ -619,6 +620,12 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                       _openSimilar(context, q),
                                   onTap: () =>
                                       _openQuestion(context, q.id),
+                                  onShare: () {
+                                    unawaited(
+                                      WrongNotebookShareService.instance
+                                          .shareBankQuestion(context, q),
+                                    );
+                                  },
                                   onRemove: () =>
                                       _confirmRemoveQuestion(q),
                                 );

@@ -10,6 +10,7 @@ class WrongNotebookManualCard extends StatelessWidget {
   final ManualQuestionModel item;
   final VoidCallback onTapImage;
   final VoidCallback onRemove;
+  final VoidCallback? onShare;
   final ValueChanged<ManualQuestionStatus> onStatusChanged;
 
   const WrongNotebookManualCard({
@@ -18,6 +19,7 @@ class WrongNotebookManualCard extends StatelessWidget {
     required this.onTapImage,
     required this.onRemove,
     required this.onStatusChanged,
+    this.onShare,
   });
 
   @override
@@ -45,6 +47,21 @@ class WrongNotebookManualCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   _MetaPill(label: item.topicLabel),
                   const Spacer(),
+                  if (onShare != null)
+                    IconButton(
+                      onPressed: onShare,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                      icon: Icon(
+                        Icons.share_rounded,
+                        color: const Color(0xFF25D366).withValues(alpha: 0.9),
+                      ),
+                      tooltip: 'WhatsApp / paylaş',
+                    ),
                   IconButton(
                     onPressed: onRemove,
                     visualDensity: VisualDensity.compact,

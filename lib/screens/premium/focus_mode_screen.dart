@@ -3,14 +3,14 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../constants/brand_constants.dart';
 import '../../models/pomodoro_session_model.dart';
-import '../../services/gamification_service.dart';
-import '../../services/notification_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/pomodoro_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/account_link_card.dart';
 import '../../widgets/app_back_button.dart';
 import '../../widgets/scale_button.dart';
 
@@ -34,160 +34,108 @@ class FocusModeScreen extends StatefulWidget {
 class _FocusModeScreenState extends State<FocusModeScreen>
     with WidgetsBindingObserver {
   final _pomodoro = PomodoroService.instance;
-  PomodoroPreset _preset = PomodoroPreset.kisa25;
-  int _customMinutes = 30;
-  int _remainingSeconds = 25 * 60;
-  Timer? _timer;
-  bool _isRunning = false;
-  bool _isBreak = false;
+  final _auth = AuthService.instance;
   bool _fullscreen = false;
-  bool _ambientBusy = false;
   bool _deepWorkBusy = false;
-  DateTime? _sessionEndAt;
+  bool _ambientBusy = false;
 
-  int get _totalSeconds {
-    if (_preset == PomodoroPreset.ozel) return _customMinutes * 60;
-    return _preset.dakika * 60;
+  bool get _isGoogleUser => _auth.hasPermanentAccount;
+
+  String get _userDisplayName {
+    final isim = _auth.user?.isim.trim() ?? '';
+    if (isim.isEmpty) return BrandConstants.defaultProfileName;
+    return isim;
   }
 
-  double get _progress {
-    if (_totalSeconds <= 0) return 0;
-    final total = _isBreak ? 5 * 60 : _totalSeconds;
-    return (1.0 - (_remainingSeconds / total)).clamp(0.0, 1.0);
+  String get _todayStudyLabel {
+    final total = _pomodoro.bugunToplamDakika;
+    if (total <= 0) return 'Bugün henüz ders yok';
+    final hours = total ~/ 60;
+    final mins = total % 60;
+    if (hours <= 0) return 'Bugün · $mins dk';
+    if (mins <= 0) return 'Bugün · $hours sa';
+    return 'Bugün · $hours sa $mins dk';
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pomodoro.addListener(_onPomodoroChanged);
+    _auth.addListener(_onAuthChanged);
+    _pomodoro.onSessionCompleteUi = _showSessionCompleteSnack;
+    _enforceGuestLimits();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _isRunning && _sessionEndAt != null) {
-      final left = _sessionEndAt!.difference(DateTime.now()).inSeconds;
-      if (left <= 0) {
-        _onSessionComplete();
-      } else if (left != _remainingSeconds) {
-        setState(() => _remainingSeconds = left);
-      }
+  void _onPomodoroChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onAuthChanged() {
+    if (!mounted) return;
+    _enforceGuestLimits();
+    setState(() {});
+  }
+
+  void _enforceGuestLimits() {
+    if (_isGoogleUser) return;
+    if (_fullscreen) _fullscreen = false;
+    if (_pomodoro.preset != PomodoroPreset.dk20 && !_pomodoro.isRunning) {
+      _pomodoro.setPreset(PomodoroPreset.dk20);
     }
   }
 
-  Future<void> _startTimer() async {
-    if (_isRunning) return;
-    setState(() {
-      _isRunning = true;
-      if (_remainingSeconds == _totalSeconds || _remainingSeconds == 0) {
-        _remainingSeconds = _isBreak ? 5 * 60 : _totalSeconds;
-      }
-      _sessionEndAt = DateTime.now().add(Duration(seconds: _remainingSeconds));
-    });
-    await _pomodoro.setSessionActive(true);
-    await NotificationService.instance.scheduleFocusTimerComplete(
-      endsAt: _sessionEndAt!,
-      isBreakEnding: _isBreak,
+  Future<bool> _requireGoogle({
+    required String title,
+    required String subtitle,
+  }) async {
+    if (_isGoogleUser) return true;
+    final ok = await AccountLinkCard.prompt(
+      context,
+      title: title,
+      subtitle: subtitle,
     );
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (_sessionEndAt != null) {
-        final left = _sessionEndAt!.difference(DateTime.now()).inSeconds;
-        if (left <= 0) {
-          _onSessionComplete();
-          return;
-        }
-        setState(() => _remainingSeconds = left);
-      } else if (_remainingSeconds <= 0) {
-        _onSessionComplete();
-      } else {
-        setState(() => _remainingSeconds--);
-      }
-    });
+    if (!mounted) return false;
+    return ok && _auth.hasPermanentAccount;
   }
 
-  Future<void> _pauseTimer() async {
-    _timer?.cancel();
-    _sessionEndAt = null;
-    await NotificationService.instance.cancelFocusTimerComplete();
-    await _pomodoro.setSessionActive(false);
-    setState(() => _isRunning = false);
-  }
-
-  Future<void> _resetTimer() async {
-    _timer?.cancel();
-    _sessionEndAt = null;
-    await NotificationService.instance.cancelFocusTimerComplete();
-    await _pomodoro.setSessionActive(false);
-    setState(() {
-      _isRunning = false;
-      _isBreak = false;
-      _remainingSeconds = _totalSeconds;
-    });
-  }
-
-  Future<void> _onSessionComplete() async {
-    _timer?.cancel();
-    _sessionEndAt = null;
-    await _pomodoro.setSessionActive(false);
-    await NotificationService.instance.cancelFocusTimerComplete();
-
-    final endingBreak = _isBreak;
-    if (!_isBreak) {
-      _pomodoro.completeSession(PomodoroSessionModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        sureDakika: _totalSeconds ~/ 60,
-        baslangic: DateTime.now().subtract(Duration(seconds: _totalSeconds)),
-        bitis: DateTime.now(),
-        tamamlandi: true,
-      ));
-      GamificationService.instance.recordStudyMinutes(_totalSeconds ~/ 60);
-    }
-
-    unawaited(_pomodoro.playCompletionChime());
-    unawaited(HapticFeedback.heavyImpact());
-    unawaited(NotificationService.instance.showFocusTimerComplete(
-      isBreakEnding: endingBreak,
-    ));
-
+  void _showSessionCompleteSnack({
+    required bool endingBreak,
+    required String title,
+    required String body,
+  }) {
     if (!mounted) return;
-    setState(() {
-      _isRunning = false;
-      _isBreak = !_isBreak;
-      _remainingSeconds = _isBreak ? 5 * 60 : _totalSeconds;
-    });
-
-    if (!mounted) return;
-    final title = endingBreak ? 'Mola bitti' : 'Odak tamamlandı';
-    final body = endingBreak
-        ? 'Yeni bir odak turuna başlayabilirsin.'
-        : 'Harika iş. 5 dk mola veya yeni tur.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppTheme.inkSoft,
         content: Text(
           '$title — $body',
-          style: GoogleFonts.manrope(color: Colors.white, fontWeight: FontWeight.w600),
+          style: GoogleFonts.manrope(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
   }
 
-  String get _timeLabel {
-    final m = _remainingSeconds ~/ 60;
-    final s = _remainingSeconds % 60;
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _pomodoro.syncFromLifecycle();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
-    unawaited(NotificationService.instance.cancelFocusTimerComplete());
-    unawaited(_pomodoro.setSessionActive(false));
-    unawaited(_pomodoro.stopAmbient());
-    unawaited(_pomodoro.stopDeepWork());
+    _pomodoro.removeListener(_onPomodoroChanged);
+    _auth.removeListener(_onAuthChanged);
+    if (_pomodoro.onSessionCompleteUi == _showSessionCompleteSnack) {
+      _pomodoro.onSessionCompleteUi = null;
+    }
+    // Timer + Deep Work serviste kalır — geri gelince / testlerde müzik sürer.
     super.dispose();
   }
 
@@ -196,6 +144,31 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     setState(() => _ambientBusy = true);
     await _pomodoro.setSelectedSound(sound);
     if (mounted) setState(() => _ambientBusy = false);
+  }
+
+  Future<void> _onPresetTap(PomodoroPreset p) async {
+    if (_pomodoro.isRunning) return;
+    if (!_isGoogleUser && p != PomodoroPreset.dk20) {
+      final ok = await _requireGoogle(
+        title: 'Daha uzun odak',
+        subtitle:
+            'Misafir en fazla 20 dk seçebilir. 40 / 60 dk için Google ile giriş yap.',
+      );
+      if (!ok || !mounted) return;
+    }
+    _pomodoro.setPreset(p);
+  }
+
+  Future<void> _onFullscreenTap() async {
+    if (!_isGoogleUser) {
+      await _requireGoogle(
+        title: 'Tam ekran odak',
+        subtitle:
+            'Tam ekran Pomodoro için Google ile giriş yapman gerekiyor.',
+      );
+      return;
+    }
+    setState(() => _fullscreen = true);
   }
 
   Future<void> _toggleDeepWorkMusic() async {
@@ -232,7 +205,12 @@ class _FocusModeScreenState extends State<FocusModeScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_fullscreen) return _buildFullscreen();
+    if (_fullscreen && _isGoogleUser) return _buildFullscreen();
+    if (_fullscreen && !_isGoogleUser) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _fullscreen = false);
+      });
+    }
 
     return Scaffold(
       backgroundColor: _Neon.base,
@@ -251,22 +229,20 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _PremiumTimerRing(
-                          time: _timeLabel,
-                          progress: _progress,
-                          isBreak: _isBreak,
-                          isRunning: _isRunning,
+                          time: _pomodoro.timeLabel,
+                          progress: _pomodoro.progress,
+                          isBreak: _pomodoro.isBreak,
+                          isRunning: _pomodoro.isRunning,
                         ),
                         const SizedBox(height: 22),
                         _buildPlayControls(),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 22),
                         _buildPresets(),
-                        if (_preset == PomodoroPreset.ozel) ...[
-                          const SizedBox(height: 8),
-                          _buildCustomSlider(),
-                        ],
                         const SizedBox(height: 28),
-                        _buildAmbientSection(),
-                        const SizedBox(height: 18),
+                        _buildDeepWorkMusicButton(),
+                        const SizedBox(height: 16),
+                        _buildAmbientButtons(),
+                        const SizedBox(height: 28),
                         Text(
                           'Bugün · ${_pomodoro.bugunToplamDakika} dk odak',
                           textAlign: TextAlign.center,
@@ -290,6 +266,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   }
 
   Widget _buildHeader() {
+    final canFullscreen = _isGoogleUser;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       child: Row(
@@ -310,10 +287,15 @@ class _FocusModeScreenState extends State<FocusModeScreen>
           ),
           IconButton(
             icon: Icon(
-              Icons.fullscreen_rounded,
-              color: Colors.white.withValues(alpha: 0.85),
+              canFullscreen
+                  ? Icons.fullscreen_rounded
+                  : Icons.lock_outline_rounded,
+              color: Colors.white.withValues(alpha: canFullscreen ? 0.85 : 0.45),
             ),
-            onPressed: () => setState(() => _fullscreen = true),
+            tooltip: canFullscreen
+                ? 'Tam ekran'
+                : 'Tam ekran için Google girişi',
+            onPressed: () => unawaited(_onFullscreenTap()),
           ),
         ],
       ),
@@ -321,10 +303,12 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   }
 
   Widget _buildPlayControls() {
-    final accent = _isBreak ? _Neon.pinkSoft : _Neon.cyan;
+    final accent = _pomodoro.isBreak ? _Neon.pinkSoft : _Neon.cyan;
     return Center(
       child: ScaleButton(
-        onPressed: () => unawaited(_isRunning ? _pauseTimer() : _startTimer()),
+        onPressed: () => unawaited(
+          _pomodoro.isRunning ? _pomodoro.pauseTimer() : _pomodoro.startTimer(),
+        ),
         child: Container(
           width: 72,
           height: 72,
@@ -356,7 +340,9 @@ class _FocusModeScreenState extends State<FocusModeScreen>
             ],
           ),
           child: Icon(
-            _isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            _pomodoro.isRunning
+                ? Icons.pause_rounded
+                : Icons.play_arrow_rounded,
             color: Colors.white,
             size: 36,
           ),
@@ -368,77 +354,30 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   Widget _buildPresets() {
     return Column(
       children: [
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: PomodoroPreset.values.map((p) {
-            final selected = _preset == p;
-            final label = p == PomodoroPreset.ozel ? '$_customMinutes dk' : p.label;
-            return GestureDetector(
-              onTap: _isRunning
-                  ? null
-                  : () => setState(() {
-                        _preset = p;
-                        _remainingSeconds = _totalSeconds;
-                      }),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: selected
-                      ? const LinearGradient(
-                          colors: [
-                            Color(0xFF00E5FF),
-                            Color(0xFF2979FF),
-                            Color(0xFFD500F9),
-                          ],
-                        )
-                      : null,
-                  color: selected ? null : Colors.white.withValues(alpha: 0.06),
-                  border: Border.all(
-                    color: selected
-                        ? _Neon.cyan
-                        : Colors.white.withValues(alpha: 0.12),
-                    width: selected ? 1.2 : 1,
-                  ),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: _Neon.cyan.withValues(alpha: 0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (selected) ...[
-                      const Icon(Icons.check_rounded, size: 15, color: Colors.white),
-                      const SizedBox(width: 5),
-                    ],
-                    Text(
-                      label,
-                      style: GoogleFonts.manrope(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: selected
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.88),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < PomodoroPreset.values.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              _buildPresetChip(PomodoroPreset.values[i]),
+            ],
+          ],
         ),
+        if (!_isGoogleUser) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Misafir · en fazla 20 dk · Google ile daha uzun süre',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              color: _Neon.cyan.withValues(alpha: 0.55),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         TextButton(
-          onPressed: () => unawaited(_resetTimer()),
+          onPressed: () => unawaited(_pomodoro.resetTimer()),
           style: TextButton.styleFrom(
             foregroundColor: Colors.white.withValues(alpha: 0.55),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -458,52 +397,82 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     );
   }
 
-  Widget _buildCustomSlider() {
-    return SliderTheme(
-      data: SliderTheme.of(context).copyWith(
-        activeTrackColor: _Neon.cyan,
-        inactiveTrackColor: Colors.white.withValues(alpha: 0.12),
-        thumbColor: _Neon.cyan,
-        overlayColor: _Neon.cyan.withValues(alpha: 0.18),
-      ),
-      child: Slider(
-        value: _customMinutes.toDouble(),
-        min: 10,
-        max: 120,
-        divisions: 22,
-        label: '$_customMinutes dk',
-        onChanged: _isRunning
+  Widget _buildPresetChip(PomodoroPreset p) {
+    final selected = _pomodoro.preset == p;
+    final locked = !_isGoogleUser && p != PomodoroPreset.dk20;
+    return Opacity(
+      opacity: locked ? 0.55 : 1,
+      child: GestureDetector(
+        onTap: _pomodoro.isRunning
             ? null
-            : (v) => setState(() {
-                  _customMinutes = v.round();
-                  _remainingSeconds = _customMinutes * 60;
-                }),
+            : () => unawaited(_onPresetTap(p)),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: selected
+                ? const LinearGradient(
+                    colors: [
+                      Color(0xFF00E5FF),
+                      Color(0xFF2979FF),
+                      Color(0xFFD500F9),
+                    ],
+                  )
+                : null,
+            color: selected ? null : Colors.white.withValues(alpha: 0.06),
+            border: Border.all(
+              color: selected
+                  ? _Neon.cyan
+                  : Colors.white.withValues(alpha: 0.12),
+              width: selected ? 1.2 : 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: _Neon.cyan.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (locked) ...[
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 14,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+                const SizedBox(width: 5),
+              ] else if (selected) ...[
+                const Icon(Icons.check_rounded, size: 15, color: Colors.white),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                p.label,
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.88),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildAmbientSection() {
+  Widget _buildAmbientButtons() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Ortam Sesi',
-          style: GoogleFonts.manrope(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Yağmur · orman — tekrar dokununca durur; kilitliyken de çalar',
-          style: GoogleFonts.manrope(
-            fontSize: 12,
-            color: _Neon.cyan.withValues(alpha: 0.65),
-          ),
-        ),
-        const SizedBox(height: 14),
         Wrap(
+          alignment: WrapAlignment.center,
           spacing: 8,
           runSpacing: 8,
           children: AmbientSound.values
@@ -517,12 +486,15 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                 onTap: _ambientBusy
                     ? null
                     : () => unawaited(
-                          _selectAmbient(selected ? AmbientSound.sessiz : s),
+                          _selectAmbient(
+                            selected ? AmbientSound.sessiz : s,
+                          ),
                         ),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   width: (MediaQuery.sizeOf(context).width - 56) / 2,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     color: selected
@@ -563,25 +535,13 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.label,
-                              style: GoogleFonts.manrope(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white.withValues(alpha: 0.95),
-                              ),
-                            ),
-                            Text(
-                              s.subtitle,
-                              style: GoogleFonts.manrope(
-                                fontSize: 10,
-                                color: _Neon.magenta.withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          s.label,
+                          style: GoogleFonts.manrope(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withValues(alpha: 0.95),
+                          ),
                         ),
                       ),
                     ],
@@ -595,8 +555,11 @@ class _FocusModeScreenState extends State<FocusModeScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              Icon(Icons.volume_down_rounded,
-                  size: 18, color: Colors.white.withValues(alpha: 0.45)),
+              Icon(
+                Icons.volume_down_rounded,
+                size: 18,
+                color: Colors.white.withValues(alpha: 0.45),
+              ),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
@@ -618,13 +581,14 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                   ),
                 ),
               ),
-              Icon(Icons.volume_up_rounded,
-                  size: 18, color: Colors.white.withValues(alpha: 0.45)),
+              Icon(
+                Icons.volume_up_rounded,
+                size: 18,
+                color: Colors.white.withValues(alpha: 0.45),
+              ),
             ],
           ),
         ],
-        const SizedBox(height: 16),
-        _buildDeepWorkMusicButton(),
       ],
     );
   }
@@ -684,9 +648,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                   ),
                 ),
                 child: Icon(
-                  playing
-                      ? Icons.stop_rounded
-                      : Icons.headphones_rounded,
+                  playing ? Icons.stop_rounded : Icons.headphones_rounded,
                   size: 20,
                   color: Colors.white,
                 ),
@@ -709,7 +671,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                     Text(
                       playing
                           ? 'Çalıyor · durdurmak için dokun'
-                          : 'Cihazdan loop · herkese açık',
+                          : 'Pomodoro bitene kadar döngü',
                       style: GoogleFonts.manrope(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
@@ -734,6 +696,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   }
 
   Widget _buildFullscreen() {
+    final accent = _pomodoro.isBreak ? _Neon.pinkSoft : _Neon.cyan;
     return Scaffold(
       backgroundColor: _Neon.base,
       body: Stack(
@@ -741,72 +704,355 @@ class _FocusModeScreenState extends State<FocusModeScreen>
         children: [
           const _NeonBackdrop(),
           SafeArea(
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.topRight,
-                  child: IconButton(
-                    icon: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white70),
-                    onPressed: () => setState(() => _fullscreen = false),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  _isBreak ? 'MOLA' : 'ODAK',
-                  style: GoogleFonts.manrope(
-                    color: _isBreak ? _Neon.pinkSoft : _Neon.cyan,
-                    letterSpacing: 6,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  _timeLabel,
-                  style: GoogleFonts.manrope(
-                    fontSize: 78,
-                    fontWeight: FontWeight.w300,
-                    color: Colors.white,
-                    letterSpacing: 2,
-                    height: 1,
-                  ),
-                ),
-                const Spacer(),
-                ScaleButton(
-                  onPressed: () =>
-                      unawaited(_isRunning ? _pauseTimer() : _startTimer()),
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: (_isBreak ? _Neon.pinkSoft : _Neon.cyan)
-                            .withValues(alpha: 0.9),
-                        width: 2,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final h = constraints.maxHeight;
+                final timerCenterY = h * 0.5;
+                final nameCenterY = timerCenterY / 2;
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned(
+                      top: 10,
+                      left: 20,
+                      right: 72,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'DERS ÇALIŞIYORUM',
+                            style: GoogleFonts.cormorantGaramond(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 2.4,
+                              color: Colors.white.withValues(alpha: 0.94),
+                              height: 1.1,
+                              shadows: [
+                                Shadow(
+                                  color: accent.withValues(alpha: 0.4),
+                                  blurRadius: 14,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.08),
+                                  accent.withValues(alpha: 0.12),
+                                ],
+                              ),
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.45),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accent.withValues(alpha: 0.18),
+                                  blurRadius: 12,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              _todayStudyLabel,
+                              style: GoogleFonts.manrope(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.35,
+                                color: accent.withValues(alpha: 0.95),
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (_isBreak ? _Neon.pinkSoft : _Neon.cyan)
-                              .withValues(alpha: 0.45),
-                          blurRadius: 24,
+                    ),
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.fullscreen_exit_rounded,
+                          color: Colors.white70,
                         ),
-                      ],
+                        onPressed: () => setState(() => _fullscreen = false),
+                      ),
                     ),
-                    child: Icon(
-                      _isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 36,
+                    Positioned(
+                      top: nameCenterY - 22,
+                      left: 40,
+                      right: 40,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _userDisplayName,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          style: GoogleFonts.cormorantGaramond(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.4,
+                            color: Colors.white,
+                            height: 1.05,
+                            shadows: [
+                              Shadow(
+                                color: accent.withValues(alpha: 0.55),
+                                blurRadius: 18,
+                              ),
+                              Shadow(
+                                color: _Neon.magenta.withValues(alpha: 0.25),
+                                blurRadius: 28,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 40),
-              ],
+                    Align(
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _PremiumChronometerMark(accent: accent),
+                          const SizedBox(height: 18),
+                          Text(
+                            _pomodoro.timeLabel,
+                            style: GoogleFonts.manrope(
+                              fontSize: 78,
+                              fontWeight: FontWeight.w300,
+                              color: Colors.white,
+                              letterSpacing: 2,
+                              height: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 40,
+                      child: Center(
+                        child: ScaleButton(
+                          onPressed: () => unawaited(
+                            _pomodoro.isRunning
+                                ? _pomodoro.pauseTimer()
+                                : _pomodoro.startTimer(),
+                          ),
+                          child: Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.9),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accent.withValues(alpha: 0.45),
+                                  blurRadius: 24,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _pomodoro.isRunning
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 36,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+/// Premium kronometre işareti — sabit duvar saati değil, odak sayacı.
+class _PremiumChronometerMark extends StatelessWidget {
+  final Color accent;
+
+  const _PremiumChronometerMark({required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 54,
+      height: 62,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.32),
+              blurRadius: 18,
+              spreadRadius: 0.5,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: CustomPaint(
+          painter: _PremiumChronometerPainter(accent: accent),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumChronometerPainter extends CustomPainter {
+  final Color accent;
+
+  _PremiumChronometerPainter({required this.accent});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final caseCenter = Offset(w / 2, h * 0.58);
+    final caseR = w * 0.42;
+
+    // Üst düğme (kronometre crown)
+    final stem = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(w / 2, caseCenter.dy - caseR - 4),
+        width: 5.2,
+        height: 9,
+      ),
+      const Radius.circular(1.5),
+    );
+    final crown = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(w / 2, caseCenter.dy - caseR - 11.5),
+        width: 12,
+        height: 7,
+      ),
+      const Radius.circular(2.2),
+    );
+    final metal = Paint()
+      ..style = PaintingStyle.fill
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.92),
+          accent.withValues(alpha: 0.85),
+          Colors.white.withValues(alpha: 0.55),
+        ],
+      ).createShader(Rect.fromCircle(center: caseCenter, radius: caseR + 14));
+    canvas.drawRRect(stem, metal);
+    canvas.drawRRect(crown, metal);
+
+    // Yan kontrol (klasik kronograf)
+    final side = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(caseCenter.dx + caseR + 1.5, caseCenter.dy - 6),
+        width: 5,
+        height: 10,
+      ),
+      const Radius.circular(1.4),
+    );
+    canvas.drawRRect(side, metal);
+
+    // Dış kasa
+    final caseFill = Paint()
+      ..shader = const RadialGradient(
+        colors: [
+          Color(0xFF1A2233),
+          Color(0xFF0A0E16),
+        ],
+      ).createShader(Rect.fromCircle(center: caseCenter, radius: caseR));
+    canvas.drawCircle(caseCenter, caseR, caseFill);
+
+    final outerRing = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.1
+      ..color = Colors.white.withValues(alpha: 0.9);
+    canvas.drawCircle(caseCenter, caseR - 0.8, outerRing);
+
+    final glowRing = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.4
+      ..color = accent.withValues(alpha: 0.28);
+    canvas.drawCircle(caseCenter, caseR - 0.8, glowRing);
+
+    // İç bezel
+    final inner = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = accent.withValues(alpha: 0.45);
+    canvas.drawCircle(caseCenter, caseR * 0.78, inner);
+
+    // 60’lık kronometre tick’leri
+    final tick = Paint()..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 60; i++) {
+      final angle = (i / 60) * math.pi * 2 - math.pi / 2;
+      final major = i % 5 == 0;
+      tick
+        ..strokeWidth = major ? 1.7 : 0.9
+        ..color = Colors.white.withValues(alpha: major ? 0.88 : 0.35);
+      final outer = caseR - 5.5;
+      final innerLen = caseR - (major ? 11.5 : 8.2);
+      canvas.drawLine(
+        caseCenter + Offset(math.cos(angle) * innerLen, math.sin(angle) * innerLen),
+        caseCenter + Offset(math.cos(angle) * outer, math.sin(angle) * outer),
+        tick,
+      );
+    }
+
+    // Tek ince saniye kolu — 12’de hazır (kronometre başlangıç pozisyonu)
+    const handAngle = -math.pi / 2;
+    final hand = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 1.7
+      ..color = accent.withValues(alpha: 0.95);
+    canvas.drawLine(
+      caseCenter,
+      caseCenter +
+          Offset(
+            math.cos(handAngle) * (caseR * 0.58),
+            math.sin(handAngle) * (caseR * 0.58),
+          ),
+      hand,
+    );
+    // Kısa karşı ağırlık
+    canvas.drawLine(
+      caseCenter,
+      caseCenter +
+          Offset(
+            math.cos(handAngle + math.pi) * (caseR * 0.14),
+            math.sin(handAngle + math.pi) * (caseR * 0.14),
+          ),
+      Paint()
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = 1.4
+        ..color = Colors.white.withValues(alpha: 0.7),
+    );
+
+    canvas.drawCircle(
+      caseCenter,
+      2.6,
+      Paint()..color = Colors.white.withValues(alpha: 0.95),
+    );
+    canvas.drawCircle(caseCenter, 1.2, Paint()..color = accent);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PremiumChronometerPainter oldDelegate) {
+    return oldDelegate.accent != accent;
   }
 }
 
@@ -931,7 +1177,7 @@ class _PremiumTimerRing extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  isBreak ? 'Mola' : 'Odaklan',
+                  isBreak ? 'Mola' : 'HEDEF Kamu',
                   style: GoogleFonts.manrope(
                     fontSize: 13,
                     letterSpacing: 1.4,
@@ -953,7 +1199,8 @@ class _PremiumTimerRing extends StatelessWidget {
                 if (isRunning) ...[
                   const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
                       color: glow.withValues(alpha: 0.15),

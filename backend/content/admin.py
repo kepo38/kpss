@@ -13,6 +13,7 @@ from .models import (
     AppUser,
     DailyMiniExam,
     DailyMiniExamAttempt,
+    DailySubjectFreeUsage,
     DeviceToken,
     ExamType,
     ExamDistributionTemplate,
@@ -547,6 +548,7 @@ class AppUserAdmin(ModelAdmin):
         "premium_granted_at",
         "premium_expires_at",
         "status_label",
+        "last_active_at",
         "last_login_at",
         "created_at",
     )
@@ -558,6 +560,7 @@ class AppUserAdmin(ModelAdmin):
         "created_at",
         "updated_at",
         "last_login_at",
+        "last_active_at",
         "premium_granted_at",
         "is_anonymous",
     )
@@ -594,6 +597,7 @@ class AppUserAdmin(ModelAdmin):
                 "fields": (
                     "api_token",
                     "last_login_at",
+                    "last_active_at",
                     "created_at",
                     "updated_at",
                 ),
@@ -789,6 +793,15 @@ class DeviceTokenAdmin(ModelAdmin):
     @admin.display(description="Jeton")
     def token_short(self, obj: DeviceToken) -> str:
         return f"{obj.token[:24]}…"
+
+
+@admin.register(DailySubjectFreeUsage)
+class DailySubjectFreeUsageAdmin(ModelAdmin):
+    list_display = ("user", "subject_slug", "day", "created_at")
+    list_filter = ("day", "subject_slug")
+    search_fields = ("user__email", "user__display_name", "subject_slug")
+    date_hierarchy = "day"
+    readonly_fields = ("created_at",)
 
 
 @admin.register(DailyMiniExam)

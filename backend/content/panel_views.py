@@ -2199,6 +2199,24 @@ def _send_and_redirect(request: HttpRequest, item: Announcement) -> HttpResponse
 
 @login_required
 @staff_required
+def panel_app_stats(request: HttpRequest) -> HttpResponse:
+    """Kurulum / canlı kullanıcı / premium özeti."""
+    from .app_live_stats import ACTIVE_WINDOW, collect_app_live_stats
+
+    stats = collect_app_live_stats()
+    return render(
+        request,
+        "panel/app_stats.html",
+        {
+            "page_title": "Uygulama durumu",
+            "stats": stats,
+            "active_window_minutes": int(ACTIVE_WINDOW.total_seconds() // 60),
+        },
+    )
+
+
+@login_required
+@staff_required
 def panel_users(request: HttpRequest) -> HttpResponse:
     q = (request.GET.get("q") or "").strip()
     scope = (request.GET.get("scope") or "all").strip().lower()

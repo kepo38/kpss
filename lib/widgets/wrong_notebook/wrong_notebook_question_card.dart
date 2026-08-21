@@ -88,6 +88,7 @@ class WrongNotebookQuestionCard extends StatelessWidget {
   final VoidCallback onSimilar;
   final VoidCallback onTap;
   final VoidCallback onRemove;
+  final VoidCallback? onShare;
   final VoidCallback? onSignIn;
 
   const WrongNotebookQuestionCard({
@@ -101,6 +102,7 @@ class WrongNotebookQuestionCard extends StatelessWidget {
     required this.onSimilar,
     required this.onTap,
     required this.onRemove,
+    this.onShare,
     this.onSignIn,
   });
 
@@ -150,6 +152,10 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                               children: [
                                 _TopicChip(label: question.konuAdi),
                                 const Spacer(),
+                                if (onShare != null) ...[
+                                  _ShareButton(onTap: onShare!),
+                                  const SizedBox(width: 2),
+                                ],
                                 _FavoriteButton(
                                   isFavorite: isFavorite,
                                   onTap: onToggleFavorite,
@@ -237,6 +243,40 @@ class _TopicChip extends StatelessWidget {
             fontSize: 10.5,
             fontWeight: FontWeight.w600,
             color: muted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ShareButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppTheme.mutedOnPage(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
+        message: 'WhatsApp / paylaş',
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF25D366).withValues(alpha: 0.12),
+            border: Border.all(
+              color: const Color(0xFF25D366).withValues(alpha: 0.4),
+            ),
+          ),
+          child: Icon(
+            Icons.share_rounded,
+            size: 16,
+            color: muted.withValues(alpha: 0.85),
           ),
         ),
       ),

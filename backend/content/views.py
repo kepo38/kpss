@@ -20,6 +20,7 @@ from .models import (
     Announcement,
     get_mobile_ui_config,
     DailyMiniExamAttempt,
+    DailySubjectFreeUsage,
     ExamPack,
     ExamPackExam,
     ExamType,
@@ -370,6 +371,110 @@ def _require_permanent_user(request):
     return user, None
 
 
+def _istanbul_today():
+    from zoneinfo import ZoneInfo
+
+    return timezone.now().astimezone(ZoneInfo("Europe/Istanbul")).date()
+
+
+DAILY_FREE_LIMIT = 1
+
+
+def _consume_daily_subject_free(user, subject_slug: str) -> dict:
+    """Idempotent: bugün bu ders için ücretsiz hakkı yak."""
+    slug = (subject_slug or "").strip().lower()
+    if not slug:
+        return {
+            "subject": "",
+            "freeUsed": 0,
+            "freeLimit": DAILY_FREE_LIMIT,
+            "day": _istanbul_today().isoformat(),
+            "created": False,
+        }
+    day = _istanbul_today()
+    _, created = DailySubjectFreeUsage.objects.get_or_create(
+        user=user,
+        subject_slug=slug,
+        day=day,
+    )
+    return {
+        "subject": slug,
+        "freeUsed": DAILY_FREE_LIMIT,
+        "freeLimit": DAILY_FREE_LIMIT,
+        "day": day.isoformat(),
+        "created": created,
+    }
+
+
+class DailyQuotaView(APIView):
+    """Google hesabı günlük ücretsiz ders kotası (telefon/tablet senkron)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
+        day = _istanbul_today()
+        subject = str(request.query_params.get("subject") or "").strip().lower()
+        if subject:
+            used = DailySubjectFreeUsage.objects.filter(
+                user=user,
+                subject_slug=subject,
+                day=day,
+            ).exists()
+            return Response(
+                {
+                    "day": day.isoformat(),
+                    "freeLimit": DAILY_FREE_LIMIT,
+                    "subjects": {
+                        subject: {
+                            "freeUsed": DAILY_FREE_LIMIT if used else 0,
+                            "freeLimit": DAILY_FREE_LIMIT,
+                        }
+                    },
+                }
+            )
+        rows = DailySubjectFreeUsage.objects.filter(user=user, day=day)
+        subjects = {
+            row.subject_slug: {
+                "freeUsed": DAILY_FREE_LIMIT,
+                "freeLimit": DAILY_FREE_LIMIT,
+            }
+            for row in rows
+        }
+        return Response(
+            {
+                "day": day.isoformat(),
+                "freeLimit": DAILY_FREE_LIMIT,
+                "subjects": subjects,
+            }
+        )
+
+    def post(self, request):
+        user, error = _require_permanent_user(request)
+        if error is not None:
+            return error
+        if user.premium_active:
+            day = _istanbul_today()
+            subject = str(request.data.get("subject") or "").strip().lower()
+            return Response(
+                {
+                    "subject": subject,
+                    "freeUsed": 0,
+                    "freeLimit": DAILY_FREE_LIMIT,
+                    "day": day.isoformat(),
+                    "created": False,
+                    "skippedPremium": True,
+                }
+            )
+        subject = str(request.data.get("subject") or "").strip().lower()
+        if not subject:
+            return Response({"detail": "subject gerekli."}, status=400)
+        return Response(_consume_daily_subject_free(user, subject))
+
+
 class TestAttemptView(APIView):
     """Store a logged-in user's first answers for a published topic test."""
 
@@ -382,7 +487,9 @@ class TestAttemptView(APIView):
             return error
 
         test = get_object_or_404(
-            TopicTest.objects.prefetch_related("questions"),
+            TopicTest.objects.select_related("topic__subject").prefetch_related(
+                "questions"
+            ),
             public_id=test_id,
             is_published=True,
             topic__is_active=True,
@@ -415,16 +522,21 @@ class TestAttemptView(APIView):
             else:
                 ignored += 1
 
+        quota = None
         if request.data.get("completed") is True and len(questions) > 0:
             TopicTestCompletion.objects.get_or_create(user=user, topic_test=test)
+            if not user.premium_active:
+                subject_slug = test.topic.subject.slug
+                quota = _consume_daily_subject_free(user, subject_slug)
 
-        return Response(
-            {
-                "accepted": accepted,
-                "ignored": ignored,
-                "questionCount": len(questions),
-            }
-        )
+        payload = {
+            "accepted": accepted,
+            "ignored": ignored,
+            "questionCount": len(questions),
+        }
+        if quota is not None:
+            payload["dailyQuota"] = quota
+        return Response(payload)
 
 
 def _attempt_stats_payload(question: Question) -> dict:
@@ -445,6 +557,11 @@ def _attempt_stats_payload(question: Question) -> dict:
     return {
         "attemptCount": question.attempt_count,
         "solvedCount": solved_count,
+        "correctRate": (
+            round(question.correct_count / question.attempt_count, 4)
+            if question.attempt_count
+            else None
+        ),
         "optionPercentages": percentages,
     }
 
@@ -517,9 +634,32 @@ class QuestionViewRecordView(APIView):
         )
         user = get_user_from_request(request)
         if user is None:
-            return Response({"viewCount": question.view_count})
+            return Response(
+                {
+                    "viewCount": question.view_count,
+                    "attemptCount": question.attempt_count,
+                    "correctRate": (
+                        round(question.correct_count / question.attempt_count, 4)
+                        if question.attempt_count
+                        else None
+                    ),
+                }
+            )
         view_count = QuestionView.record_view(question=question, user=user)
-        return Response({"viewCount": view_count})
+        question.refresh_from_db(
+            fields=["view_count", "attempt_count", "correct_count"]
+        )
+        return Response(
+            {
+                "viewCount": view_count,
+                "attemptCount": question.attempt_count,
+                "correctRate": (
+                    round(question.correct_count / question.attempt_count, 4)
+                    if question.attempt_count
+                    else None
+                ),
+            }
+        )
 
 
 def _rating_payload(question: Question, user) -> dict:

@@ -118,6 +118,8 @@ class _QuizScreenState extends State<QuizScreen>
   final Map<String, QuestionAttemptSummary> _attemptSummaries = {};
   final Set<String> _viewedIds = {};
   final Map<String, int> _viewCounts = {};
+  /// Soru açılışında / cevapta güncellenen canlı başarı oranı (0–1 veya 0–100).
+  final Map<String, double> _liveCorrectRates = {};
   final Map<String, List<QuizStroke>> _drawings = {};
   bool _drawingEnabled = false;
   bool _noteCardOpen = false;
@@ -367,7 +369,13 @@ class _QuizScreenState extends State<QuizScreen>
     if (!mounted || summary == null || _currentQuestion.id != questionId) {
       return;
     }
-    setState(() => _attemptSummaries[questionId] = summary);
+    setState(() {
+      _attemptSummaries[questionId] = summary;
+      final rate = summary.correctRate;
+      if (rate != null) {
+        _liveCorrectRates[questionId] = rate;
+      }
+    });
   }
 
   void _tick() {
@@ -432,11 +440,34 @@ class _QuizScreenState extends State<QuizScreen>
   /// Doğru cevaplayan oranı — `Başarı: %49`.
   String? _successRateLabel() {
     final live = _optionPercentages;
-    final correctKey = _currentQuestion.dogruCevap;
-    final livePct = live?[correctKey];
-    if (livePct != null) {
-      return 'Başarı: %${livePct.round()}';
+    if (live != null && live.isNotEmpty) {
+      final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
+      double? livePct = live[correctKey] ?? live[_currentQuestion.dogruCevap];
+      if (livePct == null) {
+        for (final entry in live.entries) {
+          if (entry.key.trim().toUpperCase() == correctKey) {
+            livePct = entry.value;
+            break;
+          }
+        }
+      }
+      if (livePct != null) {
+        return 'Başarı: %${livePct.round()}';
+      }
     }
+
+    final summaryRate = _attemptSummaries[_currentQuestion.id]?.correctRate;
+    if (summaryRate != null) {
+      final pct = summaryRate <= 1.0 ? summaryRate * 100 : summaryRate;
+      return 'Başarı: %${pct.round()}';
+    }
+
+    final refreshed = _liveCorrectRates[_currentQuestion.id];
+    if (refreshed != null) {
+      final pct = refreshed <= 1.0 ? refreshed * 100 : refreshed;
+      return 'Başarı: %${pct.round()}';
+    }
+
     final rate = _currentQuestion.correctRate;
     if (rate == null) return null;
     final pct = rate <= 1.0 ? (rate * 100) : rate;
@@ -790,12 +821,18 @@ class _QuizScreenState extends State<QuizScreen>
     final question = _currentQuestion;
     final id = question.id;
     if (!_viewedIds.add(id)) return;
-    final count = await QuestionViewService.instance.recordView(id);
-    if (!mounted || count == null) return;
+    final result = await QuestionViewService.instance.recordView(id);
+    if (!mounted || result == null) return;
     final previous = _viewCounts[id] ?? question.viewCount;
-    if (count > previous) {
-      setState(() => _viewCounts[id] = count);
-    }
+    setState(() {
+      if (result.viewCount > previous) {
+        _viewCounts[id] = result.viewCount;
+      }
+      final rate = result.correctRate;
+      if (rate != null) {
+        _liveCorrectRates[id] = rate;
+      }
+    });
   }
 
   String _viewLabelForCurrent() {
@@ -1023,11 +1060,8 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Future<void> _requestSolution() async {
-    final fullUnlocked = _isSolutionFullyUnlocked;
-    if (fullUnlocked) {
-      setState(() => _showingSolution = true);
-      return;
-    }
+    AdManager.instance.ensureFreeSolutionUnlock(_currentQuestion.id);
+    if (!mounted) return;
     setState(() => _showingSolution = true);
   }
 
@@ -1517,7 +1551,7 @@ class _QuizScreenState extends State<QuizScreen>
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: 'serif',
-                    fontSize: 18,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.champagne,
                     height: 1.15,
@@ -1616,7 +1650,7 @@ class _QuizScreenState extends State<QuizScreen>
                       textAlign: TextAlign.start,
                       style: const TextStyle(
                         fontFamily: 'serif',
-                        fontSize: 17,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.champagne,
                         height: 1.15,
@@ -2098,9 +2132,62 @@ class _SolutionPanel extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          if (showFullSolution || !parts.hasLockedRemainder)
+          if (showFullSolution)
             ExamSolutionView(text: question.cozumMetni)
-          else ...[
+          else if (!parts.hasLockedRemainder) ...[
+            // Kısa çözümlerde de kota sonrası reklam zorunlu — tam metin sızmaz.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                children: [
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Opacity(
+                      opacity: 0.55,
+                      child: ExamSolutionView(text: question.cozumMetni),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppTheme.ink.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.lock_outline,
+                            color: AppTheme.champagne.withValues(alpha: 0.9),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Bu testte 4 ücretsiz tam çözüm hakkın bitti.\n'
+                            'Tam çözümü açmak için 30 sn reklam izle',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              height: 1.35,
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.82),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _FrostUnlockButton(
+                            unlocking: unlocking,
+                            onPressed: unlocking ? null : onUnlockFull,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
             ExamSolutionView(text: parts.preview),
             const SizedBox(height: 14),
             ClipRRect(
@@ -2140,7 +2227,8 @@ class _SolutionPanel extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Devamını görmek için\n30 sn reklam izleyin',
+                            'Bu testte 4 ücretsiz tam çözüm hakkın bitti.\n'
+                            'Devamını görmek için 30 sn reklam izle',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               height: 1.35,

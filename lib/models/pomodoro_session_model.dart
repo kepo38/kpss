@@ -21,45 +21,28 @@ class PomodoroSessionModel {
   int get sureSaniye => sureDakika * 60;
 }
 
-enum PomodoroPreset { kisa25, orta30, orta50, uzun90, ozel }
+enum PomodoroPreset { dk20, dk40, dk60 }
 
 extension PomodoroPresetExtension on PomodoroPreset {
   int get dakika {
     switch (this) {
-      case PomodoroPreset.kisa25:
-        return 25;
-      case PomodoroPreset.orta30:
-        return 30;
-      case PomodoroPreset.orta50:
-        return 50;
-      case PomodoroPreset.uzun90:
-        return 90;
-      case PomodoroPreset.ozel:
-        return 0;
+      case PomodoroPreset.dk20:
+        return 20;
+      case PomodoroPreset.dk40:
+        return 40;
+      case PomodoroPreset.dk60:
+        return 60;
     }
   }
 
-  String get label {
-    switch (this) {
-      case PomodoroPreset.kisa25:
-        return '25 dk';
-      case PomodoroPreset.orta30:
-        return '30 dk';
-      case PomodoroPreset.orta50:
-        return '50 dk';
-      case PomodoroPreset.uzun90:
-        return '90 dk';
-      case PomodoroPreset.ozel:
-        return 'Özel';
-    }
-  }
+  String get label => '$dakika dk';
 }
 
-/// Ortam sesi kataloğu — yalnızca Sessiz + doğa (yağmur / orman).
+/// Ortam sesi kataloğu (Dalga / Kafe).
 enum AmbientSound {
   sessiz,
-  yagmur,
-  orman,
+  dalga,
+  kafe,
 }
 
 enum AmbientSoundGroup { sessiz, doga }
@@ -69,10 +52,10 @@ extension AmbientSoundExtension on AmbientSound {
     switch (this) {
       case AmbientSound.sessiz:
         return 'Sessiz';
-      case AmbientSound.yagmur:
-        return 'Yağmur';
-      case AmbientSound.orman:
-        return 'Orman';
+      case AmbientSound.dalga:
+        return 'Dalga';
+      case AmbientSound.kafe:
+        return 'Kafe';
     }
   }
 
@@ -80,10 +63,10 @@ extension AmbientSoundExtension on AmbientSound {
     switch (this) {
       case AmbientSound.sessiz:
         return 'Sessizlik';
-      case AmbientSound.yagmur:
-        return 'Doğa';
-      case AmbientSound.orman:
-        return 'Doğa';
+      case AmbientSound.dalga:
+        return 'Deniz';
+      case AmbientSound.kafe:
+        return 'Kafe';
     }
   }
 
@@ -91,8 +74,8 @@ extension AmbientSoundExtension on AmbientSound {
     switch (this) {
       case AmbientSound.sessiz:
         return AmbientSoundGroup.sessiz;
-      case AmbientSound.yagmur:
-      case AmbientSound.orman:
+      case AmbientSound.dalga:
+      case AmbientSound.kafe:
         return AmbientSoundGroup.doga;
     }
   }
@@ -101,10 +84,10 @@ extension AmbientSoundExtension on AmbientSound {
     switch (this) {
       case AmbientSound.sessiz:
         return Icons.volume_off_outlined;
-      case AmbientSound.yagmur:
-        return Icons.water_drop_outlined;
-      case AmbientSound.orman:
-        return Icons.park_outlined;
+      case AmbientSound.dalga:
+        return Icons.waves_rounded;
+      case AmbientSound.kafe:
+        return Icons.local_cafe_outlined;
     }
   }
 
@@ -113,10 +96,10 @@ extension AmbientSoundExtension on AmbientSound {
     switch (this) {
       case AmbientSound.sessiz:
         return null;
-      case AmbientSound.yagmur:
-        return 'sounds/ambient_rain.wav';
-      case AmbientSound.orman:
-        return 'sounds/ambient_forest.wav';
+      case AmbientSound.dalga:
+        return 'sounds/ambient_wave.mp3';
+      case AmbientSound.kafe:
+        return 'sounds/ambient_cafe.mp3';
     }
   }
 }

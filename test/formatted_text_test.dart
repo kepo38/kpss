@@ -494,6 +494,70 @@ void main() {
     expect(FormattedText.wrapBareLatex(r'$Yalnız I$'), 'Yalnız I');
   });
 
+  test('normalizeMarkup restores nested math inside bold (no §§E leak)', () {
+    final out = FormattedText.normalizeMarkup(
+      r'**I. $a \cdot (b + c)$** ve - 1. Durum ($T \cdot Ç$): sonuç',
+    );
+    expect(out, isNot(contains('§§E')));
+    expect(out, contains(r'$a \cdot (b + c)$'));
+    expect(out, contains(r'$T \cdot Ç$'));
+    expect(out, contains('**'));
+  });
+
+  test('restoreCollapsedBreaks keeps Payda and Kesrin on own lines', () {
+    final out = FormattedText.restoreCollapsedBreaks(
+      r'1. İlk kesri: Pay: $\frac{11}{2}$ Payda: $\frac{13}{2}$ '
+      r'Kesrin değeri: $\frac{11}{13}$',
+    );
+    expect(out, isNot(contains('§§M')));
+    expect(out, contains('\nPayda:'));
+    expect(out, contains('\nKesrin değeri:'));
+    expect(out, contains(r'\frac{11}{2}'));
+  });
+
+  test('plain math letters match body style helpers', () {
+    expect(FormattedText.isPlainMathLetter('x'), isTrue);
+    expect(FormattedText.isPlainMathLetter('z'), isTrue);
+    expect(FormattedText.isPlainMathLetter(r'z > 1'), isFalse);
+    expect(
+      FormattedText.mathTextStyle(
+        const TextStyle(fontSize: 15, color: Colors.white),
+        display: true,
+      ).fontSize,
+      15,
+    );
+    expect(
+      FormattedText.mathTextStyle(
+        const TextStyle(fontSize: 15),
+        display: false,
+      ).fontStyle,
+      FontStyle.normal,
+    );
+    expect(
+      FormattedText.uprightMathLetters(r'z > 1'),
+      contains(r'\mathrm{z}'),
+    );
+  });
+
+  test('uprightMathLetters restores commands (no §§C leak)', () {
+    final out = FormattedText.uprightMathLetters(r'a^{b} + b \cdot c');
+    expect(out.contains('§§'), isFalse);
+    expect(out, contains(r'\cdot'));
+    expect(out, contains(r'\mathrm{a}'));
+    expect(out, contains(r'\mathrm{b}'));
+    expect(out, contains(r'\mathrm{c}'));
+
+    final frac = FormattedText.uprightMathLetters(r'\frac{18}{a}');
+    expect(frac.contains('§§'), isFalse);
+    expect(frac, contains(r'\frac'));
+  });
+
+  test('uprightMathLetters skips array environments', () {
+    const array =
+        r'\displaystyle \begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.05em} \\ CA3 \end{array}';
+    expect(FormattedText.uprightMathLetters(array), array);
+  });
+
   testWidgets('exam stem renders display array math not raw latex', (tester) async {
     const stem =
         'İşlem aşağıda verilmiştir.\n'

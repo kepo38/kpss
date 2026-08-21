@@ -91,11 +91,13 @@ class QuestionAttemptService {
 class QuestionAttemptSummary {
   final int attemptCount;
   final int solvedCount;
+  final double? correctRate;
   final Map<String, double>? optionPercentages;
 
   const QuestionAttemptSummary({
     required this.attemptCount,
     required this.solvedCount,
+    this.correctRate,
     required this.optionPercentages,
   });
 
@@ -104,6 +106,7 @@ class QuestionAttemptSummary {
     return QuestionAttemptSummary(
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
       solvedCount: (json['solvedCount'] as num?)?.toInt() ?? 0,
+      correctRate: (json['correctRate'] as num?)?.toDouble(),
       optionPercentages: raw is Map
           ? raw.map(
               (key, value) => MapEntry(

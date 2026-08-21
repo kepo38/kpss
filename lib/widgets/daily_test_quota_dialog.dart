@@ -169,11 +169,22 @@ class DailyTestQuotaDialog extends StatelessWidget {
                             color: Colors.white.withValues(alpha: 0.72),
                           ),
                         ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Aynı Google hesabında telefon ve tablet günlük hakkı paylaşır. '
+                          'Farklı Google hesaplarının hakları ayrıdır.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ),
                         const SizedBox(height: 16),
                         _QuotaStrip(
                           usedLabel: '$_freePerDay / $_freePerDay kullanıldı',
                           hint: canWatchAd
-                              ? 'Her dersten günde $_freePerDay test · reklamla +1 hak'
+                              ? 'Her derste günde $_freePerDay test · reklamla o derse +1 hak'
                               : 'Ek hak için Premium gerekir',
                         ),
                         const SizedBox(height: 20),

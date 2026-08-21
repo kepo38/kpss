@@ -31,6 +31,7 @@ from .views import (
     TestAttemptView,
     QuestionAttemptView,
     QuestionViewRecordView,
+    DailyQuotaView,
 )
 
 urlpatterns = [
@@ -40,6 +41,7 @@ urlpatterns = [
     path("pack/version/", ContentPackVersionView.as_view(), name="content-pack-version"),
     path("catalog/", ContentCatalogView.as_view(), name="content-catalog"),
     path("curriculum/", CurriculumView.as_view(), name="curriculum"),
+    path("daily-quota/", DailyQuotaView.as_view(), name="daily-quota"),
     path("questions/", PublishedQuestionsView.as_view(), name="questions"),
     path(
         "questions/<str:public_id>/similar/",

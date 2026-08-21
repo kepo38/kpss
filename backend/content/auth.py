@@ -400,7 +400,7 @@ def get_user_from_request(request) -> AppUser | None:
     token = header[7:].strip()
     if not token:
         return None
-    return (
+    user = (
         AppUser.objects.filter(api_token=token, is_active=True)
         .only(
             "id",
@@ -420,3 +420,20 @@ def get_user_from_request(request) -> AppUser | None:
         )
         .first()
     )
+    if user is not None:
+        touch_user_activity(user.pk)
+    return user
+
+
+def touch_user_activity(user_id: int, *, min_interval_seconds: int = 120) -> None:
+    """Canlı oturum sayacı — sık API çağrılarında DB yazısını sınırlar."""
+    from datetime import timedelta
+
+    from django.db.models import Q
+    from django.utils import timezone
+
+    now = timezone.now()
+    threshold = now - timedelta(seconds=min_interval_seconds)
+    AppUser.objects.filter(pk=user_id).filter(
+        Q(last_active_at__isnull=True) | Q(last_active_at__lt=threshold)
+    ).update(last_active_at=now)

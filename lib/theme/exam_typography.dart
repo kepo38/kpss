@@ -39,9 +39,9 @@ abstract final class ExamTypography {
     );
   }
 
-  /// flutter_math KaTeX gliflerini kullanır; ÖSYM math italik hissini korur.
+  /// Formül harfleri gövde metniyle aynı biçim/punto (italik büyütme yok).
   static TextStyle mathFrom(TextStyle base) {
-    return base.copyWith(fontStyle: FontStyle.italic);
+    return base.copyWith(fontStyle: FontStyle.normal);
   }
 
   /// Harita / şema üzerindeki harflendirme.

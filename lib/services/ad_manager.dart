@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ad_constants.dart';
 import 'ad_free_campaign_service.dart';
+import 'app_preferences.dart';
 
 /// Reklam ve adil fiyatlandırma mimarisi.
 ///
@@ -12,7 +14,7 @@ import 'ad_free_campaign_service.dart';
 /// - Test/ders ortasında interstitial YOK
 /// - Test ekranında yalnızca altta küçük banner
 /// - Her 3 sayfa geçişinde bir kapatılabilir interstitial
-/// - Ödüllü video ile çözüm kilidi (test bitene kadar önbellekte)
+/// - Ödüllü video ile çözüm kilidi (testte ilk 4 ücretsiz; 5.+ her biri reklam)
 /// - isPremium == true → tüm reklamlar bypass
 /// - 12 saat kampanya → yalnızca banner; çözüm/kota/interstitial durur
 class AdManager {
@@ -30,8 +32,11 @@ class AdManager {
   InterstitialAd? _interstitialAd;
   RewardedAd? _rewardedAd;
 
-  /// Test oturumu boyunca ödüllü reklamla açılan çözüm ID'leri.
+  /// Test oturumu boyunca açılan tam çözüm soru ID'leri (ücretsiz veya reklam).
   final Set<String> _unlockedSolutionIds = {};
+
+  /// Bu turda kalan ücretsiz tam çözüm hakkı (reklam sonrası yenilenir).
+  int _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
 
   bool get isPremium => _isPremium;
   bool get isSdkReady => _sdkReady || _bypassAllAds;
@@ -76,6 +81,7 @@ class AdManager {
     _isInTestSession = true;
     _adFreeTestSession = adFreeExperience;
     _unlockedSolutionIds.clear();
+    _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
     if (_suppressBanners || adFreeExperience) return;
     _loadBanner();
   }
@@ -85,6 +91,7 @@ class AdManager {
     _isInTestSession = false;
     _adFreeTestSession = false;
     _unlockedSolutionIds.clear();
+    _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
     _disposeBanner();
   }
 
@@ -119,10 +126,11 @@ class AdManager {
     return true;
   }
 
-  /// Detaylı çözüm kilidi — ödüllü reklam veya önbellek.
+  /// Detaylı çözüm kilidi — testte ilk [AdConstants.freeSolutionsPerTest]
+  /// ücretsiz; 5. ve sonrası her tam çözüm için ödüllü reklam.
+  /// Açılanlar oturum boyunca önbellekte; sıra karışık da sayılır.
   Future<bool> requestSolutionUnlock(String questionId) async {
-    if (_isPremium || _adFreeTestSession) return true;
-    if (_unlockedSolutionIds.contains(questionId)) return true;
+    if (ensureFreeSolutionUnlock(questionId)) return true;
 
     final earned = await _showRewardedVideo();
     if (earned) {
@@ -131,10 +139,97 @@ class AdManager {
     return earned;
   }
 
+  /// Kota varsa reklam olmadan tam çözümü açar. Zaten açıksa true.
+  bool ensureFreeSolutionUnlock(String questionId) {
+    if (questionId.isEmpty) return false;
+    if (_isPremium || _adFreeTestSession) {
+      _unlockedSolutionIds.add(questionId);
+      return true;
+    }
+    if (_unlockedSolutionIds.contains(questionId)) return true;
+    if (_freeSolutionCredits > 0) {
+      _unlockedSolutionIds.add(questionId);
+      _freeSolutionCredits--;
+      return true;
+    }
+    return false;
+  }
+
+  /// Bu testte kalan ücretsiz tam çözüm hakkı (reklamla açılanlar düşmez).
+  int get freeSolutionUnlocksRemaining {
+    if (_isPremium || _adFreeTestSession) {
+      return AdConstants.freeSolutionsPerTest;
+    }
+    return _freeSolutionCredits < 0 ? 0 : _freeSolutionCredits;
+  }
+
   /// Günlük test hakkı bittiğinde +1 test için ödüllü video (~30 sn).
   Future<bool> requestDailyTestBonus() async {
     if (_bypassAllAds) return false;
     return _showRewardedVideo();
+  }
+
+  static const _kWrongNotebookShareDay = 'wrong_notebook_share_day_v2';
+  static const _kWrongNotebookShareCount = 'wrong_notebook_share_count_v2';
+  static const _kWrongNotebookShareAdDay = 'wrong_notebook_share_ad_day_v2';
+
+  String _todayKey([DateTime? now]) {
+    final d = now ?? DateTime.now();
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$m-$day';
+  }
+
+  Future<void> _ensureShareDayBucket(SharedPreferences prefs) async {
+    final today = _todayKey();
+    if (prefs.getString(_kWrongNotebookShareDay) == today) return;
+    await prefs.setString(_kWrongNotebookShareDay, today);
+    await prefs.setInt(_kWrongNotebookShareCount, 0);
+  }
+
+  int wrongNotebookShareLimit({required bool premium}) {
+    return premium
+        ? AdConstants.wrongNotebookSharesPerDayPremium
+        : AdConstants.wrongNotebookSharesPerDayFree;
+  }
+
+  Future<int> wrongNotebookSharesUsedToday() async {
+    final prefs = await AppPreferences.instance;
+    await _ensureShareDayBucket(prefs);
+    return prefs.getInt(_kWrongNotebookShareCount) ?? 0;
+  }
+
+  Future<int> wrongNotebookSharesRemainingToday({required bool premium}) async {
+    final used = await wrongNotebookSharesUsedToday();
+    final left = wrongNotebookShareLimit(premium: premium) - used;
+    return left < 0 ? 0 : left;
+  }
+
+  /// Bugün yanlış defteri paylaşımı için reklam izlendi mi?
+  Future<bool> hasWrongNotebookShareUnlockToday() async {
+    final prefs = await AppPreferences.instance;
+    return prefs.getString(_kWrongNotebookShareAdDay) == _todayKey();
+  }
+
+  /// Premium değilse günde bir ödüllü reklam (o günün tek paylaşım hakkı için).
+  Future<bool> requestWrongNotebookShareUnlock() async {
+    if (await hasWrongNotebookShareUnlockToday()) return true;
+    final earned = await _showRewardedVideo();
+    if (!earned) return false;
+    final prefs = await AppPreferences.instance;
+    await prefs.setString(_kWrongNotebookShareAdDay, _todayKey());
+    return true;
+  }
+
+  /// Başarılı paylaşım sonrası kotayı düşer. false → günlük limit dolu.
+  Future<bool> consumeWrongNotebookShare({required bool premium}) async {
+    final prefs = await AppPreferences.instance;
+    await _ensureShareDayBucket(prefs);
+    final used = prefs.getInt(_kWrongNotebookShareCount) ?? 0;
+    final limit = wrongNotebookShareLimit(premium: premium);
+    if (used >= limit) return false;
+    await prefs.setInt(_kWrongNotebookShareCount, used + 1);
+    return true;
   }
 
   Future<bool> _showRewardedVideo() async {

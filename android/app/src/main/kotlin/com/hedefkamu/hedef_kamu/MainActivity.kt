@@ -8,8 +8,30 @@ import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var captureOverrideAllow: Boolean? = null
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "hedef_kamu/screenshot_gate",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setAllowed" -> {
+                    val allow = call.argument<Boolean>("allow") == true
+                    captureOverrideAllow = allow
+                    applyScreenshotPolicy()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         applyTabletPortraitLock()
@@ -35,7 +57,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun applyScreenshotPolicy() {
-        if (shouldAllowScreenshots()) {
+        val allow = captureOverrideAllow ?: shouldAllowScreenshots()
+        if (allow) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             window.setFlags(0, WindowManager.LayoutParams.FLAG_SECURE)
         } else {
@@ -44,8 +67,9 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Debug sürümünde her cihazda izin; release'te yalnızca geliştirici
-     * telefonunda (ekran görüntüsü / QA için).
+     * Release: ekran görüntüsü / kayıt yasak (FLAG_SECURE).
+     * Debug: serbest. Geliştirici cihaz allowlist yalnızca QA içindir.
+     * Uygulama içi yanlış-defteri paylaşımı (filigranlı kart) ayrı kotayla sınırlıdır.
      */
     private fun shouldAllowScreenshots(): Boolean {
         if (BuildConfig.ALLOW_SCREENSHOTS) return true

@@ -10,6 +10,7 @@ import '../models/special_test_models.dart';
 import '../services/ad_manager.dart';
 import '../services/ad_service.dart';
 import '../services/content_bank_service.dart';
+import '../services/daily_quota_service.dart';
 import '../services/gamification_service.dart';
 import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
@@ -51,6 +52,12 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
     super.initState();
     _bank.addListener(_onChanged);
     _svc.addListener(_onChanged);
+    unawaited(_refreshAccountQuota());
+  }
+
+  Future<void> _refreshAccountQuota() async {
+    await DailyQuotaService.instance.refreshFromServer(subject: _subjectId);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -120,7 +127,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
     await _bank.grantAdBonusDailyTest(kpssType, _subjectId);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('+1 test hakkı kazandınız!')),
+        const SnackBar(content: Text('Bu derste +1 test hakkı kazandınız!')),
       );
     }
     return _bank.canStartDailySubjectTest(kpssType, _subjectId);

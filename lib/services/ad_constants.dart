@@ -8,4 +8,12 @@ class AdConstants {
 
   /// Her kaç sayfa geçişinde bir interstitial gösterilecek.
   static const int pageTransitionAdInterval = 3;
+
+  /// Test oturumunda ilk N tam çözüm ücretsiz; 5. ve sonrası ödüllü reklam
+  /// (hangi soru / sıra fark etmez; aynı soru tekrar reklam istemez).
+  static const int freeSolutionsPerTest = 4;
+
+  /// Yanlış defteri paylaşımı — günlük üst sınır (ekran görüntüsü yasağı bypass’ını keser).
+  static const int wrongNotebookSharesPerDayFree = 1;
+  static const int wrongNotebookSharesPerDayPremium = 3;
 }

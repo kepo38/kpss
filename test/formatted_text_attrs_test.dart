@@ -49,7 +49,7 @@ void main() {
       FormattedText.normalizeMarkup(
         '<span style="color:red;font-weight:700">y</span>',
       ),
-      '**y**',
+      '{red}**y**{/red}',
     );
   });
 

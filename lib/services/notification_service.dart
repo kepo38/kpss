@@ -243,10 +243,12 @@ class NotificationService {
     if (!_initialized) return;
 
     await _plugin.cancel(focusTimerCompleteId);
-    final when = tz.TZDateTime.from(endsAt, tz.local);
-    if (!when.isAfter(tz.TZDateTime.now(tz.local))) {
-      await showFocusTimerComplete(isBreakEnding: isBreakEnding);
-      return;
+    var when = tz.TZDateTime.from(endsAt, tz.local);
+    final nowTz = tz.TZDateTime.now(tz.local);
+    // Saat dilimi sapması / milisaniye farkı: play anında bitiş sesi çalıp
+    // Deep Work müziğini kesmesin — en az ~1 sn sonraya kaydır.
+    if (!when.isAfter(nowTz.add(const Duration(milliseconds: 800)))) {
+      when = nowTz.add(const Duration(seconds: 1));
     }
 
     final title = isBreakEnding ? 'Mola bitti' : 'Odak tamamlandı';

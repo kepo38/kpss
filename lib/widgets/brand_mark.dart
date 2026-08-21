@@ -163,86 +163,119 @@ class QuizHeaderStrip extends StatelessWidget {
     final timeColor = urgent ? Colors.redAccent : Colors.white;
     final iconColor = urgent ? Colors.redAccent : AppTheme.champagne;
 
+    final rightMeta = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (successLabel != null)
+          Container(
+            constraints: const BoxConstraints(maxWidth: 140),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF34D399).withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: const Color(0xFF34D399).withValues(alpha: 0.55),
+              ),
+            ),
+            child: Text(
+              successLabel!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.1,
+                color: Color(0xFF6EE7B7),
+              ),
+            ),
+          )
+        else if (questionLabel != null)
+          Text(
+            questionLabel!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.88),
+            ),
+          ),
+        if (difficultyOnRight && difficultyLabel != null) ...[
+          if (successLabel != null || questionLabel != null)
+            const SizedBox(height: 6),
+          _DifficultyBadge(label: difficultyLabel!),
+        ],
+        if (attemptLabel != null) ...[
+          const SizedBox(height: 6),
+          _AttemptChip(label: attemptLabel!),
+        ],
+      ],
+    );
+
+    final leftMeta = leading != null
+        ? leading!
+        : (showTimer
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _timerRow(
+                    isCountdown: isCountdown,
+                    iconColor: iconColor,
+                    durationText: durationText,
+                    timeColor: timeColor,
+                  ),
+                  if (!difficultyOnRight && difficultyLabel != null) ...[
+                    const SizedBox(height: 6),
+                    _DifficultyBadge(label: difficultyLabel!),
+                  ],
+                ],
+              )
+            : const SizedBox.shrink());
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Stack(
-            alignment: Alignment.center,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (osymSordu)
-                OsymBadge(
-                  height: badgeHeight,
-                  variant: OsymBadgeVariant.premium,
+              Expanded(
+                flex: 3,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: leftMeta,
                 ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (leading != null)
-                    leading!
-                  else if (showTimer)
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _timerRow(
-                          isCountdown: isCountdown,
-                          iconColor: iconColor,
-                          durationText: durationText,
-                          timeColor: timeColor,
-                        ),
-                        if (!difficultyOnRight && difficultyLabel != null) ...[
-                          const SizedBox(height: 6),
-                          _DifficultyBadge(label: difficultyLabel!),
-                        ],
-                      ],
-                    ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (successLabel != null)
-                          Text(
-                            successLabel!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF34D399),
+              ),
+              Expanded(
+                flex: 3,
+                child: ClipRect(
+                  child: Center(
+                    child: osymSordu
+                        ? FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: OsymBadge(
+                              height: successLabel != null
+                                  ? (compact ? 36.0 : 42.0)
+                                  : badgeHeight,
+                              variant: OsymBadgeVariant.premium,
                             ),
                           )
-                        else if (questionLabel != null)
-                          Text(
-                            questionLabel!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withValues(alpha: 0.88),
-                            ),
-                          ),
-                        if (difficultyOnRight && difficultyLabel != null) ...[
-                          if (successLabel != null || questionLabel != null)
-                            const SizedBox(height: 6),
-                          _DifficultyBadge(label: difficultyLabel!),
-                        ],
-                        if (attemptLabel != null) ...[
-                          const SizedBox(height: 6),
-                          _AttemptChip(label: attemptLabel!),
-                        ],
-                      ],
-                    ),
+                        : const SizedBox.shrink(),
                   ),
-                ],
+                ),
+              ),
+              Expanded(
+                flex: 4,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: rightMeta,
+                ),
               ),
             ],
           ),

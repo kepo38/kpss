@@ -19,6 +19,7 @@ import '../widgets/app_back_button.dart';
 import '../widgets/exam_track_picker_sheet.dart';
 import '../widgets/notification_settings_section.dart';
 import '../widgets/theme_preference_picker.dart';
+import '../widgets/why_us_comparison_card.dart';
 import 'announcements_screen.dart';
 import 'premium/badges_screen.dart';
 import 'premium/premium_paywall_screen.dart';
@@ -298,13 +299,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Only when there is no back control — avoids stacking
-                      // person icon on top of AppBackButton in the leading slot.
                       if (!showBack) ...[
                         Icon(
                           Icons.person_rounded,
                           size: 22,
-                          color: AppTheme.champagneLight.withValues(alpha: 0.95),
+                          color: AppTheme.champagneLight
+                              .withValues(alpha: 0.95),
                         ),
                         const SizedBox(width: 8),
                       ],
@@ -329,32 +329,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
                 SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 4, 16, 32),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      _ProfileHero(
-                        user: user.copyWith(
-                          isAnonymous: user.isAnonymous || _auth.isAnonymous,
-                        ),
-                        displayName: displayName,
-                        email: _auth.isAnonymous ? 'Misafir oturum' : user.eposta,
-                        level: stats.seviye,
-                        xp: stats.xp,
-                        streak: stats.streak,
-                        sonrakiSeviyeXp: stats.sonrakiSeviyeXp,
-                        onEditName: _auth.busy ? null : _editName,
-                        onPremiumTap: user.isPremium
-                            ? null
-                            : () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => const PremiumPaywallScreen(),
-                                  ),
+                      // NEDEN BİZ — hero kartının üst kenarına oturan rozet.
+                      Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.topCenter,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: _ProfileHero(
+                              user: user.copyWith(
+                                isAnonymous:
+                                    user.isAnonymous || _auth.isAnonymous,
+                              ),
+                              displayName: displayName,
+                              email: _auth.isAnonymous
+                                  ? 'Misafir oturum'
+                                  : user.eposta,
+                              level: stats.seviye,
+                              xp: stats.xp,
+                              streak: stats.streak,
+                              sonrakiSeviyeXp: stats.sonrakiSeviyeXp,
+                              onEditName: _auth.busy ? null : _editName,
+                              onPremiumTap: user.isPremium
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              const PremiumPaywallScreen(),
+                                        ),
+                                      ),
+                              onBadgesTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const BadgesScreen(),
                                 ),
-                        onBadgesTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const BadgesScreen(),
+                              ),
+                            ),
                           ),
-                        ),
+                          const Positioned(
+                            top: 0,
+                            child: WhyUsButton(height: 28),
+                          ),
+                        ],
                       ),
                       if (_auth.isAnonymous) ...[
                         const SizedBox(height: 8),
@@ -401,6 +419,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _SectionTitle(context, 'Kontrol merkezi'),
                       const SizedBox(height: 8),
                       _ProfileModuleRow(
+                        neon: _gold,
+                        icon: Icons.notifications_active_outlined,
+                        title: 'Bildirim ayarları',
+                        subtitle: 'Hatırlatmalar ve çalışma uyarıları',
+                        onTap: _openNotificationSheet,
+                      ),
+                      const SizedBox(height: 10),
+                      _ProfileModuleRow(
                         neon: _cyan,
                         icon: Icons.school_outlined,
                         title: 'Hedef sınav & sayaç',
@@ -418,14 +444,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           embedded: true,
                           neon: true,
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      _ProfileModuleRow(
-                        neon: _gold,
-                        icon: Icons.notifications_active_outlined,
-                        title: 'Bildirim ayarları',
-                        subtitle: 'Hatırlatmalar ve çalışma uyarıları',
-                        onTap: _openNotificationSheet,
                       ),
                       const SizedBox(height: 10),
                       _ProfileModuleRow(

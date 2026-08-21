@@ -9,6 +9,7 @@ import '../services/ad_service.dart';
 import '../services/kpss_preference_service.dart';
 import '../services/manual_question_service.dart';
 import '../services/premium_service.dart';
+import '../services/wrong_notebook_share_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/wrong_notebook/manual_question_annotate_viewer.dart';
@@ -408,6 +409,15 @@ class _WrongNotebookManualScreenState extends State<WrongNotebookManualScreen> {
                                     item: item,
                                     onTapImage: () => _openImage(item),
                                     onRemove: () => _confirmRemove(item),
+                                    onShare: () {
+                                      unawaited(
+                                        WrongNotebookShareService.instance
+                                            .shareManualQuestion(
+                                          context,
+                                          item,
+                                        ),
+                                      );
+                                    },
                                     onStatusChanged: (status) {
                                       unawaited(
                                         ManualQuestionService.instance

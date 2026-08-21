@@ -176,8 +176,11 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (AuthService.instance.isLocalGuest) {
-        unawaited(AuthService.instance.ensureAnonymousSession());
+      final auth = AuthService.instance;
+      if (auth.hasPermanentAccount) {
+        unawaited(auth.refreshProfile());
+      } else if (auth.isLocalGuest) {
+        unawaited(auth.ensureAnonymousSession());
       }
       unawaited(ExamCatalogService.instance.refresh());
       unawaited(NotificationService.instance.ensureScheduled());

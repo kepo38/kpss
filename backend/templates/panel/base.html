@@ -58,6 +58,7 @@
 
         <div class="nav-section">
           <p class="nav-label">Kullanıcı &amp; satış</p>
+          <a class="nav-link {% if url_name == 'panel_app_stats' %}is-active{% endif %}" href="{% url 'panel_app_stats' %}">Uygulama durumu</a>
           <a class="nav-link {% if url_name == 'panel_users' or url_name == 'panel_user_grant_premium' or url_name == 'panel_user_revoke_premium' or url_name == 'panel_user_bulk_delete' or url_name == 'panel_user_purge_guests' %}is-active{% endif %}" href="{% url 'panel_users' %}">Kullanıcılar</a>
           <a class="nav-link {% if url_name == 'panel_promo_list' or url_name == 'panel_promo_new' or url_name == 'panel_promo_edit' or url_name == 'panel_promo_delete' or url_name == 'panel_promo_toggle' %}is-active{% endif %}" href="{% url 'panel_promo_list' %}">Promosyon kodları</a>
         </div>

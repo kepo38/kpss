@@ -7,6 +7,7 @@ enum AdRewardKind {
   campaign,
   solutionUnlock,
   dailyTestBonus,
+  wrongNotebookShare,
 }
 
 class AdService {
@@ -23,6 +24,8 @@ class AdService {
       AdRewardKind.solutionUnlock =>
         await ads.requestSolutionUnlock(questionId ?? ''),
       AdRewardKind.dailyTestBonus => await ads.requestDailyTestBonus(),
+      AdRewardKind.wrongNotebookShare =>
+        await ads.requestWrongNotebookShareUnlock(),
     };
     if (earned) onComplete?.call();
     return earned;

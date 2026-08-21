@@ -14,8 +14,10 @@ import '../widgets/countdown_widget.dart';
 import 'user_savings_insight_service.dart';
 import 'auth_service.dart';
 import 'content_bank_isolate.dart';
+import 'daily_quota_service.dart';
 import 'favorites_service.dart';
 import 'local_database.dart';
+import 'premium_service.dart';
 
 /// Öğrenci tarafı soru bankası, konu testleri ve istatistikler.
 /// İçerik üretimi Django web panelindedir; mobil yalnızca yayın paketini okur.
@@ -40,6 +42,8 @@ class ContentBankService extends ChangeNotifier {
   static const _kPackVersion = 'content_pack_version';
   static const _kDailyAdBonuses = 'content_daily_ad_test_bonuses';
   static const _kCatalogSubjects = 'content_catalog_subjects';
+  /// Cihaz geneli: misafir→Google / çoklu hesap ile ücretsiz hakkın çift kullanımı.
+  static const _kDeviceDailyFree = 'content_device_daily_free_consumed';
 
   /// Yerel demo seed — production/misafir yanlış defterine sızmamalı.
   static const _sampleSeedQuestionIds = {
@@ -67,6 +71,8 @@ class ContentBankService extends ChangeNotifier {
   final Set<String> _cachedWrongBodyIds = {};
   String? _activeUserScopeId;
   final Map<String, int> _dailyAdBonuses = {};
+  /// subjectId_yyyy-MM-dd → bu cihazda bugün yakılan ücretsiz hak (0/1).
+  final Map<String, int> _deviceDailyFreeConsumed = {};
   int? _packVersion;
   bool _loaded = false;
   bool _fullQuestionBankPersisted = false;
@@ -144,7 +150,7 @@ class ContentBankService extends ChangeNotifier {
 
   String _scopedKeyFor(String base, String userId) => '${base}_$userId';
 
-  /// Google / misafir oturumu değişince yanlış defteri verisini yeniden yükle.
+  /// Google / misafir oturumu değişince kullanıcıya özel ilerleme + yanlış defteri.
   Future<void> onUserSessionChanged() async {
     if (!_loaded) {
       await initialize();
@@ -162,9 +168,15 @@ class ContentBankService extends ChangeNotifier {
         toUserId: scope,
       );
     }
+    // Günlük test kotası / denemeler hesaplar arası taşınmaz (misafir→Google dahil).
     await _migrateLegacyWrongNotebookKeys(prefs);
+    await _migrateLegacyQuotaProgressKeys(prefs);
+    _loadDeviceDailyFree(prefs.getString(_kDeviceDailyFree));
     _loadUserWrongNotebookFromPrefs(prefs);
-    _notifyProgress();
+    _loadUserQuotaProgressFromPrefs(prefs);
+    await _syncDeviceFreeFromUserAttempts();
+    _pruneSampleSeedProgress();
+    _notifyProgress(urgent: true);
   }
 
   bool _shouldMigrateGuestWrongNotebook(String? fromUserId, String toUserId) {
@@ -290,6 +302,64 @@ class ContentBankService extends ChangeNotifier {
     }
   }
 
+  /// Eski cihaz geneli deneme/kota anahtarlarını yalnızca misafire taşı.
+  /// Google hesapları misafir kotasını miras almasın.
+  Future<void> _migrateLegacyQuotaProgressKeys(SharedPreferences prefs) async {
+    const bases = [_kAttempts, _kSolvedQuestions, _kDailyAdBonuses];
+    final permanent = AuthService.instance.hasPermanentAccount;
+    for (final base in bases) {
+      final legacy = prefs.getString(base);
+      if (legacy == null || legacy.isEmpty) continue;
+      final scoped = _scopedKey(base);
+      final existing = prefs.getString(scoped);
+      if (existing != null && existing.isNotEmpty) {
+        await prefs.remove(base);
+        continue;
+      }
+      if (permanent) {
+        // Misafirken kullanılan günlük hak Google / diğer Google'lara yapışmasın.
+        await prefs.remove(base);
+        continue;
+      }
+      await prefs.setString(scoped, legacy);
+      await prefs.remove(base);
+    }
+  }
+
+  void _loadUserQuotaProgressFromPrefs(SharedPreferences prefs) {
+    _attempts.clear();
+    _solvedQuestionIds.clear();
+    _dailyAdBonuses.clear();
+
+    final attemptsRaw = prefs.getString(_scopedKey(_kAttempts));
+    if (attemptsRaw != null && attemptsRaw.isNotEmpty) {
+      try {
+        final list = jsonDecode(attemptsRaw) as List<dynamic>;
+        for (final e in list) {
+          if (e is! Map) continue;
+          _attempts.add(
+            TestAttemptModel.fromJson(Map<String, dynamic>.from(e)),
+          );
+        }
+      } catch (e) {
+        debugPrint('Attempts load: $e');
+      }
+    }
+
+    final solvedRaw = prefs.getString(_scopedKey(_kSolvedQuestions));
+    if (solvedRaw != null && solvedRaw.isNotEmpty) {
+      try {
+        final list = jsonDecode(solvedRaw) as List<dynamic>;
+        _solvedQuestionIds.addAll(list.map((e) => e.toString()));
+      } catch (e) {
+        debugPrint('Solved load: $e');
+      }
+    }
+
+    _loadDailyAdBonuses(prefs.getString(_scopedKey(_kDailyAdBonuses)));
+    _activeUserScopeId = _userScopeId;
+  }
+
   void _loadUserWrongNotebookFromPrefs(SharedPreferences prefs) {
     _wrongQuestionIds.clear();
     _wrongQuestionSelections.clear();
@@ -349,11 +419,12 @@ class ContentBankService extends ChangeNotifier {
     }
 
     // Prefs string'leri main'de oku; decode+fromJson arka isolate'ta.
+    // Deneme / çözülen / günlük bonus kullanıcıya özel — burada yüklenmez.
     final raw = ContentBankRawBundle(
       configs: prefs.getString(_kConfigs),
       tests: prefs.getString(_kTests),
-      attempts: prefs.getString(_kAttempts),
-      solved: prefs.getString(_kSolvedQuestions),
+      attempts: null,
+      solved: null,
       questions: questionsRaw,
       lessons: prefs.getString(_kLessons),
       summaryCards: prefs.getString(_kSummaryCards),
@@ -367,12 +438,8 @@ class ContentBankService extends ChangeNotifier {
     _tests
       ..clear()
       ..addAll(parsed.tests);
-    _attempts
-      ..clear()
-      ..addAll(parsed.attempts);
-    _solvedQuestionIds
-      ..clear()
-      ..addAll(parsed.solvedIds);
+    _attempts.clear();
+    _solvedQuestionIds.clear();
     _questions
       ..clear()
       ..addAll(parsed.questions);
@@ -382,9 +449,6 @@ class ContentBankService extends ChangeNotifier {
     _summaryCards
       ..clear()
       ..addAll(parsed.summaryCards);
-
-    _loadDailyAdBonuses(prefs.getString(_kDailyAdBonuses));
-
     if (_questions.isEmpty && kDebugMode) {
       _seedSampleQuestions();
       _fullQuestionBankPersisted = false;
@@ -401,7 +465,6 @@ class ContentBankService extends ChangeNotifier {
     }
 
     // Eski demo seed kalıntılarını yanlış/çözülen listelerinden temizle.
-    final prunedSeed = _pruneSampleSeedProgress();
     if (!kDebugMode) {
       _tests.removeWhere(
         (t) => t.id == _sampleSeedTestId || t.id.startsWith('test_seed_'),
@@ -410,7 +473,12 @@ class ContentBankService extends ChangeNotifier {
     }
 
     await _migrateLegacyWrongNotebookKeys(prefs);
+    await _migrateLegacyQuotaProgressKeys(prefs);
+    _loadDeviceDailyFree(prefs.getString(_kDeviceDailyFree));
     _loadUserWrongNotebookFromPrefs(prefs);
+    _loadUserQuotaProgressFromPrefs(prefs);
+    unawaited(_syncDeviceFreeFromUserAttempts());
+    final prunedSeed = _pruneSampleSeedProgress();
     final restoredBodies = _cachedWrongBodyIds.isNotEmpty;
 
     KpssCurriculum.loadCatalogFromJsonString(
@@ -721,6 +789,23 @@ class ContentBankService extends ChangeNotifier {
       futures.add(_persistStatLockedWrongQuestions());
     }
     await Future.wait(futures);
+    if (countsTowardDailyHomework(attempt) &&
+        !PremiumService.instance.isPremium) {
+      final subjectId = _subjectIdForAttempt(attempt);
+      if (subjectId != null) {
+        // Cihaz yanığı yalnız misafir: Google A→B geçişini kilitlemez.
+        // Misafir→Google çift hakkını keser.
+        if (!AuthService.instance.hasPermanentAccount) {
+          await _markDeviceDailyFreeConsumed(subjectId);
+        } else {
+          unawaited(
+            DailyQuotaService.instance.consume(subjectId).then((_) {
+              _notifyProgress();
+            }),
+          );
+        }
+      }
+    }
     _notifyProgress();
     unawaited(UserSavingsInsightService.instance.handleTestCompleted());
   }
@@ -746,6 +831,7 @@ class ContentBankService extends ChangeNotifier {
     final now = DateTime.now();
     return _attempts.where((a) {
       if (!countsTowardDailyHomework(a)) return false;
+      if (a.kpssType != type) return false;
       final inSubject = topicIds.contains(a.topicId);
       final mapSpecial = subjectId == 'cografya' &&
           a.testId.startsWith('special_map_cografya');
@@ -753,6 +839,124 @@ class ContentBankService extends ChangeNotifier {
       final d = a.completedAt.toLocal();
       return d.year == now.year && d.month == now.month && d.day == now.day;
     }).length;
+  }
+
+  /// Kota: kullanıcı denemeleri + (misafir cihaz yanığı) + Google hesap yanığı.
+  /// Google hesapları birbirinin cihaz kotasını paylaşmaz.
+  int dailyQuotaCompletedTestsForSubject(KpssType type, String subjectId) {
+    final google = AuthService.instance.hasPermanentAccount;
+    return effectiveCompletedForQuota(
+      userCompleted: dailyCompletedTestsForSubject(type, subjectId),
+      // Misafir yakması Google'ı da keser; Google A yakması Google B'yi kesmez.
+      deviceFreeConsumed: deviceDailyFreeConsumedToday(subjectId),
+      accountFreeConsumed:
+          google ? DailyQuotaService.instance.freeUsedToday(subjectId) : 0,
+    );
+  }
+
+  /// Bu cihazda bugün bu ders için ücretsiz hak kullanıldı mı (0/1).
+  int deviceDailyFreeConsumedToday(String subjectId) {
+    return _deviceDailyFreeConsumed[_deviceDailyFreeKey(subjectId)] ?? 0;
+  }
+
+  @visibleForTesting
+  static int effectiveCompletedForQuota({
+    required int userCompleted,
+    required int deviceFreeConsumed,
+    int accountFreeConsumed = 0,
+  }) {
+    var effective = userCompleted;
+    if (deviceFreeConsumed > 0 || accountFreeConsumed > 0) {
+      if (effective < dailyFreeTestsPerSubject) {
+        effective = dailyFreeTestsPerSubject;
+      }
+    }
+    return effective;
+  }
+
+  String? _subjectIdForAttempt(TestAttemptModel attempt) {
+    if (attempt.testId.startsWith('special_map_cografya')) {
+      return 'cografya';
+    }
+    final direct = KpssCurriculum.subjectIdForTopic(
+      attempt.kpssType,
+      attempt.topicId,
+    );
+    if (direct != null) return direct;
+    for (final t in KpssType.values) {
+      final id = KpssCurriculum.subjectIdForTopic(t, attempt.topicId);
+      if (id != null) return id;
+    }
+    return null;
+  }
+
+  static String deviceDailyFreeKeyFor(String subjectId, DateTime day) {
+    final local = day.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final dayPart = local.day.toString().padLeft(2, '0');
+    return '${subjectId}_${local.year}-$month-$dayPart';
+  }
+
+  String _deviceDailyFreeKey(String subjectId) {
+    return deviceDailyFreeKeyFor(subjectId, DateTime.now());
+  }
+
+  Future<void> _markDeviceDailyFreeConsumed(String subjectId) async {
+    final key = _deviceDailyFreeKey(subjectId);
+    final current = _deviceDailyFreeConsumed[key] ?? 0;
+    if (current >= dailyFreeTestsPerSubject) return;
+    _deviceDailyFreeConsumed[key] = dailyFreeTestsPerSubject;
+    await _persistDeviceDailyFree();
+  }
+
+  /// Oturumdaki bugünkü denemeleri cihaz ücretsiz hakkına yansıt.
+  /// Yalnız misafir — Google denemeleri cihazı yakmaz (hesaplar arası geçiş serbest).
+  Future<void> _syncDeviceFreeFromUserAttempts() async {
+    if (PremiumService.instance.isPremium) return;
+    if (AuthService.instance.hasPermanentAccount) return;
+    final now = DateTime.now();
+    final touched = <String>{};
+    for (final a in _attempts) {
+      if (!countsTowardDailyHomework(a)) continue;
+      final d = a.completedAt.toLocal();
+      if (d.year != now.year || d.month != now.month || d.day != now.day) {
+        continue;
+      }
+      final subjectId = _subjectIdForAttempt(a);
+      if (subjectId == null) continue;
+      final key = _deviceDailyFreeKey(subjectId);
+      if ((_deviceDailyFreeConsumed[key] ?? 0) >= dailyFreeTestsPerSubject) {
+        continue;
+      }
+      _deviceDailyFreeConsumed[key] = dailyFreeTestsPerSubject;
+      touched.add(subjectId);
+    }
+    if (touched.isNotEmpty) {
+      await _persistDeviceDailyFree();
+    }
+  }
+
+  void _loadDeviceDailyFree(String? raw) {
+    _deviceDailyFreeConsumed.clear();
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final todaySuffix = _todayKeySuffix();
+      for (final entry in map.entries) {
+        if (!entry.key.endsWith(todaySuffix)) continue;
+        _deviceDailyFreeConsumed[entry.key] = (entry.value as num).toInt();
+      }
+    } catch (e) {
+      debugPrint('Device daily free load: $e');
+    }
+  }
+
+  Future<void> _persistDeviceDailyFree() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kDeviceDailyFree,
+      jsonEncode(_deviceDailyFreeConsumed),
+    );
   }
 
   /// Bugünkü 5 görev barı: kaç ders yeşil, hangileri kaldı.
@@ -796,9 +1000,10 @@ class ContentBankService extends ChangeNotifier {
   }
 
   /// Premium olmayan: ders başına günde 1 test (+ reklam bonusu).
+  /// Cihaz geneli ücretsiz hak yanığı misafir→Google çift kullanımı engeller.
   bool canStartDailySubjectTest(KpssType type, String subjectId) {
     return hasDailyTestQuota(
-      completedTests: dailyCompletedTestsForSubject(type, subjectId),
+      completedTests: dailyQuotaCompletedTestsForSubject(type, subjectId),
       adBonusTests: dailyAdBonusTestsForSubject(type, subjectId),
     );
   }
@@ -806,7 +1011,7 @@ class ContentBankService extends ChangeNotifier {
   /// Günlük ücretsiz hak bittiyse reklam izleyerek +1 test kazanılabilir mi?
   bool canWatchAdForDailyTestBonus(KpssType type, String subjectId) {
     return canEarnDailyAdBonus(
-      completedTests: dailyCompletedTestsForSubject(type, subjectId),
+      completedTests: dailyQuotaCompletedTestsForSubject(type, subjectId),
       adBonusTests: dailyAdBonusTestsForSubject(type, subjectId),
     );
   }
@@ -875,7 +1080,7 @@ class ContentBankService extends ChangeNotifier {
   Future<void> _persistDailyAdBonuses() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _kDailyAdBonuses,
+      _scopedKey(_kDailyAdBonuses),
       jsonEncode(_dailyAdBonuses),
     );
   }
@@ -1187,13 +1392,13 @@ class ContentBankService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final maps = _attempts.map((e) => e.toJson()).toList();
     final encoded = await compute(encodeJsonMaps, maps);
-    await prefs.setString(_kAttempts, encoded);
+    await prefs.setString(_scopedKey(_kAttempts), encoded);
   }
 
   Future<void> _persistSolvedQuestions() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _kSolvedQuestions,
+      _scopedKey(_kSolvedQuestions),
       jsonEncode(_solvedQuestionIds.toList()),
     );
   }

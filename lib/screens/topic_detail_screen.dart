@@ -10,6 +10,7 @@ import '../services/ad_manager.dart';
 import '../services/ad_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
+import '../services/daily_quota_service.dart';
 import '../services/question_fetch_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/last_study_session_service.dart';
@@ -53,6 +54,14 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     _bank.addListener(_onBankChanged);
     unawaited(SummaryCardProgressService.instance.initialize());
     unawaited(_refreshContent(showSuccess: false));
+    unawaited(_refreshAccountQuota());
+  }
+
+  Future<void> _refreshAccountQuota() async {
+    await DailyQuotaService.instance.refreshFromServer(
+      subject: widget.subjectId,
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _refreshContent({bool showSuccess = true}) async {
@@ -284,7 +293,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     await _bank.grantAdBonusDailyTest(kpssType, subjectId);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('+1 test hakkı kazandınız!')),
+        const SnackBar(content: Text('Bu derste +1 test hakkı kazandınız!')),
       );
     }
     return _bank.canStartDailySubjectTest(kpssType, subjectId);

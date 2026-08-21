@@ -115,7 +115,8 @@ class QuestionModel {
       difficulty: json['difficulty'] as String? ?? 'medium',
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
-      correctRate: (json['correctRate'] as num?)?.toDouble(),
+      correctRate: (json['correctRate'] as num?)?.toDouble() ??
+          (json['correct_rate'] as num?)?.toDouble(),
       difficultyVisible: json['difficultyVisible'] as bool? ?? false,
       scenarioId: json['scenarioId'] as String?,
       scenarioTitle: json['scenarioTitle'] as String?,
