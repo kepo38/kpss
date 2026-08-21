@@ -1901,96 +1901,94 @@ class _QuizScreenState extends State<QuizScreen>
                 ],
                 const SizedBox(height: 8),
                 Expanded(
-                  child: _drawingEnabled && !_isFinishing
-                      ? Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            SingleChildScrollView(
-                              controller: _scrollController,
-                              child: _buildQuestionBody(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  8,
-                                  20,
-                                  72,
-                                ),
-                              ),
-                            ),
-                            ListenableBuilder(
-                              listenable: _scrollController,
-                              builder: (context, _) {
-                                final scrollOffset =
-                                    _scrollController.hasClients
-                                        ? _scrollController.offset
-                                        : 0.0;
-                                final strokes =
-                                    _drawings[_currentQuestion.id] ??
-                                        const [];
-                                return QuizDrawingOverlay(
-                                  scrollOffset: scrollOffset,
-                                  strokes: strokes,
-                                  onStrokeComplete: (stroke) {
-                                    if (_isFinishing) return;
-                                    setState(() {
-                                      final list = _drawings.putIfAbsent(
-                                        _currentQuestion.id,
-                                        () => [],
-                                      );
-                                      if (list.length >=
-                                          _maxStrokesPerQuestion) {
-                                        return;
-                                      }
-                                      list.add(stroke);
-                                    });
-                                  },
-                                  onUndo: () {
-                                    if (_isFinishing) return;
-                                    final list =
-                                        _drawings[_currentQuestion.id];
-                                    if (list == null || list.isEmpty) {
-                                      return;
-                                    }
-                                    setState(() {
-                                      list.removeLast();
-                                      if (list.isEmpty) {
-                                        _drawings
-                                            .remove(_currentQuestion.id);
-                                      }
-                                    });
-                                  },
-                                  onClear: () => setState(
-                                    () => _drawings
-                                        .remove(_currentQuestion.id),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        )
-                      : QuizZoomViewport(
-                          controller: _contentZoom,
-                          scrollController: _scrollController,
-                          zoomEnabled: !_isFinishing,
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              _buildQuestionBody(
-                                padding: EdgeInsets.zero,
-                              ),
-                              if ((_drawings[_currentQuestion.id] ??
-                                      const [])
-                                  .isNotEmpty)
-                                Positioned.fill(
-                                  child: QuizStrokeLayer(
-                                    scrollOffset: 0,
-                                    strokes:
-                                        _drawings[_currentQuestion.id]!,
-                                  ),
-                                ),
-                            ],
-                          ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Zoom ağacını çizim aç/kapa ile sökme — Impeller'da
+                      // beyaz örtü / kayıp toolbar yaratıyordu.
+                      QuizZoomViewport(
+                        controller: _contentZoom,
+                        scrollController: _scrollController,
+                        zoomEnabled:
+                            !_drawingEnabled && !_isFinishing,
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          8,
+                          20,
+                          _drawingEnabled ? 72 : 16,
                         ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            _buildQuestionBody(
+                              padding: EdgeInsets.zero,
+                            ),
+                            if (!_drawingEnabled &&
+                                (_drawings[_currentQuestion.id] ??
+                                        const [])
+                                    .isNotEmpty)
+                              Positioned.fill(
+                                child: QuizStrokeLayer(
+                                  scrollOffset: 0,
+                                  strokes:
+                                      _drawings[_currentQuestion.id]!,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (_drawingEnabled && !_isFinishing)
+                        ListenableBuilder(
+                          listenable: _scrollController,
+                          builder: (context, _) {
+                            final scrollOffset =
+                                _scrollController.hasClients
+                                    ? _scrollController.offset
+                                    : 0.0;
+                            final strokes =
+                                _drawings[_currentQuestion.id] ??
+                                    const [];
+                            return QuizDrawingOverlay(
+                              scrollOffset: scrollOffset,
+                              strokes: strokes,
+                              onStrokeComplete: (stroke) {
+                                if (_isFinishing) return;
+                                setState(() {
+                                  final list = _drawings.putIfAbsent(
+                                    _currentQuestion.id,
+                                    () => [],
+                                  );
+                                  if (list.length >=
+                                      _maxStrokesPerQuestion) {
+                                    return;
+                                  }
+                                  list.add(stroke);
+                                });
+                              },
+                              onUndo: () {
+                                if (_isFinishing) return;
+                                final list =
+                                    _drawings[_currentQuestion.id];
+                                if (list == null || list.isEmpty) {
+                                  return;
+                                }
+                                setState(() {
+                                  list.removeLast();
+                                  if (list.isEmpty) {
+                                    _drawings
+                                        .remove(_currentQuestion.id);
+                                  }
+                                });
+                              },
+                              onClear: () => setState(
+                                () => _drawings
+                                    .remove(_currentQuestion.id),
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),

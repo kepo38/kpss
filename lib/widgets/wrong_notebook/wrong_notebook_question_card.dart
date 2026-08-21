@@ -148,7 +148,8 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                         ),
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 16, 16, 12),
+                            // Üst boşluk: ortadaki BENZER rozeti ile ikonlar çakışmasın.
+                            padding: const EdgeInsets.fromLTRB(14, 28, 10, 12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -156,16 +157,22 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                                   children: [
                                     _TopicChip(label: question.konuAdi),
                                     const Spacer(),
-                                    if (onShare != null) ...[
-                                      _ShareButton(onTap: onShare!),
-                                      const SizedBox(width: 2),
-                                    ],
-                                    _FavoriteButton(
-                                      isFavorite: isFavorite,
-                                      onTap: onToggleFavorite,
+                                    // Paylaş / favori / sil — sağa yaslı küme.
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (onShare != null) ...[
+                                          _ShareButton(onTap: onShare!),
+                                          const SizedBox(width: 4),
+                                        ],
+                                        _FavoriteButton(
+                                          isFavorite: isFavorite,
+                                          onTap: onToggleFavorite,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        _RemoveButton(onTap: onRemove),
+                                      ],
                                     ),
-                                    const SizedBox(width: 6),
-                                    _RemoveButton(onTap: onRemove),
                                   ],
                                 ),
                                 const SizedBox(height: 8),

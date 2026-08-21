@@ -140,22 +140,29 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                   if (_points.length != before) setState(() {});
                 },
                 onPanEnd: (_) => setState(_finishStroke),
-                child: CustomPaint(
-                  painter: QuizStrokePainter(
-                    [
-                      ...widget.strokes,
-                      if (_points.isNotEmpty)
-                        QuizStroke(
-                          points: _points,
-                          color: _highlighter ? _highlighterColor : _color,
-                          width: _highlighter ? _highlighterWidth : _width,
-                          eraser: false,
-                          highlighter: _highlighter,
-                        ),
-                    ],
-                    scrollOffset: widget.scrollOffset,
+                // child yok: CustomPaint Positioned.fill boyutunu alır.
+                // SizedBox.expand + boş saveLayer Impeller'da beyaz örtü yapıyordu.
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: QuizStrokePainter(
+                      [
+                        ...widget.strokes,
+                        if (_points.isNotEmpty)
+                          QuizStroke(
+                            points: _points,
+                            color: _highlighter
+                                ? _highlighterColor
+                                : _color,
+                            width: _highlighter
+                                ? _highlighterWidth
+                                : _width,
+                            eraser: false,
+                            highlighter: _highlighter,
+                          ),
+                      ],
+                      scrollOffset: widget.scrollOffset,
+                    ),
                   ),
-                  child: const SizedBox.expand(),
                 ),
               ),
             ),
@@ -165,7 +172,7 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
               bottom: bottom,
               child: Material(
                 color: Colors.transparent,
-                elevation: 10,
+                elevation: 0,
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -458,15 +465,10 @@ class QuizStrokePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) return;
+    if (size.isEmpty || strokes.isEmpty) return;
 
-    // BlendMode.clear yalnızca saveLayer içinde çalışır. Boş/gereksiz
-    // saveLayer bazı cihazlarda (Impeller) soru metnini beyaz kaplıyor.
-    final needsClearLayer = strokes.any((s) => s.eraser);
-    if (needsClearLayer) {
-      canvas.saveLayer(Offset.zero & size, Paint());
-    }
-
+    // BlendMode.clear + saveLayer Impeller'da tüm viewport'u beyaz
+    // kaplayabiliyor. Silgi yerine quiz zemin rengiyle üzerini boya.
     for (final stroke in strokes) {
       if (stroke.points.length < 2) continue;
       final paint = Paint()
@@ -474,20 +476,15 @@ class QuizStrokePainter extends CustomPainter {
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..style = PaintingStyle.stroke
-        ..isAntiAlias = true;
+        ..isAntiAlias = true
+        ..blendMode = BlendMode.srcOver;
 
       if (stroke.eraser) {
-        paint
-          ..color = const Color(0xFFFFFFFF)
-          ..blendMode = BlendMode.clear;
+        paint.color = AppTheme.ink;
       } else if (stroke.highlighter) {
-        paint
-          ..color = stroke.color.withValues(alpha: 0.44)
-          ..blendMode = BlendMode.srcOver;
+        paint.color = stroke.color.withValues(alpha: 0.44);
       } else {
-        paint
-          ..color = stroke.color
-          ..blendMode = BlendMode.srcOver;
+        paint.color = stroke.color;
       }
 
       final path = Path()
@@ -499,10 +496,6 @@ class QuizStrokePainter extends CustomPainter {
         path.lineTo(point.dx, point.dy - scrollOffset);
       }
       canvas.drawPath(path, paint);
-    }
-
-    if (needsClearLayer) {
-      canvas.restore();
     }
   }
 

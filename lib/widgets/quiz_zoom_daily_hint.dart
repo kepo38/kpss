@@ -81,7 +81,7 @@ class _QuizZoomDailyHintState extends State<QuizZoomDailyHint> {
       if (!mounted) return;
       setState(() => _visible = true);
       _hideTimer?.cancel();
-      _hideTimer = Timer(const Duration(milliseconds: 4200), () {
+      _hideTimer = Timer(const Duration(seconds: 4), () {
         if (mounted) setState(() => _visible = false);
       });
     });
