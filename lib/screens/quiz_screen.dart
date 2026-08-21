@@ -425,9 +425,19 @@ class _QuizScreenState extends State<QuizScreen>
     return 'Asla pes etme. Yanlışlar en büyük öğretmendir.';
   }
 
-  int get _visibleAttemptCount =>
-      _attemptSummaries[_currentQuestion.id]?.attemptCount ??
-      _currentQuestion.attemptCount;
+  /// Doğru cevaplayan oranı — `Başarı: %49`.
+  String? _successRateLabel() {
+    final live = _optionPercentages;
+    final correctKey = _currentQuestion.dogruCevap;
+    final livePct = live?[correctKey];
+    if (livePct != null) {
+      return 'Başarı: %${livePct.round()}';
+    }
+    final rate = _currentQuestion.correctRate;
+    if (rate == null) return null;
+    final pct = rate <= 1.0 ? (rate * 100) : rate;
+    return 'Başarı: %${pct.round()}';
+  }
 
   Map<String, double>? get _optionPercentages =>
       _attemptSummaries[_currentQuestion.id]?.optionPercentages;
@@ -1487,7 +1497,7 @@ class _QuizScreenState extends State<QuizScreen>
         appBar: AppBar(
           backgroundColor: AppTheme.inkSoft,
           foregroundColor: Colors.white,
-          centerTitle: true,
+          centerTitle: widget.dailyMiniRankingMode,
           titleSpacing: 8,
           leading: AppBackButton(onPressed: () async {
             if (widget.fromWrongNotebook) {
@@ -1513,19 +1523,50 @@ class _QuizScreenState extends State<QuizScreen>
                     height: 1.05,
                   ),
                 )
-              : Text(
-                  widget.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.champagne,
-                    height: 1.15,
-                  ),
-                ),
+              : widget.fromWrongNotebook
+                  ? Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.start,
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.champagne,
+                        height: 1.15,
+                      ),
+                    )
+                  : Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.start,
+                            style: const TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.champagne,
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Soru ${_currentIndex + 1}/${widget.questions.length}',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withValues(alpha: 0.92),
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
+                    ),
           actionsPadding: const EdgeInsets.only(right: 2),
           actions: [
             SizedBox(
@@ -1575,18 +1616,20 @@ class _QuizScreenState extends State<QuizScreen>
                     final urgent =
                         _isCountdown && duration.inSeconds <= 60;
                     return QuizHeaderStrip(
-                      // ÖSYM rozeti üst şeritte, ekran ortasında (Test adı ile aynı dikey eksen).
+                      // ÖSYM rozeti üst şeritte, ekran ortasında — yerini değiştirme.
                       osymSordu: _currentQuestion.osymSordu,
                       durationText: _formatDuration(duration),
                       isCountdown: _isCountdown,
                       urgent: urgent,
                       showTimer: !widget.fromWrongNotebook,
-                      questionLabel: widget.fromWrongNotebook
+                      questionLabel: null,
+                      successLabel: widget.fromWrongNotebook
                           ? null
-                          : 'Soru ${_currentIndex + 1} / ${widget.questions.length}',
+                          : _successRateLabel(),
                       difficultyLabel: _difficultyLabel(),
                       difficultyOnRight: widget.fromWrongNotebook,
-                      attemptLabel: '$_visibleAttemptCount kişi cevapladı',
+                      // TODO: temporary preview – wire real view analytics before shipping
+                      attemptLabel: '7560 kişi gördü',
                       leading: widget.fromWrongNotebook
                           ? QuizTakeNoteButton(
                               hasNote: QuestionNoteService.instance
@@ -1720,6 +1763,9 @@ class _QuizScreenState extends State<QuizScreen>
                                   return _OptionTile(
                                     label: entry.key,
                                     text: entry.value,
+                                    forceColumns: OptionColumnLayout.forcedColumns(
+                                      _currentQuestion.optionTable,
+                                    ),
                                     isSelected: selected,
                                     tone: tone,
                                     percentage: revealed
@@ -1771,6 +1817,17 @@ class _QuizScreenState extends State<QuizScreen>
                                     return;
                                   }
                                   list.add(stroke);
+                                });
+                              },
+                              onUndo: () {
+                                if (_isFinishing) return;
+                                final list = _drawings[_currentQuestion.id];
+                                if (list == null || list.isEmpty) return;
+                                setState(() {
+                                  list.removeLast();
+                                  if (list.isEmpty) {
+                                    _drawings.remove(_currentQuestion.id);
+                                  }
                                 });
                               },
                               onClear: () => setState(
@@ -1831,12 +1888,12 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   List<Widget> _matchingOptionHeaders(QuestionModel question) {
-    final n = OptionColumnLayout.alignedCount(question.siklar.values);
-    if (n == null) return const [];
+    final forced = OptionColumnLayout.forcedColumns(question.optionTable);
+    if (forced == null) return const [];
     final labels = OptionColumnLayout.headersFor(
       question.soruMetni,
       question.siklar.values,
-      n,
+      forced,
     );
     if (labels == null || labels.isEmpty) return const [];
     return [OptionColumnHeader(labels: labels)];
@@ -2037,30 +2094,9 @@ class _SolutionPanel extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          FilledButton.icon(
+                          _FrostUnlockButton(
+                            unlocking: unlocking,
                             onPressed: unlocking ? null : onUnlockFull,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.champagne,
-                              foregroundColor: AppTheme.ink,
-                            ),
-                            icon: unlocking
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppTheme.ink,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.play_circle_outline,
-                                    size: 20,
-                                  ),
-                            label: Text(
-                              unlocking
-                                  ? 'Reklam yükleniyor…'
-                                  : 'Reklam izle — tam çözümü aç',
-                            ),
                           ),
                         ],
                       ),
@@ -2071,6 +2107,134 @@ class _SolutionPanel extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Frost overlay CTA — ink/champagne premium pill (watch ad → full solution).
+class _FrostUnlockButton extends StatelessWidget {
+  final bool unlocking;
+  final VoidCallback? onPressed;
+
+  const _FrostUnlockButton({
+    required this.unlocking,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null && !unlocking;
+    return Opacity(
+      opacity: unlocking ? 0.78 : 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: unlocking
+                ? const [
+                    Color(0xFFF0E4C8),
+                    Color(0xFFDCC9A0),
+                  ]
+                : const [
+                    Color(0xFFFFF8EE),
+                    Color(0xFFF5E6C8),
+                    Color(0xFFE2C998),
+                    Color(0xFFC9A86C),
+                  ],
+            stops: unlocking ? null : const [0.0, 0.35, 0.7, 1.0],
+          ),
+          border: Border.all(
+            color: const Color(0xFFD4AF6A),
+            width: 1.15,
+          ),
+          boxShadow: unlocking
+              ? null
+              : [
+                  BoxShadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.42),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            borderRadius: BorderRadius.circular(14),
+            splashColor: AppTheme.ink.withValues(alpha: 0.08),
+            highlightColor: AppTheme.ink.withValues(alpha: 0.04),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (unlocking)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.ink,
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 22,
+                      height: 22,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF2A3548),
+                            AppTheme.ink,
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.ink.withValues(alpha: 0.25),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        size: 14,
+                        color: AppTheme.champagneLight,
+                      ),
+                    ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      unlocking
+                          ? 'Reklam yükleniyor…'
+                          : 'Reklam izle — tam çözümü aç',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.15,
+                        height: 1.15,
+                        color: AppTheme.ink.withValues(
+                          alpha: unlocking ? 0.7 : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2119,6 +2283,7 @@ class _AnswerChip extends StatelessWidget {
 class _OptionTile extends StatelessWidget {
   final String label;
   final String text;
+  final int? forceColumns;
   final bool isSelected;
   final _OptionTone? tone;
   final double? percentage;
@@ -2129,6 +2294,7 @@ class _OptionTile extends StatelessWidget {
     required this.text,
     required this.isSelected,
     required this.onTap,
+    this.forceColumns,
     this.tone,
     this.percentage,
   });
@@ -2222,7 +2388,10 @@ class _OptionTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ExamOptionView(text: text),
+                  child: ExamOptionView(
+                    text: text,
+                    forceColumns: forceColumns,
+                  ),
                 ),
                 if (tone == _OptionTone.correct)
                   const Icon(Icons.check_rounded, color: _correct, size: 20)

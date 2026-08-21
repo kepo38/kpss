@@ -180,6 +180,21 @@ class Question(models.Model):
     option_c = models.CharField(max_length=500)
     option_d = models.CharField(max_length=500)
     option_e = models.CharField(max_length=500)
+    OPTION_TABLE_NONE = "none"
+    OPTION_TABLE_DUAL = "dual"
+    OPTION_TABLE_TRIPLE = "triple"
+    OPTION_TABLE_CHOICES = [
+        (OPTION_TABLE_NONE, "Yok"),
+        (OPTION_TABLE_DUAL, "İkili"),
+        (OPTION_TABLE_TRIPLE, "Üçlü"),
+    ]
+    option_table = models.CharField(
+        max_length=8,
+        choices=OPTION_TABLE_CHOICES,
+        default=OPTION_TABLE_NONE,
+        verbose_name="Tablo sorusu",
+        help_text="Seçenekleri sütunlu göster (ikili/üçlü).",
+    )
     correct_option = models.CharField(
         max_length=1,
         choices=[(c, c) for c in "ABCDE"],
@@ -683,6 +698,13 @@ class AppUser(models.Model):
         verbose_name="Premium notu",
         help_text="Örn. hediye, kampanya, destek.",
     )
+    premium_product_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Premium ürün kimliği",
+        help_text="Örn. kpss_premium_yearly / kpss_premium_monthly",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Aktif",
@@ -724,6 +746,20 @@ class AppUser(models.Model):
 
         return self.premium_expires_at > timezone.now()
 
+    @property
+    def is_yearly_premium(self) -> bool:
+        if not self.premium_active:
+            return False
+        pid = (self.premium_product_id or "").strip().lower()
+        if "yearly" in pid or pid.endswith("_yillik") or "yillik" in pid:
+            return True
+        # Admin/promo lifetime-style: empty product + premium is NOT yearly
+        # unless grant note explicitly mentions yearly / yıllık.
+        note = (self.premium_grant_note or "").lower()
+        if "yearly" in note or "yıllık" in note or "yillik" in note:
+            return True
+        return False
+
     def block(self, reason: str = "") -> None:
         from .auth import new_api_token
 
@@ -750,20 +786,39 @@ class AppUser(models.Model):
         *,
         expires_at=None,
         note: str = "",
+        product_id: str | None = None,
     ) -> None:
         """Admin / panel üzerinden ücretsiz premium."""
         from django.utils import timezone
 
+        now = timezone.now()
+        note_s = (note or "").strip()[:255]
+        pid = (product_id or "").strip()
+        if not pid:
+            note_l = note_s.lower()
+            yearly_note = (
+                "yearly" in note_l
+                or "yıllık" in note_l
+                or "yillik" in note_l
+            )
+            days_ok = False
+            if expires_at is not None:
+                days_ok = (expires_at - now).days >= 365
+            if yearly_note or days_ok:
+                pid = "kpss_premium_yearly"
+
         self.is_premium = True
-        self.premium_granted_at = timezone.now()
+        self.premium_granted_at = now
         self.premium_expires_at = expires_at
-        self.premium_grant_note = (note or "").strip()[:255]
+        self.premium_grant_note = note_s
+        self.premium_product_id = pid
         self.save(
             update_fields=[
                 "is_premium",
                 "premium_granted_at",
                 "premium_expires_at",
                 "premium_grant_note",
+                "premium_product_id",
                 "updated_at",
             ]
         )
@@ -772,10 +827,12 @@ class AppUser(models.Model):
         """Ücretsiz premium kaldır (Play satın alması backend'de tutulmaz)."""
         self.is_premium = False
         self.premium_expires_at = None
+        self.premium_product_id = ""
         self.save(
             update_fields=[
                 "is_premium",
                 "premium_expires_at",
+                "premium_product_id",
                 "updated_at",
             ]
         )

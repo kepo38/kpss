@@ -60,6 +60,7 @@ class PeriodRankingSnapshot {
   final int myTotalCorrect;
   final int myTotalDurationSeconds;
   final List<PeriodLeaderRow> leaderboard;
+  final bool rewardsVisible;
   final bool rewardsEnabled;
   final Map<int, int> rewardDays;
 
@@ -72,6 +73,7 @@ class PeriodRankingSnapshot {
     required this.myTotalCorrect,
     required this.myTotalDurationSeconds,
     required this.leaderboard,
+    required this.rewardsVisible,
     required this.rewardsEnabled,
     required this.rewardDays,
   });
@@ -86,6 +88,9 @@ class PeriodRankingSnapshot {
       });
     }
     final periodStr = '${json['period'] ?? 'weekly'}';
+    final rewardsVisible = json.containsKey('rewardsVisible')
+        ? json['rewardsVisible'] == true
+        : json['rewardsEnabled'] == true;
     return PeriodRankingSnapshot(
       period: periodStr == 'monthly'
           ? RankingPeriodKind.monthly
@@ -105,6 +110,7 @@ class PeriodRankingSnapshot {
               )
               .toList() ??
           const [],
+      rewardsVisible: rewardsVisible,
       rewardsEnabled: json['rewardsEnabled'] == true,
       rewardDays: days.isNotEmpty ? days : const {1: 3, 2: 2, 3: 1},
     );
@@ -201,9 +207,10 @@ class RewardHistorySnapshot {
       });
     }
     return RewardHistorySnapshot(
-      rewardsVisible: json['rewardsVisible'] != false,
-      weeklyEnabled: json['weeklyEnabled'] != false,
-      monthlyEnabled: json['monthlyEnabled'] != false,
+      // Strict: missing/unknown must not default to showing ÖDÜL.
+      rewardsVisible: json['rewardsVisible'] == true,
+      weeklyEnabled: json['weeklyEnabled'] == true,
+      monthlyEnabled: json['monthlyEnabled'] == true,
       rewardDays: days.isNotEmpty ? days : const {1: 3, 2: 2, 3: 1},
       periods: (json['periods'] as List<dynamic>?)
               ?.map(

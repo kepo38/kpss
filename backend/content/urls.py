@@ -12,6 +12,7 @@ from .views import (
     MobileUiConfigView,
     MeMessagesView,
     MeView,
+    PremiumSyncView,
     PublishedQuestionsView,
     PublishedTestsView,
     QuestionRatingView,
@@ -75,6 +76,7 @@ urlpatterns = [
     path("auth/google/", GoogleAuthView.as_view(), name="auth-google"),
     path("me/", MeView.as_view(), name="me"),
     path("me/messages/", MeMessagesView.as_view(), name="me-messages"),
+    path("premium/sync/", PremiumSyncView.as_view(), name="premium-sync"),
     path("daily-mini-exam/", DailyMiniExamView.as_view(), name="daily-mini-exam"),
     path(
         "daily-mini-exam/period-ranking/",

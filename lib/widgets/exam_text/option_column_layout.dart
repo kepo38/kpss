@@ -80,6 +80,18 @@ class OptionColumnLayout {
     return bestN;
   }
 
+  /// Explicit panel flag: dual → 2, triple → 3; otherwise null (no columns).
+  static int? forcedColumns(String? optionTable) {
+    switch (optionTable) {
+      case 'dual':
+        return 2;
+      case 'triple':
+        return 3;
+      default:
+        return null;
+    }
+  }
+
   static final _optColsMark = RegExp(r'<!--optcols:([^>]*)-->');
 
   static String visibleStem(String stem) {

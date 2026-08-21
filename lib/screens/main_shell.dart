@@ -17,6 +17,7 @@ import '../widgets/countdown_widget.dart';
 import '../widgets/wrong_notebook_promo_bubble.dart';
 import 'analytics_hub_screen.dart';
 import 'home_screen.dart';
+import 'premium/focus_mode_screen.dart';
 import 'premium/premium_paywall_screen.dart';
 import 'premium/statistics_screen.dart';
 import 'profile_screen.dart';
@@ -116,6 +117,17 @@ class _MainShellState extends State<MainShell> {
     _onPremiumChanged();
   }
 
+  /// Stüdyo «Odak · Pomodoro» ile aynı hedef — herkese açık.
+  Future<void> _openPomodoro() async {
+    if (!mounted) return;
+    AdManager.instance.skipNextPageTransition();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const FocusModeScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
@@ -131,6 +143,8 @@ class _MainShellState extends State<MainShell> {
                 isPremium: _isPremium,
                 onPremiumTap: _openPaywall,
                 onMoreTap: _openMore,
+                selectedTabIndex: _index,
+                onPomodoroTap: _openPomodoro,
               ),
               Expanded(
                 child: ValueListenableBuilder<KpssType>(

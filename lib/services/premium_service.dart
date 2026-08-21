@@ -11,8 +11,11 @@ class PremiumService {
     return DatabaseService.instance.currentUser?.isPremium ?? false;
   }
 
-  /// Offline paket yalnızca yıllık abonelikte.
-  bool get isYearlyPremium => PlayBillingService.instance.isYearlyPremium;
+  /// Offline paket yalnızca yıllık abonelikte (Play veya sunucu grant).
+  bool get isYearlyPremium {
+    if (PlayBillingService.instance.isYearlyPremium) return true;
+    return DatabaseService.instance.currentUser?.isYearlyPremium ?? false;
+  }
 
   bool get canUseOfflinePack => isYearlyPremium;
 
@@ -32,17 +35,6 @@ class PremiumService {
       iconName: 'checklist',
       title: 'Konu Takibi',
       description: 'ÖSYM müfredatında ilerlemenizi işaretleyin ve görün.',
-    ),
-    PremiumFeature(
-      iconName: 'timer',
-      title: 'Odak Modu & Pomodoro',
-      description: '25/50/90 dk odak seansları, ortam sesleri, mola hatırlatıcı.',
-    ),
-    PremiumFeature(
-      iconName: 'analytics',
-      title: 'Deneme Analizi Pro',
-      description:
-          'GK/GY ayrımı, yayın evi karşılaştırma, çizgi grafikler, haftalık özet bildirimi.',
     ),
     PremiumFeature(
       iconName: 'task',

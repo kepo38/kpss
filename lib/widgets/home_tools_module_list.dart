@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../screens/analytics_hub_screen.dart';
 import 'countdown_widget.dart';
@@ -31,13 +31,11 @@ const _mikroOgrenmeScreen = StudyAndSolveScreen(
 class HomeToolsModuleList extends StatelessWidget {
   final KpssType kpssType;
   final Future<void> Function(Widget screen) onNavigate;
-  final Future<void> Function(Widget Function() builder) onNavigatePremium;
 
   const HomeToolsModuleList({
     super.key,
     required this.kpssType,
     required this.onNavigate,
-    required this.onNavigatePremium,
   });
 
   @override
@@ -71,7 +69,7 @@ class HomeToolsModuleList extends StatelessWidget {
           subtitle: 'İdeal 25 dk · derin çalışma',
           accent: true,
           tint: const Color(0xFFFBBF24),
-          onTap: () => onNavigatePremium(() => const FocusModeScreen()),
+          onTap: () => onNavigate(const FocusModeScreen()),
         ),
         HomeModuleRow(
           icon: Icons.insights_outlined,
@@ -86,13 +84,13 @@ class HomeToolsModuleList extends StatelessWidget {
           title: 'Deneme Analizi',
           subtitle: 'GK/GY, yayın evi, haftalık özet',
           tint: const Color(0xFFA78BFA),
-          onTap: () => onNavigatePremium(() => const StatisticsScreen()),
+          onTap: () => onNavigate(const StatisticsScreen()),
         ),
         HomeModuleRow(
-          icon: Icons.newspaper_outlined,
-          title: 'Güncel Bilgiler',
-          subtitle: 'Sınava özel gelişmeler',
-          tint: const Color(0xFF34D399),
+          icon: Icons.sticky_note_2_outlined,
+          title: 'ÖZEL NOTLARIM',
+          subtitle: 'Kişisel kartlar · kaydırarak gez',
+          tint: AppTheme.champagne,
           onTap: () => onNavigate(const CurrentInfoScreen()),
         ),
         HomeModuleRow(

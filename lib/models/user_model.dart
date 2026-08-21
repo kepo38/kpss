@@ -4,6 +4,8 @@ class UserModel {
   final String eposta;
   final bool isPremium;
   final bool isAnonymous;
+  final bool isYearlyPremium;
+  final String premiumProductId;
   final DateTime? premiumBitisTarihi;
   final DateTime? premiumVerilisTarihi;
   final String? premiumGrantNote;
@@ -24,6 +26,8 @@ class UserModel {
     required this.eposta,
     this.isPremium = false,
     this.isAnonymous = false,
+    this.isYearlyPremium = false,
+    this.premiumProductId = '',
     this.premiumBitisTarihi,
     this.premiumVerilisTarihi,
     this.premiumGrantNote,
@@ -44,6 +48,8 @@ class UserModel {
       eposta: (json['eposta'] ?? json['email'] ?? '') as String,
       isPremium: json['isPremium'] as bool? ?? false,
       isAnonymous: json['isAnonymous'] as bool? ?? false,
+      isYearlyPremium: json['isYearlyPremium'] as bool? ?? false,
+      premiumProductId: (json['premiumProductId'] as String?) ?? '',
       premiumBitisTarihi: json['premiumBitisTarihi'] != null
           ? DateTime.tryParse('${json['premiumBitisTarihi']}')
           : null,
@@ -64,6 +70,8 @@ class UserModel {
         'eposta': eposta,
         'isPremium': isPremium,
         'isAnonymous': isAnonymous,
+        'isYearlyPremium': isYearlyPremium,
+        'premiumProductId': premiumProductId,
         'premiumBitisTarihi': premiumBitisTarihi?.toIso8601String(),
         'premiumVerilisTarihi': premiumVerilisTarihi?.toIso8601String(),
         'premiumGrantNote': premiumGrantNote,
@@ -76,6 +84,8 @@ class UserModel {
     String? eposta,
     bool? isPremium,
     bool? isAnonymous,
+    bool? isYearlyPremium,
+    String? premiumProductId,
     DateTime? premiumBitisTarihi,
     DateTime? premiumVerilisTarihi,
     String? premiumGrantNote,
@@ -88,6 +98,8 @@ class UserModel {
       eposta: eposta ?? this.eposta,
       isPremium: isPremium ?? this.isPremium,
       isAnonymous: isAnonymous ?? this.isAnonymous,
+      isYearlyPremium: isYearlyPremium ?? this.isYearlyPremium,
+      premiumProductId: premiumProductId ?? this.premiumProductId,
       premiumBitisTarihi: premiumBitisTarihi ?? this.premiumBitisTarihi,
       premiumVerilisTarihi:
           premiumVerilisTarihi ?? this.premiumVerilisTarihi,

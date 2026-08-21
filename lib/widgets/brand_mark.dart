@@ -103,6 +103,8 @@ class QuizHeaderStrip extends StatelessWidget {
   final bool isCountdown;
   final bool urgent;
   final String? questionLabel;
+  /// Yeşil başarı oranı — eski Soru X/Y yerinde (ör. `Başarı: %49`).
+  final String? successLabel;
   final String? difficultyLabel;
   final String? attemptLabel;
   final Widget? leading;
@@ -116,6 +118,7 @@ class QuizHeaderStrip extends StatelessWidget {
     required this.isCountdown,
     required this.urgent,
     this.questionLabel,
+    this.successLabel,
     this.difficultyLabel,
     this.attemptLabel,
     this.leading,
@@ -203,7 +206,19 @@ class QuizHeaderStrip extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        if (questionLabel != null)
+                        if (successLabel != null)
+                          Text(
+                            successLabel!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF34D399),
+                            ),
+                          )
+                        else if (questionLabel != null)
                           Text(
                             questionLabel!,
                             maxLines: 1,
@@ -216,7 +231,8 @@ class QuizHeaderStrip extends StatelessWidget {
                             ),
                           ),
                         if (difficultyOnRight && difficultyLabel != null) ...[
-                          if (questionLabel != null) const SizedBox(height: 6),
+                          if (successLabel != null || questionLabel != null)
+                            const SizedBox(height: 6),
                           _DifficultyBadge(label: difficultyLabel!),
                         ],
                         if (attemptLabel != null) ...[

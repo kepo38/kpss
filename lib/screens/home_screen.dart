@@ -16,6 +16,7 @@ import '../widgets/home_premium_module_list.dart';
 import '../widgets/home_section_header.dart';
 import '../widgets/home_tools_module_list.dart';
 import '../widgets/premium_gate.dart';
+import '../widgets/scale_button.dart';
 import 'premium/premium_paywall_screen.dart';
 
 /// Stüdyo — üst bardaki kare ikondan açılan araçlar & Premium hub.
@@ -154,10 +155,8 @@ class _HomeScreenState extends State<HomeScreen>
             SliverToBoxAdapter(
               child: HomeHeroSection(
                 topPad: topPad,
-                isPremium: _isPremium,
                 fadeEarly: _fadeEarly,
                 fadeType: _fadeType,
-                onPremiumTap: _openPaywall,
               ),
             ),
             SliverPadding(
@@ -182,7 +181,6 @@ class _HomeScreenState extends State<HomeScreen>
                   return HomeToolsModuleList(
                     kpssType: type,
                     onNavigate: _navigateTo,
-                    onNavigatePremium: _navigatePremium,
                   );
                 },
               ),
@@ -214,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             ContainedSliverFade(
               fade: _fadeLate,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 48),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
               child: ValueListenableBuilder<bool>(
                 valueListenable: _isPremium,
                 builder: (context, premium, _) {
@@ -230,6 +228,112 @@ class _HomeScreenState extends State<HomeScreen>
                     },
                   );
                 },
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
+              sliver: SliverToBoxAdapter(
+                child: FadeTransition(
+                  opacity: _fadeLate,
+                  child: Center(
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _isPremium,
+                      builder: (context, premium, _) {
+                        if (premium) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 11,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppTheme.champagne.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppTheme.champagne.withValues(alpha: 0.22),
+                                  AppTheme.champagne.withValues(alpha: 0.08),
+                                ],
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.verified_rounded,
+                                  size: 15,
+                                  color: AppTheme.champagneLight,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Premium',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.champagneLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return ScaleButton(
+                          onPressed: _openPaywall,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFFFFF4DE),
+                                  Color(0xFFE8C878),
+                                  AppTheme.champagne,
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.champagne.withValues(
+                                    alpha: 0.42,
+                                  ),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.workspace_premium_rounded,
+                                  size: 16,
+                                  color: AppTheme.ink,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Premium’u keşfet',
+                                  style: TextStyle(
+                                    fontFamily: 'serif',
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.ink,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

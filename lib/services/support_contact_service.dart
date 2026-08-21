@@ -18,17 +18,15 @@ class SupportContactService {
   static Future<bool> openSupportEmail() async {
     final body = await buildSupportEmailBody();
     final subject = '${BrandConstants.appName} Destek Talebi';
-    // Yalnızca to (path) + subject/body. From/cc/sender asla set edilmez;
+    // Yalnızca to + subject/body. From/cc/sender asla set edilmez;
     // gönderen hesabı OS / e-posta uygulaması doldurur.
-    // queryParameters ile encode; canLaunchUrl Android 11'de mailto için
-    // sık false döner — doğrudan launch dene.
-    final uri = Uri(
-      scheme: 'mailto',
-      path: supportEmail,
-      queryParameters: {
-        'subject': subject,
-        'body': body,
-      },
+    // encodeComponent (%20) kullan — queryParameters form-urlencoded (+ )
+    // üretir; birçok Android mail uygulaması + işaretini literal gösterir.
+    // canLaunchUrl Android 11'de mailto için sık false döner — doğrudan launch.
+    final uri = Uri.parse(
+      'mailto:$supportEmail'
+      '?subject=${Uri.encodeComponent(subject)}'
+      '&body=${Uri.encodeComponent(body)}',
     );
 
     try {

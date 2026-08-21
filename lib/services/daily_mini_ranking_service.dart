@@ -16,6 +16,8 @@ class DailyMiniRankingService extends ChangeNotifier {
   PeriodRankingSnapshot? _weekly;
   PeriodRankingSnapshot? _monthly;
   RewardHistorySnapshot? _history;
+  /// Live admin flag. Null until first successful API read — UI treats as off.
+  bool? _rewardsVisible;
   bool _loading = false;
   String? _error;
 
@@ -26,10 +28,33 @@ class DailyMiniRankingService extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
 
+  /// True only after a successful fetch that says rewards are on.
+  /// Unknown / not yet loaded → false (hide ÖDÜL until confirmed).
+  bool get rewardsVisible => _rewardsVisible == true;
+
+  /// Alias for UI gates — same as [rewardsVisible].
+  bool get odulActive => rewardsVisible;
+
+  /// Whether the admin flag has been read from any startup endpoint.
+  bool get rewardsVisibilityKnown => _rewardsVisible != null;
+
   String get _kpssType => DailyMiniExamService.instance.kpssType.name;
 
+  /// Apply flag early from daily-mini status (or any payload that includes it).
+  void applyRewardsVisible(bool? value) {
+    if (value == null) return;
+    if (_rewardsVisible == value) return;
+    _rewardsVisible = value;
+    notifyListeners();
+  }
+
+  void _absorbRewardsVisible(bool? value) {
+    if (value == null) return;
+    _rewardsVisible = value;
+  }
+
   Future<void> refresh({bool force = false}) async {
-    if (_loading) return;
+    if (_loading && !force) return;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -51,12 +76,15 @@ class DailyMiniRankingService extends ChangeNotifier {
         http.get(historyUri, headers: headers).timeout(const Duration(seconds: 10)),
       ]);
 
+      bool? nextVisible;
+
       if (results[0].statusCode >= 200 && results[0].statusCode < 300) {
         final map = jsonDecode(results[0].body);
         if (map is Map) {
           _weekly = PeriodRankingSnapshot.fromJson(
             Map<String, dynamic>.from(map),
           );
+          nextVisible ??= _weekly!.rewardsVisible;
         }
       }
       if (results[1].statusCode >= 200 && results[1].statusCode < 300) {
@@ -65,6 +93,7 @@ class DailyMiniRankingService extends ChangeNotifier {
           _monthly = PeriodRankingSnapshot.fromJson(
             Map<String, dynamic>.from(map),
           );
+          nextVisible ??= _monthly!.rewardsVisible;
         }
       }
       if (results[2].statusCode >= 200 && results[2].statusCode < 300) {
@@ -73,11 +102,23 @@ class DailyMiniRankingService extends ChangeNotifier {
           _history = RewardHistorySnapshot.fromJson(
             Map<String, dynamic>.from(map),
           );
+          // History is the canonical source when present.
+          nextVisible = _history!.rewardsVisible;
         }
+      }
+
+      if (nextVisible != null) {
+        _absorbRewardsVisible(nextVisible);
+      } else if (_weekly == null && _monthly == null && _history == null) {
+        // No successful payload — keep unknown as off for safety.
+        _absorbRewardsVisible(false);
+        _error = 'Sıralama yüklenemedi';
       }
     } catch (e) {
       _error = 'Sıralama yüklenemedi';
       debugPrint('DailyMiniRankingService: $e');
+      // On failure keep last known flag if any; otherwise stay hidden.
+      _rewardsVisible ??= false;
     } finally {
       _loading = false;
       notifyListeners();
@@ -103,6 +144,4 @@ class DailyMiniRankingService extends ChangeNotifier {
         )
         .toList();
   }
-
-  bool get rewardsVisible => _history?.rewardsVisible ?? true;
 }

@@ -21,7 +21,7 @@ echo  ========================================
 echo   KPSS Odak - Icerik Paneli baslatiliyor
 echo  ========================================
 echo.
-echo   Telefonu guncellemek icin:  basla-telefon.bat
+echo   Telefon (Django LAN + USB):  basla-telefon.bat
 echo.
 
 cd /d "%ROOT%\backend"

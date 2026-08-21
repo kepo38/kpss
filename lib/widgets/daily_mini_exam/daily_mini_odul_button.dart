@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../constants/daily_mini_exam_constants.dart';
 import '../../screens/daily_mini_rewards_screen.dart';
+import '../../services/daily_mini_ranking_service.dart';
 import '../../theme/app_theme.dart';
 
 /// Yuvarlak premium ÖDÜL CTA — nabız + champagne parıltı.
@@ -52,24 +53,30 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Ödül kuralları',
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, child) {
-          final sway = math.sin(_ctrl.value * math.pi) * 0.06;
-          return Transform.rotate(
-            angle: sway,
-            alignment: Alignment.topCenter,
-            child: child,
-          );
-        },
-        child: SizedBox(
-          width: 54,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+    return ListenableBuilder(
+      listenable: DailyMiniRankingService.instance,
+      builder: (context, _) {
+        if (!DailyMiniRankingService.instance.rewardsVisible) {
+          return const SizedBox.shrink();
+        }
+        return Tooltip(
+          message: 'Ödül kuralları',
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (context, child) {
+              final sway = math.sin(_ctrl.value * math.pi) * 0.06;
+              return Transform.rotate(
+                angle: sway,
+                alignment: Alignment.topCenter,
+                child: child,
+              );
+            },
+            child: SizedBox(
+              width: 54,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
               // İğne / ip — tıklama geçirsin (CTA sol/orta alanı kapanmasın).
               IgnorePointer(
                 child: Column(
@@ -239,6 +246,8 @@ class _DailyMiniOdulHangBadgeState extends State<DailyMiniOdulHangBadge>
           ),
         ),
       ),
+        );
+      },
     );
   }
 }
@@ -265,82 +274,92 @@ class _DailyMiniOdulButtonState extends State<DailyMiniOdulButton>
   @override
   Widget build(BuildContext context) {
     final size = widget.size;
-    return Tooltip(
-      message: 'Ödül kuralları',
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedBuilder(
-          animation: _ctrl,
-          builder: (context, child) {
-            final t = _ctrl.value;
-            final pulse = 1.0 + 0.06 * math.sin(t * math.pi * 2);
-            final glow = 0.35 + 0.25 * (0.5 + 0.5 * math.sin(t * math.pi * 2));
-            return Transform.scale(
-              scale: pulse,
-              child: Container(
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFFFF8EE),
-                      Color(0xFFF3E2B8),
-                      Color(0xFFE8C878),
-                      AppTheme.champagne,
-                    ],
-                  ),
-                  border: Border.all(
-                    color: const Color(0xFFD4AF6A),
-                    width: 1.4,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.champagne.withValues(alpha: glow),
-                      blurRadius: 14,
-                      spreadRadius: 1,
+    return ListenableBuilder(
+      listenable: DailyMiniRankingService.instance,
+      builder: (context, _) {
+        if (!DailyMiniRankingService.instance.rewardsVisible) {
+          return const SizedBox.shrink();
+        }
+        return Tooltip(
+          message: 'Ödül kuralları',
+          child: GestureDetector(
+            onTap: widget.onPressed,
+            child: AnimatedBuilder(
+              animation: _ctrl,
+              builder: (context, child) {
+                final t = _ctrl.value;
+                final pulse = 1.0 + 0.06 * math.sin(t * math.pi * 2);
+                final glow =
+                    0.35 + 0.25 * (0.5 + 0.5 * math.sin(t * math.pi * 2));
+                return Transform.scale(
+                  scale: pulse,
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFFFF8EE),
+                          Color(0xFFF3E2B8),
+                          Color(0xFFE8C878),
+                          AppTheme.champagne,
+                        ],
+                      ),
+                      border: Border.all(
+                        color: const Color(0xFFD4AF6A),
+                        width: 1.4,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.champagne.withValues(alpha: glow),
+                          blurRadius: 14,
+                          spreadRadius: 1,
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+                    child: child,
+                  ),
+                );
+              },
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.emoji_events_rounded,
+                    size: size * 0.34,
+                    color: AppTheme.ink,
+                  ),
+                  Text(
+                    'ÖDÜL',
+                    style: TextStyle(
+                      fontSize: size * 0.168,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.4,
+                      height: 1,
+                      color: AppTheme.ink,
                     ),
-                  ],
-                ),
-                child: child,
+                  ),
+                ],
               ),
-            );
-          },
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.emoji_events_rounded,
-                size: size * 0.34,
-                color: AppTheme.ink,
-              ),
-              Text(
-                'ÖDÜL',
-                style: TextStyle(
-                  fontSize: size * 0.168,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.4,
-                  height: 1,
-                  color: AppTheme.ink,
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
 /// Ödül şartları — kapatılabilir şık kart.
-Future<void> showDailyMiniOdulInfoCard(BuildContext context) {
+Future<void> showDailyMiniOdulInfoCard(BuildContext context) async {
+  if (!DailyMiniRankingService.instance.rewardsVisible) return;
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,

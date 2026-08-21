@@ -64,6 +64,23 @@ class ContentPackView(APIView):
     permission_classes = []
 
     def get(self, request):
+        user = get_user_from_request(request)
+        if user is None or getattr(user, "is_anonymous", False):
+            return Response(
+                {"detail": "Oturum gerekli.", "googleRequired": True},
+                status=401,
+            )
+        if not user.is_yearly_premium:
+            return Response(
+                {
+                    "detail": (
+                        "Offline paket yalnızca yıllık Premium ile indirilebilir."
+                    ),
+                    "code": "yearly_premium_required",
+                },
+                status=403,
+            )
+
         subjects_qs = Subject.objects.filter(is_active=True).prefetch_related(
             "topics"
         )
@@ -155,12 +172,97 @@ class ContentPackVersionView(APIView):
     permission_classes = []
 
     def get(self, request):
+        user = get_user_from_request(request)
+        if user is None or getattr(user, "is_anonymous", False):
+            return Response(
+                {"detail": "Oturum gerekli.", "googleRequired": True},
+                status=401,
+            )
+        if not user.is_yearly_premium:
+            return Response(
+                {
+                    "detail": (
+                        "Offline paket yalnızca yıllık Premium ile indirilebilir."
+                    ),
+                    "code": "yearly_premium_required",
+                },
+                status=403,
+            )
         return Response(
             {
                 "version": get_content_version(),
                 "generatedAt": timezone.now(),
             }
         )
+
+
+class PremiumSyncView(APIView):
+    """Play istemci entitlement senkronu (şimdilik client trust).
+
+    TODO: Play Developer API ile purchase token doğrulaması.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+
+        raw_premium = request.data.get("isPremium")
+        if raw_premium is None:
+            raw_premium = request.data.get("is_premium")
+        is_premium = bool(raw_premium)
+
+        product_id = (
+            request.data.get("productId")
+            or request.data.get("product_id")
+            or ""
+        )
+        product_id = str(product_id).strip()[:64]
+
+        expires_raw = request.data.get("expiresAt")
+        if expires_raw is None:
+            expires_raw = request.data.get("expires_at")
+
+        from django.utils.dateparse import parse_datetime
+
+        expires_at = None
+        if expires_raw:
+            expires_at = parse_datetime(str(expires_raw).strip())
+            if expires_at is None:
+                return Response(
+                    {"detail": "expiresAt geçersiz ISO8601."},
+                    status=400,
+                )
+
+        if not is_premium:
+            user.is_premium = False
+            user.premium_expires_at = None
+            user.premium_product_id = ""
+            user.save(
+                update_fields=[
+                    "is_premium",
+                    "premium_expires_at",
+                    "premium_product_id",
+                    "updated_at",
+                ]
+            )
+        else:
+            user.is_premium = True
+            user.premium_expires_at = expires_at
+            user.premium_product_id = product_id
+            user.save(
+                update_fields=[
+                    "is_premium",
+                    "premium_expires_at",
+                    "premium_product_id",
+                    "updated_at",
+                ]
+            )
+
+        return Response(user_to_dict(user))
 
 
 class PublishedQuestionsView(APIView):
@@ -1003,6 +1105,8 @@ class DailyMiniExamView(APIView):
             leaderboard_date, kpss_type
         ).count()
 
+        from .daily_mini_ranking import get_ranking_campaign
+
         return {
             "examDate": exam.exam_date.isoformat(),
             "kpssType": kpss_type,
@@ -1018,6 +1122,7 @@ class DailyMiniExamView(APIView):
             "myAttempt": my_attempt,
             "leaderboard": leaderboard_rows(leaderboard_date, kpss_type),
             "guestLoginRequired": guest_login_required(user, exam.exam_date),
+            "rewardsVisible": get_ranking_campaign().rewards_visible,
         }
 
     def get(self, request):

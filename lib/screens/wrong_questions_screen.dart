@@ -344,7 +344,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     final result = await Navigator.of(context).push<QuizResult>(
       MaterialPageRoute<QuizResult>(
         builder: (_) => QuizScreen(
-          title: 'Yanlış Pratik',
+          title: 'YANLIŞLARIM',
           questions: questions,
           suppressWrongNotebookHint: true,
         ),

@@ -1,4 +1,4 @@
-# Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
+﻿# Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
 > **Son güncelleme:** 2026-08-21  
 > **Dart paketi:** `kpss_akademi`  
@@ -22,6 +22,28 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Özellik kaldırıldığında | Maddenin yanına `(kaldırıldı)` notu veya silme |
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
+
+### 21 Ağustos 2026 — Odak neon / pack auth / tablo bayrağı / quiz header / Özel Notlarım
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Odak Modu UI** | Neon kırmızı↔cyan arka plan; süre halkası altında play/pause (+ küçük sıfırla); Başlat satırı kaldırıldı | `focus_mode_screen.dart` |
+| **Ortam sesleri** | Yağmur, Orman, Kafe, Kütüphane, Deniz, binaural 40/60/80 Hz; kafe/kütüphane/deniz WAV yenilendi; kilitliyken çalma (`stayAwake`, `wakelock_plus`, iOS `UIBackgroundModes: audio`) | `pomodoro_session_model.dart`, `pomodoro_service.dart`, `assets/sounds/ambient_*.wav`, `Info.plist`, `AndroidManifest.xml` |
+| **Süre bitiş uyarısı** | Yerel bildirim + `focus_complete.wav` zil + haptic; bitiş zamanına göre senkron (arka plan) | `notification_service.dart`, `focus_mode_screen.dart` |
+| **Gelişim Pomodoro CTA** | Sağ üst ink+şampanya **ODAK / Pomodoro** pill (nabız glow); Odak Modu açar | `app_shell_top_bar.dart` |
+| **Offline pack auth** | `GET /pack/` + `pack/version/` → Bearer zorunlu + **yıllık** premium (`is_yearly_premium`); 401/403; `POST /premium/sync/` Play ürün bilgisini sunucuya yazar | `views.py`, `models.py` (`premium_product_id`), `0045_…`, `premium_sync_service.dart`, `content_sync_service.dart`, `offline_pack_service.dart` |
+| **Tablo sorusu bayrağı** | Panel **Yok / İkili / Üçlü**; otomatik tire algısı kapalı; Flutter yalnızca `optionTable` dual/triple iken sütun; başlık↔hücre hizası | `Question.option_table`, `0044_…`, `question_form.html`, `option-table.js`, `question_model.dart`, `exam_option_view.dart`, `quiz_screen.dart` |
+| **Özel Notlarım** | Stüdyo «Güncel Bilgiler» → **ÖZEL NOTLARIM**; kart PageView aynı; mock kişisel not | `home_tools_module_list.dart`, `current_info_screen.dart`, `database_service.dart` |
+| **Quiz AppBar / şerit** | **Test N** sola; **Soru X/Y** AppBar’da; eski Soru yerinde yeşil **Başarı: %N** (`correctRate`); **ÖSYM** rozeti ortada aynı yerde | `quiz_screen.dart`, `brand_mark.dart` (`QuizHeaderStrip.successLabel`) |
+
+### 21 Ağustos 2026 — Stüdyo: Pomodoro + Deneme Analizi ücretsiz
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Odak · Pomodoro** | Stüdyo satırı `onNavigatePremium` → `onNavigate` (PremiumGate yok) | `home_tools_module_list.dart` |
+| **Deneme Analizi** | Aynı; alt Deneme sekmesi zaten ücretsizdi | `home_tools_module_list.dart`, `main_shell.dart` |
+| **Paywall listesi** | Odak/Pomodoro ve Deneme Analizi Pro kaldırıldı | `premium_service.dart` |
+| **Erişim matrisi** | A/C/D/E + katalog satırları ücretsiz | `FEATURES.md` |
 
 ### 21 Ağustos 2026 — Quiz / ContentBank / mini sonuç / konu detay (bu commit)
 
@@ -91,7 +113,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **ÖDÜL ekranı** | Herkese açık: canlı haftalık/aylık liste + geçmiş kazananlar; kart ve sonuç AppBar’dan **ÖDÜL** | `daily_mini_rewards_screen.dart`, `daily_mini_exam_card.dart`, `daily_mini_exam_result_screen.dart` |
 | **API** | `GET /daily-mini-exam/period-ranking/?period=weekly\|monthly`, `GET /daily-mini-exam/reward-history/` | `views.py`, `urls.py`, `api_config.dart`, `daily_mini_ranking_service.dart` |
 | **Model / migrate** | `DailyMiniRankingCampaign` (singleton), `DailyMiniRankingWinner` | `models.py`, `0043_daily_mini_ranking_rewards.py` |
-| **Finalize** | Idempotent; push + `UserMessage`; `--auto` / `--all-kpss` | `finalize_daily_mini_ranking.py`, `finalize-mini-oduller.bat` |
+| **Finalize** | Idempotent; push + `UserMessage`; panelde yalnızca **Haftalık / Aylık** (sınav tipi chip yok; içeride tüm depo anahtarları taranır); CLI `--auto` / `--all-kpss` | `finalize_daily_mini_ranking.py`, `finalize-mini-oduller.bat`, `daily_mini_ranking.html` |
 | **Premium Sıralama** | Mock XP kaldırıldı; canlı dönem listesi («X doğru») | `leaderboard_screen.dart`, `leaderboard_service.dart`, `leaderboard_model.dart` |
 
 #### Mobil — Stüdyo hub (Daha fazla)
@@ -122,7 +144,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
-| **Mini deneme ödülleri** | Menü **Deneme & sınav**; aç-kapa; manuel finalize; kazanan tablosu | `/panel/mini-deneme-odulleri/`, `daily_mini_ranking.html`, `base.html` |
+| **Mini deneme ödülleri** | Menü **Deneme & sınav**; aç-kapa; manuel **Haftalık/Aylık** finalize (lisans·önlisans·ortaöğretim yok); kazanan tablosu | `/panel/mini-deneme-odulleri/`, `daily_mini_ranking.html`, `base.html` |
 | **Çözüm/önizleme markdown** | `**…**` koruması; bölünmüş kalın onarımı; cache `math-render.js?v=8`, `rich-format.js?v=3` | `math-render.js`, `rich-format.js`, `base.html`, `question_form.html` |
 | **Akıllı Fırça önizleme** | İl maskesi birleşik canvas + tek `destination-in` (boş önizleme düzeltmesi) | `map-smart-brush.js` |
 
@@ -296,9 +318,10 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı | `lib/screens/quiz_screen.dart` | Ücretsiz; reklamlı |
+| **Quiz ekranı** | Test çözme, cevap seçimi, çözüm gösterme, oturum kaydı; AppBar: **Test adı sola** + **Soru X/Y**; şeritte yeşil **Başarı: %N** (doğru cevap oranı), ortada ÖSYM | `lib/screens/quiz_screen.dart`, `lib/widgets/brand_mark.dart` | Ücretsiz; reklamlı |
 | **Soru kökü render** | Zengin metin, LaTeX (`flutter_math_fork`), görsel, SVG şekil; soft satırlar birleşir; **TextAlign.justify** (Android/iOS) | `question_stem_content.dart`, `exam_stem_view.dart`, `formatted_text.dart` (`prepareExamJustifyText`) | Ücretsiz |
-| **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; her konuda testte mümkünse **4 ÖSYM** soru, **4 etiketsiz + 1 ÖSYM** sırası (etiketsiz yetmezse normal sıra) | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
+| **ÖSYM sordu rozeti** | Resmî kaynaklı sorularda rozet; üst şeritte **ekran ortası** (Stack); yer değiştirilmez | `lib/widgets/osym_badge.dart`, `lib/models/question_model.dart`, `backend/content/test_grouping.py` | Ücretsiz |
+| **Başarı oranı** | Şerit sağ üst: `Başarı: %49` — `correctRate` (0–1) veya canlı doğru şık yüzdesi; yeşil `#34D399` | `quiz_screen.dart`, `QuizHeaderStrip.successLabel` | Ücretsiz |
 | **Çizim katmanı** | Soru alanında kalem / yeşil fosfor (geniş vurgu) / silgi; işaretler kaydırınca metinde kalır; kalem kapalıyken görünür; test bitince kaydedilmez | `lib/widgets/quiz_drawing_overlay.dart` | Ücretsiz |
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp); **Favorilerim** sekmeli: Soru Favorileri + Özet Kartlar (Favori / Tekrar Et) | `favorite_heart_button.dart`, `favorites_service.dart`, `summary_card_progress_service.dart`, `favorites_screen.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
@@ -308,7 +331,8 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma; sonuç panelinde konu adı en üstte, motive mesajı, kazandığı XP ve seri; soru başı ortalama süre NET kutusunun üstünde | `lib/widgets/shareable_result_card.dart`, `lib/screens/quiz_screen.dart` | Ücretsiz |
 | **Filigran** | Marka filigranı ücretsiz ve Premium’da; haritalı/görselli soruda metnin yanında görselin üstüne de biner | `lib/widgets/watermark_widget.dart`, `question_stem_content.dart` | Tüm planlar |
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium veya 12s kampanya |
-| **Pro Üyelik üst bar CTA** | Kompakt pill (maskot yok); üst barda hizalı | `lib/widgets/premium_header_button.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
+| **Pro Üyelik üst bar CTA** | Kompakt pill (maskot yok); Ana/Dersler/Deneme sekmelerinde | `lib/widgets/premium_header_button.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
+| **Gelişim · ODAK CTA** | Gelişim sekmesi sağ üst: ink+altın **ODAK / Pomodoro** pill → `FocusModeScreen` | `app_shell_top_bar.dart`, `main_shell.dart` | Ücretsiz |
 
 **Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
 
@@ -320,7 +344,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Formül / denklem | Cambria Math (italik) | KaTeX / flutter_math glifleri + italik math stili |
 | Harita-şema harfi | Arial | `ExamTypography.sansLabel` |
 
-Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni soldan hizalı. Eşleştirme şıkları **2+ sütun**: `Olay — Sonuç`, `Şehir - Şehir - Şehir` veya `İnanç: …, Mağara: …, Termal: …`; başlık yoksa 2 sütunda **Olay / Sonuç** (`option-table.js` / `option_column_layout.dart`).
+Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`). Şık metni soldan hizalı. **Tablo sorusu** panelde açık işaretlenir (`option_table`: `none` | `dual` | `triple`); şık metni `X — Y` / pipe / etiketli hücre. Başlık: `<!--optcols:…-->` veya 2 sütunda **Olay / Sonuç**. Otomatik tire algısı **yok** — yalnızca bayraklı sorularda sütun UI (`option-table.js`, `option_column_layout.dart`, `exam_option_view.dart`).
 
 ---
 
@@ -352,7 +376,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
+| **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama yok**; üst barda **ODAK · Pomodoro** CTA | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart`, `app_shell_top_bar.dart` | Ücretsiz |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
 | **Favorilerim** | Soru favorileri + özet kartlar (Favori / Tekrar Et); özet karta tıklanınca tam ekran kart görüntüleyici; soru orijinal test bağlamında açılır | `favorites_screen.dart`, `topic_summary_swipe_deck.dart` (`SummaryCardFace.showViewer`), `summary_card_progress_service.dart` | Ücretsiz |
@@ -365,15 +389,14 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Deneme sekmesi** | AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (`+` yok); FAB ile deneme ekleme | `lib/screens/premium/statistics_screen.dart`, `lib/widgets/puan_hesaplama_button.dart` | Sekmeden **ücretsiz**¹ |
+| **Deneme sekmesi** | AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (`+` yok); FAB ile deneme ekleme | `lib/screens/premium/statistics_screen.dart`, `lib/widgets/puan_hesaplama_button.dart` | **Ücretsiz** |
+| **Stüdyo · Deneme Analizi** | Aynı `StatisticsScreen`; `onNavigate` (PremiumGate yok) | `home_tools_module_list.dart` | **Ücretsiz** |
 | **Puan Hesaplama** | GY/GK net ve puan; etiketler **GY-Net** / **GK-Net** | `lib/screens/puan_hesaplama_screen.dart` | Ücretsiz |
-| **Genel bakış** | Haftalık özet, net gelişim grafiği, GK/GY ayrımı | `lib/widgets/statistics_overview_tab.dart`, `lib/widgets/net_development_chart.dart` | Bkz. ¹ |
-| **Yayınevleri** | Yayınevine göre performans karşılaştırma | `lib/widgets/statistics_publishers_tab.dart` | Bkz. ¹ |
-| **Denemeler listesi** | Manuel deneme ekleme / silme | `lib/widgets/statistics_exams_tab.dart` | Bkz. ¹ |
-| **Deneme ekleme** | GK/GY ders bazlı doğru/yanlış/boş → net hesabı | `lib/screens/premium/add_exam_sheet.dart`, `lib/services/practice_exam_service.dart` | Bkz. ¹ |
-| **Haftalık özet bildirimi** | Yeni deneme eklenince yerel bildirim yenileme | `lib/services/notification_service.dart` | Premium odaklı |
-
-> ¹ **Not:** Paywall ve ana sayfa araç listesinde “Deneme Analizi Pro” **Premium** olarak tanımlı; alt sekme şu an **PremiumGate olmadan** açılıyor. Pazarlama metni ile gerçek kapı farklı olabilir.
+| **Genel bakış** | Haftalık özet, net gelişim grafiği, GK/GY ayrımı | `lib/widgets/statistics_overview_tab.dart`, `lib/widgets/net_development_chart.dart` | Ücretsiz |
+| **Yayınevleri** | Yayınevine göre performans karşılaştırma | `lib/widgets/statistics_publishers_tab.dart` | Ücretsiz |
+| **Denemeler listesi** | Manuel deneme ekleme / silme | `lib/widgets/statistics_exams_tab.dart` | Ücretsiz |
+| **Deneme ekleme** | GK/GY ders bazlı doğru/yanlış/boş → net hesabı | `lib/screens/premium/add_exam_sheet.dart`, `lib/services/practice_exam_service.dart` | Ücretsiz |
+| **Haftalık özet bildirimi** | Yeni deneme eklenince yerel bildirim yenileme | `lib/services/notification_service.dart` | Ücretsiz (deneme ekleyince) |
 
 ---
 
@@ -385,9 +408,9 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Promosyon kodu** | Backend’den Premium süresi; misafir kullanamaz; kod en fazla 32 karakter; 5/dk | `lib/services/promo_code_service.dart` | Google hesabı |
 | **Konu takibi** | Müfredat maddelerini işaretleme, ilerleme yüzdesi | `lib/screens/premium/topic_tracking_screen.dart`, `lib/services/topic_progress_service.dart` | Premium |
 | **Görev yönetimi** | Haftalık görevler, öncelik, tamamlama/silme | `lib/screens/premium/task_management_screen.dart`, `lib/services/task_service.dart` | Premium |
-| **Odak · Pomodoro** | 25/50/90/özel dk, ortam sesleri, tamamlanınca XP | `lib/screens/premium/focus_mode_screen.dart`, `lib/services/pomodoro_service.dart` | Premium (araçlar menüsü) |
+| **Odak · Pomodoro** | Neon UI; 25/50/90/özel dk; ortam: yağmur/orman/kafe/kütüphane/deniz + binaural Hz; kilitliyken ses; süre bitince bildirim+zil; XP | `focus_mode_screen.dart`, `pomodoro_service.dart`, `pomodoro_session_model.dart`, `home_tools_module_list.dart`, `app_shell_top_bar.dart` | **Ücretsiz** (Stüdyo + Gelişim CTA) |
 | **Bulut senkron** | Google/Apple senkron arayüzü (**mock**) | `lib/screens/premium/cloud_sync_screen.dart`, `lib/services/cloud_sync_service.dart` | Premium |
-| **Offline paket** | Tüm soru paketini çevrimdışı indirme | `lib/screens/premium/offline_pack_screen.dart`, `lib/services/offline_pack_service.dart` | **Yalnızca yıllık Premium** (`canUseOfflinePack`) |
+| **Offline paket** | Tam pack indirme; istemci yıllık Play + Google oturumu; sunucu Bearer + `is_yearly_premium`; `POST /premium/sync/` | `offline_pack_screen.dart`, `offline_pack_service.dart`, `content_sync_service.dart`, `premium_sync_service.dart` | **Yalnızca yıllık Premium** (`canUseOfflinePack`) |
 | **Sıralama** | Haftalık/aylık **toplam doğru** (mini deneme dönem API, canlı); PremiumGate | `leaderboard_screen.dart`, `leaderboard_service.dart`, `daily_mini_ranking_service.dart` | Premium |
 | **Akıllı Tekrar (başlat)** | Stüdyo / yanlış defteri girişinden ekran açık; oturum başlatma kapılı | `smart_review_screen.dart` | Premium |
 | **Premium kapısı** | Paywall’a yönlendirme yardımcısı | `lib/widgets/premium_gate.dart` | — |
@@ -434,7 +457,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Not |
 |---|---|---|---|
 | **Mikro öğrenme** | Kısa ders + mini quiz | `lib/screens/study_and_solve_screen.dart` | **Demo içerik** |
-| **Güncel bilgiler** | Hikâye tarzı kartlar | `lib/screens/current_info_screen.dart` | **Yerel mock** |
+| **Özel Notlarım** | Stüdyo araç satırı; hikaye tarzı kaydırmalı kişisel not kartları (PageView + scale) | `current_info_screen.dart`, `home_tools_module_list.dart`, `database_service.dart` | **Yerel mock** |
 | **Reklamsız kampanya** | 3 ödüllü reklam → 12 saat **quiz banner** yok; çözüm kilidi, günlük kota, benzer soru, sınırsız test, offline, konu takibi, pomodoro **açılmaz** | `lib/widgets/ad_free_campaign_card.dart`, `lib/services/ad_free_campaign_service.dart`, `lib/services/ad_manager.dart` | Ödüllü reklam |
 
 ---
@@ -446,9 +469,11 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Yerel misafir oturumu** | Çevrimdışı öncelikli yer tutucu kullanıcı | `lib/services/auth_service.dart` |
 | **Anonim backend oturumu** | Firebase anonim + Django `AppUser` token | `auth_service.dart`, `backend/content/auth.py` |
 | **Google giriş / bağlama** | ID token → `POST /api/v1/auth/google/`; hesap zaten bağlıysa `signInWithCredential`; beklemede **Giriş Yapılıyor…** | `auth_service.dart`, `login_screen.dart` |
-| **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad (haftada en fazla 1 değişiklik) | `backend/content/views.py` |
+| **Profil senkronu** | `GET/PATCH /api/v1/me/` — Premium bayrağı, görünen ad (haftada en fazla 1 değişiklik); `premiumProductId` / `isYearlyPremium` | `backend/content/views.py`, `auth.py` |
+| **Premium sync** | Play ürün id + süre → `POST /api/v1/premium/sync/` (Bearer); offline pack sunucu kapısı | `premium_sync_service.dart`, `play_billing_service.dart`, `PremiumSyncView` |
 | **Ağ güvenliği engeli** | VPN/DNS/reklam engelleyici tespiti → ücretsiz kullanıcıda kilit; Play veya panel Premium süresince serbest | `lib/services/network_security_service.dart`, `lib/services/network_security_gate.dart`, `lib/screens/security_warning_modal.dart` |
 | **Ekran görüntüsü yasağı** | Android `FLAG_SECURE` — ücretsiz ve Premium’da yasak (debug / geliştirici cihazı hariç) | `android/app/src/main/kotlin/com/hedefkamu/hedef_kamu/MainActivity.kt` |
+| **Pack indirme güvenliği** | Tam pack **Bearer + yıllık premium**; katalog hafif meta açık kalabilir; at-rest şifreleme yok (SQLite düz JSON) — DRM değil, scrape engeli | `ContentPackView`, `content_sync_service.dart` |
 
 ---
 
@@ -468,7 +493,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar |
 |---|---|---|
-| **Yerel bildirimler** | Sabah motivasyon (09:00), akşam (21:00), haftalık özet (Pazar 15:00), mini deneme, tasarruf kilometre taşı | `lib/services/notification_service.dart` |
+| **Yerel bildirimler** | Sabah motivasyon (09:00), akşam (21:00), haftalık özet (Pazar 15:00), mini deneme, tasarruf kilometre taşı, **Odak süre bitişi** (`focus_timer`) | `lib/services/notification_service.dart` |
 | **FCM push** | Duyuru konusu, içerik güncelleme sessiz senkron | `lib/services/push_notification_service.dart` |
 | **Cihaz token kaydı** | FCM token → `POST /api/v1/device-tokens/` | `push_notification_service.dart` |
 | **İçerik güncelleme handler** | Push sonrası katalog yeniden senkron | `push_notification_service.dart` |
@@ -481,8 +506,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 |---|---|---|
 | **SQLite** | Deneme kayıtları, yanlış defteri, deneme geçmişi (365 gün) | `lib/services/local_database.dart`, `lib/services/database_bootstrap.dart` |
 | **SharedPreferences** | Tercihler, oyunlaştırma, offline paket meta, boot store | `lib/services/app_preferences.dart` ve ilgili servisler |
-| **Offline paket** | Tam içerik paketi indirme | `lib/services/offline_pack_service.dart` |
-| **İçerik bankası önbelleği** | Yayınlanmış soru/test kataloğu bellek + disk | `lib/services/content_bank_service.dart` |
+| **Offline paket** | Tam içerik paketi indirme; auth header + yıllık sunucu kapısı; 401/403 Türkçe hata | `offline_pack_service.dart`, `content_sync_service.dart`, `premium_sync_service.dart` |
+| **İçerik bankası önbelleği** | Yayınlanmış soru/test kataloğu bellek + disk (SQLite `content_question_bank`; düz JSON — şifreli değil) | `lib/services/content_bank_service.dart` |
 
 ---
 
@@ -505,11 +530,11 @@ Sol menü bölümleri: **İçerik** · **Deneme & sınav** · **Kullanıcı & sa
 | **Özet konu kartı** CRUD (formül / püf / ÖSYM; görsel; stüdyo önizleme) | `/panel/ozet-kart/`, `/panel/konu/<id>/ozet/...` |
 | Test CRUD, soru atama | `/panel/konu/<id>/test/...` |
 | Senaryo grupları (ortak paragraf) | `/panel/konu/<id>/grup/...` |
-| Soru CRUD (kök, A–E, çözüm, görsel, SVG, zorluk, ÖSYM) | `/panel/konu/<id>/soru/...` |
+| Soru CRUD (kök, A–E, çözüm, görsel, SVG, zorluk, ÖSYM, **Tablo sorusu Yok/İkili/Üçlü**) | `/panel/konu/<id>/soru/...` |
 | Soru kopyalama | `/panel/soru/<id>/kopyala/` |
 | Toplu soru silme | `/panel/konu/<id>/soru/toplu-sil/` |
 | **Uygulama önizlemesi** | Canlı mobil benzeri önizleme — `question-preview.js`, `math-render.js`, `rich-format.js` |
-| Tablo / eşleştirme şıkları | **2+ sütun**: `X — Y` (varsayılan başlık **Olay / Sonuç**) veya `A - B - C` / `İnanç: …, Mağara: …, Termal: …`; stem pipe / `<!--optcols:…-->` varsa onlar; dikey çizgi yok | `option-table.js`, `option-table.css`, `option_column_layout.dart` |
+| Tablo / eşleştirme şıkları | Panel **Tablo sorusu** select → `option_table`; sütun başlıkları + `<!--optcols:…-->`; mobil `optionTable` | `option-table.js`, `option-table.css`, `option_column_layout.dart`, `exam_option_view.dart` |
 | Biçim araç çubuğu | Kalın / italik / altı çizili / renk (K, I, A, G, R, M) |
 | Zengin yapıştırma | Word/Docs/sohbet HTML panosu `**` / `__` işaretine çevrilir (CF_HTML dahil); iç içe kalın ve kalın+altı çizili (`**__**kelime**__**`) tek işarete iner; kalın+altı çizili kelimeye renk (`**__{green}…{/green}__**`) önizleme ve uygulamada korunur; sohbet kopyasında çift madde işareti (`- -`) ve fazladan tire temizlenir; eşleştirme oku `->` / `\\rightarrow` sınav `→` olur | `rich-format.js` |
 
@@ -567,7 +592,7 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Sınav türleri CRUD (geri sayım kataloğu) | `/panel/sinavlar/...` |
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
 | Deneme paketi düzenle / sil / aktif-pasif (Dersler vitrini) + şablondan üret | `/panel/deneme-paket/...` |
-| **Mini deneme ödülleri** (haftalık/aylık aç-kapa, manuel finalize, kazananlar) | `/panel/mini-deneme-odulleri/` |
+| **Mini deneme ödülleri** (haftalık/aylık aç-kapa; tek düğmeli finalize; kazananlar) | `/panel/mini-deneme-odulleri/` |
 
 ### Embedding ve test gruplama
 
@@ -622,9 +647,10 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | Endpoint | Açıklama | Auth | Mobil tüketici |
 |---|---|---|---|
 | `GET /health/` | Sağlık kontrolü | Hayır | — |
-| `GET /pack/version/` | İçerik paketi sürümü | Hayır | `ContentSyncService` |
-| `GET /pack/` | Tam yayın paketi (`summaryCards` dahil) | Hayır | `ContentSyncService` |
+| `GET /pack/version/` | İçerik paketi sürümü | **Bearer + yıllık Premium** | `ContentSyncService` |
+| `GET /pack/` | Tam yayın paketi (`summaryCards` dahil) | **Bearer + yıllık Premium** | `ContentSyncService` / `OfflinePackService` |
 | `GET /catalog/` | Hafif katalog meta (`summaryCards` dahil) | Hayır | `ContentBankService` |
+| `POST /premium/sync/` | Play `productId` / `isPremium` / `expiresAt` → `AppUser` | Bearer | `PremiumSyncService` |
 | `GET /curriculum/` | Müfredat yapısı | Hayır | — |
 | `GET /questions/?ids=` | ID ile soru gövdeleri | Hayır | `QuestionFetchService` |
 | `GET /questions/<id>/similar/` | Benzer sorular (limit 5) | Hayır | Yanlış defteri (Premium) |
@@ -676,12 +702,10 @@ Kaynak doğruluk: `PremiumService` (Play Billing **veya** sunucu/panel `isPremiu
 | **Hata bildirimi** | Google + **5** bitmiş konu testi; 1/gün | | Google + **3** bitmiş test; 1/gün | aynı |
 | Favoriler, notlar, çalışma kasası | ✓ | | ✓ | ✓ |
 | Gelişim sekmesi / ders analitiği | ✓ | | ✓ | ✓ |
-| Deneme sekmesi + puan hesaplama | ✓¹ | | ✓ | ✓ |
-| Stüdyo «Deneme Analizi» satırı | `PremiumGate` | | ✓ | ✓ |
+| Deneme sekmesi + puan hesaplama | ✓ | | ✓ | ✓ |
+| Stüdyo «Deneme Analizi» / «Odak · Pomodoro» | ✓ (`onNavigate`) | | ✓ | ✓ |
 | VPN/DNS ağ kilidi | Kilitlenebilir | | **muaf** | **muaf** |
 | Ekran görüntüsü (`FLAG_SECURE`) | Yasak | | Yasak | Yasak |
-
-> ¹ Alt **Deneme** sekmesi `PremiumGate` olmadan açılır; Stüdyo listesinde aynı ekran Premium kapılı. Pazarlama / kapı farkı bilinçli not.
 
 ### B) Yanlış defteri ve Akıllı Tekrar
 
@@ -698,25 +722,23 @@ Kaynak doğruluk: `PremiumService` (Play Billing **veya** sunucu/panel `isPremiu
 
 ### C) Stüdyo Premium suite (PRO kilit)
 
-Stüdyo hub (`home_premium_module_list` + araçlarda pomodoro/analiz). Hepsi `PremiumGate.navigate` veya kendi ekranında yıllık kontrolü.
+Stüdyo hub (`home_premium_module_list`). Hepsi `PremiumGate.navigate` veya kendi ekranında yıllık kontrolü. **Odak · Pomodoro** ve **Deneme Analizi** çalışma araçlarında ücretsiz (`onNavigate`).
 
 | Modül | Kapı | Not |
 |---|---|---|
-| **Offline Paket** | **Yalnızca yıllık** (`canUseOfflinePack`); aylık Premium’da kilit + «Yıllık Premium’a geç» | Tam pack indirme |
+| **Offline Paket** | **Yalnızca yıllık** (`canUseOfflinePack` + sunucu `is_yearly_premium`); Bearer zorunlu; aylık Premium’da kilit | Tam pack; `POST /premium/sync/` |
 | **Konu Takibi** | Premium | Müfredat işaretleme |
 | **Görev Yönetimi** | Premium | Haftalık plan |
 | **Bulut Senkron** | Premium | UI; sync kısmen mock |
 | **Sıralama** | Premium | Canlı haftalık/aylık toplam doğru (mini deneme API) |
-| **Odak · Pomodoro** | Premium | Araçlar listesinde (`onNavigatePremium`) |
-| **Deneme Analizi** (Stüdyo satırı) | Premium | Alt sekme ücretsiz¹ |
 
-Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık), Konu Takibi, Odak/Pomodoro, Deneme Analizi Pro, Görev Yönetimi, Bulut Senkron, Sıralama. **Kodda ayrıca Premium olan ama paywall listesinde kısa geçenler:** Akıllı Tekrar başlat, Benzer sorular, sınırsız test, reklam bypass, çözüm kilidi, VPN muafiyeti, kitaptaki ekstra foto.
+Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık), Konu Takibi, Görev Yönetimi, Bulut Senkron, Sıralama, Akıllı Tekrar, Benzer sorular, sınırsız test. **Kodda ayrıca Premium:** reklam bypass, çözüm kilidi, VPN muafiyeti, kitaptaki ekstra foto.
 
 ### D) Reklam kampanyası (Premium açmaz)
 
 | Kampanya | Ne verir | Ne **açmaz** |
 |---|---|---|
-| 3 ödüllü reklam → **12 saat** | Yalnızca **quiz banner** kapalı | Çözüm kilidi, günlük kota, benzer, sınırsız test, offline, konu takibi, pomodoro, Akıllı Tekrar, VPN muafiyeti |
+| 3 ödüllü reklam → **12 saat** | Yalnızca **quiz banner** kapalı | Çözüm kilidi, günlük kota, benzer, sınırsız test, offline, konu takibi, Akıllı Tekrar, VPN muafiyeti |
 
 ### E) Özet tablo (hızlı bakış)
 
@@ -735,9 +757,9 @@ Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık),
 | Benzer sorular | | | ✓ | ✓ |
 | Kitaptaki 1. foto / kalem | ✓ | | ✓ | ✓ |
 | Kitaptaki 2.+ foto | | ✓ | ✓ | ✓ |
-| Konu takibi, görev, pomodoro, sıralama, bulut UI | | | ✓ | ✓ |
-| Deneme analizi (Stüdyo) | | | ✓ | ✓ |
-| Deneme sekmesi | ✓¹ | | ✓ | ✓ |
+| Konu takibi, görev, sıralama, bulut UI | | | ✓ | ✓ |
+| Deneme analizi (Stüdyo + sekme) | ✓ | | ✓ | ✓ |
+| Odak · Pomodoro | ✓ | | ✓ | ✓ |
 | Offline paket | | | | ✓ |
 | Filigran | ✓ | ✓ | ✓ | ✓ |
 | Promosyon / ödül Premium günleri | | | ✓ | ✓ |
@@ -749,8 +771,8 @@ Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık),
 `backend/content/models.py`:
 
 - **Müfredat:** `Subject`, `Topic`, `TopicLesson`, `TopicSummaryCard`, `TopicTest`
-- **İçerik:** `Question`, `QuestionScenario`, `MapTemplate`
-- **Kullanıcı:** `AppUser`, `DeviceToken`, `UserMessage`
+- **İçerik:** `Question` (`option_table`: none/dual/triple), `QuestionScenario`, `MapTemplate`
+- **Kullanıcı:** `AppUser` (`premium_product_id`, `is_yearly_premium`), `DeviceToken`, `UserMessage`
 - **Etkileşim:** `QuestionRating`, `QuestionAttempt`, `QuestionErrorReport`
 - **Mini deneme:** `DailyMiniExam`, `DailyMiniExamAttempt`, `DailyMiniRankingCampaign`, `DailyMiniRankingWinner`
 - **Operasyon:** `Announcement`, `ExamType`, `PromoCode`, `PromoCodeRedemption`, `OcrIngestLog`, `ContentRevision`
@@ -764,23 +786,26 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 ## Bilinen sınırlamalar
 
 1. **Bulut senkron** arayüzü hazır; gerçek çok cihazlı sync backend’i kısmen mock.
-2. **Mikro öğrenme** ve **güncel bilgiler** yerel/demo içerik kullanır (Django soru bankası değil).
-3. **Deneme analizi** premium kapısı sekme ile ana menü arasında tutarsız olabilir.
-4. **Instagram Reels** yalnızca backend servisi; panel UI yok.
-5. **Anonim oturum** çevrimdışı çalışmayı destekler; senkron özellikler backend oturumu ister.
-6. Soru metni/şık/çözüm **mobil kodda hardcode edilmez** — kaynak Django (`QuestionFetchService`, `ContentBankService`).
-7. **Play Store / release APK** yalnızca `armeabi-v7a` + `arm64-v8a` (telefon); x86_64 emülatör bu release’i çalıştırmaz. Hedef paket **≤80 MB**.
-8. **Mini deneme ödül finalize** otomatik için OS Task Scheduler / cron gerekir (`finalize-mini-oduller.bat` veya `manage.py … --auto`); panelden manuel de çalışır.
-9. Canonical proje yolu **`D:\HEDEFKAMU`**; `D:\ozel\HEDEFKAMU` kopyası bat ile yönlendirilir — iki klonu aynı Gradle daemon ile açmayın.
+2. **Mikro Öğrenme** ve **Özel Notlarım** yerel/demo içerik kullanır (Django soru bankası değil).
+3. **Instagram Reels** yalnızca backend servisi; panel UI yok.
+4. **Anonim oturum** çevrimdışı çalışmayı destekler; senkron özellikler backend oturumu ister.
+5. Soru metni/şık/çözüm **mobil kodda hardcode edilmez** — kaynak Django (`QuestionFetchService`, `ContentBankService`).
+6. **Play Store / release APK** yalnızca `armeabi-v7a` + `arm64-v8a` (telefon); x86_64 emülatör bu release’i çalıştırmaz. Hedef paket **≤80 MB**.
+7. **Mini deneme ödül finalize** otomatik için OS Task Scheduler / cron gerekir (`finalize-mini-oduller.bat` veya `manage.py … --auto`); panelden manuel de çalışır.
+8. Canonical proje yolu **`D:\HEDEFKAMU`**; `D:\ozel\HEDEFKAMU` kopyası bat ile yönlendirilir — iki klonu aynı Gradle daemon ile açmayın.
 
 ---
 
 ## Sürüm notu (2026-08-21)
 
+- **Odak Modu:** neon kırmızı–cyan UI; play süre altında; kafe/kütüphane/deniz + binaural; kilit ekranında ses; süre bitiş bildirimi
+- **Gelişim:** sağ üst ODAK / Pomodoro premium pill
+- **Offline paket:** Bearer + yıllık sunucu kapısı; `POST /premium/sync/`
+- **Tablo sorusu:** panel Yok/İkili/Üçlü; mobil yalnızca bayraklı sütun
+- **Quiz header:** Test sola + Soru X/Y; yeşil Başarı %; ÖSYM ortada sabit
+- **Özel Notlarım:** Stüdyo (eski Güncel Bilgiler); kart geçişleri aynı
+- **Stüdyo:** Odak · Pomodoro ve Deneme Analizi herkese açık; paywall listesinden çıkarıldı
 - **Premium:** Akıllı Tekrar başlat kapısı; FEATURES erişim matrisi A–E detaylandı
-- **Kitaptaki yanlışlarım:** kalem ücretsiz; 2.+ foto reklam veya Pro
-- **Splash:** siyah daire + içinde soluk `app_icon`
-- **Stüdyo:** Premium’u keşfet / STÜDYO pill
 
 ### Sürüm notu (2026-08-20)
 

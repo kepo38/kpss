@@ -147,7 +147,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
   final DailyMiniRankTrend trend;
   final VoidCallback onShare;
   final VoidCallback onDetails;
-  final VoidCallback onOdul;
+  final VoidCallback? onOdul;
   final GlobalKey shareBoundaryKey;
   final bool shareEnabled;
 
@@ -160,7 +160,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
     required this.trend,
     required this.onShare,
     required this.onDetails,
-    required this.onOdul,
+    this.onOdul,
     required this.shareBoundaryKey,
     this.shareEnabled = false,
   });
@@ -168,6 +168,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topThree = [...leaders]..sort((a, b) => a.rank.compareTo(b.rank));
+    final odulReserve = onOdul != null ? 72.0 : 40.0;
 
     return _LeaderboardShell(
       onOdul: onOdul,
@@ -188,14 +189,14 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Text(
+                            const Text(
                               '🏆',
                               style: TextStyle(fontSize: 25, height: 1),
                             ),
-                            SizedBox(width: 8),
-                            Expanded(
+                            const SizedBox(width: 8),
+                            const Expanded(
                               child: Text(
                                 'BUGÜNÜN KÜRSÜSÜ',
                                 style: TextStyle(
@@ -207,7 +208,7 @@ class DailyMiniExamCompletedLeaderboard extends StatelessWidget {
                               ),
                             ),
                             // Paylaş = shell sağ üst; ÖDÜL pin biraz solda.
-                            SizedBox(width: 72),
+                            SizedBox(width: odulReserve),
                           ],
                         ),
                         const SizedBox(height: 12),

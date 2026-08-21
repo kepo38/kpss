@@ -7,6 +7,7 @@ class QuestionModel {
   final String? imageUrl;
   final String? sekilKodu;
   final Map<String, String> siklar;
+  final String optionTable;
   final String dogruCevap;
   final String cozumMetni;
   final int hataBildirimSayisi;
@@ -30,6 +31,7 @@ class QuestionModel {
     this.imageUrl,
     this.sekilKodu,
     required this.siklar,
+    this.optionTable = 'none',
     required this.dogruCevap,
     required this.cozumMetni,
     this.hataBildirimSayisi = 0,
@@ -102,6 +104,7 @@ class QuestionModel {
       imageUrl: json['imageUrl'] as String?,
       sekilKodu: (rawSvg == null || rawSvg.isEmpty) ? null : rawSvg,
       siklar: normalizedOptions,
+      optionTable: json['optionTable'] as String? ?? 'none',
       dogruCevap: json['dogruCevap'] as String,
       cozumMetni: _normalizeLatexDelimiters(json['cozumMetni'] as String),
       hataBildirimSayisi: json['hataBildirimSayisi'] as int? ?? 0,
@@ -129,6 +132,7 @@ class QuestionModel {
         'imageUrl': imageUrl,
         'sekilKodu': sekilKodu,
         'siklar': siklar,
+        'optionTable': optionTable,
         'dogruCevap': dogruCevap,
         'cozumMetni': cozumMetni,
         'hataBildirimSayisi': hataBildirimSayisi,
@@ -153,6 +157,7 @@ class QuestionModel {
     String? imageUrl,
     String? sekilKodu,
     Map<String, String>? siklar,
+    String? optionTable,
     String? dogruCevap,
     String? cozumMetni,
     int? hataBildirimSayisi,
@@ -176,6 +181,7 @@ class QuestionModel {
       imageUrl: imageUrl ?? this.imageUrl,
       sekilKodu: sekilKodu ?? this.sekilKodu,
       siklar: siklar ?? this.siklar,
+      optionTable: optionTable ?? this.optionTable,
       dogruCevap: dogruCevap ?? this.dogruCevap,
       cozumMetni: cozumMetni ?? this.cozumMetni,
       hataBildirimSayisi: hataBildirimSayisi ?? this.hataBildirimSayisi,

@@ -51,7 +51,20 @@ extension PomodoroPresetExtension on PomodoroPreset {
   }
 }
 
-enum AmbientSound { sessiz, yagmur, kafe, orman, sakinGurultu }
+/// Ortam sesi kataloğu — doğa, ambiyans, binaural.
+enum AmbientSound {
+  sessiz,
+  yagmur,
+  orman,
+  kafe,
+  kutuphane,
+  binaural40,
+  binaural60,
+  binaural80,
+  deniz,
+}
+
+enum AmbientSoundGroup { sessiz, doga, ambiyans, binaural }
 
 extension AmbientSoundExtension on AmbientSound {
   String get label {
@@ -60,12 +73,61 @@ extension AmbientSoundExtension on AmbientSound {
         return 'Sessiz';
       case AmbientSound.yagmur:
         return 'Yağmur';
-      case AmbientSound.kafe:
-        return 'Kafe';
       case AmbientSound.orman:
         return 'Orman';
-      case AmbientSound.sakinGurultu:
-        return 'Sakin Gürültü';
+      case AmbientSound.kafe:
+        return 'Kafe';
+      case AmbientSound.kutuphane:
+        return 'Kütüphane';
+      case AmbientSound.binaural40:
+        return '40 Hz';
+      case AmbientSound.binaural60:
+        return '60 Hz';
+      case AmbientSound.binaural80:
+        return '80 Hz';
+      case AmbientSound.deniz:
+        return 'Deniz';
+    }
+  }
+
+  String get subtitle {
+    switch (this) {
+      case AmbientSound.sessiz:
+        return 'Sessizlik';
+      case AmbientSound.yagmur:
+        return 'Doğa';
+      case AmbientSound.orman:
+        return 'Doğa';
+      case AmbientSound.kafe:
+        return 'Ambiyans';
+      case AmbientSound.kutuphane:
+        return 'Ambiyans';
+      case AmbientSound.binaural40:
+        return 'Binaural · odak';
+      case AmbientSound.binaural60:
+        return 'Binaural · denge';
+      case AmbientSound.binaural80:
+        return 'Binaural · uyanık';
+      case AmbientSound.deniz:
+        return 'Ambiyans';
+    }
+  }
+
+  AmbientSoundGroup get group {
+    switch (this) {
+      case AmbientSound.sessiz:
+        return AmbientSoundGroup.sessiz;
+      case AmbientSound.yagmur:
+      case AmbientSound.orman:
+        return AmbientSoundGroup.doga;
+      case AmbientSound.kafe:
+      case AmbientSound.kutuphane:
+      case AmbientSound.deniz:
+        return AmbientSoundGroup.ambiyans;
+      case AmbientSound.binaural40:
+      case AmbientSound.binaural60:
+      case AmbientSound.binaural80:
+        return AmbientSoundGroup.binaural;
     }
   }
 
@@ -75,11 +137,17 @@ extension AmbientSoundExtension on AmbientSound {
         return Icons.volume_off_outlined;
       case AmbientSound.yagmur:
         return Icons.water_drop_outlined;
-      case AmbientSound.kafe:
-        return Icons.local_cafe_outlined;
       case AmbientSound.orman:
         return Icons.park_outlined;
-      case AmbientSound.sakinGurultu:
+      case AmbientSound.kafe:
+        return Icons.local_cafe_outlined;
+      case AmbientSound.kutuphane:
+        return Icons.menu_book_outlined;
+      case AmbientSound.binaural40:
+      case AmbientSound.binaural60:
+      case AmbientSound.binaural80:
+        return Icons.graphic_eq_rounded;
+      case AmbientSound.deniz:
         return Icons.waves_outlined;
     }
   }
@@ -91,12 +159,20 @@ extension AmbientSoundExtension on AmbientSound {
         return null;
       case AmbientSound.yagmur:
         return 'sounds/ambient_rain.wav';
-      case AmbientSound.kafe:
-        return 'sounds/ambient_cafe.wav';
       case AmbientSound.orman:
         return 'sounds/ambient_forest.wav';
-      case AmbientSound.sakinGurultu:
-        return 'sounds/ambient_brown_noise.wav';
+      case AmbientSound.kafe:
+        return 'sounds/ambient_cafe.wav';
+      case AmbientSound.kutuphane:
+        return 'sounds/ambient_library.wav';
+      case AmbientSound.binaural40:
+        return 'sounds/ambient_binaural_40.wav';
+      case AmbientSound.binaural60:
+        return 'sounds/ambient_binaural_60.wav';
+      case AmbientSound.binaural80:
+        return 'sounds/ambient_binaural_80.wav';
+      case AmbientSound.deniz:
+        return 'sounds/ambient_ocean.wav';
     }
   }
 }

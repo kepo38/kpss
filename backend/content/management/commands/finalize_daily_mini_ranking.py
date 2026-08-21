@@ -27,13 +27,16 @@ class Command(BaseCommand):
         parser.add_argument(
             "--all-kpss",
             action="store_true",
-            help="lisans + onLisans + ortaogretim hepsini finalize et",
+            help=(
+                "Depodaki tüm kpss_type anahtarlarını finalize et "
+                "(panel Haftalık/Aylık ile aynı; ürün olarak mini sınav tipi ayrımı yok)"
+            ),
         )
         parser.add_argument(
             "--auto",
             action="store_true",
             help=(
-                "Cron için: haftalık + aylık, tüm KPSS tipleri. "
+                "Cron için: haftalık + aylık, tüm depo anahtarları (--all-kpss). "
                 "Günde bir kez (ör. 00:15 TR) çalıştırın; bitmemiş dönem atlanır, "
                 "finalize edilmiş dönem tekrar ödül vermez."
             ),

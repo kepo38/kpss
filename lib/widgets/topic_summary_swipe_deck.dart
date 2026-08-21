@@ -10,11 +10,14 @@ class TopicSummarySwipeDeck extends StatefulWidget {
   final List<TopicSummaryCardModel> cards;
   /// true: Konuyu öğren bölümünün içinde — ayrı büyük başlık yok.
   final bool embedded;
+  /// AppBar dışı ince konu etiketi (tam ekran çalışmada).
+  final String? topicLabel;
 
   const TopicSummarySwipeDeck({
     super.key,
     required this.cards,
     this.embedded = false,
+    this.topicLabel,
   });
 
   @override
@@ -73,8 +76,10 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
         }
 
         final progress = (_dragDx / 140).clamp(-1.0, 1.0);
+        final bottomInset = MediaQuery.paddingOf(context).bottom;
+
         return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (widget.embedded)
               Padding(
@@ -116,28 +121,34 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
                   children: [
-                    const Text(
-                      'Özet kartlar',
-                      style: TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const Spacer(),
+                    if (widget.topicLabel != null &&
+                        widget.topicLabel!.trim().isNotEmpty)
+                      Expanded(
+                        child: Text(
+                          widget.topicLabel!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ),
+                      )
+                    else
+                      const Spacer(),
                     Text(
-                      '${_queue.length} kart',
+                      '${_queue.length} / ${widget.cards.length}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.45),
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.champagne.withValues(alpha: 0.75),
                       ),
                     ),
                   ],
                 ),
               ),
-            SizedBox(
-              height: 248,
+            Expanded(
               child: GestureDetector(
                 onHorizontalDragUpdate: _busy
                     ? null
@@ -171,28 +182,30 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
                           ),
                         ),
                       ),
-                    Transform.translate(
-                      offset: Offset(_dragDx, 0),
-                      child: Transform.rotate(
-                        angle: progress * 0.08,
-                        child: Stack(
-                          children: [
-                            SummaryCardFace(card: card),
-                            if (progress > 0.15)
-                              _SwipeStamp(
-                                label: 'BİLİYORUM',
-                                color: const Color(0xFF34D399),
-                                alignment: Alignment.topLeft,
-                                opacity: progress,
-                              ),
-                            if (progress < -0.15)
-                              _SwipeStamp(
-                                label: 'UNUTTUM',
-                                color: const Color(0xFFF87171),
-                                alignment: Alignment.topRight,
-                                opacity: -progress,
-                              ),
-                          ],
+                    Positioned.fill(
+                      child: Transform.translate(
+                        offset: Offset(_dragDx, 0),
+                        child: Transform.rotate(
+                          angle: progress * 0.08,
+                          child: Stack(
+                            children: [
+                              SummaryCardFace(card: card),
+                              if (progress > 0.15)
+                                _SwipeStamp(
+                                  label: 'BİLİYORUM',
+                                  color: const Color(0xFF34D399),
+                                  alignment: Alignment.topLeft,
+                                  opacity: progress,
+                                ),
+                              if (progress < -0.15)
+                                _SwipeStamp(
+                                  label: 'UNUTTUM',
+                                  color: const Color(0xFFF87171),
+                                  alignment: Alignment.topRight,
+                                  opacity: -progress,
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -200,44 +213,13 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _resolve(known: false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFF87171),
-                      side: BorderSide(
-                        color: const Color(0xFFF87171).withValues(alpha: 0.5),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    icon: const Icon(Icons.replay_rounded, size: 18),
-                    label: const Text('Unuttum'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _busy ? null : () => _resolve(known: true),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.champagne,
-                      foregroundColor: AppTheme.ink,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: const Text('Biliyorum'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Sola kaydır: Tekrar Et · Sağa kaydır: Biliyorum',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.white.withValues(alpha: 0.4),
+            const SizedBox(height: 14),
+            Padding(
+              padding: EdgeInsets.only(bottom: bottomInset + 12),
+              child: _ActionBar(
+                busy: _busy,
+                onForgot: () => _resolve(known: false),
+                onKnow: () => _resolve(known: true),
               ),
             ),
           ],
@@ -248,6 +230,104 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
 
   void unawaitedResolve({required bool known}) {
     _resolve(known: known);
+  }
+}
+
+class _ActionBar extends StatelessWidget {
+  final bool busy;
+  final VoidCallback onForgot;
+  final VoidCallback onKnow;
+
+  const _ActionBar({
+    required this.busy,
+    required this.onForgot,
+    required this.onKnow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF243048).withValues(alpha: 0.95),
+                const Color(0xFF162033).withValues(alpha: 0.98),
+              ],
+            ),
+            border: Border.all(
+              color: AppTheme.champagne.withValues(alpha: 0.35),
+              width: 1.1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.neonEdge.withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, -2),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: busy ? null : onForgot,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFF87171),
+                    side: BorderSide(
+                      color: const Color(0xFFF87171).withValues(alpha: 0.5),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.replay_rounded, size: 18),
+                  label: const Text('Unuttum'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: busy ? null : onKnow,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.champagne,
+                    foregroundColor: AppTheme.ink,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('Biliyorum'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Sola kaydır: Tekrar Et · Sağa kaydır: Biliyorum',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.white.withValues(alpha: 0.4),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -519,12 +599,15 @@ class SummaryCardFace extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Expanded(
-            child: Text(
-              card.body,
-              style: TextStyle(
-                fontSize: 14.5,
-                height: 1.42,
-                color: Colors.white.withValues(alpha: 0.78),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Text(
+                card.body,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  height: 1.42,
+                  color: Colors.white.withValues(alpha: 0.78),
+                ),
               ),
             ),
           ),

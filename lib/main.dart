@@ -37,12 +37,14 @@ import 'services/kpss_preference_service.dart';
 import 'services/theme_preference_service.dart';
 import 'services/user_savings_insight_service.dart';
 import 'services/daily_mini_exam_service.dart';
+import 'services/daily_mini_ranking_service.dart';
 import 'services/network_security_gate.dart';
 import 'services/network_security_service.dart';
 import 'services/notification_preference_service.dart';
 import 'services/notification_service.dart';
 import 'services/orientation_policy.dart';
 import 'services/play_billing_service.dart';
+import 'services/premium_sync_service.dart';
 import 'services/practice_exam_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/user_message_service.dart';
@@ -179,6 +181,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       }
       unawaited(ExamCatalogService.instance.refresh());
       unawaited(NotificationService.instance.ensureScheduled());
+      unawaited(PremiumSyncService.instance.syncIfYearlyActive());
     }
   }
 
@@ -284,6 +287,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       await DailyMiniExamService.instance.initialize(
         kpssType: KpssPreferenceService.instance.kpssType,
       );
+      // ÖDÜL flag early — default hidden until API confirms rewardsVisible.
+      unawaited(DailyMiniRankingService.instance.refresh());
       // Hafif local servisler paralel
       await Future.wait([
         PracticeExamService.instance.initialize(),

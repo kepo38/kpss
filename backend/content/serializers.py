@@ -44,6 +44,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     imageUrl = serializers.SerializerMethodField()
     sekilKodu = serializers.CharField(source="figure_svg", allow_blank=True)
     siklar = serializers.SerializerMethodField()
+    optionTable = serializers.CharField(source="option_table")
     dogruCevap = serializers.CharField(source="correct_option")
     cozumMetni = serializers.CharField(source="solution")
     guncellenmeTarihi = serializers.DateTimeField(source="updated_at")
@@ -70,6 +71,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "imageUrl",
             "sekilKodu",
             "siklar",
+            "optionTable",
             "dogruCevap",
             "cozumMetni",
             "guncellenmeTarihi",

@@ -24,6 +24,7 @@ class ApiConfig {
   static const String meMessagesPath = '/api/v1/me/messages/';
   static const String dailyMiniExamPath = '/api/v1/daily-mini-exam/';
   static const String promoRedeemPath = '/api/v1/promo/redeem/';
+  static const String premiumSyncPath = '/api/v1/premium/sync/';
 
   static Uri packUri() => Uri.parse('$baseUrl$packPath');
   static Uri packVersionUri() => Uri.parse('$baseUrl$packVersionPath');
@@ -42,6 +43,7 @@ class ApiConfig {
   static Uri authGoogleUri() => Uri.parse('$baseUrl$authGooglePath');
   static Uri meUri() => Uri.parse('$baseUrl$mePath');
   static Uri meMessagesUri() => Uri.parse('$baseUrl$meMessagesPath');
+  static Uri premiumSyncUri() => Uri.parse('$baseUrl$premiumSyncPath');
   static Uri dailyMiniExamUri(String kpssType) => Uri.parse(
         '$baseUrl$dailyMiniExamPath',
       ).replace(queryParameters: {'kpss_type': kpssType});

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ad_manager.dart';
 import 'database_service.dart';
 import 'iap_constants.dart';
+import 'premium_sync_service.dart';
 
 enum BillingUiState { idle, loading, purchasing, restoring, error }
 
@@ -268,6 +269,13 @@ class PlayBillingService {
     );
 
     _applyPremiumState(true, productId: productId, expiry: expiry);
+    unawaited(
+      PremiumSyncService.instance.syncToBackend(
+        isPremium: true,
+        productId: productId,
+        expiresAt: expiry,
+      ),
+    );
   }
 
   Future<void> _grantPackOwnership(String productId) async {
@@ -319,6 +327,13 @@ class PlayBillingService {
     await prefs.remove(IapConstants.premiumProductPrefsKey);
     await prefs.remove(IapConstants.premiumExpiryPrefsKey);
     _applyPremiumState(false);
+    unawaited(
+      PremiumSyncService.instance.syncToBackend(
+        isPremium: false,
+        productId: '',
+        expiresAt: null,
+      ),
+    );
   }
 
   void _applyPremiumState(

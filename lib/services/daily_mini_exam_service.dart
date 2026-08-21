@@ -16,6 +16,7 @@ import '../utils/daily_mini_exam_logic.dart';
 import '../widgets/countdown_widget.dart';
 import 'auth_service.dart';
 import 'content_bank_service.dart';
+import 'daily_mini_ranking_service.dart';
 import 'gamification_service.dart';
 import 'premium_service.dart';
 import 'question_fetch_service.dart';
@@ -391,6 +392,8 @@ class DailyMiniExamService extends ChangeNotifier {
           _remote = DailyMiniExamSnapshot.fromJson(
             Map<String, dynamic>.from(decoded),
           );
+          DailyMiniRankingService.instance
+              .applyRewardsVisible(_remote!.rewardsVisible);
           if (_remote!.questionIds.isNotEmpty && !_completed) {
             _questionIds = _remote!.questionIds;
           }
@@ -754,6 +757,8 @@ class DailyMiniExamService extends ChangeNotifier {
           _remote = DailyMiniExamSnapshot.fromJson(
             Map<String, dynamic>.from(decoded),
           );
+          DailyMiniRankingService.instance
+              .applyRewardsVisible(_remote!.rewardsVisible);
           if (_remote!.myAttempt != null) {
             _localAttempt = _remote!.myAttempt;
           }

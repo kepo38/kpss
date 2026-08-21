@@ -86,6 +86,7 @@ class DailyMiniExamSnapshot {
   final List<DailyMiniLeaderRow> leaderboard;
   final int secondsRemaining;
   final bool guestLoginRequired;
+  final bool? rewardsVisible;
 
   const DailyMiniExamSnapshot({
     required this.examDate,
@@ -99,6 +100,7 @@ class DailyMiniExamSnapshot {
     this.leaderboard = const [],
     this.secondsRemaining = 0,
     this.guestLoginRequired = false,
+    this.rewardsVisible,
   });
 
   factory DailyMiniExamSnapshot.fromJson(Map<String, dynamic> json) {
@@ -130,6 +132,9 @@ class DailyMiniExamSnapshot {
           const [],
       secondsRemaining: (json['secondsRemaining'] as num?)?.toInt() ?? 0,
       guestLoginRequired: json['guestLoginRequired'] == true,
+      rewardsVisible: json.containsKey('rewardsVisible')
+          ? json['rewardsVisible'] == true
+          : null,
     );
   }
 }

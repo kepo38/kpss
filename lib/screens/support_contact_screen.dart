@@ -97,7 +97,7 @@ class SupportContactScreen extends StatelessWidget {
                   'hata bildirimi yapabilirsiniz.',
               warning: true,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 52),
             _ContactButton(onTap: () => _contact(context)),
           ],
         ),

@@ -5,7 +5,6 @@ import '../../services/offline_pack_service.dart';
 import '../../services/play_billing_service.dart';
 import '../../services/premium_service.dart';
 import '../../theme/app_theme.dart';
-import '../../theme/subject_neon_palette.dart';
 import '../../widgets/app_back_button.dart';
 import '../../widgets/scale_button.dart';
 import 'premium_paywall_screen.dart';
@@ -82,11 +81,16 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
     final dateText = _service.lastDownloadedAt == null
         ? 'Henüz indirilmedi'
         : DateFormat('d.MM.yyyy · HH:mm').format(_service.lastDownloadedAt!);
+    final statusValue = yearly
+        ? (ready ? 'Çevrimdışı kullanıma hazır' : 'İndirme gerekli')
+        : 'Yıllık Premium gerekli';
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
       appBar: AppBar(
-        backgroundColor: AppTheme.page(context),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         foregroundColor: AppTheme.onPage(context),
         leading: const AppBackButton(),
         title: const Text(
@@ -94,176 +98,151 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
           style: TextStyle(fontFamily: 'serif', fontWeight: FontWeight.w600),
         ),
       ),
+      extendBodyBehindAppBar: false,
       body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            stops: const [0.0, 0.38, 0.72, 1.0],
             colors: [
-              AppTheme.pageTop(context),
+              Color.lerp(AppTheme.pageTop(context), AppTheme.champagne, 0.08)!,
               AppTheme.page(context),
+              Color.lerp(AppTheme.page(context), AppTheme.ink, 0.04)!,
               AppTheme.pageDeep(context),
             ],
           ),
         ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(22, 12, 22, 40),
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: SubjectNeonPalette.lightNeonModule(
-                neon: AppTheme.champagne,
-                accent: true,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        ready
-                            ? Icons.offline_pin_outlined
-                            : Icons.cloud_download_outlined,
-                        color: AppTheme.champagneLight,
-                      ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Kütüphane modu',
-                          style: TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.champagne.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: AppTheme.champagne.withValues(alpha: 0.55),
-                          ),
-                        ),
-                        child: const Text(
-                          'YILLIK',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
-                            color: AppTheme.champagneLight,
-                          ),
-                        ),
-                      ),
-                    ],
+            Positioned(
+              top: -80,
+              right: -60,
+              child: IgnorePointer(
+                child: Container(
+                  width: 220,
+                  height: 220,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.champagne.withValues(alpha: 0.18),
+                        AppTheme.champagne.withValues(alpha: 0.0),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    yearly
-                        ? 'Wi‑Fi’deyken paketi indirin. Sonra internet olmadan '
-                            'konu testlerini çözebilirsiniz.'
-                        : 'Offline paket yalnızca yıllık Premium aboneliğinde '
-                            'açılır. Aylık planda bu özellik yoktur.',
-                    style: TextStyle(
-                      height: 1.4,
-                      color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 40,
+              left: -70,
+              child: IgnorePointer(
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.ink.withValues(alpha: 0.07),
+                        AppTheme.ink.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            ListView(
+              padding: const EdgeInsets.fromLTRB(22, 8, 22, 40),
+              children: [
+                _HeroCard(yearly: yearly, ready: ready),
+                const SizedBox(height: 20),
+                _StatusPanel(
+                  statusValue: statusValue,
+                  ready: ready,
+                  yearly: yearly,
+                  packVersion: 'v${_service.packVersion ?? '-'}',
+                  contentValue:
+                      '${_service.questionCount} soru · ${_service.testCount} test',
+                  lastDownload: dateText,
+                ),
+                const SizedBox(height: 22),
+                if (!yearly) ...[
+                  ScaleButton(
+                    onPressed: _openPaywall,
+                    child: _PrimaryCta(
+                      onPressed: _openPaywall,
+                      busy: false,
+                      icon: Icons.workspace_premium_outlined,
+                      label: 'Yıllık Premium\'a geç',
+                    ),
+                  ),
+                ] else ...[
+                  ScaleButton(
+                    onPressed: _busy ? null : _download,
+                    child: _PrimaryCta(
+                      onPressed: _busy ? null : _download,
+                      busy: _busy,
+                      icon: ready ? Icons.sync : Icons.download_outlined,
+                      label: _busy
+                          ? 'İndiriliyor…'
+                          : ready
+                              ? 'Paketi güncelle'
+                              : 'Offline paketi indir',
+                      emphasis: ready ? _CtaEmphasis.update : _CtaEmphasis.download,
                     ),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _InfoTile(
-              label: 'Durum',
-              value: yearly
-                  ? (ready ? 'Çevrimdışı kullanıma hazır' : 'İndirme gerekli')
-                  : 'Yıllık Premium gerekli',
-            ),
-            _InfoTile(label: 'Paket sürümü', value: 'v${_service.packVersion ?? '-'}'),
-            _InfoTile(
-              label: 'İçerik',
-              value: '${_service.questionCount} soru · ${_service.testCount} test',
-            ),
-            _InfoTile(label: 'Son indirme', value: dateText),
-            const SizedBox(height: 20),
-            if (!yearly) ...[
-              ScaleButton(
-                onPressed: _openPaywall,
-                child: FilledButton.icon(
-                  onPressed: _openPaywall,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.champagne,
-                    foregroundColor: AppTheme.ink,
-                    minimumSize: const Size(double.infinity, 52),
-                  ),
-                  icon: const Icon(Icons.workspace_premium_outlined),
-                  label: const Text('Yıllık Premium\'a geç'),
-                ),
-              ),
-            ] else ...[
-              ScaleButton(
-                onPressed: _busy ? null : _download,
-                child: FilledButton.icon(
-                  onPressed: _busy ? null : _download,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.neonEdge.withValues(alpha: 0.2),
-                    foregroundColor: AppTheme.ink,
-                    side: BorderSide(
-                      color: AppTheme.neonEdge.withValues(alpha: 0.65),
+                if (_service.lastError != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
                     ),
-                    minimumSize: const Size(double.infinity, 52),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.red.shade200.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    child: Text(
+                      _service.lastError!,
+                      style: TextStyle(
+                        color: Colors.red.shade800,
+                        height: 1.35,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
-                  icon: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          ready ? Icons.sync : Icons.download_outlined,
-                        ),
-                  label: Text(
-                    _busy
-                        ? 'İndiriliyor…'
-                        : ready
-                            ? 'Paketi güncelle'
-                            : 'Offline paketi indir',
+                ],
+                const SizedBox(height: 28),
+                Text(
+                  'Nasıl kullanılır?',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.ink.withValues(alpha: 0.92),
                   ),
                 ),
-              ),
-            ],
-            if (_service.lastError != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _service.lastError!,
-                style: TextStyle(
-                  color: Colors.red.shade700,
-                  height: 1.35,
+                const SizedBox(height: 12),
+                const _Step(
+                  n: '1',
+                  text: 'Evde / kafede Wi‑Fi ile paketi indirin.',
                 ),
-              ),
-            ],
-            const SizedBox(height: 22),
-            Text(
-              'Nasıl kullanılır?',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: AppTheme.slate.withValues(alpha: 0.9),
-              ),
-            ),
-            const SizedBox(height: 8),
-            const _Step(n: '1', text: 'Evde / kafede Wi‑Fi ile paketi indirin.'),
-            const _Step(
-              n: '2',
-              text: 'Kütüphanede uçak modunda uygulamayı açın.',
-            ),
-            const _Step(
-              n: '3',
-              text: 'Dersler sekmesinden konu testlerini normal şekilde çözün.',
+                const _Step(
+                  n: '2',
+                  text: 'Kütüphanede uçak modunda uygulamayı açın.',
+                ),
+                const _Step(
+                  n: '3',
+                  text:
+                      'Dersler sekmesinden konu testlerini normal şekilde çözün.',
+                ),
+              ],
             ),
           ],
         ),
@@ -272,43 +251,371 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
   }
 }
 
-class _InfoTile extends StatelessWidget {
-  final String label;
-  final String value;
+enum _CtaEmphasis { download, update }
 
-  const _InfoTile({required this.label, required this.value});
+class _HeroCard extends StatelessWidget {
+  final bool yearly;
+  final bool ready;
+
+  const _HeroCard({required this.yearly, required this.ready});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.ink.withValues(alpha: 0.07)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: AppTheme.slate.withValues(alpha: 0.8),
-              fontSize: 13,
-            ),
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF162338),
+            Color(0xFF0C1424),
+            Color(0xFF101828),
+          ],
+        ),
+        border: Border.all(
+          color: AppTheme.champagne.withValues(alpha: 0.45),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.champagne.withValues(alpha: 0.22),
+            blurRadius: 28,
+            offset: const Offset(0, 10),
           ),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppTheme.ink,
+          BoxShadow(
+            color: AppTheme.ink.withValues(alpha: 0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -30,
+            right: -20,
+            child: IgnorePointer(
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.champagne.withValues(alpha: 0.22),
+                      AppTheme.champagne.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: AppTheme.champagne.withValues(alpha: 0.14),
+                      border: Border.all(
+                        color: AppTheme.champagne.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Icon(
+                      ready
+                          ? Icons.offline_pin_outlined
+                          : Icons.cloud_download_outlined,
+                      color: AppTheme.champagneLight,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Kütüphane modu',
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        height: 1.15,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.champagne.withValues(alpha: 0.35),
+                          AppTheme.champagne.withValues(alpha: 0.18),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.champagneLight.withValues(alpha: 0.65),
+                      ),
+                    ),
+                    child: const Text(
+                      'YILLIK',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.3,
+                        color: AppTheme.champagneLight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                yearly
+                    ? 'Wi‑Fi’deyken paketi indirin. Sonra internet olmadan '
+                        'konu testlerini çözebilirsiniz.'
+                    : 'Offline paket yalnızca yıllık Premium aboneliğinde '
+                        'açılır. Aylık planda bu özellik yoktur.',
+                style: TextStyle(
+                  height: 1.45,
+                  fontSize: 14.5,
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusPanel extends StatelessWidget {
+  final String statusValue;
+  final bool ready;
+  final bool yearly;
+  final String packVersion;
+  final String contentValue;
+  final String lastDownload;
+
+  const _StatusPanel({
+    required this.statusValue,
+    required this.ready,
+    required this.yearly,
+    required this.packVersion,
+    required this.contentValue,
+    required this.lastDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = !yearly
+        ? AppTheme.slate
+        : ready
+            ? const Color(0xFF2F6B4F)
+            : AppTheme.champagne;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white.withValues(alpha: 0.88),
+        border: Border.all(color: AppTheme.ink.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.ink.withValues(alpha: 0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _StatusRow(
+            icon: Icons.circle,
+            iconColor: statusColor,
+            label: 'Durum',
+            value: statusValue,
+            valueColor: statusColor,
+            emphasize: true,
+            showDivider: true,
+          ),
+          _StatusRow(
+            icon: Icons.tag_outlined,
+            iconColor: AppTheme.slate.withValues(alpha: 0.7),
+            label: 'Paket sürümü',
+            value: packVersion,
+            showDivider: true,
+          ),
+          _StatusRow(
+            icon: Icons.library_books_outlined,
+            iconColor: AppTheme.slate.withValues(alpha: 0.7),
+            label: 'İçerik',
+            value: contentValue,
+            showDivider: true,
+          ),
+          _StatusRow(
+            icon: Icons.history_outlined,
+            iconColor: AppTheme.slate.withValues(alpha: 0.7),
+            label: 'Son indirme',
+            value: lastDownload,
+            showDivider: false,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool emphasize;
+  final bool showDivider;
+
+  const _StatusRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.emphasize = false,
+    required this.showDivider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            emphasize ? 16 : 13,
+            16,
+            emphasize ? 16 : 13,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: emphasize ? 11 : 18,
+                color: iconColor,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  color: AppTheme.slate.withValues(alpha: 0.85),
+                  fontSize: emphasize ? 13.5 : 13,
+                  fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  value,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
+                    fontSize: emphasize ? 14.5 : 14,
+                    color: valueColor ?? AppTheme.ink,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            thickness: 1,
+            indent: 16,
+            endIndent: 16,
+            color: AppTheme.ink.withValues(alpha: 0.05),
+          ),
+      ],
+    );
+  }
+}
+
+class _PrimaryCta extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool busy;
+  final IconData icon;
+  final String label;
+  final _CtaEmphasis emphasis;
+
+  const _PrimaryCta({
+    required this.onPressed,
+    required this.busy,
+    required this.icon,
+    required this.label,
+    this.emphasis = _CtaEmphasis.download,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isUpdate = emphasis == _CtaEmphasis.update;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: onPressed == null
+            ? const []
+            : [
+                BoxShadow(
+                  color: AppTheme.champagne.withValues(alpha: 0.42),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+      ),
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: isUpdate ? AppTheme.ink : AppTheme.champagne,
+          foregroundColor: isUpdate ? AppTheme.champagneLight : AppTheme.ink,
+          disabledBackgroundColor: AppTheme.champagne.withValues(alpha: 0.45),
+          disabledForegroundColor: AppTheme.ink.withValues(alpha: 0.55),
+          elevation: 0,
+          minimumSize: const Size(double.infinity, 56),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: isUpdate
+                ? BorderSide(
+                    color: AppTheme.champagne.withValues(alpha: 0.55),
+                  )
+                : BorderSide.none,
+          ),
+        ),
+        icon: busy
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: isUpdate ? AppTheme.champagneLight : AppTheme.ink,
+                ),
+              )
+            : Icon(icon, size: 22),
+        label: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+          ),
+        ),
       ),
     );
   }
@@ -323,28 +630,46 @@ class _Step extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 11,
-            backgroundColor: AppTheme.champagne.withValues(alpha: 0.2),
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.champagne.withValues(alpha: 0.35),
+                  AppTheme.champagne.withValues(alpha: 0.16),
+                ],
+              ),
+              border: Border.all(
+                color: AppTheme.champagne.withValues(alpha: 0.5),
+              ),
+            ),
             child: Text(
               n,
               style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
                 color: AppTheme.ink,
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                height: 1.35,
-                color: AppTheme.slate.withValues(alpha: 0.9),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(
+                text,
+                style: TextStyle(
+                  height: 1.4,
+                  fontSize: 14.5,
+                  color: AppTheme.slate.withValues(alpha: 0.95),
+                ),
               ),
             ),
           ),

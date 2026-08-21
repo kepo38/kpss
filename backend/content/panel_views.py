@@ -1724,6 +1724,14 @@ def panel_question_edit(
             ]
         ):
             return HttpResponseBadRequest("KPSS soruları A–E beş şık gerektirir.")
+        option_table = (request.POST.get("option_table") or Question.OPTION_TABLE_NONE).strip()
+        if option_table not in {
+            Question.OPTION_TABLE_NONE,
+            Question.OPTION_TABLE_DUAL,
+            Question.OPTION_TABLE_TRIPLE,
+        }:
+            option_table = Question.OPTION_TABLE_NONE
+        question.option_table = option_table
         question.correct_option = request.POST.get("correct_option", "A")
         question.solution = request.POST.get("solution", "").strip()
         question.is_published = request.POST.get("is_published") == "on"
@@ -1948,6 +1956,7 @@ def panel_question_copy(
         option_c=source.option_c,
         option_d=source.option_d,
         option_e=source.option_e,
+        option_table=source.option_table,
         correct_option=source.correct_option,
         solution=source.solution,
         is_published=source.is_published,
@@ -2801,23 +2810,26 @@ def panel_daily_mini_ranking(request: HttpRequest) -> HttpResponse:
             cfg.rewards_visible = request.POST.get("rewards_visible") == "on"
             cfg.save()
             messages.success(request, "Mini deneme ödül ayarları kaydedildi.")
-        elif action.startswith("finalize_"):
-            parts = action.split("_", 2)
-            if len(parts) == 3:
-                period = parts[1]
-                kpss_type = parts[2]
-                if period in ("weekly", "monthly") and kpss_type in VALID_KPSS_TYPES:
-                    winners = finalize_period(period, kpss_type, send_push=True)
-                    if winners:
-                        messages.success(
-                            request,
-                            f"{len(winners)} kazanan için premium tanımlandı ({period}).",
-                        )
-                    else:
-                        messages.warning(
-                            request,
-                            "Finalize yapılmadı (dönem zaten işlenmiş veya ödül kapalı).",
-                        )
+        elif action in ("finalize_weekly", "finalize_monthly"):
+            # Mini deneme ürün olarak sınav tipine bölünmez; panel tek düğme.
+            # Depoda hâlâ kpss_type alanları varsa hepsini içeride tarar (--all-kpss).
+            period = "weekly" if action == "finalize_weekly" else "monthly"
+            created: list = []
+            for kpss_type in VALID_KPSS_TYPES:
+                created.extend(
+                    finalize_period(period, kpss_type, send_push=True)
+                )
+            label = "Haftalık" if period == "weekly" else "Aylık"
+            if created:
+                messages.success(
+                    request,
+                    f"{label}: {len(created)} kazanan için premium tanımlandı.",
+                )
+            else:
+                messages.warning(
+                    request,
+                    f"{label} finalize yapılmadı (dönem zaten işlenmiş veya ödül kapalı).",
+                )
         return redirect("panel_daily_mini_ranking")
 
     winners = DailyMiniRankingWinner.objects.select_related("user").order_by(
@@ -2829,7 +2841,6 @@ def panel_daily_mini_ranking(request: HttpRequest) -> HttpResponse:
         {
             "config": cfg,
             "winners": winners,
-            "kpss_types": VALID_KPSS_TYPES,
             "page_title": "Mini deneme ödülleri",
         },
     )

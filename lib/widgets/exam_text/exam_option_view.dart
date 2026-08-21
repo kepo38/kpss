@@ -5,17 +5,64 @@ import '../../utils/turkish_hyphenation.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
 
-/// Şık metni — 15pt, wrap; eşleştirme satırında eşit sütun.
+/// Badge diameter (CircleAvatar radius 14) + gap after badge in option rows.
+const double kOptionBadgeLeadingWidth = 28 + 12;
+
+/// Şık metni — 15pt, wrap; eşleştirme satırında eşit sütun (yalnızca forceColumns).
 class ExamOptionView extends StatelessWidget {
   final String text;
+  final int? forceColumns;
 
-  const ExamOptionView({super.key, required this.text});
+  const ExamOptionView({
+    super.key,
+    required this.text,
+    this.forceColumns,
+  });
+
+  List<String> _forcedCells(int columns) {
+    final cells = OptionColumnLayout.cellsOf(text);
+    if (cells != null && cells.length == columns) return cells;
+    if (cells != null && cells.length > columns) {
+      return cells.sublist(0, columns);
+    }
+    if (cells != null && cells.isNotEmpty) {
+      return [
+        ...cells,
+        for (var i = cells.length; i < columns; i++) '',
+      ];
+    }
+    final raw = FormattedText.stripMarkup(text)
+        .replaceAll('\u00a0', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (raw.isEmpty) return List.filled(columns, '');
+    final dashParts = raw
+        .split(RegExp(r'\s+(?:[-–—―−]{1,3}|---+)\s+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (dashParts.length >= columns) {
+      return dashParts.sublist(0, columns);
+    }
+    if (dashParts.length > 1) {
+      return [
+        ...dashParts,
+        for (var i = dashParts.length; i < columns; i++) '',
+      ];
+    }
+    return [
+      raw,
+      for (var i = 1; i < columns; i++) '',
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    final cells = OptionColumnLayout.cellsOf(text);
-    if (cells != null) {
-      final style = ExamTypography.option(color: Colors.white);
+    final columns = forceColumns;
+    if (columns != null && columns >= 2) {
+      final cells = _forcedCells(columns);
+      final style = ExamTypography.option(color: Colors.white)
+          .copyWith(fontWeight: FontWeight.w500, fontSize: 12, height: 1.2);
       return Row(
         children: [
           for (var i = 0; i < cells.length; i++) ...[
@@ -23,10 +70,10 @@ class ExamOptionView extends StatelessWidget {
             Expanded(
               child: Text(
                 TurkishHyphenation.hyphenate(cells[i]),
-                textAlign: TextAlign.start,
+                textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: style.copyWith(fontSize: 12, height: 1.2),
+                style: style,
               ),
             ),
           ],
@@ -55,11 +102,12 @@ class OptionColumnHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     if (labels.isEmpty) return const SizedBox.shrink();
     final style = ExamTypography.option(color: const Color(0xFFE8C98A))
-        .copyWith(fontWeight: FontWeight.w700, fontSize: 12);
+        .copyWith(fontWeight: FontWeight.w700, fontSize: 12, height: 1.2);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 16 + 28 + 12, right: 16),
+      padding: const EdgeInsets.only(bottom: 8, left: 16, right: 16),
       child: Row(
         children: [
+          const SizedBox(width: kOptionBadgeLeadingWidth),
           for (var i = 0; i < labels.length; i++) ...[
             if (i > 0) const SizedBox(width: 6),
             Expanded(

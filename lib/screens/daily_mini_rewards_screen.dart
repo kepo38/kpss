@@ -39,6 +39,7 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
         final snap = service.snapshotFor(_period);
         final history = service.history;
         final rewards = snap?.rewardDays ?? const {1: 3, 2: 2, 3: 1};
+        final odulActive = service.rewardsVisible;
 
         return Scaffold(
           backgroundColor: AppTheme.ink,
@@ -57,7 +58,7 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
             ),
             child: Column(
               children: [
-                const _PremiumAppBar(),
+                _PremiumAppBar(odulActive: odulActive),
                 Expanded(
                   child: RefreshIndicator(
                     color: AppTheme.champagne,
@@ -66,8 +67,10 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(18, 8, 18, 36),
                       children: [
-                        _RewardHero(rewardDays: rewards),
-                        const SizedBox(height: 18),
+                        if (odulActive) ...[
+                          _RewardHero(rewardDays: rewards),
+                          const SizedBox(height: 18),
+                        ],
                         _SeninSiranButton(
                           myRank: snap?.myRank,
                           myCorrect: snap?.myTotalCorrect ?? 0,
@@ -111,32 +114,35 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
                                 row: row,
                                 rewardDays: rewards,
                                 isMe: snap.myRank == row.rank,
+                                showRewards: odulActive,
                               ),
                             ),
                         ],
-                        const SizedBox(height: 28),
-                        const _SectionEyebrow('Geçmiş kazananlar'),
-                        const SizedBox(height: 12),
-                        if (service.loading && history == null)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: AppTheme.champagne,
+                        if (odulActive) ...[
+                          const SizedBox(height: 28),
+                          const _SectionEyebrow('Geçmiş kazananlar'),
+                          const SizedBox(height: 12),
+                          if (service.loading && history == null)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: AppTheme.champagne,
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                        else if (history == null || history.periods.isEmpty)
-                          const _EmptyHint(
-                            'Henüz finalize edilmiş dönem yok.',
-                          )
-                        else
-                          ...history.periods.map(_HistoryPeriodCard.new),
+                            )
+                          else if (history == null || history.periods.isEmpty)
+                            const _EmptyHint(
+                              'Henüz finalize edilmiş dönem yok.',
+                            )
+                          else
+                            ...history.periods.map(_HistoryPeriodCard.new),
+                        ],
                       ],
                     ),
                   ),
@@ -155,21 +161,23 @@ class _DailyMiniRewardsScreenState extends State<DailyMiniRewardsScreen> {
 }
 
 class _PremiumAppBar extends StatelessWidget {
-  const _PremiumAppBar();
+  final bool odulActive;
+
+  const _PremiumAppBar({required this.odulActive});
 
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
     return Padding(
       padding: EdgeInsets.fromLTRB(8, top + 4, 12, 8),
-      child: const Row(
+      child: Row(
         children: [
-          AppBackButton(),
+          const AppBackButton(),
           Expanded(
             child: Text(
-              'ÖDÜL · Sıralama',
+              odulActive ? 'ÖDÜL · Sıralama' : 'SIRALAMA',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'serif',
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -179,7 +187,7 @@ class _PremiumAppBar extends StatelessWidget {
             ),
           ),
           // AppBackButton (IconButton) ile denge — sağda ÖDÜL yok.
-          SizedBox(width: 48),
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -602,7 +610,7 @@ class _PeriodDateLabel extends StatelessWidget {
   }
 }
 
-/// Altın CTA — haftalık/aylık sekmelerinin üstünde "Senin sıran".
+/// Premium glass CTA — haftalık/aylık sekmelerinin üstünde "Senin sıran".
 class _SeninSiranButton extends StatelessWidget {
   final int? myRank;
   final int myCorrect;
@@ -624,133 +632,138 @@ class _SeninSiranButton extends StatelessWidget {
         : hasRank
             ? '$myCorrect doğru · ${formatExamDuration(myDuration)}'
             : 'Sınava Girmedin!';
+    final maxW = MediaQuery.sizeOf(context).width * 0.76;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: hasRank || loading
-            ? null
-            : () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Sınava Girmedin!',
-                    ),
-                  ),
-                );
-              },
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          padding: const EdgeInsets.fromLTRB(14, 11, 14, 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: const Color(0xFFD4AF6A).withValues(alpha: 0.85),
-              width: 1.15,
-            ),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFFFFF9F0),
-                Color(0xFFF5E6C4),
-                Color(0xFFE8C878),
-                Color(0xFFD4AF6A),
-              ],
-              stops: [0, 0.4, 0.82, 1],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.champagne.withValues(alpha: 0.28),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text(
-                'SENİN SIRAN',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.5,
-                  color: AppTheme.ink,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppTheme.ink.withValues(alpha: 0.86),
-                  border: Border.all(
-                    color: const Color(0xFFFFF1D0).withValues(alpha: 0.9),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.ink.withValues(alpha: 0.28),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppTheme.champagneLight,
-                        ),
-                      )
-                    : Text(
-                        hasRank ? '#$myRank' : '—',
-                        style: const TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          color: AppTheme.champagneLight,
+    return Align(
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasRank || loading
+                ? null
+                : () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Sınava Girmedin!',
                         ),
                       ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                statsText,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  height: 1.2,
-                  color: AppTheme.ink.withValues(alpha: 0.92),
+                    );
+                  },
+            borderRadius: BorderRadius.circular(14),
+            child: Ink(
+              padding: const EdgeInsets.fromLTRB(14, 11, 14, 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppTheme.champagne.withValues(alpha: 0.55),
+                  width: 1.2,
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'SIRALAMA SÜREKLİ GÜNCELLENMEKTEDİR',
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.55,
-                  height: 1.15,
-                  color: AppTheme.ink.withValues(alpha: 0.48),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppTheme.inkSoft.withValues(alpha: 0.98),
+                    AppTheme.ink.withValues(alpha: 0.92),
+                    const Color(0xFF101826),
+                  ],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
-            ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    'SENİN SIRAN',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                      color: AppTheme.champagneLight.withValues(alpha: 0.95),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.06),
+                      border: Border.all(
+                        color: AppTheme.champagne.withValues(alpha: 0.7),
+                        width: 1.4,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.champagne.withValues(alpha: 0.14),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: loading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.champagneLight,
+                            ),
+                          )
+                        : Text(
+                            hasRank ? '#$myRank' : '—',
+                            style: const TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              color: AppTheme.champagneLight,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    statsText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'SIRALAMA SÜREKLİ GÜNCELLENMEKTEDİR',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.55,
+                      height: 1.15,
+                      color: AppTheme.champagne.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -762,16 +775,18 @@ class _PeriodRow extends StatelessWidget {
   final PeriodLeaderRow row;
   final Map<int, int> rewardDays;
   final bool isMe;
+  final bool showRewards;
 
   const _PeriodRow({
     required this.row,
     required this.rewardDays,
     required this.isMe,
+    this.showRewards = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final reward = rewardDays[row.rank];
+    final reward = showRewards ? rewardDays[row.rank] : null;
     final podium = row.rank <= 3;
     final medal = switch (row.rank) {
       1 => const Color(0xFFE8C878),

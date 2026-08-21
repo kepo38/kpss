@@ -44,6 +44,7 @@ class NotificationService {
   static const int morningMotivationId = 1003;
   static const int eveningFomoId = 1004;
   static const int examReminderId = 1005;
+  static const int focusTimerCompleteId = 1006;
   static const _eveningSentKey = 'evening_fomo_sent_date_v1';
   static const _examReminderKey = 'exam_sunday_reminder_v1';
 
@@ -230,6 +231,84 @@ class NotificationService {
         ),
       ),
     );
+  }
+
+  /// Odak süresi bitince (arka plan / kilit ekranı).
+  Future<void> scheduleFocusTimerComplete({
+    required DateTime endsAt,
+    required bool isBreakEnding,
+  }) async {
+    if (kIsWeb) return;
+    if (!_initialized) await initialize();
+    if (!_initialized) return;
+
+    await _plugin.cancel(focusTimerCompleteId);
+    final when = tz.TZDateTime.from(endsAt, tz.local);
+    if (!when.isAfter(tz.TZDateTime.now(tz.local))) {
+      await showFocusTimerComplete(isBreakEnding: isBreakEnding);
+      return;
+    }
+
+    final title = isBreakEnding ? 'Mola bitti' : 'Odak tamamlandı';
+    final body = isBreakEnding
+        ? 'Mola süren doldu. Yeni bir odak turuna hazır mısın?'
+        : 'Seansın bitti. Kısa bir mola veya yeni tur zamanı.';
+
+    await _plugin.zonedSchedule(
+      focusTimerCompleteId,
+      '${BrandConstants.appName} — $title',
+      body,
+      when,
+      const NotificationDetails(android: AndroidNotificationDetails(
+          'focus_timer',
+          'Odak Modu',
+          channelDescription: 'Pomodoro süre bitiş uyarıları',
+          importance: Importance.high,
+          priority: Priority.high,
+          category: AndroidNotificationCategory.alarm,
+          playSound: true,
+          enableVibration: true,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      payload: jsonEncode({'type': 'focus_timer'}),
+    );
+  }
+
+  Future<void> showFocusTimerComplete({required bool isBreakEnding}) async {
+    if (kIsWeb) return;
+    if (!_initialized) await initialize();
+    if (!_initialized) return;
+
+    await _plugin.cancel(focusTimerCompleteId);
+    final title = isBreakEnding ? 'Mola bitti' : 'Odak tamamlandı';
+    final body = isBreakEnding
+        ? 'Mola süren doldu. Yeni bir odak turuna hazır mısın?'
+        : 'Seansın bitti. Kısa bir mola veya yeni tur zamanı.';
+
+    await _plugin.show(
+      focusTimerCompleteId,
+      '${BrandConstants.appName} — $title',
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'focus_timer',
+          'Odak Modu',
+          channelDescription: 'Pomodoro süre bitiş uyarıları',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          playSound: true,
+          enableVibration: true,
+        ),
+      ),
+      payload: jsonEncode({'type': 'focus_timer'}),
+    );
+  }
+
+  Future<void> cancelFocusTimerComplete() async {
+    if (!_initialized) return;
+    await _plugin.cancel(focusTimerCompleteId);
   }
 
   /// 20 test kilometre taşı — tıklanınca paywall açılır.

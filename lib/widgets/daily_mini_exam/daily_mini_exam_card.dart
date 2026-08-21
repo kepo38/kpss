@@ -10,6 +10,7 @@ import '../../screens/quiz_screen.dart';
 import '../../services/ad_manager.dart';
 import '../../services/auth_service.dart';
 import '../../services/daily_mini_exam_service.dart';
+import '../../services/daily_mini_ranking_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/daily_mini_exam_logic.dart';
 import '../countdown_widget.dart';
@@ -61,13 +62,15 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
       unawaited(
         DailyMiniExamService.instance.setKpssType(widget.kpssType),
       );
+      unawaited(DailyMiniRankingService.instance.refresh());
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
-        DailyMiniExamService.instance.hasSubmittedRanking) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(DailyMiniRankingService.instance.refresh());
+    if (DailyMiniExamService.instance.hasSubmittedRanking) {
       unawaited(DailyMiniExamService.instance.refresh());
     }
   }
@@ -445,46 +448,62 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
                             ],
                             // Başla / devam: ÖDÜL, Denemeye Başla üst sağından sarksın.
                             const SizedBox(height: 14),
-                            Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                ScaleButton(
-                                  onPressed: guestMustSignIn
-                                      ? _openProfileForLogin
-                                      : _startOrResume,
-                                  child: DailyMiniExamCta(
-                                    label: ctaLabel,
-                                    enabled:
-                                        guestMustSignIn || _window.isOpen,
-                                    twoLineStart: ctaLabel ==
-                                        DailyMiniExamConstants.ctaStart,
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  right: 0,
-                                  child: DailyMiniOdulHangBadge(
-                                    onPressed: _openOdulInfo,
-                                  ),
-                                ),
-                              ],
+                            ListenableBuilder(
+                              listenable: DailyMiniRankingService.instance,
+                              builder: (context, _) {
+                                final showOdul = DailyMiniRankingService
+                                    .instance.rewardsVisible;
+                                return Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    ScaleButton(
+                                      onPressed: guestMustSignIn
+                                          ? _openProfileForLogin
+                                          : _startOrResume,
+                                      child: DailyMiniExamCta(
+                                        label: ctaLabel,
+                                        enabled:
+                                            guestMustSignIn || _window.isOpen,
+                                        twoLineStart: ctaLabel ==
+                                            DailyMiniExamConstants.ctaStart,
+                                      ),
+                                    ),
+                                    if (showOdul)
+                                      Positioned(
+                                        top: 0,
+                                        right: 0,
+                                        child: DailyMiniOdulHangBadge(
+                                          onPressed: _openOdulInfo,
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
                             ),
                           ] else if (attempt != null) ...[
                             const SizedBox(height: 10),
                             const DailyMiniExamSubjectMix(),
                             const SizedBox(height: 22),
-                            DailyMiniExamCompletedLeaderboard(
-                              shareBoundaryKey: _podiumShareKey,
-                              rank: rank,
-                              participantCount: service.visibleParticipantCount,
-                              leaders: service.leaderboard,
-                              totalQuestions:
-                                  DailyMiniExamConstants.questionCount,
-                              trend: service.rankTrend,
-                              onShare: _shareRank,
-                              onDetails: _openResult,
-                              onOdul: _openOdulInfo,
-                              shareEnabled: service.canShareRank,
+                            ListenableBuilder(
+                              listenable: DailyMiniRankingService.instance,
+                              builder: (context, _) {
+                                final showOdul = DailyMiniRankingService
+                                    .instance.rewardsVisible;
+                                return DailyMiniExamCompletedLeaderboard(
+                                  shareBoundaryKey: _podiumShareKey,
+                                  rank: rank,
+                                  participantCount:
+                                      service.visibleParticipantCount,
+                                  leaders: service.leaderboard,
+                                  totalQuestions:
+                                      DailyMiniExamConstants.questionCount,
+                                  trend: service.rankTrend,
+                                  onShare: _shareRank,
+                                  onDetails: _openResult,
+                                  onOdul: showOdul ? _openOdulInfo : null,
+                                  shareEnabled: service.canShareRank,
+                                );
+                              },
                             ),
                             if (service.canResumeQuiz && _window.isOpen) ...[
                               const SizedBox(height: 12),

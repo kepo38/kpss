@@ -306,6 +306,7 @@ def period_ranking_payload(
         "myTotalCorrect": my_correct,
         "myTotalDurationSeconds": my_duration,
         "leaderboard": board,
+        "rewardsVisible": campaign.rewards_visible,
         "rewardsEnabled": enabled and campaign.rewards_visible,
         "rewardDays": {str(k): v for k, v in REWARD_DAYS.items()},
     }

@@ -17,6 +17,7 @@ import 'app_preferences.dart';
 import 'database_service.dart';
 import 'play_billing_service.dart';
 import 'premium_service.dart';
+import 'premium_sync_service.dart';
 import 'manual_question_service.dart';
 import 'question_rating_service.dart';
 import 'question_note_service.dart';
@@ -450,6 +451,7 @@ class AuthService extends ChangeNotifier {
       _syncPremiumSideEffects();
       notifyListeners();
       await _relayUserScopedServices();
+      unawaited(PremiumSyncService.instance.syncIfYearlyActive());
       return true;
     } catch (e) {
       debugPrint('Auth exchange: $e');

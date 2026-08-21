@@ -580,6 +580,7 @@ class AppUserAdmin(ModelAdmin):
                     "is_premium",
                     "premium_granted_at",
                     "premium_expires_at",
+                    "premium_product_id",
                     "premium_grant_note",
                 ),
             },

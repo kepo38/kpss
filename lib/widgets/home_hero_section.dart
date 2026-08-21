@@ -1,23 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import 'scale_button.dart';
 
-/// Stüdyo hub hero — renkli ışık + üstte Premium’u keşfet.
+/// Stüdyo hub hero — renkli ışık + geri + STÜDYO etiketi.
 class HomeHeroSection extends StatelessWidget {
   final double topPad;
-  final ValueNotifier<bool> isPremium;
   final Animation<double> fadeEarly;
   final Animation<double> fadeType;
-  final VoidCallback onPremiumTap;
 
   const HomeHeroSection({
     super.key,
     required this.topPad,
-    required this.isPremium,
     required this.fadeEarly,
     required this.fadeType,
-    required this.onPremiumTap,
   });
 
   @override
@@ -92,149 +87,56 @@ class HomeHeroSection extends StatelessWidget {
             children: [
               FadeTransition(
                 opacity: fadeEarly,
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.arrow_back_ios_new,
-                        size: 20,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                      tooltip: 'Geri',
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                    const Spacer(),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: isPremium,
-                      builder: (context, premium, _) {
-                        if (premium) {
-                          return Container(
+                child: SizedBox(
+                  height: kToolbarHeight,
+                  width: double.infinity,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Full-width center — back button does not shift the title.
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: _studioTitleWidth(),
+                          ),
+                          child: Container(
+                            alignment: Alignment.center,
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 11,
+                              horizontal: 16,
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: AppTheme.champagne.withValues(alpha: 0.5),
+                                color: AppTheme.neonEdge.withValues(alpha: 0.45),
                               ),
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppTheme.champagne.withValues(alpha: 0.22),
-                                  AppTheme.champagne.withValues(alpha: 0.08),
-                                ],
+                              color: AppTheme.neonEdge.withValues(alpha: 0.12),
+                            ),
+                            child: Text(
+                              'STÜDYO',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2.8,
+                                color: AppTheme.neonEdge.withValues(alpha: 0.95),
                               ),
                             ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.verified_rounded,
-                                  size: 15,
-                                  color: AppTheme.champagneLight,
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Premium',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppTheme.champagneLight,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        return ScaleButton(
-                          onPressed: onPremiumTap,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 9,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Color(0xFFFFF4DE),
-                                  Color(0xFFE8C878),
-                                  AppTheme.champagne,
-                                ],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.champagne.withValues(
-                                    alpha: 0.42,
-                                  ),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.workspace_premium_rounded,
-                                  size: 16,
-                                  color: AppTheme.ink,
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Premium’u keşfet',
-                                  style: TextStyle(
-                                    fontFamily: 'serif',
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.ink,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-              FadeTransition(
-                opacity: fadeEarly,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: _studioTitleWidth(),
-                      ),
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: AppTheme.neonEdge.withValues(alpha: 0.45),
-                          ),
-                          color: AppTheme.neonEdge.withValues(alpha: 0.12),
-                        ),
-                        child: Text(
-                          'STÜDYO',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2.8,
-                            color: AppTheme.neonEdge.withValues(alpha: 0.95),
                           ),
                         ),
                       ),
-                    ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.arrow_back_ios_new,
+                            size: 20,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                          tooltip: 'Geri',
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

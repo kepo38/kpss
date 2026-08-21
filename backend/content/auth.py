@@ -329,6 +329,8 @@ def user_to_dict(user: AppUser) -> dict[str, Any]:
         ),
         "isPremium": user.premium_active,
         "isAnonymous": user.is_anonymous,
+        "premiumProductId": user.premium_product_id or "",
+        "isYearlyPremium": user.is_yearly_premium,
         "premiumBitisTarihi": (
             user.premium_expires_at.isoformat()
             if user.premium_expires_at
@@ -371,6 +373,7 @@ def get_user_from_request(request) -> AppUser | None:
             "premium_expires_at",
             "premium_granted_at",
             "premium_grant_note",
+            "premium_product_id",
             "api_token",
             "is_active",
         )

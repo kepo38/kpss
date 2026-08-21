@@ -7,6 +7,7 @@ import '../constants/savings_constants.dart';
 import '../screens/daily_mini_rewards_screen.dart';
 import '../screens/premium/premium_paywall_screen.dart';
 import '../services/daily_mini_exam_service.dart';
+import '../services/daily_mini_ranking_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
@@ -32,6 +33,7 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_loadTodayRanking());
+      unawaited(DailyMiniRankingService.instance.refresh());
     });
   }
 
@@ -45,7 +47,10 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: DailyMiniExamService.instance,
+      listenable: Listenable.merge([
+        DailyMiniExamService.instance,
+        DailyMiniRankingService.instance,
+      ]),
       builder: (context, _) {
         final service = DailyMiniExamService.instance;
         final attempt = service.attempt;
@@ -62,6 +67,7 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
         final rank = service.rankForCurrentUser() ?? attempt.rank;
         final showRank = rank != null && rank > 0 && participantCount > 0;
         final boardEmpty = leaderboard.isEmpty;
+        final showOdul = DailyMiniRankingService.instance.rewardsVisible;
 
         return Scaffold(
           backgroundColor: AppTheme.ink,
@@ -92,15 +98,16 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
                       )
                     : const Icon(Icons.refresh_rounded),
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: Center(
-                  child: DailyMiniOdulButton(
-                    size: 44,
-                    onPressed: () => showDailyMiniOdulInfoCard(context),
+              if (showOdul)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Center(
+                    child: DailyMiniOdulButton(
+                      size: 44,
+                      onPressed: () => showDailyMiniOdulInfoCard(context),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           body: Column(
