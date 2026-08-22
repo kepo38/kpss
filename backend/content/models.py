@@ -134,6 +134,15 @@ class Question(models.Model):
     ]
     DIFFICULTY_MIN_ATTEMPTS = 1000
 
+    SUBMISSION_SOURCE_PANEL = ""
+    SUBMISSION_SOURCE_TELEGRAM = "telegram"
+    SUBMISSION_SOURCE_PANEL_OCR = "panel_ocr"
+    SUBMISSION_SOURCE_CHOICES = [
+        (SUBMISSION_SOURCE_PANEL, "Panel"),
+        (SUBMISSION_SOURCE_TELEGRAM, "Telegram"),
+        (SUBMISSION_SOURCE_PANEL_OCR, "Panel OCR"),
+    ]
+
     public_id = models.CharField(
         max_length=64,
         unique=True,
@@ -286,6 +295,32 @@ class Question(models.Model):
     )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Son güncelleme")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Eklenme")
+    submission_source = models.CharField(
+        max_length=16,
+        choices=SUBMISSION_SOURCE_CHOICES,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="Kaynak",
+    )
+    telegram_chat_id = models.BigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Telegram sohbet",
+    )
+    telegram_message_id = models.BigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Telegram mesaj",
+    )
+    telegram_file_unique_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="Telegram dosya kimliği",
+        help_text="Aynı fotoğrafın ilet/re-send tekrarını engeller.",
+    )
 
     class Meta:
         ordering = ["-updated_at"]
@@ -297,6 +332,13 @@ class Question(models.Model):
             models.Index(
                 fields=["scenario", "scenario_order"],
                 name="question_scenario_order_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["telegram_file_unique_id"],
+                condition=models.Q(telegram_file_unique_id__gt=""),
+                name="question_telegram_file_uid_uniq",
             ),
         ]
         verbose_name = "Soru"

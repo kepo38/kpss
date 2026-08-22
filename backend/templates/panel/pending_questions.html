@@ -1,0 +1,85 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<header class="page-header">
+  <div class="crumb">
+    <a href="{% url 'panel_home' %}">Dersler</a> / Onay bekleyen sorular
+  </div>
+  <h1>Onay bekleyen sorular</h1>
+  <p class="lead">
+    Telegram kaynağı · OCR sonrası yayınlanmadan önce kontrol.
+    Bekleyen: {% if pending_count %}<span class="pending-count">{{ pending_count }}</span>{% else %}<strong>0</strong>{% endif %}
+    {% if risky_count %} · Riskli: <span class="pending-count">{{ risky_count }}</span>{% endif %}
+  </p>
+</header>
+
+<div class="panel-card quality-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Soru kuyruğu</h2>
+      <p class="media-hint">{{ question_count }} kayıt · riskli sorular üstte listelenir</p>
+    </div>
+    <div class="quality-filters pending-filters">
+      <a class="btn btn-ghost{% if filter_key == 'all' %} is-active{% endif %}" href="?filter=all">Tümü</a>
+      <a class="btn btn-ghost{% if filter_key == 'risky' %} is-active{% endif %}" href="?filter=risky">Riskli{% if risky_count %} ({{ risky_count }}){% endif %}</a>
+      <a class="btn btn-ghost{% if filter_key == 'ok' %} is-active{% endif %}" href="?filter=ok">Tam OCR</a>
+    </div>
+  </div>
+  <div class="list">
+    {% for row in rows %}
+    {% with q=row.question flags=row.flags %}
+    <div class="row{% if flags.is_risky %} pending-row-risky{% endif %}">
+      <div class="name">
+        <a href="{% url 'panel_question_edit' q.topic_id q.id %}">{{ q.public_id }}</a>
+        {% if flags.partial %}<span class="risk-badge risk-badge-warn">Kısmi OCR</span>{% endif %}
+        {% if flags.formula_missing %}<span class="risk-badge">Formül?</span>{% endif %}
+        {% if flags.char_drift %}<span class="risk-badge">Karakter</span>{% endif %}
+        {% if flags.duplicate_hint %}<span class="risk-badge">Benzer</span>{% endif %}
+        <div class="hint">{{ q.topic.subject.name }} · {{ q.topic.name }}</div>
+        <div class="hint">{{ q.stem|truncatechars:120 }}</div>
+        <div class="hint question-meta">
+          Telegram · {{ q.created_at|date:"d.m.Y H:i" }}
+          · Doğru: {{ q.correct_option }}
+          {% if q.solution %} · Çözüm var{% endif %}
+        </div>
+      </div>
+      {% if q.image %}
+      <a class="btn btn-ghost" href="{{ q.image.url }}" target="_blank" rel="noopener">Görsel</a>
+      {% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_question_edit' q.topic_id q.id %}">İncele</a>
+      <form method="post" action="{% url 'panel_pending_question_approve' q.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-primary" type="submit">Onayla</button>
+      </form>
+      <form method="post" action="{% url 'panel_pending_question_reject' q.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="btn btn-ghost" type="submit">Reddet</button>
+      </form>
+    </div>
+    {% endwith %}
+    {% empty %}
+    <div class="empty">
+      {% if filter_key == 'risky' %}
+      Riskli (kısmi OCR) soru yok — filtre temiz.
+      {% elif filter_key == 'ok' %}
+      Tam OCR ile bekleyen soru yok.
+      {% else %}
+      Onay bekleyen soru yok. Telegram'dan fotoğraf gönderdiğinizde burada görünür.
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if rows.has_other_pages %}
+  <div class="toolbar" style="margin-top:16px;">
+    {% if rows.has_previous %}
+    <a class="btn btn-ghost" href="?{{ page_query }}&amp;page={{ rows.previous_page_number }}">Önceki</a>
+    {% endif %}
+    <span class="hint">Sayfa {{ rows.number }} / {{ rows.paginator.num_pages }}</span>
+    {% if rows.has_next %}
+    <a class="btn btn-ghost" href="?{{ page_query }}&amp;page={{ rows.next_page_number }}">Sonraki</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

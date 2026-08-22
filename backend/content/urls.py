@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .telegram_views import telegram_webhook
 from .views import (
     AnnouncementListView,
     ContentCatalogView,
@@ -109,5 +110,10 @@ urlpatterns = [
         "exam-packs/<str:pack_id>/exams/<int:exam_index>/questions/",
         ExamPackExamQuestionsView.as_view(),
         name="exam-pack-exam-questions",
+    ),
+    path(
+        "telegram/webhook/<str:secret>/",
+        telegram_webhook,
+        name="telegram-webhook",
     ),
 ]

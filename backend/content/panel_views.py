@@ -61,7 +61,9 @@ from .embeddings import refresh_question_embedding
 from .panel_context import (
     mark_question_error_reports_reviewed,
     pending_error_report_count,
+    pending_telegram_question_count,
 )
+from .telegram_panel import build_pending_telegram_rows
 from .test_grouping import (
     assign_question_to_test,
     rebalance_topic_tests,
@@ -677,6 +679,93 @@ def panel_error_report_status(
         f"{report.get_status_display()}.",
     )
     next_url = request.POST.get("next") or reverse("panel_error_reports")
+    return redirect(next_url)
+
+
+@login_required
+@staff_required
+def panel_pending_questions(request: HttpRequest) -> HttpResponse:
+    """Telegram (ve benzeri) kaynaklı onay bekleyen sorular."""
+    filter_key = (request.GET.get("filter") or "all").strip().lower()
+    if filter_key not in {"all", "risky", "ok"}:
+        filter_key = "all"
+
+    base_qs = (
+        Question.objects.filter(
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+            is_published=False,
+        )
+        .select_related("topic", "topic__subject")
+    )
+    all_rows = build_pending_telegram_rows(base_qs, filter_key="all")
+    risky_count = sum(1 for row in all_rows if row.flags.is_risky)
+    if filter_key == "risky":
+        rows = [row for row in all_rows if row.flags.is_risky]
+    elif filter_key == "ok":
+        rows = [row for row in all_rows if not row.flags.is_risky]
+    else:
+        rows = all_rows
+
+    paginator = Paginator(rows, 30)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    page_query = request.GET.copy()
+    page_query.pop("page", None)
+
+    return render(
+        request,
+        "panel/pending_questions.html",
+        {
+            "page_title": "Onay bekleyen sorular",
+            "rows": page_obj,
+            "question_count": paginator.count,
+            "risky_count": risky_count,
+            "filter_key": filter_key,
+            "page_query": page_query.urlencode(),
+            "pending_count": pending_telegram_question_count(),
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_pending_question_approve(
+    request: HttpRequest, question_id: int
+) -> HttpResponse:
+    question = get_object_or_404(
+        Question,
+        pk=question_id,
+        submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        is_published=False,
+    )
+    question.is_published = True
+    question.save(update_fields=["is_published", "updated_at"])
+    test = assign_question_to_test(question, question.topic, "auto")
+    mark_question_error_reports_reviewed(question)
+    messages.success(
+        request,
+        f"{question.public_id} yayınlandı → {test.title}.",
+    )
+    next_url = request.POST.get("next") or reverse("panel_pending_questions")
+    return redirect(next_url)
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_pending_question_reject(
+    request: HttpRequest, question_id: int
+) -> HttpResponse:
+    question = get_object_or_404(
+        Question,
+        pk=question_id,
+        submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        is_published=False,
+    )
+    public_id = question.public_id
+    question.delete()
+    messages.success(request, f"{public_id} reddedildi ve silindi.")
+    next_url = request.POST.get("next") or reverse("panel_pending_questions")
     return redirect(next_url)
 
 

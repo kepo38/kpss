@@ -15,6 +15,21 @@ urlpatterns = [
         panel_views.panel_error_report_status,
         name="panel_error_report_status",
     ),
+    path(
+        "onay-bekleyen-sorular/",
+        panel_views.panel_pending_questions,
+        name="panel_pending_questions",
+    ),
+    path(
+        "onay-bekleyen-sorular/<int:question_id>/onayla/",
+        panel_views.panel_pending_question_approve,
+        name="panel_pending_question_approve",
+    ),
+    path(
+        "onay-bekleyen-sorular/<int:question_id>/reddet/",
+        panel_views.panel_pending_question_reject,
+        name="panel_pending_question_reject",
+    ),
     path("haritalar/", panel_views.panel_maps, name="panel_maps"),
     path(
         "haritalar/<slug:slug>/sil/",

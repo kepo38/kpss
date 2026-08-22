@@ -20,7 +20,7 @@
   --sidebar-w: 248px;
   --font: "Outfit", system-ui, sans-serif;
   --serif: "Fraunces", Georgia, serif;
-  /* Ã–SYM kitapÃ§Ä±ÄŸÄ± Ã¶nizlemesi */
+  /* ÖSYM kitapç??? önizlemesi */
   --exam-serif: "Times New Roman", Times, "Tinos", Georgia, serif;
   --exam-math: "Cambria Math", "Latin Modern Math", serif;
   --exam-sans: Arial, Helvetica, sans-serif;
@@ -42,7 +42,7 @@ html, body {
 a { color: var(--champagne-soft); text-decoration: none; }
 a:hover { color: #fff; }
 
-/* â€”â€” Shell: sidebar + main â€”â€” */
+/* —— Shell: sidebar + main —— */
 .layout {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
@@ -1416,6 +1416,39 @@ textarea { min-height: 140px; resize: vertical; }
   color: #fbbf24;
   font-weight: 700;
 }
+.pending-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.pending-filters .btn.is-active {
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fde68a;
+}
+.pending-row-risky {
+  border-left: 3px solid #fbbf24;
+  padding-left: 12px;
+}
+.risk-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  vertical-align: middle;
+}
+.risk-badge-warn {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.4);
+}
 @media (max-width: 900px) {
   .quality-filters {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
@@ -1427,7 +1460,7 @@ textarea { min-height: 140px; resize: vertical; }
   }
 }
 
-/* Uygulama durumu KPI kartları */
+/* Uygulama durumu KPI kartlar */
 .app-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
