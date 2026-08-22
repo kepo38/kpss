@@ -110,7 +110,7 @@ if ($Unregister) {
     $prevEa = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     if (Test-TaskExists) {
-        cmd /c "schtasks /Delete /TN `"$TaskName`" /F" 2>nul | Out-Null
+        cmd /c "schtasks /Delete /TN `"$TaskName`" /F" 2>$null | Out-Null
         Write-Host "Gorev zamanlayicisi kaldirildi: $TaskName"
     }
     $ErrorActionPreference = $prevEa
@@ -138,7 +138,7 @@ $taskCmd = Get-TaskCommandLine
 $schtasksOk = $false
 $prevEa = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-cmd /c "schtasks /Create /TN `"$TaskName`" /TR `"$taskCmd`" /SC ONLOGON /DELAY $delay /RL LIMITED /F" 2>nul | Out-Null
+cmd /c "schtasks /Create /TN `"$TaskName`" /TR `"$taskCmd`" /SC ONLOGON /DELAY $delay /RL LIMITED /F" 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) { $schtasksOk = $true }
 $ErrorActionPreference = $prevEa
 
