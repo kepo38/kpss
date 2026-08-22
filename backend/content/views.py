@@ -506,23 +506,25 @@ class TestAttemptView(APIView):
             if question.is_published and question.topic_id == test.topic_id
         }
         accepted = ignored = 0
-        for public_id, question in questions.items():
-            selected = str(raw_answers.get(public_id) or "").strip().upper()[:1]
-            if not selected:
-                outcome = QuestionAttempt.OUTCOME_BLANK
-            elif selected == question.correct_option:
-                outcome = QuestionAttempt.OUTCOME_CORRECT
-            else:
-                outcome = QuestionAttempt.OUTCOME_WRONG
-            if QuestionAttempt.record_first_answer(
-                question=question,
-                user=user,
-                outcome=outcome,
-                selected_option=selected,
-            ):
-                accepted += 1
-            else:
-                ignored += 1
+        # Tamamlanma senkronu (cevapsız) istatistik kirletmesin — yalnızca kayıt oluştur.
+        if raw_answers:
+            for public_id, question in questions.items():
+                selected = str(raw_answers.get(public_id) or "").strip().upper()[:1]
+                if not selected:
+                    outcome = QuestionAttempt.OUTCOME_BLANK
+                elif selected == question.correct_option:
+                    outcome = QuestionAttempt.OUTCOME_CORRECT
+                else:
+                    outcome = QuestionAttempt.OUTCOME_WRONG
+                if QuestionAttempt.record_first_answer(
+                    question=question,
+                    user=user,
+                    outcome=outcome,
+                    selected_option=selected,
+                ):
+                    accepted += 1
+                else:
+                    ignored += 1
 
         quota = None
         if request.data.get("completed") is True and len(questions) > 0:

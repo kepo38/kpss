@@ -10,6 +10,7 @@ import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/gamification_service.dart';
 import '../services/last_study_session_service.dart';
+import '../services/question_attempt_service.dart';
 import '../services/question_fetch_service.dart';
 import '../theme/app_theme.dart';
 import 'scale_button.dart';
@@ -102,6 +103,12 @@ class ContinueStudyCard extends StatelessWidget {
 
     if (result == null || !result.completed) return;
 
+    await QuestionAttemptService.instance.submit(
+      testId: testId,
+      questionIds: result.questionIds,
+      selectedAnswers: result.selectedAnswers,
+      excludeQuestionIds: bank.statLockedWrongQuestionIds,
+    );
     await bank.recordAttempt(
       TestAttemptModel(
         id: 'att_${DateTime.now().millisecondsSinceEpoch}',

@@ -52,6 +52,7 @@ class _DailyMiniExamRankRevealState extends State<DailyMiniExamRankReveal>
       _service.rankRevealActive && !_countdownDone;
 
   int? get _resolvedRank {
+    if (!_service.hasSubmittedRanking) return null;
     if (_showCountdown) return null;
     if (widget.rank != null && widget.rank! > 0) return widget.rank;
     final fromService = _service.rankForCurrentUser();

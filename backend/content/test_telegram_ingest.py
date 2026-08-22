@@ -602,10 +602,12 @@ class TelegramIngestTests(TestCase):
     )
     @patch("content.telegram_bot._find_existing_after_conflict")
     @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot._download_file")
     @patch("content.telegram_bot.ingest_question_from_image")
     def test_integrity_error_without_row_uses_retry_lookup(
-        self, mock_ingest, mock_send, mock_after_conflict
+        self, mock_ingest, mock_download, mock_send, mock_after_conflict
     ):
+        mock_download.return_value = (b"fake-image", "image/jpeg")
         mock_ingest.side_effect = IntegrityError("unique")
         mock_after_conflict.return_value = (None, None)
 
@@ -679,6 +681,45 @@ class TelegramIngestTests(TestCase):
         reply = mock_send.call_args[0][1]
         self.assertIn("dinlemeye devam", reply.lower())
         self.assertNotIn("kapan", reply.lower())
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+    )
+    @patch("content.telegram_bot._try_delete_message")
+    @patch("content.telegram_bot.send_message")
+    def test_sohbeti_sil_deletes_tracked_user_and_bot_messages(
+        self, mock_send, mock_delete
+    ):
+        from content import telegram_bot
+
+        telegram_bot._chat_message_ids.clear()
+        telegram_bot._chat_messages_loaded = True
+        telegram_bot._chat_message_ids[1001] = [101, 202, 303]
+        mock_delete.return_value = True
+        mock_send.return_value = 999
+
+        outcome = handle_update(
+            {
+                "message": {
+                    "message_id": 888,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "/sohbeti_sil",
+                }
+            }
+        )
+
+        self.assertEqual(outcome, "command")
+        deleted_ids = {
+            call.args[1] for call in mock_delete.call_args_list if len(call.args) > 1
+        }
+        self.assertIn(888, deleted_ids)
+        self.assertIn(101, deleted_ids)
+        self.assertIn(202, deleted_ids)
+        self.assertIn(303, deleted_ids)
+        reply = mock_send.call_args[0][1]
+        self.assertIn("Silinen mesaj:", reply)
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",

@@ -118,6 +118,7 @@ class QuestionErrorReportService {
     if (!auth.hasPermanentAccount) {
       throw const QuestionErrorReportException(guestWarning);
     }
+    await ContentBankService.instance.syncTopicTestCompletionsToServer();
     final response = await _request(
       () => http.get(
         ApiConfig.questionErrorReportUri(questionId),
@@ -145,6 +146,7 @@ class QuestionErrorReportService {
         ),
       );
     }
+    await ContentBankService.instance.syncTopicTestCompletionsToServer();
     final response = await _request(
       () => http.post(
         ApiConfig.questionErrorReportUri(questionId),

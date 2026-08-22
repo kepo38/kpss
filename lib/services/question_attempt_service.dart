@@ -46,45 +46,63 @@ class QuestionAttemptService {
     }
   }
 
-  Future<void> submit({
+  /// Tamamlanan testi sunucuya yazar; [TopicTestCompletion] hata bildirimi kotası için gerekir.
+  Future<bool> submit({
     required String testId,
     required List<String> questionIds,
     required List<String?> selectedAnswers,
     Set<String> excludeQuestionIds = const {},
+    bool completionOnly = false,
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasPermanentAccount ||
-        testId.isEmpty ||
+    if (!auth.hasPermanentAccount || testId.isEmpty) return false;
+    if (!completionOnly &&
         questionIds.length != selectedAnswers.length) {
-      return;
+      return false;
     }
 
     final answers = <String, String>{};
-    for (var index = 0; index < questionIds.length; index++) {
-      final questionId = questionIds[index];
-      if (excludeQuestionIds.contains(questionId)) continue;
-      final selected = selectedAnswers[index]?.trim().toUpperCase() ?? '';
-      if (selected.isNotEmpty) answers[questionId] = selected;
+    if (!completionOnly) {
+      for (var index = 0; index < questionIds.length; index++) {
+        final questionId = questionIds[index];
+        if (excludeQuestionIds.contains(questionId)) continue;
+        final selected = selectedAnswers[index]?.trim().toUpperCase() ?? '';
+        if (selected.isNotEmpty) answers[questionId] = selected;
+      }
+      if (answers.isEmpty) return false;
     }
-    if (answers.isEmpty) return;
 
-    try {
-      await http
-          .post(
-            ApiConfig.testAttemptUri(testId),
-            headers: {
-              ...auth.authHeaders,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'answers': answers,
-              'completed': true,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-    } catch (_) {
-      // İstatistik gönderimi, tamamlanan testi kullanıcı için başarısız yapmaz.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await http
+            .post(
+              ApiConfig.testAttemptUri(testId),
+              headers: {
+                ...auth.authHeaders,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'answers': answers,
+                'completed': true,
+              }),
+            )
+            .timeout(const Duration(seconds: 12));
+        if (response.statusCode == 200) return true;
+      } catch (_) {
+        if (attempt == 1) return false;
+      }
     }
+    return false;
+  }
+
+  /// Yerelde bitmiş testlerin tamamlanma kaydını sunucuya yansıtır (cevaplar olmadan).
+  Future<bool> markTestCompleted(String testId) {
+    return submit(
+      testId: testId,
+      questionIds: const [],
+      selectedAnswers: const [],
+      completionOnly: true,
+    );
   }
 }
 

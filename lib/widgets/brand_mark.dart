@@ -308,6 +308,9 @@ class QuizHeaderStrip extends StatelessWidget {
 }
 
 class _SuccessRateMeter extends StatelessWidget {
+  static const _successGreen = Color(0xFF34D399);
+  static const _remainderRed = Color(0xFFF87171);
+
   final double rate;
 
   const _SuccessRateMeter({required this.rate});
@@ -315,65 +318,41 @@ class _SuccessRateMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clamped = rate.clamp(0.0, 1.0);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final height = constraints.maxHeight;
-        final filledHeight = height * clamped;
-        final dimHeight = height - filledHeight;
+    final successFlex = (clamped * 1000).round().clamp(0, 1000);
+    final remainderFlex = 1000 - successFlex;
 
-        return Container(
-          width: 5,
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            boxShadow: [
-              BoxShadow(
-                color: _rateColor(clamped).withValues(alpha: 0.35),
-                blurRadius: 6,
-                spreadRadius: 0.5,
+    return Container(
+      width: 5,
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        boxShadow: [
+          BoxShadow(
+            color: (clamped >= 0.5 ? _successGreen : _remainderRed)
+                .withValues(alpha: 0.35),
+            blurRadius: 6,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(99),
+        child: Column(
+          children: [
+            if (remainderFlex > 0)
+              Expanded(
+                flex: remainderFlex,
+                child: const ColoredBox(color: _remainderRed),
               ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: Stack(
-              fit: StackFit.expand,
-              alignment: Alignment.bottomCenter,
-              children: [
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Color(0xFFF87171),
-                        Color(0xFFFBBF24),
-                        Color(0xFF34D399),
-                      ],
-                      stops: [0.0, 0.48, 1.0],
-                    ),
-                  ),
-                ),
-                if (dimHeight > 0)
-                  Align(
-                    alignment: Alignment.topCenter,
-                    child: Container(
-                      height: dimHeight,
-                      color: Colors.black.withValues(alpha: 0.52),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
+            if (successFlex > 0)
+              Expanded(
+                flex: successFlex,
+                child: const ColoredBox(color: _successGreen),
+              ),
+          ],
+        ),
+      ),
     );
-  }
-
-  Color _rateColor(double rate) {
-    if (rate >= 0.65) return const Color(0xFF34D399);
-    if (rate >= 0.4) return const Color(0xFFFBBF24);
-    return const Color(0xFFF87171);
   }
 }
 

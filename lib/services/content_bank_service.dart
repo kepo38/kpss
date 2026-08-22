@@ -14,6 +14,7 @@ import '../utils/daily_mission_copy.dart';
 import '../widgets/countdown_widget.dart';
 import 'user_savings_insight_service.dart';
 import 'auth_service.dart';
+import 'question_attempt_service.dart';
 import 'content_bank_isolate.dart';
 import 'daily_quota_service.dart';
 import 'favorites_service.dart';
@@ -172,8 +173,13 @@ class ContentBankService extends ChangeNotifier {
         fromUserId: previous,
         toUserId: scope,
       );
+      await _migrateAttemptsScope(
+        prefs,
+        fromUserId: previous,
+        toUserId: scope,
+      );
     }
-    // Günlük test kotası / denemeler hesaplar arası taşınmaz (misafir→Google dahil).
+    // Günlük test kotası (reklam bonusu vb.) hesaplar arası taşınmaz; denemeler taşınır.
     await _migrateLegacyWrongNotebookKeys(prefs);
     await _migrateLegacyQuotaProgressKeys(prefs);
     _loadDeviceDailyFree(prefs.getString(_kDeviceDailyFree));
@@ -182,6 +188,9 @@ class ContentBankService extends ChangeNotifier {
     await _syncDeviceFreeFromUserAttempts();
     _pruneSampleSeedProgress();
     _notifyProgress(urgent: true);
+    if (AuthService.instance.hasPermanentAccount) {
+      unawaited(syncTopicTestCompletionsToServer());
+    }
   }
 
   /// Yerel misafir (`guest-…`) defteri — oturum değişiminde yedek eşleme.
@@ -206,6 +215,53 @@ class ContentBankService extends ChangeNotifier {
     // Yalnızca kalıcı (Google) hesaba geçerken misafir/anonim defteri taşı.
     if (!AuthService.instance.hasPermanentAccount) return false;
     return true;
+  }
+
+  Future<void> _migrateAttemptsScope(
+    SharedPreferences prefs, {
+    required String fromUserId,
+    required String toUserId,
+  }) async {
+    await _mergeAttemptsPref(
+      prefs,
+      fromKey: _scopedKeyFor(_kAttempts, fromUserId),
+      toKey: _scopedKeyFor(_kAttempts, toUserId),
+    );
+  }
+
+  Future<void> _mergeAttemptsPref(
+    SharedPreferences prefs, {
+    required String fromKey,
+    required String toKey,
+  }) async {
+    final fromRaw = prefs.getString(fromKey);
+    if (fromRaw == null || fromRaw.isEmpty) return;
+    final merged = <Map<String, dynamic>>[];
+    final seenIds = <String>{};
+
+    void absorb(String raw) {
+      try {
+        final list = jsonDecode(raw);
+        if (list is! List) return;
+        for (final entry in list) {
+          if (entry is! Map) continue;
+          final map = Map<String, dynamic>.from(entry);
+          final id = map['id']?.toString() ?? '';
+          if (id.isNotEmpty && seenIds.contains(id)) continue;
+          if (id.isNotEmpty) seenIds.add(id);
+          merged.add(map);
+        }
+      } catch (_) {}
+    }
+
+    absorb(fromRaw);
+    final toRaw = prefs.getString(toKey);
+    if (toRaw != null && toRaw.isNotEmpty) {
+      absorb(toRaw);
+    }
+    if (merged.isEmpty) return;
+    await prefs.setString(toKey, jsonEncode(merged));
+    await prefs.remove(fromKey);
   }
 
   Future<void> _migrateWrongNotebookScope(
@@ -828,8 +884,13 @@ class ContentBankService extends ChangeNotifier {
       futures.add(_persistSolvedQuestions());
     }
     if (wrongQuestionIds.isNotEmpty) {
+      final newlyWrong = wrongQuestionIds
+          .where((id) => !_wrongQuestionIds.contains(id))
+          .toList();
       _wrongQuestionIds.addAll(wrongQuestionIds);
-      _mergeWrongSelections(questionIds, wrongQuestionIds, selectedAnswers);
+      if (newlyWrong.isNotEmpty) {
+        _mergeWrongSelections(questionIds, newlyWrong, selectedAnswers);
+      }
       _statLockedWrongQuestions.addAll(wrongQuestionIds);
       futures.add(_persistWrongQuestions());
       futures.add(_persistWrongQuestionBodies());
@@ -861,9 +922,30 @@ class ContentBankService extends ChangeNotifier {
   /// Tasarruf hesabı ve istatistikler için salt okunur deneme listesi.
   List<TestAttemptModel> get allAttempts => List.unmodifiable(_attempts);
 
-  /// Tamamlanan konu testi sayısı (günün mini denemesi hariç).
-  int get completedTopicTestCount =>
-      _attempts.where(countsTowardDailyHomework).length;
+  /// Tamamlanan farklı konu testi sayısı (mini deneme hariç; sunucu ile aynı mantık).
+  int get completedTopicTestCount {
+    final testIds = <String>{};
+    for (final attempt in _attempts) {
+      if (countsTowardDailyHomework(attempt)) {
+        testIds.add(attempt.testId);
+      }
+    }
+    return testIds.length;
+  }
+
+  /// Yerelde bitmiş konu testlerinin tamamlanma kaydını sunucuya yansıtır.
+  Future<void> syncTopicTestCompletionsToServer() async {
+    if (!AuthService.instance.hasPermanentAccount) return;
+    final testIds = <String>{};
+    for (final attempt in _attempts) {
+      if (countsTowardDailyHomework(attempt)) {
+        testIds.add(attempt.testId);
+      }
+    }
+    for (final testId in testIds) {
+      await QuestionAttemptService.instance.markTestCompleted(testId);
+    }
+  }
 
   /// Günün Mini Denemesi ödev barını ve günlük test hakkını tüketmez.
   @visibleForTesting
@@ -1227,6 +1309,7 @@ class ContentBankService extends ChangeNotifier {
     if (!_wrongQuestionIds.remove(questionId)) return;
     _wrongQuestionSelections.remove(questionId);
     _wrongQuestionStatuses.remove(questionId);
+    // İstatistik kilidi korunur — defterden silmek konu/soru yanlış kaydını sıfırlamaz.
     await Future.wait([
       _persistWrongQuestions(),
       _persistWrongQuestionBodies(),
@@ -1257,7 +1340,7 @@ class ContentBankService extends ChangeNotifier {
   String? wrongSelectionFor(String questionId) =>
       _wrongQuestionSelections[questionId];
 
-  /// Yanlış defterinde görüntülenen / güncellenen işaretli şık.
+  /// Yanlış defterinde kayıtlı işaretli şık (testte işaretlenen; defterden değiştirilemez).
   Future<void> setWrongQuestionSelection(
     String questionId,
     String option,
@@ -1265,6 +1348,7 @@ class ContentBankService extends ChangeNotifier {
     if (!_wrongQuestionIds.contains(questionId)) return;
     final selected = option.trim().toUpperCase();
     if (!RegExp(r'^[A-E]$').hasMatch(selected)) return;
+    if (_wrongQuestionSelections.containsKey(questionId)) return;
     if (_wrongQuestionSelections[questionId] == selected) return;
     _wrongQuestionSelections[questionId] = selected;
     await _persistWrongSelections();
@@ -1293,6 +1377,7 @@ class ContentBankService extends ChangeNotifier {
       answerById[questionIds[i]] = selectedAnswers[i];
     }
     for (final id in wrongQuestionIds) {
+      if (_wrongQuestionSelections.containsKey(id)) continue;
       final selected = answerById[id]?.trim().toUpperCase() ?? '';
       if (RegExp(r'^[A-E]$').hasMatch(selected)) {
         _wrongQuestionSelections[id] = selected;
@@ -1309,8 +1394,13 @@ class ContentBankService extends ChangeNotifier {
   }) async {
     final futures = <Future<void>>[];
     if (wrongQuestionIds.isNotEmpty) {
+      final newlyWrong = wrongQuestionIds
+          .where((id) => !_wrongQuestionIds.contains(id))
+          .toList();
       _wrongQuestionIds.addAll(wrongQuestionIds);
-      _mergeWrongSelections(questionIds, wrongQuestionIds, selectedAnswers);
+      if (newlyWrong.isNotEmpty) {
+        _mergeWrongSelections(questionIds, newlyWrong, selectedAnswers);
+      }
       futures.add(_persistWrongQuestions());
       futures.add(_persistWrongQuestionBodies());
       futures.add(_persistWrongSelections());

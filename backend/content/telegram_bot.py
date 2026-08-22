@@ -65,8 +65,152 @@ _CLEAR_CHAT_COMMANDS = frozenset({
     "sohbeti temizle",
 })
 
-_MAX_TRACKED_BOT_MESSAGES = 80
-_recent_bot_messages: dict[int, list[int]] = {}
+_MAX_TRACKED_CHAT_MESSAGES = 500
+_chat_message_ids: dict[int, list[int]] = {}
+_chat_messages_loaded = False
+_chat_messages_lock = threading.Lock()
+
+
+def _chat_messages_path() -> Path:
+    return lock_file_path().parent / "telegram_chat_messages.json"
+
+
+def _load_chat_messages() -> None:
+    global _chat_messages_loaded
+    if _chat_messages_loaded:
+        return
+    path = _chat_messages_path()
+    if path.exists():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                for key, value in raw.items():
+                    if not isinstance(value, list):
+                        continue
+                    chat_id = int(key)
+                    ids = [
+                        int(message_id)
+                        for message_id in value
+                        if str(message_id).isdigit()
+                    ]
+                    if ids:
+                        _chat_message_ids[chat_id] = ids[-_MAX_TRACKED_CHAT_MESSAGES:]
+        except (OSError, ValueError, TypeError):
+            logger.warning("Telegram chat message registry okunamadı: %s", path)
+    _chat_messages_loaded = True
+
+
+def _save_chat_messages() -> None:
+    path = _chat_messages_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            str(chat_id): message_ids[-_MAX_TRACKED_CHAT_MESSAGES:]
+            for chat_id, message_ids in _chat_message_ids.items()
+            if message_ids
+        }
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        logger.warning("Telegram chat message registry yazılamadı: %s", path)
+
+
+def _track_chat_message(chat_id: int, message_id: int) -> None:
+    if not message_id:
+        return
+    with _chat_messages_lock:
+        _load_chat_messages()
+        ids = _chat_message_ids.setdefault(int(chat_id), [])
+        message_id = int(message_id)
+        if message_id in ids:
+            return
+        ids.append(message_id)
+        if len(ids) > _MAX_TRACKED_CHAT_MESSAGES:
+            del ids[: len(ids) - _MAX_TRACKED_CHAT_MESSAGES]
+        _save_chat_messages()
+
+
+def _untrack_chat_message(chat_id: int, message_id: int) -> None:
+    if not message_id:
+        return
+    with _chat_messages_lock:
+        _load_chat_messages()
+        ids = _chat_message_ids.get(int(chat_id))
+        if not ids:
+            return
+        try:
+            ids.remove(int(message_id))
+        except ValueError:
+            return
+        if not ids:
+            _chat_message_ids.pop(int(chat_id), None)
+        _save_chat_messages()
+
+
+def _collect_known_chat_message_ids(chat_id: int) -> list[int]:
+    from .models import Question, TelegramBotSession
+
+    extra: set[int] = set()
+    for message_id in Question.objects.filter(
+        telegram_chat_id=int(chat_id),
+        telegram_message_id__isnull=False,
+    ).values_list("telegram_message_id", flat=True):
+        extra.add(int(message_id))
+    for message_id in TelegramBotSession.objects.filter(
+        chat_id=int(chat_id),
+        source_message_id__isnull=False,
+    ).values_list("source_message_id", flat=True):
+        extra.add(int(message_id))
+    return sorted(extra)
+
+
+def _try_delete_message(chat_id: int, message_id: int) -> bool:
+    if not message_id:
+        return False
+    try:
+        _post(
+            "deleteMessage",
+            {"chat_id": int(chat_id), "message_id": int(message_id)},
+        )
+        _untrack_chat_message(int(chat_id), int(message_id))
+        return True
+    except Exception:
+        logger.debug(
+            "Telegram deleteMessage skipped chat_id=%s message_id=%s",
+            chat_id,
+            message_id,
+        )
+        return False
+
+
+def _purge_chat_messages(
+    chat_id: int,
+    *,
+    extra_ids: list[int] | None = None,
+) -> tuple[int, int]:
+    with _chat_messages_lock:
+        _load_chat_messages()
+        tracked = list(_chat_message_ids.pop(int(chat_id), []))
+    candidates = set(tracked)
+    if extra_ids:
+        candidates.update(int(message_id) for message_id in extra_ids if message_id)
+    candidates.update(_collect_known_chat_message_ids(int(chat_id)))
+
+    deleted = 0
+    failed = 0
+    for message_id in sorted(candidates, reverse=True):
+        if _try_delete_message(int(chat_id), int(message_id)):
+            deleted += 1
+        else:
+            failed += 1
+        time.sleep(0.04)
+
+    with _chat_messages_lock:
+        _chat_message_ids[int(chat_id)] = []
+        _save_chat_messages()
+    return deleted, failed
 
 
 def drain_error_summary(count: int) -> str:
@@ -357,35 +501,12 @@ def send_message(
             return None
     message_id = (body.get("result") or {}).get("message_id")
     if message_id:
-        _track_bot_message(int(chat_id), int(message_id))
+        _track_chat_message(int(chat_id), int(message_id))
     return int(message_id) if message_id else None
 
 
 def _track_bot_message(chat_id: int, message_id: int) -> None:
-    ids = _recent_bot_messages.setdefault(int(chat_id), [])
-    ids.append(int(message_id))
-    if len(ids) > _MAX_TRACKED_BOT_MESSAGES:
-        del ids[: len(ids) - _MAX_TRACKED_BOT_MESSAGES]
-
-
-def _purge_bot_messages(chat_id: int) -> int:
-    ids = _recent_bot_messages.pop(int(chat_id), [])
-    deleted = 0
-    for message_id in reversed(ids):
-        try:
-            _post(
-                "deleteMessage",
-                {"chat_id": int(chat_id), "message_id": int(message_id)},
-            )
-            deleted += 1
-        except Exception:
-            logger.debug(
-                "Telegram deleteMessage skipped chat_id=%s message_id=%s",
-                chat_id,
-                message_id,
-            )
-        time.sleep(0.04)
-    return deleted
+    _track_chat_message(chat_id, message_id)
 
 
 def _normalize_command(text: str) -> str:
@@ -396,21 +517,45 @@ def _is_clear_chat_command(text: str) -> bool:
     return _normalize_command(text) in _CLEAR_CHAT_COMMANDS
 
 
-def _handle_clear_chat(chat_id: int, user_id: int) -> HandleOutcome:
+def _handle_clear_chat(
+    chat_id: int,
+    user_id: int,
+    *,
+    command_message_id: int | None = None,
+) -> HandleOutcome:
     session = get_session(user_id)
     photo_message_id = session.source_message_id if session else None
     clear_session(user_id)
-    deleted = _purge_bot_messages(chat_id)
+    extra_ids: list[int] = []
     if photo_message_id:
-        delete_message(chat_id, int(photo_message_id))
-    send_message(
-        chat_id,
-        "Sohbet temizlendi.\n"
-        f"Silinen bot mesajı: {deleted}\n"
-        "Bot arka planda dinlemeye devam ediyor — yeni fotoğraf gönderebilirsiniz.\n\n"
-        "Not: Telegram menüsündeki 「Sohbeti Sil」 bunu yapmaz; "
-        "sohbeti tamamen siler. Temizlik için her zaman /sohbeti_sil kullanın.",
+        extra_ids.append(int(photo_message_id))
+    if command_message_id:
+        extra_ids.append(int(command_message_id))
+    deleted, failed = _purge_chat_messages(chat_id, extra_ids=extra_ids)
+    lines = [
+        "Sohbet temizlendi.",
+        f"Silinen mesaj: {deleted}",
+    ]
+    if failed:
+        lines.append(
+            f"Silinemeyen: {failed} (48 saatten eski veya zaten silinmiş olabilir)"
+        )
+    lines.extend(
+        [
+            "Bot arka planda dinlemeye devam ediyor — yeni fotoğraf gönderebilirsiniz.",
+            "",
+            "Not: Telegram menüsündeki 「Sohbeti Sil」 bunu yapmaz; "
+            "sohbeti tamamen siler. Temizlik için her zaman /sohbeti_sil kullanın.",
+        ]
     )
+    confirm_id = send_message(chat_id, "\n".join(lines))
+    if confirm_id:
+
+        def _remove_confirmation() -> None:
+            time.sleep(4)
+            _try_delete_message(chat_id, int(confirm_id))
+
+        threading.Thread(target=_remove_confirmation, daemon=True).start()
     return "command"
 
 
@@ -465,17 +610,8 @@ def _dispatch_conversation_reply(
 
 
 def delete_message(chat_id: int, message_id: int) -> None:
-    """Bot sohbetindeki islenmis fotografi temizler."""
-    if not message_id:
-        return
-    try:
-        _post("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
-    except Exception:
-        logger.exception(
-            "Telegram deleteMessage failed chat_id=%s message_id=%s",
-            chat_id,
-            message_id,
-        )
+    """Bot sohbetindeki mesaji temizler (fotoğraf, bot yanıtı vb.)."""
+    _try_delete_message(chat_id, message_id)
 
 
 def _allowed_user(user_id: int | None) -> bool:
@@ -883,7 +1019,7 @@ def _ingest_photo_worker(
     topic: Topic,
     explicit_topic: bool,
     forwarded: bool,
-) -> None:
+) -> HandleOutcome:
     processing_key = _processing_key(int(chat_id), message_id)
     try:
         with _photo_processing_guard(processing_key):
@@ -895,7 +1031,7 @@ def _ingest_photo_worker(
                     chat_id,
                     f"Fotoğraf indirilemedi: {exc}\n{_retry_hint()}",
                 )
-                return
+                return "error"
 
             ext = "jpg" if "jpeg" in mime else mime.split("/")[-1]
             filename = f"telegram_{message_id}.{ext}"
@@ -935,21 +1071,21 @@ def _ingest_photo_worker(
                         ),
                     )
                     delete_message(int(chat_id), message_id)
-                    return
+                    return "skipped"
                 send_message(
                     chat_id,
                     "Kaydedilemedi: kayıt çakışması (eşzamanlı yazma).\n"
                     "Birkaç saniye bekleyip tekrar gönderin.\n"
                     f"{_retry_hint()}",
                 )
-                return
+                return "error"
 
             if not result.ok or result.question is None:
                 send_message(
                     chat_id,
                     f"Kaydedilemedi: {result.error or 'bilinmeyen hata'}\n{_retry_hint()}",
                 )
-                return
+                return "error"
 
             pending = Question.objects.filter(
                 submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
@@ -1000,6 +1136,7 @@ def _ingest_photo_worker(
                     topic_auto_detected=result.topic_auto_detected,
                 )
                 delete_message(int(chat_id), message_id)
+            return "ingested"
     except PhotoAlreadyProcessing:
         send_message(
             chat_id,
@@ -1007,6 +1144,7 @@ def _ingest_photo_worker(
             "Farklı bir soru fotoğrafı gönderdiyseniz sırayla işlenecek — "
             "birkaç saniye bekleyin.",
         )
+        return "skipped"
 
 
 def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutcome:
@@ -1066,6 +1204,17 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
         chat_id,
         "📷 Fotoğraf alındı, OCR başlıyor…",
     )
+    if getattr(settings, "TELEGRAM_INLINE_PHOTOS", False):
+        return _ingest_photo_worker(
+            message=message,
+            chat_id=int(chat_id),
+            message_id=message_id,
+            file_id=file_id,
+            file_unique_id=file_unique_id,
+            topic=topic,
+            explicit_topic=explicit_topic,
+            forwarded=forwarded,
+        )
     _submit_photo_work(
         lambda: _ingest_photo_worker(
             message=message,
@@ -1104,6 +1253,9 @@ def _handle_callback_query(callback: dict[str, Any]) -> HandleOutcome:
         answer_callback_query(callback_id)
         return "ignored"
 
+    if message_id:
+        _track_chat_message(int(chat_id), message_id)
+
     reply = try_handle_conversation_callback(data, int(user_id))
     answer_callback_query(callback_id)
     if reply is None:
@@ -1130,6 +1282,10 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
     chat_id = chat.get("id")
     if chat_id is None:
         return "ignored"
+
+    message_id = int(message.get("message_id") or 0)
+    if message_id:
+        _track_chat_message(int(chat_id), message_id)
 
     from_user = message.get("from") or {}
     user_id = from_user.get("id")
@@ -1160,7 +1316,11 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
             send_message(chat_id, "İptal edilecek bir adım yok.")
         return "command"
     if text and _is_clear_chat_command(text):
-        return _handle_clear_chat(int(chat_id), int(user_id))
+        return _handle_clear_chat(
+            int(chat_id),
+            int(user_id),
+            command_message_id=message_id or None,
+        )
 
     if not telegram_configured():
         send_message(chat_id, "Bot yapılandırılmamış (TELEGRAM_BOT_TOKEN).")

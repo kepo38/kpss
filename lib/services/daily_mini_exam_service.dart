@@ -62,7 +62,7 @@ class DailyMiniExamService extends ChangeNotifier {
   bool get rankingLocked =>
       _rankedAttempt(_remote?.myAttempt) != null ||
       _rankingLocked ||
-      (_formallyFinished && _localAttempt != null);
+      (_formallyFinished && _rankedAttempt(_localAttempt) != null);
   /// Sunucuya sıralama gönderimi hâlâ bekliyor (yerel bitiş ≠ sunucu kilidi).
   bool get rankingSubmitPending => _pendingRankingSubmit;
   bool get rankRevealActive => _rankRevealActive;
@@ -71,14 +71,21 @@ class DailyMiniExamService extends ChangeNotifier {
   int get rankRevealSecondsLeft => _rankRevealSecondsLeft;
   bool get rankRevealCelebrated => _rankRevealCelebrated;
   bool get formallyFinished => _formallyFinished;
+
+  /// En az bir işaretli cevapla bugünkü sıralamaya girmiş mi?
+  bool get hasRankedAttemptToday {
+    if (_rankedAttempt(_remote?.myAttempt) != null) return true;
+    final local = _rankedAttempt(_localAttempt);
+    if (local == null) return false;
+    return _rankingLocked ||
+        _pendingRankingSubmit ||
+        _rankRevealActive ||
+        _completed ||
+        _formallyFinished;
+  }
+
   /// Bugün bitti / kilitli / gönderim bekliyor — UI asla "Denemeye Başla" göstermemeli.
-  bool get hasSubmittedRanking =>
-      _formallyFinished ||
-      _completed ||
-      _rankingLocked ||
-      _rankedAttempt(_remote?.myAttempt) != null ||
-      (_pendingRankingSubmit && _localAttempt != null) ||
-      (_rankRevealActive && _localAttempt != null);
+  bool get hasSubmittedRanking => hasRankedAttemptToday;
   bool get completed => hasSubmittedRanking;
 
   /// Misafir yalnızca ilk gün katılır; sonraki günlerde profil girişi gerekir.
@@ -98,25 +105,14 @@ class DailyMiniExamService extends ChangeNotifier {
   DailyMiniAttempt? get attempt {
     final remote = _rankedAttempt(_remote?.myAttempt);
     if (remote != null) return remote;
-    if (_remote?.myAttempt != null &&
-        (_completed || _formallyFinished || _rankingLocked)) {
-      return _remote!.myAttempt;
-    }
-    if (_pendingRankingSubmit ||
-        _rankingLocked ||
-        _completed ||
-        _formallyFinished) {
-      // Bitmiş denemede boş puanlı yerel deneme de kalsın (kürsü/pending UI).
-      return _localAttempt;
-    }
-    return null;
+    if (!hasSubmittedRanking) return null;
+    return _rankedAttempt(_localAttempt);
   }
   List<DailyMiniLeaderRow> get leaderboard {
     final remote = _remote?.leaderboard ?? const <DailyMiniLeaderRow>[];
     final filtered = _withoutDemoLeaders(remote);
-    // Demo-only eski yanıtlarda remote dolu ama filtre boş kalmasın diye
-    // filtrelenmiş listeye bak; boşsa yerel denemeden tek satır üret.
     if (filtered.isNotEmpty) return filtered;
+    if (!hasSubmittedRanking) return const [];
     final attempt = this.attempt;
     final user = AuthService.instance.user;
     final rank = attempt?.rank ?? rankForCurrentUser();
@@ -173,8 +169,9 @@ class DailyMiniExamService extends ChangeNotifier {
     return participantCount;
   }
 
-  /// Sıra: attempt → uzak/kürsü satırı (demo filtresi öncesi ham liste dahil).
+  /// Sıra: yalnızca bugün sıralamaya girmiş kullanıcı için.
   int? rankForCurrentUser() {
+    if (!hasSubmittedRanking) return null;
     final attemptRank = attempt?.rank;
     if (attemptRank != null && attemptRank > 0) return attemptRank;
     final userId = AuthService.instance.user?.id;
@@ -290,7 +287,7 @@ class DailyMiniExamService extends ChangeNotifier {
               _completed ||
               _formallyFinished ||
               _pendingRankingSubmit ||
-              _localAttempt != null)) {
+              _rankedAttempt(_localAttempt) != null)) {
         return;
       }
       _rankingLocked = false;
@@ -405,17 +402,6 @@ class DailyMiniExamService extends ChangeNotifier {
             _localAttempt = rankedRemote;
             _rankingLocked = true;
             _pendingRankingSubmit = false;
-          } else if (remoteAttempt != null &&
-              (_completed ||
-                  _formallyFinished ||
-                  _rankingLocked ||
-                  _pendingRankingSubmit)) {
-            // Sunucu denemeyi döndürdü ama skor filtresi kaçırdı — yine tamamlandı.
-            _completed = true;
-            _formallyFinished = true;
-            _localAttempt = remoteAttempt;
-            _rankingLocked = true;
-            _pendingRankingSubmit = false;
           } else if (!_pendingRankingSubmit &&
               !_rankRevealActive &&
               !_completed &&
@@ -436,6 +422,7 @@ class DailyMiniExamService extends ChangeNotifier {
     } catch (e) {
       debugPrint('daily mini exam refresh: $e');
     }
+    _sanitizeStaleRankingState();
     if (_questionIds.isEmpty) {
       _questionIds = _pickLocalIds();
     }
@@ -918,7 +905,55 @@ class DailyMiniExamService extends ChangeNotifier {
           Map<String, dynamic>.from(json['attempt'] as Map),
         );
       }
+      _sanitizeStaleRankingState();
     } catch (_) {}
+  }
+
+  void _sanitizeStaleRankingState() {
+    if (hasRankedAttemptToday) return;
+    var clearedSnapshot = false;
+    if (hasInProgress) {
+      if (_completed ||
+          _formallyFinished ||
+          _rankingLocked ||
+          _rankRevealActive ||
+          _pendingRankingSubmit ||
+          _localAttempt != null) {
+        _completed = false;
+        _formallyFinished = false;
+        _rankingLocked = false;
+        _rankRevealActive = false;
+        _rankRevealSecondsLeft = 0;
+        _rankRevealCelebrated = false;
+        _pendingRankingSubmit = false;
+        _localAttempt = null;
+        clearedSnapshot = _snapshotRank != null;
+        _snapshotRank = null;
+        _snapshotParticipants = null;
+        _rankTrend = DailyMiniRankTrend.steady;
+      }
+    } else {
+      clearedSnapshot = _snapshotRank != null;
+      _completed = false;
+      _formallyFinished = false;
+      _rankingLocked = false;
+      _rankRevealActive = false;
+      _rankRevealSecondsLeft = 0;
+      _rankRevealCelebrated = false;
+      _pendingRankingSubmit = false;
+      _localAttempt = null;
+      _snapshotRank = null;
+      _snapshotParticipants = null;
+      _rankTrend = DailyMiniRankTrend.steady;
+    }
+    if (clearedSnapshot) {
+      unawaited(_clearRankSnapshotPrefs());
+    }
+  }
+
+  Future<void> _clearRankSnapshotPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_scopedKey(DailyMiniExamConstants.prefsRankSnapshot));
   }
 
   void _loadMonthly(SharedPreferences prefs) {

@@ -399,13 +399,11 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
       );
       if (result == null || !result.completed) return;
 
-      unawaited(
-        QuestionAttemptService.instance.submit(
-          testId: test.id,
-          questionIds: result.questionIds,
-          selectedAnswers: result.selectedAnswers,
-          excludeQuestionIds: _bank.statLockedWrongQuestionIds,
-        ),
+      await QuestionAttemptService.instance.submit(
+        testId: test.id,
+        questionIds: result.questionIds,
+        selectedAnswers: result.selectedAnswers,
+        excludeQuestionIds: _bank.statLockedWrongQuestionIds,
       );
       await _bank.recordAttempt(
         TestAttemptModel(

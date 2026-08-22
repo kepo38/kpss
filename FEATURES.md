@@ -64,10 +64,21 @@ Yanlış defteri, notlar, kalem çizimleri ve kitaptaki yanlışlar **tamamen ci
 
 | Alan | Ne yapıldı | Dosyalar |
 |:---|:---|:---|
-| **Kayıt hatası** | Test bitince `recordAttempt` yanlış şıkları quiz sırası yerine «önce doğru sonra yanlış» listesiyle eşleştiriyordu → yanlış/indeks kayması | `topic_detail_screen.dart`, `special_map_geography_screen.dart`, `daily_mini_exam_service.dart`, `continue_study_card.dart` |
-| **Eşleme mantığı** | `_mergeWrongSelections` artık soru ID → cevap haritası kullanır | `content_bank_service.dart` |
-| **Defter inceleme** | Açılışta `wrongSelectionFor` → `QuizScreen.initialAnswers`; testte verilen yanlış şık kırmızı, doğru yeşil | `wrong_questions_screen.dart`, `quiz_screen.dart` |
-| **Anlık kayıt** | Defter modunda şık değişince `setWrongQuestionSelection` | `content_bank_service.dart`, `quiz_screen.dart` |
+| **Kayıt hatası** | Test bitince `recordAttempt` yanlış şıkları quiz sırası yerine soru ID haritasıyla eşleştiriyordu → indeks kayması | `topic_detail_screen.dart`, `special_map_geography_screen.dart`, `daily_mini_exam_service.dart`, `continue_study_card.dart` |
+| **Eşleme mantığı** | `_mergeWrongSelections` soru ID → cevap; mevcut seçim varsa üzerine yazmaz | `content_bank_service.dart` |
+| **Defter inceleme** | Açılışta kayıtlı şık gösterilir; defter modunda şık **değiştirilemez** (salt okunur) | `wrong_questions_screen.dart`, `quiz_screen.dart` |
+| **Yeniden ekleme** | Defterden silinip aynı soru tekrar yanlışsa yalnızca **yeni** kayıtlar şık alır | `content_bank_service.dart` (`newlyWrong`) |
+| **İstatistik kilidi** | Defterden silmek konu yanlış istatistiğini sıfırlamaz | `content_bank_service.dart` (`removeWrongQuestion`) |
+
+### 22 Ağustos 2026 — Hata bildirimi · başarı çubuğu · mini deneme · Telegram sohbet
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Hata bildirimi kotası** | Yerelde bitmiş testler sunucuya `TopicTestCompletion` olarak senkronlanır; boş cevap istatistiği kirletmez | `question_attempt_service.dart`, `content_bank_service.dart`, `views.py`, `question_error_report_service.dart` |
+| **Attempt gönderimi** | Test bitişinde `await submit` + 2 deneme retry; misafir→Google deneme geçmişi taşınır | `topic_detail_screen.dart`, `question_attempt_service.dart` |
+| **Başarı oranı çubuğu** | Quiz başlığında dikey bar: altta yeşil = başarı %, üstte kırmızı = kalan | `brand_mark.dart` |
+| **Günün denemesi sıralama** | «Bugünkü Sıralaman» yalnızca gerçekten sıralamaya girildiyse; stale snapshot temizlenir | `daily_mini_exam_service.dart`, `daily_mini_exam_rank_reveal.dart` |
+| **Telegram `/sohbeti_sil`** | Kullanıcı + bot mesajları takip edilir, toplu silinir; onay mesajı kendini siler | `telegram_bot.py`, `test_telegram_ingest.py` |
 
 #### Telegram bot — OCR kuyruk düzeltmesi
 

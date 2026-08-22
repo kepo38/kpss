@@ -60,5 +60,7 @@ backend/staticfiles/
 telegram_bot.lock
 logs/telegram-auto.log
 logs/telegram-watch.log
+telegram_chat_messages.json
+_tmp_old_math.js
 **/__pycache__/
 *.py[cod]

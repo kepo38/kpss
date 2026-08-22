@@ -376,7 +376,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _selectAnswer(String key) {
-    if (widget.tgExamSolutionReview) return;
+    if (widget.tgExamSolutionReview || widget.fromWrongNotebook) return;
     if (_selectedAnswer == key) return;
     final isCorrect = key == _currentQuestion.dogruCevap;
     setState(() {
@@ -393,14 +393,6 @@ class _QuizScreenState extends State<QuizScreen>
     unawaited(_loadRating());
     unawaited(_submitQuestionAttempt(key));
     unawaited(_persistProgress());
-    if (widget.fromWrongNotebook) {
-      unawaited(
-        ContentBankService.instance.setWrongQuestionSelection(
-          _currentQuestion.id,
-          key,
-        ),
-      );
-    }
     _flashColor = isCorrect ? _correctGreen : _wrongRed;
     _flashCtrl.forward(from: 0);
     if (isCorrect) {
@@ -995,6 +987,7 @@ class _QuizScreenState extends State<QuizScreen>
               (entry) {
                 final selected = _selectedAnswer == entry.key;
                 final revealed = widget.tgExamSolutionReview ||
+                    widget.fromWrongNotebook ||
                     (!widget.tgExamMode && _selectedAnswer != null);
                 final isCorrectKey =
                     entry.key == _currentQuestion.dogruCevap;
@@ -1019,7 +1012,7 @@ class _QuizScreenState extends State<QuizScreen>
                   percentage: revealed && !widget.tgExamMode
                       ? _visibleOptionPercentages[entry.key]
                       : null,
-                  onTap: widget.tgExamSolutionReview
+                  onTap: widget.tgExamSolutionReview || widget.fromWrongNotebook
                       ? () {}
                       : () => _selectAnswer(entry.key),
                 );
