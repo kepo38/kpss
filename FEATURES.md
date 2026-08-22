@@ -24,6 +24,29 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
 
+### 22 Ağustos 2026 — Türkiye Geneli (TG) Deneme modülü
+
+Tam kapsamlı TG deneme sistemi — normal konu testleri, deneme paketleri ve Telegram OCR akışından **ayrı paket** (`backend/content/tg_exam/`). Ayrıntılı özellik listesi: [Türkiye Geneli (TG) denemeleri](#türkiye-geneli-tg-denemeleri).
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Modül ayrımı** | TG kodu `content/tg_exam/` paketinde; ExamPack / TopicTest / Telegram ile çakışmaz | `tg_exam/*`, geriye uyum shim’leri |
+| **Panel oluşturucu** | Wizard: ad/tarih → otomatik 120 soru → önizleme/değiştir → yayınla | `/panel/tg-deneme/`, `tg_exam_form.html`, `panel_views.py` |
+| **Soru üretici** | Oranlı dağılım + alt konu/etiket eşleme; kolay/orta cooldown (son 4 TG) | `generator.py`, `distribution.py`, `cooldown.py` |
+| **Mobil liste** | Deneme sekmesi **Aktif** / **Geçmiş** + **Yayında** rozeti | `tg_exams_section.dart` |
+| **Oturum** | 130 dk geri sayım; son 10 dk uyarı sesi; süre bitince otomatik gönderim; reklamsız | `tg_exam_constants.dart`, `quiz_screen.dart`, `exam_welcome_screen.dart` |
+| **ÖSYM rozeti yok** | Havuz sorularında TG ekranında «ÖSYM SORDU» gizlenir | `quiz_screen.dart`, `api_views.py`, `forTgExamDisplayList` |
+| **FCM duyuru** | Yayın sonrası değil — **başlangıçtan 2 saat önce** tüm kullanıcılara | `announcements.py`, migration `0061` |
+| **FCM sonuç** | `end_at` sonrası katılımcılara sonuç bildirimi | `ranking.py`, `push.py`, `finalize_tg_exams.py` |
+| **API** | `/api/v1/tg-exams/` liste, detay, sorular, ilerleme, gönderim | `api_views.py`, `api_urls.py`, `tg_exam_service.dart` |
+
+### 22 Ağustos 2026 — Konu testi tamamlama işareti · reklam düzeltmesi
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Test yeşil tik** | Bitirilen konu testinin yanında **BAŞLA** solunda yeşil ✓ | `topic_detail_screen.dart` (`_TestRow`) |
+| **Banner yenileme** | SDK geç hazır olunca banner tekrar yüklenir; yükleme sonrası UI güncellenir | `ad_manager.dart`, `quiz_screen.dart` |
+
 ### 22 Ağustos 2026 — Erişim rehberi · yanlış defteri çizim · UI cilası
 
 | Alan | Ne yapıldı | Dosyalar |
@@ -368,6 +391,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 5. [Erişim matrisi](#erişim-matrisi) — [Google](#-google-giriş-gerektiren-özellikler) · [Reklam](#-ödüllü-reklam-izleme-gerektiren-özellikler) · [Premium](#-premium-gerektiren-özellikler)
 6. [Veri modelleri (özet)](#veri-modelleri-özet)
 7. [Bilinen sınırlamalar](#bilinen-sınırlamalar)
+8. [Türkiye Geneli (TG) denemeleri](#türkiye-geneli-tg-denemeleri)
 
 ---
 
@@ -409,7 +433,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Özel Testler** | Dersler altında 3D `ÖZEL TESTLER`; kategoriler: **HARİTALARLA COĞRAFYA**, **TARİH KRONOLOJİ**, **PADİŞAHLAR VE ANTLAŞMALAR**, **ÇELDİRİCİSİ GÜÇLÜ**; bayrak + keyword ile 20’lik sanal testler | `special_tests_entry.dart`, `special_tests_screen.dart`, `special_map_geography_screen.dart`, `backend/content/special_tests.py`, `special_question_tags.py` | Ücretsiz; ilgili ders günlük kotası |
 | **Gelişim sekmesi** | Genel doğruluk (yalnızca **konu testleri**; günün mini denemesi 20 sorusu sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
-| **Konu detayı** | İstatistik, **özet kart destesi** (kaydır: Biliyorum/Unuttum + kalp), bilgi kartları, test listesi | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` | Günlük kota |
+| **Konu detayı** | İstatistik, özet kart destesi, test listesi; bitirilen testte **BAŞLA** yanında yeşil ✓ | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` | Günlük kota |
 | **Ders okuyucu** | Konuya özel bilgi kartları (markdown / zengin metin) | `lib/screens/lesson_reader_screen.dart` | Ücretsiz |
 | **Kaldığın yerden devam** | Yarım test kartı SharedPreferences’ta durur; uygulama kapanınca soru gövdesi RAM’de olmasa da kart kalır, devamda sorular API’den çekilir | `continue_study_card.dart`, `last_study_session_service.dart` | Ücretsiz |
 | **İçerik senkronu** | Yayınlanmış paket sürümü değişince indirme | `lib/services/content_sync_service.dart`, `lib/services/content_bank_service.dart` | Ağ gerekli |
@@ -499,7 +523,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Deneme sekmesi** | AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (`+` yok); FAB ile deneme ekleme | `lib/screens/premium/statistics_screen.dart`, `lib/widgets/puan_hesaplama_button.dart` | **Ücretsiz** |
+| **Deneme sekmesi** | AppBar’da **PUAN HESAPLAMA**; FAB ile deneme ekleme; **TG Denemelerim** (Aktif/Geçmiş) | `statistics_screen.dart`, `tg_exams_section.dart`, `puan_hesaplama_button.dart` | **Ücretsiz** |
 | **Stüdyo · Deneme Analizi** | Aynı `StatisticsScreen`; `onNavigate` (PremiumGate yok) | `home_tools_module_list.dart` | **Ücretsiz** |
 | **Puan Hesaplama** | GY/GK net ve puan; etiketler **GY-Net** / **GK-Net** | `lib/screens/puan_hesaplama_screen.dart` | Ücretsiz |
 | **Genel bakış** | Haftalık özet, net gelişim grafiği, GK/GY ayrımı | `lib/widgets/statistics_overview_tab.dart`, `lib/widgets/net_development_chart.dart` | Ücretsiz |
@@ -703,6 +727,7 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Deneme dağılım şablonu CRUD | `/panel/deneme-sablon/...` |
 | Deneme paketi düzenle / sil / aktif-pasif (Dersler vitrini) + şablondan üret | `/panel/deneme-paket/...` |
 | **Mini deneme ödülleri** (haftalık/aylık aç-kapa; tek düğmeli finalize; kazananlar) | `/panel/mini-deneme-odulleri/` |
+| **TG Deneme Oluşturucu** | Planla, otomatik 120 soru, önizle, yayınla, duyuru 2 saat önce | `/panel/tg-deneme/` |
 | **Uygulama canlı istatistik** (aktif / günlük kullanıcı; `last_active_at`) | `/panel/uygulama-durumu/` |
 
 ### Embedding ve test gruplama
@@ -787,6 +812,11 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 | `GET /exam-packs/?exam_type=` | Yayınlanmış deneme paketleri | Hayır | `ExamPackService` |
 | `GET /exam-packs/<id>/` | Paket detayı + deneme listesi | Hayır | `ExamPackService` |
 | `GET /exam-packs/<id>/exams/<n>/questions/` | Paket denemesi soruları (Google zorunlu; max %20 daha önce çözülmüş) | Bearer (Google) | `ExamPackService` |
+| `GET /tg-exams/?kpss_type=` | TG deneme listesi + attempt özeti | Opsiyonel Bearer | `TgExamService` |
+| `GET /tg-exams/<id>/` | TG deneme detayı | Opsiyonel Bearer | `TgExamService` |
+| `GET /tg-exams/<id>/questions/` | TG oturum soruları (`osymSordu` false) | Bearer | `TgExamService` |
+| `POST /tg-exams/<id>/progress/` | TG ilerleme kaydı | Bearer | `TgExamService` |
+| `POST /tg-exams/<id>/submit/` | TG gönderim → net, sıra | Bearer | `TgExamService` |
 
 **Yasal:** `GET /gizlilik-politikasi/` — `backend/content/legal_views.py`
 
@@ -987,6 +1017,96 @@ Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık),
 
 ---
 
+## Türkiye Geneli (TG) denemeleri
+
+Aylık **Türkiye Geneli** deneme sistemi. Normal **konu testleri** (`TopicTest`), **deneme paketleri** (`ExamPack`) ve **Telegram OCR** akışından bilinçli olarak ayrıdır; ortak soru havuzunu kullanır ancak kendi API’si, paneli, puanlama/sıralama ve bildirim zamanlaması vardır.
+
+**Kaynak paket:** `backend/content/tg_exam/`  
+**Mobil:** `lib/services/tg_exam_service.dart`, `lib/screens/tg_exam/`, `lib/widgets/tg_exams_section.dart`  
+**Sabitler:** `TG_EXAM_DURATION_MINUTES = 130` (backend), `TgExamConstants.examDurationMinutes` (mobil)
+
+### TG — Mobil uygulama
+
+| Özellik | Açıklama | Dosyalar | Erişim |
+|---|---|---|---|
+| **Deneme sekmesi — TG listesi** | «TG Denemelerim»: **Aktif Denemeler** (sonuçlar henüz açılmamış) ve **Geçmiş Denemeler** (sonuçlar yayımlandı) | `tg_exams_section.dart` | 🟢 KPSS tipine göre filtre |
+| **Yayında rozeti** | `start_at ≤ now < end_at` iken kartta **Yayında** | `tg_exams_section.dart` | 🟢 |
+| **Karşılama ekranı** | Bildirim deeplink veya listeden; özet, **Başla** / **Devam et** / **Sonuçlar** | `exam_welcome_screen.dart` | 🔵 Google (soru çekme) |
+| **130 dk geri sayım** | **2 saat 10 dakika** geriye sayım; cevap sonrası süre durmaz | `tg_exam_constants.dart`, `quiz_screen.dart` | 🟢 Oturumda reklamsız |
+| **Son 10 dk uyarı** | Kalan ≤10 dk: bir kez uyarı sesi + sayaç urgent mod | `answer_feedback_service.dart` | 🟢 |
+| **Süre bitince otomatik bitir** | Sayaç 0 → otomatik gönderim; diyalog yok | `quiz_screen.dart` | 🟢 |
+| **Reklamsız oturum** | Banner, bitiş interstitial, çözüm kilidi yok | `exam_welcome_screen.dart`, `ad_manager.dart` | 🟢 |
+| **ÖSYM rozeti gizli** | Havuz sorularında TG quiz’te «ÖSYM SORDU» gösterilmez | `quiz_screen.dart`, API strip | 🟢 |
+| **Çözüm inceleme** | Sonuç sonrası tüm şıklar + çözümler; süre yok | `tg_exam_result_screen.dart` | 🟢 Sonuç açıkken |
+| **İlerleme / devam** | Cevaplar + süre sunucuda; yarım oturum devam | `tg_exam_service.dart` | 🔵 Google |
+| **Anlık özet** | Gönderim sonrası net, doğru/yanlış/boş | `tg_exam_instant_summary_screen.dart` | 🟢 |
+| **Sonuç detayı** | Türkiye geneli sıra, ders net dağılımı, çözüm inceleme | `tg_exam_result_screen.dart` | 🟢 |
+| **Push deeplink** | `tg_exam` → karşılama; `tg_exam_results` → sonuç | `app_navigator.dart`, `push.py` | 🟢 |
+
+**TG quiz farkları:** başarı yüzdesi / görüntülenme yok; şık seçince anında kayıt; chip altın/beyaz; **Tamamla** düğmesi; `statisticsTestId` yok.
+
+### TG — Soru üretimi ve cooldown
+
+| Özellik | Açıklama | Dosyalar |
+|---|---|---|
+| **Dağılım (120 soru)** | TR 30, Mat 30, Tarih 27, Coğ 18 (fiziki 7 / ekonomik 7 / beşeri 4), Vat 9, Güncel 6 | `distribution.py` |
+| **Otomatik üretim** | KPSS tipi + alt konu/etiket eşleme | `generator.py` |
+| **Panelde değiştir** | Önizlemede tek soru rastgele swap (yayında kapalı) | `panel_views.py` |
+| **Cooldown** | Son **4** TG’de sorulmuş kolay/orta hariç; 5. denemeden itibaren havuza döner | `cooldown.py`, `signals.py` |
+
+### TG — Puanlama, sıralama, sonuç
+
+| Özellik | Dosyalar |
+|---|---|
+| KPSS net (4 yanlış = 1 doğru) | `grading.py` |
+| Sıralama: net ↓, süre ↑ | `ranking.py` |
+| `end_at` sonrası otomatik sonuç + FCM | `finalize_due_tg_exams`, `finalize_tg_exams.py` |
+
+### TG — Bildirimler (FCM)
+
+| Bildirim | Zaman | Kime |
+|---|---|---|
+| **Duyuru** | `start_at − 2 saat` | Tüm kullanıcılar (topic / token) |
+| **Sonuç** | `end_at` sonrası finalize | Göndermiş katılımcılar |
+
+Yayın anında duyuru gitmez. Tetik: API trafiği veya `manage.py finalize_tg_exams` / `finalize-tg-exams.bat`.
+
+### TG — İçerik paneli
+
+| Özellik | URL |
+|---|---|
+| Liste | `/panel/tg-deneme/` |
+| Wizard (kaydet → üret → önizle → yayınla) | `/panel/tg-deneme/yeni/`, `/panel/tg-deneme/<id>/` |
+| Duyuru planı UI | Formda «2 saat önce otomatik» + gönderim durumu |
+
+### TG — Backend API
+
+| Endpoint | Açıklama | Auth |
+|---|---|---|
+| `GET /api/v1/tg-exams/` | Liste + attempt özeti | Opsiyonel |
+| `GET /api/v1/tg-exams/<id>/` | Detay | Opsiyonel |
+| `GET /api/v1/tg-exams/<id>/questions/` | Sorular (`osymSordu: false`) | Bearer; pencere içi |
+| `POST /api/v1/tg-exams/<id>/progress/` | İlerleme kaydı | Bearer |
+| `POST /api/v1/tg-exams/<id>/submit/` | Gönderim → net, sıra | Bearer |
+
+**Durumlar:** `not_started` · `active` · `in_progress` · `submitted_waiting` · `ended` · `results`
+
+### TG — Admin ve modeller
+
+- **Admin:** `TgExam`, `TgExamAttempt`; sonuç yayınla / duyuru gönder aksiyonları  
+- **Modeller:** `TgExam`, `TgExamAttempt`; `Question.last_used_in_tg_exam_at`, `tg_exam_cooldown_counter`  
+- **Migrasyonlar:** `0058`–`0061`
+
+### TG — Erişim
+
+| | Misafir | Google |
+|---|---|---|
+| Liste görme | ✓ | ✓ |
+| Katılma / sonuç | ✗ | ✓ |
+| Reklam | — | Yok (ad-free oturum) |
+
+---
+
 ## Veri modelleri (özet)
 
 `backend/content/models.py`:
@@ -998,6 +1118,7 @@ Paywall’da listelenen vaatler (`PremiumService.features`): Offline (yıllık),
 - **Mini deneme:** `DailyMiniExam`, `DailyMiniExamAttempt`, `DailyMiniRankingCampaign`, `DailyMiniRankingWinner`
 - **Operasyon:** `Announcement`, `ExamType`, `PromoCode`, `PromoCodeRedemption`, `OcrIngestLog`, `ContentRevision`
 - **Deneme paketleri:** `ExamDistributionTemplate`, `ExamPack`, `ExamPackExam`, `ExamPackExamQuestion`
+- **Türkiye Geneli:** `TgExam`, `TgExamAttempt` (+ `Question` TG cooldown alanları)
 - **Embedding:** `Question.embedding` (JSON)
 
 Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/question_model.dart` (ör. `stem` → `soruMetni`).
@@ -1019,7 +1140,10 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ## Sürüm notu (2026-08-22)
 
-- **Erişim rehberi:** Google giriş / ödüllü reklam / Premium / misafir — ayrıntılı tablolar (`FEATURES.md`)
+- **TG Deneme modülü:** panel oluşturucu, 120 soru üretici, cooldown, mobil Aktif/Geçmiş, 130 dk geri sayım, ÖSYM rozeti gizleme, FCM duyuru (2 saat önce) + sonuç bildirimi — bkz. [TG denemeleri](#türkiye-geneli-tg-denemeleri)
+- **Konu testi yeşil tik:** bitirilen testlerde ✓ işareti
+- **Reklam banner:** SDK geç hazır olunca yeniden yükleme
+- **Erişim rehberi:** Google / ödüllü reklam / Premium / misafir tabloları
 - **Yanlış defteri:** TEKRAR ET·ÇÖZÜLDÜ chip; soru/çözüm kalem katmanları; kalıcı çizim
 - **Quiz:** başarı dikey çubuk; matematik şık kart düzeni
 - **Özet Konular:** 3D altın başlık; **Odak:** sayaç altında HEDEF Kamu
