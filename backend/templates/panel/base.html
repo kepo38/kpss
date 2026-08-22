@@ -39,7 +39,7 @@
         <div class="nav-section">
           <p class="nav-label">Onay kuyruğu</p>
           <a class="nav-link {% if url_name == 'panel_error_reports' or url_name == 'panel_error_report_status' %}is-active{% endif %}" href="{% url 'panel_error_reports' %}">İncelenecek sorular{% if pending_error_report_count %}<span class="nav-pending-count"> ({{ pending_error_report_count }})</span>{% endif %}</a>
-          <a class="nav-link {% if url_name == 'panel_pending_questions' or url_name == 'panel_pending_question_approve' or url_name == 'panel_pending_question_reject' %}is-active{% endif %}" href="{% url 'panel_pending_questions' %}">Onay bekleyen sorular{% if pending_telegram_question_count %}<span class="nav-pending-count"> ({{ pending_telegram_question_count }})</span>{% endif %}</a>
+          <a class="nav-link {% if url_name == 'panel_pending_questions' or url_name == 'panel_pending_question_reject' %}is-active{% endif %}" href="{% url 'panel_pending_questions' %}">Onay bekleyen sorular{% if pending_telegram_question_count %}<span class="nav-pending-count"> ({{ pending_telegram_question_count }})</span>{% endif %}</a>
         </div>
 
         <div class="nav-section">

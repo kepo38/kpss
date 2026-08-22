@@ -1714,7 +1714,7 @@ class _QuizScreenState extends State<QuizScreen>
   /// Test adı sola; Soru X/Y ekran ortasında (ÖSYM rozeti ile aynı eksen).
   /// Boş başlıkta (ör. tüm yanlışları çöz) yalnızca Soru X/Y gösterilir.
   Widget _buildTestAppBarTitle() {
-    const leadingW = 48.0;
+    const leadingW = 56.0;
     final canReport =
         QuestionErrorReportService.canReport(_currentQuestion.id);
     final actionCount = 1 + (canReport ? 1 : 0) + 1;
@@ -1770,7 +1770,7 @@ class _QuizScreenState extends State<QuizScreen>
         appBar: AppBar(
           backgroundColor: AppTheme.inkSoft,
           foregroundColor: Colors.white,
-          leading: const AppBackButton(),
+          leading: AppBackButton.onDark(accent: AppTheme.champagne),
         ),
         body: const Center(
           child: Text(
@@ -1802,8 +1802,10 @@ class _QuizScreenState extends State<QuizScreen>
           foregroundColor: Colors.white,
           centerTitle: false,
           titleSpacing: 0,
-          leadingWidth: 48,
-          leading: AppBackButton(onPressed: () async {
+          leadingWidth: 56,
+          leading: AppBackButton.onDark(
+            accent: AppTheme.champagne,
+            onPressed: () async {
             if (widget.fromWrongNotebook) {
               _exitWrongNotebook();
               return;

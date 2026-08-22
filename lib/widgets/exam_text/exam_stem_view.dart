@@ -13,11 +13,16 @@ class ExamStemView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cleaned = TurkishHyphenation.hyphenate(
-      FormattedText.prepareExamJustifyText(
-        OptionColumnLayout.visibleStem(text),
-      ),
+    final visible = OptionColumnLayout.visibleStem(text);
+    final wrapped = FormattedText.wrapBareLatex(
+      FormattedText.stripMarkup(visible),
     );
+    final prepared = FormattedText.prepareExamJustifyText(wrapped);
+    // Matematik / LaTeX köklerde TDK hecelemesi yapma (şıklarla aynı kural).
+    final cleaned = FormattedText.looksLikeMath(prepared) ||
+            prepared.contains(r'$')
+        ? prepared
+        : TurkishHyphenation.hyphenate(prepared);
     return FormattedText(
       cleaned,
       preserveLineBreaks: true,

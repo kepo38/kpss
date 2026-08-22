@@ -8,7 +8,12 @@
   Soru
 </div>
 <h1>{{ page_title }}</h1>
-{% if question and not question.pk %}
+{% if pending_telegram_review %}
+<p class="hint" style="margin-bottom:12px;color:#fde68a;border:1px solid rgba(250,204,21,0.35);padding:10px 12px;border-radius:8px;">
+  Telegram onay kuyruğu — metni kontrol edip <strong>Kaydet</strong> ile yayınlayın.
+  Benzer soru varsa parmak izi uyarısı burada çıkar. Yayınlandığında onay bekleyen listeden düşer.
+</p>
+{% elif question and not question.pk %}
 <p class="hint" style="margin-bottom:12px;color:#fde68a;border:1px solid rgba(250,204,21,0.35);padding:10px 12px;border-radius:8px;">
   Henüz kaydedilmedi — alanları kontrol edip <strong>Kaydet</strong> dediğinizde soru listeye eklenir.
 </p>
@@ -214,11 +219,11 @@
       </label>
     </fieldset>
     <label class="check">
-      <input type="checkbox" name="is_published" {% if not question or not question.pk or question.is_published %}checked{% endif %}>
+      <input type="checkbox" name="is_published" {% if pending_telegram_review or not question or not question.pk or question.is_published %}checked{% endif %}>
       Yayında <span style="opacity:.7;font-weight:400">(işaretli değilse uygulamada görünmez)</span>
     </label>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn btn-primary" type="submit" id="save-btn">Kaydet</button>
+      <button class="btn btn-primary" type="submit" id="save-btn">{% if pending_telegram_review %}Kaydet ve yayınla{% else %}Kaydet{% endif %}</button>
       <button class="btn btn-ghost" type="submit" id="force-save-btn" hidden
               style="border-color:rgba(248,113,113,0.5);color:#f87171;">
         Yine de kaydet
@@ -231,7 +236,11 @@
         title="Bu sorunun bağımsız bir kopyasını oluşturur"
       >Kopyala</button>
       {% endif %}
+      {% if pending_telegram_review %}
+      <a class="btn btn-ghost" href="{% url 'panel_pending_questions' %}">Listeye dön</a>
+      {% else %}
       <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'questions' %}">İptal</a>
+      {% endif %}
     </div>
   </form>
   {% if question and question.pk %}

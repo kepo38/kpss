@@ -59,5 +59,6 @@ backend/media/
 backend/staticfiles/
 telegram_bot.lock
 logs/telegram-auto.log
+logs/telegram-watch.log
 **/__pycache__/
 *.py[cod]

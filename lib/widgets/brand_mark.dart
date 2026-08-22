@@ -170,11 +170,11 @@ class QuizHeaderStrip extends StatelessWidget {
 
     final chipsColumn = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (successLabel != null)
           Container(
-            constraints: const BoxConstraints(maxWidth: 140),
+            constraints: const BoxConstraints(maxWidth: 160),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: const Color(0xFF34D399).withValues(alpha: 0.16),
@@ -187,7 +187,7 @@ class QuizHeaderStrip extends StatelessWidget {
               successLabel!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
+              textAlign: TextAlign.right,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
@@ -285,11 +285,7 @@ class QuizHeaderStrip extends StatelessWidget {
                     Expanded(
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: Padding(
-                          // Başarı chip’i kenardan biraz içeride.
-                          padding: const EdgeInsets.only(right: 24),
-                          child: rightMeta,
-                        ),
+                        child: rightMeta,
                       ),
                     ),
                   ],
@@ -446,7 +442,7 @@ class _AttemptChip extends StatelessWidget {
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
+        textAlign: TextAlign.right,
         style: TextStyle(
           fontSize: 10.5,
           fontWeight: FontWeight.w700,

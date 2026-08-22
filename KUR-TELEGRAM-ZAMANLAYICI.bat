@@ -22,10 +22,11 @@ echo     PC acik olmasi gerekmez — Telegram ~24 saat kuyrukta tutar.
 echo.
 echo   EVDE:
 echo     Windows oturumu acilinca (sifre girisinden ~45 sn sonra)
-echo     TELEGRAM.bat /auto sessizce calisir, kuyrugu isler, kapanir.
+echo     TELEGRAM-WATCH.bat /auto baslar — bot surekli dinler.
+echo     Fotograflara aninda cevap verir, panele duser.
 echo     Panel: Onay bekleyen sorular
 echo.
-echo   LOG: %ROOT%\logs\telegram-auto.log
+echo   LOG: %ROOT%\logs\telegram-watch.log
 echo.
 echo   Not: Uyku modundan uyandirma oturum acilisi sayilmaz;
 echo        o zaman TELEGRAM.bat'i bir kez elle calistirin.
@@ -46,15 +47,15 @@ if not "%RC%"=="0" (
   echo [OK] Otomatik aktarim kuruldu.
   echo.
   echo Yontemlerden biri aktif olur:
-  echo   A^) Gorev Zamanlayicisi ^(HEDEFKamu-TelegramDrain^) — yonetici ile
+  echo   A^) Gorev Zamanlayicisi ^(HEDEFKamu-TelegramWatch^) — yonetici ile
   echo   B^) Baslangic klasoru ^(Startup^) — yonetici gerekmez
   echo.
   echo Kontrol: Gorev Zamanlayicisi veya
   echo   %%APPDATA%%\Microsoft\Windows\Start Menu\Programs\Startup\
-  echo   icinde HEDEFKamu-Telegram-Auto.bat
+  echo   icinde HEDEFKamu-Telegram-Watch.bat
   echo.
   echo Test: PC yeniden baslat / oturumu kapat-ac
-  echo Log : %ROOT%\logs\telegram-auto.log
+  echo Log : %ROOT%\logs\telegram-watch.log
   echo Kaldir: KALDIR-TELEGRAM-ZAMANLAYICI.bat
 )
 echo.

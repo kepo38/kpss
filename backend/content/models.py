@@ -1180,6 +1180,40 @@ class QuestionErrorReport(models.Model):
         return f"{self.question.public_id} · {self.get_category_display()} · {self.status}"
 
 
+class TelegramBotSession(models.Model):
+    """Telegram bot çok adımlı akış — fotoğraf sonrası çözüm yapıştırma vb."""
+
+    STEP_SOLUTION_YES_NO = "solution_yes_no"
+    STEP_SOLUTION_TEXT = "solution_text"
+    STEP_CHOICES = [
+        (STEP_SOLUTION_YES_NO, "Çözüm evet/hayır"),
+        (STEP_SOLUTION_TEXT, "Çözüm metni bekleniyor"),
+    ]
+
+    telegram_user_id = models.BigIntegerField(unique=True, db_index=True)
+    chat_id = models.BigIntegerField()
+    step = models.CharField(max_length=32, choices=STEP_CHOICES)
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="telegram_bot_sessions",
+    )
+    source_message_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Telegram fotoğraf mesajı",
+        help_text="evet denince silinir; hayır denince sohbette kalır",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Telegram bot oturumu"
+        verbose_name_plural = "Telegram bot oturumları"
+
+    def __str__(self) -> str:
+        return f"{self.telegram_user_id} · {self.step} · {self.question.public_id}"
+
+
 class OcrIngestLog(models.Model):
     """Panel OCR ingest kayıtları — parse kalitesi, hata ve eşleşme izleme."""
 

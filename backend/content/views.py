@@ -38,6 +38,7 @@ from .models import (
     TopicTestCompletion,
 )
 from .revision import get_content_version
+from .telegram_notify import notify_error_report
 from .special_tests import build_special_tests_payload
 from .test_grouping import order_questions_keeping_scenarios
 from .serializers import (
@@ -932,6 +933,7 @@ class QuestionErrorReportView(APIView):
             note=note,
             status="open",
         )
+        notify_error_report(report, request=request)
         payload = _error_report_payload(
             report,
             daily_limit_reached=True,

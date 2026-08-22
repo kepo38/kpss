@@ -21,6 +21,11 @@ from django.db import IntegrityError
 from .models import Question, Topic
 from .ocr_ingest import ingest_question_from_image
 from .panel_context import pending_telegram_question_count
+from .telegram_conversation import (
+    solution_prompt_message,
+    start_solution_prompt,
+    try_handle_conversation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -349,11 +354,15 @@ def _help_text() -> str:
         "• Django/panel açık olması yetmez — Telegram bat ayrı çalışmalı.\n"
         "• 24 saatten eski veya kaçan fotoğraflar: eski mesajı "
         "seç → İlet (forward) → bota gönder.\n"
-        "• İşlenen fotoğraflar bot sohbetinden silinir.\n"
+        "• İşlenen fotoğraflar: çözüm eklerseniz (evet) sohbetten silinir; "
+        "hayır derseniz fotoğraf kalır.\n"
         "• Aynı fotoğrafı tekrar iletirseniz uyarı alırsınız.\n"
         "• Panel → Onay bekleyen sorular\n\n"
+        "• Fotoğraf sonrası çözüm eklemek için evet deyin; Google'dan "
+        "kopyaladığınız metni yapıştırın.\n\n"
         "/durum — panel + kuyruk özeti\n"
-        "/eski — kaçan fotoğraflar için kısa rehber"
+        "/eski — kaçan fotoğraflar için kısa rehber\n"
+        "/iptal — bekleyen çözüm adımını iptal"
     )
 
 
@@ -541,7 +550,20 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
         )
     lines.append(f"Bekleyen toplam: {pending}")
     send_message(chat_id, "\n".join(lines))
-    delete_message(int(chat_id), message_id)
+
+    from_user = message.get("from") or {}
+    user_id = from_user.get("id")
+    if user_id is not None:
+        start_solution_prompt(
+            int(user_id),
+            int(chat_id),
+            result.question,
+            source_message_id=message_id,
+        )
+        send_message(chat_id, solution_prompt_message())
+    else:
+        delete_message(int(chat_id), message_id)
+
     return "ingested"
 
 
@@ -576,6 +598,13 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
     if text.startswith("/durum"):
         send_message(chat_id, _status_text())
         return "command"
+    if text.startswith("/iptal"):
+        reply = try_handle_conversation(int(user_id), text, cancel=True)
+        if reply is not None:
+            send_message(chat_id, reply.text)
+        else:
+            send_message(chat_id, "İptal edilecek bir adım yok.")
+        return "command"
 
     if not telegram_configured():
         send_message(chat_id, "Bot yapılandırılmamış (TELEGRAM_BOT_TOKEN).")
@@ -583,6 +612,14 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
 
     if _extract_image(message) is not None:
         return _process_photo_message(message, int(chat_id))
+
+    if text and user_id is not None:
+        reply = try_handle_conversation(int(user_id), text)
+        if reply is not None:
+            send_message(chat_id, reply.text)
+            if reply.delete_photo_message_id:
+                delete_message(int(chat_id), int(reply.delete_photo_message_id))
+            return "command"
 
     if text:
         send_message(

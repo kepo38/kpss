@@ -21,11 +21,6 @@ urlpatterns = [
         name="panel_pending_questions",
     ),
     path(
-        "onay-bekleyen-sorular/<int:question_id>/onayla/",
-        panel_views.panel_pending_question_approve,
-        name="panel_pending_question_approve",
-    ),
-    path(
         "onay-bekleyen-sorular/<int:question_id>/reddet/",
         panel_views.panel_pending_question_reject,
         name="panel_pending_question_reject",

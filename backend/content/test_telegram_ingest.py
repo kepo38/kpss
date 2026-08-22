@@ -143,7 +143,170 @@ class TelegramIngestTests(TestCase):
         )
         self.assertEqual(pending_telegram_question_count(), 1)
         mock_send.assert_called()
-        mock_delete.assert_called_once_with(1001, 99)
+        prompt = mock_send.call_args_list[-1][0][1]
+        self.assertIn("Çözüm eklemek ister misiniz", prompt)
+        mock_delete.assert_not_called()
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+        TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
+    )
+    @patch("content.telegram_bot.delete_message")
+    @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot._download_file")
+    @patch("content.ocr_ingest._run_ocr")
+    def test_solution_no_keeps_photo_in_chat(
+        self, mock_ocr, mock_download, mock_send, mock_delete
+    ):
+        mock_download.return_value = (b"fake-image", "image/jpeg")
+        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False)
+
+        handle_update(
+            {
+                "message": {
+                    "message_id": 102,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "photo": [
+                        {
+                            "file_id": "abc3",
+                            "file_unique_id": "uniq-102",
+                            "width": 100,
+                            "height": 100,
+                        }
+                    ],
+                }
+            }
+        )
+        mock_delete.assert_not_called()
+
+        handle_update(
+            {
+                "message": {
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "hayır",
+                }
+            }
+        )
+        mock_delete.assert_not_called()
+        reply = mock_send.call_args[0][1]
+        self.assertIn("sohbette kaldı", reply.lower())
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+        TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
+    )
+    @patch("content.telegram_conversation.refresh_question_embedding")
+    @patch("content.telegram_bot.delete_message")
+    @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot._download_file")
+    @patch("content.ocr_ingest._run_ocr")
+    def test_solution_yes_deletes_photo_before_paste(
+        self, mock_ocr, mock_download, mock_send, mock_delete, mock_embed
+    ):
+        mock_download.return_value = (b"fake-image", "image/jpeg")
+        ocr = self._ocr_result()
+        ocr.solution = ""
+        mock_ocr.return_value = (ocr, "hash", "phash", True, False)
+
+        handle_update(
+            {
+                "message": {
+                    "message_id": 103,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "photo": [
+                        {
+                            "file_id": "abc4",
+                            "file_unique_id": "uniq-103",
+                            "width": 100,
+                            "height": 100,
+                        }
+                    ],
+                }
+            }
+        )
+        mock_delete.assert_not_called()
+
+        handle_update(
+            {
+                "message": {
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "evet",
+                }
+            }
+        )
+        mock_delete.assert_called_once_with(1001, 103)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+        TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
+    )
+    @patch("content.telegram_conversation.refresh_question_embedding")
+    @patch("content.telegram_bot.delete_message")
+    @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot._download_file")
+    @patch("content.ocr_ingest._run_ocr")
+    def test_solution_paste_flow(
+        self, mock_ocr, mock_download, mock_send, mock_delete, mock_embed
+    ):
+        mock_download.return_value = (b"fake-image", "image/jpeg")
+        ocr = self._ocr_result()
+        ocr.solution = ""
+        mock_ocr.return_value = (ocr, "hash", "phash", True, False)
+
+        photo_update = {
+            "message": {
+                "message_id": 101,
+                "chat": {"id": 1001},
+                "from": {"id": 42},
+                "photo": [
+                    {
+                        "file_id": "abc2",
+                        "file_unique_id": "uniq-101",
+                        "width": 100,
+                        "height": 100,
+                    }
+                ],
+            }
+        }
+        handle_update(photo_update)
+
+        question = Question.objects.get(telegram_file_unique_id="uniq-101")
+        self.assertEqual(question.solution, "")
+
+        handle_update(
+            {
+                "message": {
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "evet",
+                }
+            }
+        )
+        mock_delete.assert_called_once_with(1001, 101)
+
+        handle_update(
+            {
+                "message": {
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "Google'dan kopyalanan detaylı çözüm metni.",
+                }
+            }
+        )
+
+        question.refresh_from_db()
+        self.assertEqual(
+            question.solution,
+            "Google'dan kopyalanan detaylı çözüm metni.",
+        )
+        mock_embed.assert_called_once()
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",
@@ -407,18 +570,38 @@ class PendingQuestionPanelTests(TestCase):
         self.assertContains(response, "q_tg_risky_only")
         self.assertNotContains(response, "q_tg_pending")
 
-    def test_approve_publishes_question(self):
+    def test_edit_save_publishes_and_leaves_pending_list(self):
         self.client.force_login(self.staff)
+        url = reverse(
+            "panel_question_edit",
+            kwargs={"topic_id": self.topic.id, "question_id": self.question.id},
+        )
         response = self.client.post(
-            reverse(
-                "panel_pending_question_approve",
-                kwargs={"question_id": self.question.id},
-            )
+            url,
+            data={
+                "stem": self.question.stem,
+                "option_a": "A",
+                "option_b": "B",
+                "option_c": "C",
+                "option_d": "D",
+                "option_e": "E",
+                "correct_option": "A",
+                "solution": "",
+                "is_published": "on",
+                "test_assignment": "auto",
+            },
         )
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("panel_pending_questions"))
         self.question.refresh_from_db()
         self.assertTrue(self.question.is_published)
         self.assertEqual(pending_telegram_question_count(), 0)
+
+    def test_pending_list_has_inspect_not_approve(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("panel_pending_questions"))
+        self.assertContains(response, "İncele")
+        self.assertNotContains(response, ">Onayla</button>")
 
     def test_reject_deletes_question(self):
         self.client.force_login(self.staff)

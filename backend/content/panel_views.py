@@ -729,30 +729,6 @@ def panel_pending_questions(request: HttpRequest) -> HttpResponse:
 @login_required
 @staff_required
 @require_POST
-def panel_pending_question_approve(
-    request: HttpRequest, question_id: int
-) -> HttpResponse:
-    question = get_object_or_404(
-        Question,
-        pk=question_id,
-        submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
-        is_published=False,
-    )
-    question.is_published = True
-    question.save(update_fields=["is_published", "updated_at"])
-    test = assign_question_to_test(question, question.topic, "auto")
-    mark_question_error_reports_reviewed(question)
-    messages.success(
-        request,
-        f"{question.public_id} yayınlandı → {test.title}.",
-    )
-    next_url = request.POST.get("next") or reverse("panel_pending_questions")
-    return redirect(next_url)
-
-
-@login_required
-@staff_required
-@require_POST
 def panel_pending_question_reject(
     request: HttpRequest, question_id: int
 ) -> HttpResponse:
@@ -1752,6 +1728,15 @@ def _apply_question_scenario(
         question.scenario_order = 0
 
 
+def _is_pending_telegram_question(question: Question | None) -> bool:
+    return bool(
+        question
+        and question.pk
+        and question.submission_source == Question.SUBMISSION_SOURCE_TELEGRAM
+        and not question.is_published
+    )
+
+
 @login_required
 @staff_required
 @require_http_methods(["GET", "POST"])
@@ -1772,6 +1757,7 @@ def panel_question_edit(
     )
 
     if request.method == "POST":
+        was_pending_telegram = _is_pending_telegram_question(question)
         stem = request.POST.get("stem", "").strip()
         force_duplicate = request.POST.get("force_duplicate") == "1"
         map_template = request.POST.get("map_template", "").strip()
@@ -1927,16 +1913,35 @@ def panel_question_edit(
                 request,
                 f"Uyarı: benzer soru varken kaydedildi (önceki: {dup.public_id}).",
             )
+        reviewed_suffix = (
+            f" {reviewed_reports} hata bildirimi incelendi olarak işaretlendi."
+            if reviewed_reports
+            else ""
+        )
+        if was_pending_telegram:
+            if question.is_published:
+                messages.success(
+                    request,
+                    f"{question.public_id} yayınlandı → {test.title} "
+                    f"({test.questions.count()}/{target_topic.questions_per_test or 20}). "
+                    "Onay bekleyen listeden çıktı."
+                    + reviewed_suffix,
+                )
+            else:
+                messages.success(
+                    request,
+                    f"{question.public_id} taslak kaydedildi — yayınlamak için "
+                    "«Yayında» işaretleyip tekrar kaydedin."
+                    + reviewed_suffix,
+                )
+            return redirect("panel_pending_questions")
+
         messages.success(
             request,
             f"Soru kaydedildi → {test.title} "
             f"({test.questions.count()}/{target_topic.questions_per_test or 20}). "
             "Uygulamalar birkaç saniye içinde güncellenir."
-            + (
-                f" {reviewed_reports} hata bildirimi incelendi olarak işaretlendi."
-                if reviewed_reports
-                else ""
-            ),
+            + reviewed_suffix,
         )
         return redirect("panel_topic", topic_id=target_topic.id, tab="questions")
 
@@ -2001,6 +2006,7 @@ def panel_question_edit(
             else ("Görselden soru" if entry_mode == "ocr" else "Manuel soru ekle"),
             "selected_test_assignment": selected_test_assignment,
             "entry_mode": entry_mode,
+            "pending_telegram_review": _is_pending_telegram_question(question),
         },
     )
 

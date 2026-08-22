@@ -1,5 +1,7 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from content.models import (
@@ -84,6 +86,30 @@ class QuestionErrorReportApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["minTestsRequired"], 3)
         self.assertEqual(QuestionErrorReport.objects.count(), 0)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[8058533618],
+    )
+    @patch("content.telegram_notify.send_message")
+    def test_post_notifies_telegram_admins(self, mock_send_message):
+        self.user.grant_free_premium(note="test")
+        self._complete_tests(3)
+        response = self.client.post(
+            self.url(),
+            data={"category": "typo", "note": "yazım hatası var"},
+            content_type="application/json",
+            **self.auth(),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(QuestionErrorReport.objects.count(), 1)
+        mock_send_message.assert_called_once()
+        chat_id, message = mock_send_message.call_args[0]
+        self.assertEqual(chat_id, 8058533618)
+        self.assertIn("Soru hata bildirimi", message)
+        self.assertIn(self.question.public_id, message)
+        self.assertIn("Yazım / ifade hatası", message)
+        self.assertIn("yazım hatası var", message)
 
     def test_post_premium_allowed_after_three_tests(self):
         self.user.grant_free_premium(note="test")

@@ -173,6 +173,11 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
             const SizedBox(height: 20),
             _KonuyuOgrenButton(
               enabled: canLearn,
+              subtitle: _learnButtonSubtitle(
+                readySummaryCount: readySummaryCards.length,
+                totalSummaryCount: summaryCards.length,
+                lessonCount: lessons.length,
+              ),
               onTap: !canLearn
                   ? null
                   : () {
@@ -197,33 +202,6 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                       );
                     },
             ),
-            if (summaryCards.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              _SectionHeader(
-                title: 'ÖZET KONULAR',
-                subtitle: readySummaryCards.isEmpty
-                    ? '${summaryCards.length} kart · henüz hazır değil'
-                    : '${readySummaryCards.length}/${summaryCards.length} kart hazır',
-              ),
-              const SizedBox(height: 12),
-              ...summaryCards.map(
-                (card) => _SummaryCardRow(
-                  card: card,
-                  onOpen: card.hasContent
-                      ? () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => TopicSummaryStudyScreen(
-                                topicName: topic?.name ?? 'Konu',
-                                cards: readySummaryCards,
-                              ),
-                            ),
-                          );
-                        }
-                      : null,
-                ),
-              ),
-            ],
             const SizedBox(height: 20),
             const _SectionHeader(title: 'TESTLER'),
             const SizedBox(height: 12),
@@ -469,14 +447,36 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
       if (mounted) setState(() => _startingTest = false);
     }
   }
+
+  String? _learnButtonSubtitle({
+    required int readySummaryCount,
+    required int totalSummaryCount,
+    required int lessonCount,
+  }) {
+    if (readySummaryCount > 0) {
+      if (totalSummaryCount > readySummaryCount) {
+        return '$readySummaryCount/$totalSummaryCount özet kart · kaydırarak çalış';
+      }
+      return '$readySummaryCount özet kart · kaydırarak çalış';
+    }
+    if (lessonCount > 0) {
+      return '$lessonCount bilgi kartı';
+    }
+    if (totalSummaryCount > 0) {
+      return '$totalSummaryCount kart · henüz hazır değil';
+    }
+    return null;
+  }
 }
 
 class _KonuyuOgrenButton extends StatelessWidget {
   final bool enabled;
+  final String? subtitle;
   final VoidCallback? onTap;
 
   const _KonuyuOgrenButton({
     required this.enabled,
+    this.subtitle,
     required this.onTap,
   });
 
@@ -534,17 +534,39 @@ class _KonuyuOgrenButton extends StatelessWidget {
             children: [
               const SizedBox(width: 28),
               Expanded(
-                child: Text(
-                  'Konuyu Öğren',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 19,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                    height: 1.1,
-                    color: labelColor,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Konuyu Öğren',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 19,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4,
+                        height: 1.1,
+                        color: labelColor,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle!,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500,
+                          color: enabled
+                              ? Colors.white.withValues(alpha: 0.55)
+                              : Colors.white.withValues(alpha: 0.28),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               Icon(
@@ -653,109 +675,20 @@ class _StatStrip extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final String? subtitle;
 
   const _SectionHeader({
     required this.title,
-    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 11,
-            letterSpacing: 2.2,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.champagne,
-          ),
-        ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.38),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _SummaryCardRow extends StatelessWidget {
-  final TopicSummaryCardModel card;
-  final VoidCallback? onOpen;
-
-  const _SummaryCardRow({
-    required this.card,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onOpen != null;
-    final titleColor = enabled
-        ? Colors.white
-        : Colors.white.withValues(alpha: 0.38);
-    final metaColor = enabled
-        ? Colors.white.withValues(alpha: 0.45)
-        : Colors.white.withValues(alpha: 0.28);
-
-    return Opacity(
-      opacity: enabled ? 1 : 0.62,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    card.title,
-                    style: TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: titleColor,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    enabled ? card.kindLabel : 'Henüz içerik eklenmedi',
-                    style: TextStyle(fontSize: 12, color: metaColor),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              width: 72,
-              height: 36,
-              child: TextButton(
-                onPressed: onOpen,
-                style: TextButton.styleFrom(
-                  foregroundColor: enabled
-                      ? AppTheme.champagne
-                      : Colors.white.withValues(alpha: 0.28),
-                ),
-                child: Text(enabled ? 'OKU' : 'PASİF'),
-              ),
-            ),
-          ],
-        ),
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 11,
+        letterSpacing: 2.2,
+        fontWeight: FontWeight.w600,
+        color: AppTheme.champagne,
       ),
     );
   }
