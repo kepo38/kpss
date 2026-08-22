@@ -17,12 +17,24 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 | Ne zaman | Ne yapılır |
 |---|---|
 | Yeni ekran, servis veya API eklendiğinde | İlgili bölüme madde ekle; dosya yollarını yaz |
-| Premium / reklam / kota değiştiğinde | [Erişim matrisi](#erişim-matrisi) bölümünü güncelle |
+| Premium / reklam / kota / Google kapısı değiştiğinde | [Erişim matrisi](#erişim-matrisi) — özellikle [Google](#-google-giriş-gerektiren-özellikler), [Reklam](#-ödüllü-reklam-izleme-gerektiren-özellikler), [Premium](#-premium-gerektiren-özellikler) |
 | Panel veya admin akışı değiştiğinde | [İçerik paneli](#i̇çerik-paneli-panel) veya [Unfold admin](#unfold-admin-admin) bölümünü güncelle |
 | Özellik kaldırıldığında | Maddenin yanına `(kaldırıldı)` notu veya silme |
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+
+### 22 Ağustos 2026 — Erişim rehberi · yanlış defteri çizim · UI cilası
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **FEATURES erişim rehberi** | Google / ödüllü reklam / Premium / misafir matrisleri renkli simgelerle ayrı tablolar | `FEATURES.md` |
+| **Yanlış defteri durum chip** | TEKRAR ET / ÇÖZÜLDÜ (test yanlışları) | `wrong_notebook_status_chip.dart`, `content_bank_service.dart` |
+| **Yanlış defteri çizim** | Soru ve çözüm katmanları ayrı; Google hesabında kalıcı | `wrong_notebook_drawing_service.dart`, `quiz_screen.dart` |
+| **Quiz başarı göstergesi** | Dikey kırmızı–yeşil çubuk + chip hizası | `brand_mark.dart` |
+| **Matematik şık kartı** | Sol şerit harf + ortalı formül düzeni | `quiz_screen.dart`, `exam_option_view.dart` |
+| **Özet Konular başlık** | 3D altın AppBar | `topic_summary_study_screen.dart` |
+| **Odak sayaç** | Altta HEDEF Kamu; üst etiket kaldırıldı | `focus_mode_screen.dart` |
 
 ### 22 Ağustos 2026 — Banner panel · Özel test etiketleri · Zoom ipucu · paylaşım · NEDEN BİZ
 
@@ -353,7 +365,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 2. [İçerik paneli (`/panel/`)](#i̇çerik-paneli-panel) — haritalar ayrı: [Harita soruları](#harita-soruları)
 3. [Unfold admin (`/admin/`)](#unfold-admin-admin)
 4. [Backend API (`/api/v1/`)](#backend-api-apiv1)
-5. [Erişim matrisi](#erişim-matrisi)
+5. [Erişim matrisi](#erişim-matrisi) — [Google](#-google-giriş-gerektiren-özellikler) · [Reklam](#-ödüllü-reklam-izleme-gerektiren-özellikler) · [Premium](#-premium-gerektiren-özellikler)
 6. [Veri modelleri (özet)](#veri-modelleri-özet)
 7. [Bilinen sınırlamalar](#bilinen-sınırlamalar)
 
@@ -782,7 +794,114 @@ Tanım: `backend/content/urls.py`, `views.py`, `serializers.py`. Mobil taban: `l
 
 ## Erişim matrisi
 
-Kaynak doğruluk: `PremiumService` (Play Billing **veya** sunucu/panel `isPremium` / promo / ödül günleri). Reklam bypass: `AdManager.setPremium`. Offline indirme: yalnızca `isYearlyPremium` / `canUseOfflinePack`.
+> **Kaynak doğruluk:** `AuthService.hasPermanentAccount` (Google), `PremiumService.isPremium`, `AdManager`, `AdRewardKind`, `AdConstants`.  
+> **Misafir:** Firebase anonim oturum — uygulama açılır; birçok özellik **Google ile kalıcı hesap** ister.  
+> **Premium:** Play Billing aboneliği **veya** panel/API `isPremium` / promosyon / mini deneme ödül günleri.
+
+### Renk / simge efsanesi
+
+| Simge | Etiket | Ne demek? |
+|:---:|:---|:---|
+| 🟢 | **Ücretsiz** | Misafir dahil; ek giriş/reklam/Premium yok |
+| 🟣 | **Misafir kısıtlı** | Anonim kullanır; Google ile tam açılır |
+| <span style="color:#2563EB">**🔵 Google**</span> | **Google giriş** | `hasPermanentAccount` — Play/Google hesabı bağlı olmalı |
+| <span style="color:#DC2626">**📺 Reklam**</span> | **Ödüllü reklam** | Kullanıcı **30 sn video izler**; izlemezse özellik açılmaz |
+| <span style="color:#F59E0B">**📢 Otomatik**</span> | **Banner / geçiş** | Test sırasında gösterilir; izleme değil — Premium veya kampanya kapatır |
+| <span style="color:#7C3AED">**👑 Premium**</span> | **Premium** | Aylık veya yıllık abonelik / sunucu grant |
+| <span style="color:#CA8A04">**🟡 Yıllık**</span> | **Yıllık Premium** | `isYearlyPremium` / `canUseOfflinePack` |
+| ⚪ | **—** | Bu kapı o özellik için geçerli değil |
+
+---
+
+### 🔵 Google giriş gerektiren özellikler
+
+Google giriş = Profil → **Google ile giriş yap** (`AccountLinkCard` / `signInWithGoogle`). Anonim oturum tek başına yetmez.
+
+| Özellik | Misafir | Google giriş sonrası | Dosya / not |
+|:---|:---:|:---|:---|
+| **Yanlış defteri — soru metni** | 🟣 Buzlu / kilitli | 🟢 Tam metin | `wrong_questions_screen.dart` |
+| **Yanlış defteri — WhatsApp paylaşım** | 🔵 Zorunlu | 🟢 + günlük kota | `wrong_notebook_share_service.dart` |
+| **Yanlış defteri — Not Al** | 🟣 Misafir notu taşınmaz | 🟢 Kalıcı not | `question_note_service.dart` |
+| **Yanlış defteri — kalem çizimi** | 🟢 Oturum içi | 🟢 Soru/çözüm ayrı kayıt | `wrong_notebook_drawing_service.dart` |
+| **Yanlış defteri — TEKRAR ET / ÇÖZÜLDÜ** | 🟢 | 🟢 Cihazda kalır | `content_bank_service.dart` |
+| **Kitaptaki yanlışlar — foto ekle** | 🟣 İlk foto sınırı | 🟢 Misafir defteri Google’a taşınır | `manual_question_service.dart` |
+| **Günlük test kotası (sunucu)** | 🟣 Yalnız cihaz yanığı | 🟢 Hesap bazlı `DailyQuotaService` | `daily_quota_service.dart` |
+| **Canlı başarı / «N kişi gördü»** | 🟣 API’ye yazılmaz | 🟢 `QuestionAttempt` + `QuestionView` | `question_attempt_service.dart`, `question_view_service.dart` |
+| **Soru puanlama (yıldız)** | 🔵 Google | 🟢 | `question_rating_service.dart` |
+| **Hata bildirimi** | 🔵 Google + test sayısı | 🟢 Ücretsiz: 5 test; Premium: 3 test | `question_error_report_service.dart` |
+| **Günün mini denemesi — 2. gün+** | 🔵 Misafir yalnız 1. gün | 🟢 Sıralama devam | `daily_mini_exam_service.dart` |
+| **Odak — 40 / 60 dk preset** | 🔵 | 🟢 Misafir max 20 dk | `focus_mode_screen.dart` |
+| **Odak — tam ekran modu** | 🔵 | 🟢 | `focus_mode_screen.dart` |
+| **Offline paket indirme** | 🔵 + 🟡 | 🟢 Bearer + yıllık | `offline_pack_service.dart`, `content_sync_service.dart` |
+| **Deneme paketi satın al / çöz** | 🔵 | 🟢 Play SKU | `exam_pack_detail_screen.dart` |
+| **Promosyon kodu kullan** | 🔵 | 🟢 | `promo_code_service.dart` |
+| **Premium satın al / kod** | 🔵 | 🟢 Play Billing | `premium_paywall_screen.dart` |
+| **Gelişim — hesap kartı / senkron vaadi** | 🟣 Kısıtlı | 🟢 | `analytics_hub_screen.dart`, `account_link_card.dart` |
+| **Zoom günlük ipucu slotu** | 🟢 Ayrı sayılır | 🟢 Ayrı sayılır | `quiz_zoom_daily_hint.dart` |
+
+**Google gerektirmeyen (misafir OK):** müfredat okuma, özet kart destesi, konu testi (günlük kota dahil), Günün mini denemesi (1. gün), Odak 20 dk, yanlış defteri listesi (buzlu metin), kalem (oturum), favoriler (yerel), Deneme sekmesi, Stüdyo Odak/Deneme Analizi.
+
+---
+
+### 📺 Ödüllü reklam izleme gerektiren özellikler
+
+Kullanıcı **bilinçli olarak** «Reklam izle» / tam çözüm / paylaşım onayına basar. `AdRewardKind` → `AdService.showRewardedAd`.
+
+| Özellik | Ne zaman? | Ücretsiz limit | Premium farkı | `AdRewardKind` |
+|:---|:---|:---|:---|:---|
+| **Tam / kısa çözüm kilidi** | Testte **5. ve sonraki** tam çözüm açma (ilk **4** ücretsiz; sıra karışık) | 4/test oturumu | 👑 Anında açılır | `solutionUnlock` |
+| **Konu testi +1 hak** | Ders başına günlük 1 test bittikten sonra | 1/gün/derse +1 | 👑 Sınırsız — gerekmez | `dailyTestBonus` |
+| **Özel Testler · Haritalarla Coğrafya** | Aynı günlük kota mantığı | Kota dolunca | 👑 Sınırsız | `dailyTestBonus` |
+| **Yanlış defteri WhatsApp paylaşım** | Ücretsiz kullanıcı paylaşım öncesi (Google şart) | **1/gün** | 👑 **3/gün**, reklam yok | `wrongNotebookShare` |
+| **Kitaptaki yanlış — 2.+ foto** | İlk foto ücretsiz; sonrakiler | 2.+ foto başına | 👑 Reklamsız | `dailyTestBonus` |
+| **12 saat banner kampanyası** | Ana sayfa «3 reklam izle» kartı | 3 ödüllü → 12s | 👑 Zaten bypass | `campaign` |
+
+**Ödüllü reklam *gerektirmeyen* reklamlar (📢 otomatik):**
+
+| Tür | Ne zaman? | Kimden gizlenir? |
+|:---|:---|:---|
+| **Quiz alt banner** | Konu testi çözülürken | 👑 Premium; 12s kampanya; Günün Denemesi oturumu |
+| **Sayfa geçiş interstitial** | ~her 3 geçişte bir | 👑 Premium |
+| **Test bitiş interstitial** | «Bitir» sonrası | 👑 Premium; tanıtım oturumları |
+
+---
+
+### 👑 Premium gerektiren özellikler
+
+| Özellik | Ücretsiz | Premium | Yalnızca yıllık |
+|:---|:---|:---|:---:|
+| **Sınırsız konu / özel test** | 1/gün/derse (+ reklam bonusu) | ✓ | |
+| **Tüm reklamlar (banner, geçiş, çözüm kilidi)** | 📢 + 📺 | Bypass | |
+| **Akıllı Tekrar — oturum başlat** | Paywall | ✓ | |
+| **Benzer sorular (yanlış defteri)** | PRO upsell | ✓ | |
+| **Konu Takibi** | Kilit | ✓ | |
+| **Görev Yönetimi** | Kilit | ✓ | |
+| **Sıralama (Stüdyo)** | Kilit | ✓ | |
+| **Bulut Senkron UI** | Kilit | ✓ (kısmen mock) | |
+| **Kitaptaki 2.+ foto** | 📺 | Reklamsız | |
+| **Yanlış defteri paylaşım** | 1/gün + 📺 | 3/gün | |
+| **Hata bildirimi eşiği** | 5 bitmiş test | 3 bitmiş test | |
+| **VPN/DNS ağ kilidi** | Uygulanır | Muaf | |
+| **Offline paket** | — | — | 🟡 **Zorunlu** |
+
+Paywall listesi: `PremiumService.features` · Kapı: `PremiumGate` / `ProUpsellSheet`.
+
+---
+
+### 🟣 Misafir → Google: pratik özet
+
+| Durum | Misafir (anonim) | Google hesabı |
+|:---|:---|:---|
+| Uygulamayı aç / ders oku | ✓ | ✓ |
+| 1 konu testi / gün / ders | ✓ (cihaz yanığı) | ✓ (hesap + sunucu kotası) |
+| Yanlış defteri tam metin | ✗ buzlu | ✓ |
+| Canlı «Başarı %» / «N kişi gördü» | Kısmen yerel | ✓ sunucu |
+| WhatsApp paylaşım | ✗ | ✓ |
+| Mini deneme sıralama | Yalnız 1. gün | ✓ |
+| Odak 40–60 dk / tam ekran | ✗ | ✓ |
+| Offline paket | ✗ | ✓ + yıllık Premium |
+
+---
 
 ### A) Çalışma ve test (freemium)
 
@@ -900,6 +1019,10 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ## Sürüm notu (2026-08-22)
 
+- **Erişim rehberi:** Google giriş / ödüllü reklam / Premium / misafir — ayrıntılı tablolar (`FEATURES.md`)
+- **Yanlış defteri:** TEKRAR ET·ÇÖZÜLDÜ chip; soru/çözüm kalem katmanları; kalıcı çizim
+- **Quiz:** başarı dikey çubuk; matematik şık kart düzeni
+- **Özet Konular:** 3D altın başlık; **Odak:** sayaç altında HEDEF Kamu
 - **Banner panel:** Mobil arayüzden quiz banner aç/kapa (`bannerAdsEnabled`)
 - **Özel test etiketleri:** `tag_kronoloji` / `tag_padisah_antlasma` / `tag_celdirici`; keyword auto + panel; kategori **Çeldiricisi Güçlü**; `retag_special_questions`
 - **Zoom ipucu:** günlük ilk testte ortada yumuşak toast; misafir/Google ayrı
