@@ -5,11 +5,36 @@ from __future__ import annotations
 import base64
 import json
 import re
+import socket
 import urllib.error
 import urllib.request
 from typing import Any
 
 from django.conf import settings
+
+# Bu makinede IPv6 → Google zaman aşımına düşüyor; urllib önce AAAA deniyor
+# ve OCR "Fotoğraf alındı…" sonrası dakikalarca asılı kalıyordu.
+_ORIG_GETADDRINFO = socket.getaddrinfo
+
+
+def _getaddrinfo_ipv4_first(
+    host: str | bytes | None,
+    port: str | int | None,
+    family: int = 0,
+    type: int = 0,
+    proto: int = 0,
+    flags: int = 0,
+):
+    infos = _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+    if family != 0:
+        return infos
+    v4 = [i for i in infos if i[0] == socket.AF_INET]
+    v6 = [i for i in infos if i[0] == socket.AF_INET6]
+    other = [i for i in infos if i[0] not in (socket.AF_INET, socket.AF_INET6)]
+    return v4 + v6 + other
+
+
+socket.getaddrinfo = _getaddrinfo_ipv4_first  # type: ignore[assignment]
 
 from .ocr import (
     OPTION_KEYS,

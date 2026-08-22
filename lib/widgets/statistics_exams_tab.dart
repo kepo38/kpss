@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../models/practice_exam_model.dart';
 import '../services/practice_exam_service.dart';
 import '../theme/app_theme.dart';
+import 'exam_section_header.dart';
+import 'puan_hesaplama_button.dart';
 import 'tg_exams_section.dart';
 
 class StatisticsExamsTab extends StatelessWidget {
@@ -17,38 +19,49 @@ class StatisticsExamsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final exams = PracticeExamService.instance.allExams;
-    if (exams.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          TgExamsSection(onRefresh: onRefresh),
-          const SizedBox(height: 24),
-          const Center(child: Text('Henüz deneme kaydı yok')),
-        ],
-      );
-    }
-    return ListView.builder(
+
+    return ListView(
       padding: const EdgeInsets.all(20),
-      itemCount: exams.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: TgExamsSection(onRefresh: onRefresh),
-          );
-        }
-        final exam = exams[index - 1];
-        return _ExamDetailCard(
-          exam: exam,
-          onDelete: () {
-            unawaited(
-              PracticeExamService.instance.deleteExam(exam.id).then((_) {
-                onRefresh();
-              }),
-            );
-          },
-        );
-      },
+      children: [
+        const PuanHesaplamaButton(),
+        const SizedBox(height: 20),
+        TgExamsSection(onRefresh: onRefresh),
+        const SizedBox(height: 24),
+        const ExamSectionHeader(
+          title: 'Yayınevi Denemelerim',
+          subtitle:
+              'Dışarıda çözdüğünüz denemelerin adını, yayın evini ve D/Y/B '
+              'netlerini buraya ekleyin. Gelişim grafiğine otomatik yansır.',
+        ),
+        if (exams.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                'Henüz yayınevi denemesi yok.\n'
+                'Sağ alttaki «Deneme Ekle» ile kayıt oluşturabilirsiniz.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  color: AppTheme.mutedOnPage(context),
+                  height: 1.4,
+                ),
+              ),
+            ),
+          )
+        else
+          ...exams.map(
+            (exam) => _ExamDetailCard(
+              exam: exam,
+              onDelete: () {
+                unawaited(
+                  PracticeExamService.instance.deleteExam(exam.id).then((_) {
+                    onRefresh();
+                  }),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }

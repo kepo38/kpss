@@ -1,7 +1,7 @@
-"""Geriye dönük import — yeni kod: content.tg_exam paketi."""
+"""Geriye dönük import — yeni kod: content.tg_exam.generator"""
 
-from .tg_exam.distribution import DEFAULT_TG_EXAM_DISTRIBUTION  # noqa: F401
 from .tg_exam.generator import (  # noqa: F401
+    DEFAULT_TG_EXAM_DISTRIBUTION,
     ExamGeneratorError,
     ExamGeneratorService,
     TgExamGeneratorError,

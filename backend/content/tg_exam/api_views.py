@@ -24,6 +24,25 @@ def _run_tg_exam_background_tasks(*, send_push: bool = True) -> None:
     finalize_due_tg_exams(send_push=send_push)
 
 
+def _require_google_user(request):
+    """TG katılımı — misafir / anonim Firebase hesabı kabul edilmez."""
+    user = get_user_from_request(request)
+    if user is None:
+        return None, Response({"detail": "Oturum gerekli."}, status=401)
+    if getattr(user, "is_anonymous", False):
+        return None, Response(
+            {
+                "detail": (
+                    "Türkiye Geneli denemelere katılmak için "
+                    "Google ile giriş yapın."
+                ),
+                "code": "google_required",
+            },
+            status=403,
+        )
+    return user, None
+
+
 class TgExamListView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -74,9 +93,9 @@ class TgExamQuestionsView(APIView):
 
     def get(self, request, exam_id: int):
         exam = get_object_or_404(TgExam, pk=exam_id, is_published=True)
-        user = get_user_from_request(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, err = _require_google_user(request)
+        if err is not None:
+            return err
 
         now = timezone.now()
         if now < exam.start_at:
@@ -126,9 +145,9 @@ class TgExamProgressView(APIView):
     permission_classes = []
 
     def post(self, request, exam_id: int):
-        user = get_user_from_request(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, err = _require_google_user(request)
+        if err is not None:
+            return err
 
         exam = get_object_or_404(TgExam, pk=exam_id, is_published=True)
         now = timezone.now()
@@ -178,9 +197,9 @@ class TgExamSubmitView(APIView):
     permission_classes = []
 
     def post(self, request, exam_id: int):
-        user = get_user_from_request(request)
-        if user is None:
-            return Response({"detail": "Oturum gerekli."}, status=401)
+        user, err = _require_google_user(request)
+        if err is not None:
+            return err
 
         exam = get_object_or_404(TgExam, pk=exam_id, is_published=True)
         now = timezone.now()

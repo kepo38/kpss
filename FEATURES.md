@@ -78,7 +78,7 @@ Yanlış defteri, notlar, kalem çizimleri ve kitaptaki yanlışlar **tamamen ci
 | **Attempt gönderimi** | Test bitişinde `await submit` + 2 deneme retry; misafir→Google deneme geçmişi taşınır | `topic_detail_screen.dart`, `question_attempt_service.dart` |
 | **Başarı oranı çubuğu** | Quiz başlığında dikey bar: altta yeşil = başarı %, üstte kırmızı = kalan | `brand_mark.dart` |
 | **Günün denemesi sıralama** | «Bugünkü Sıralaman» yalnızca gerçekten sıralamaya girildiyse; stale snapshot temizlenir | `daily_mini_exam_service.dart`, `daily_mini_exam_rank_reveal.dart` |
-| **Telegram `/sohbeti_sil`** | Kullanıcı + bot mesajları takip edilir, toplu silinir; onay mesajı kendini siler | `telegram_bot.py`, `test_telegram_ingest.py` |
+| **Telegram `/sohbeti_sil`** | Kullanıcı + bot mesajları takip edilir, toplu silinir; onay mesajı kalır (sohbet boşalıp kapanmış gibi görünmesin) | `telegram_bot.py`, `test_telegram_ingest.py` |
 
 #### Telegram bot — OCR kuyruk düzeltmesi
 

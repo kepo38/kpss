@@ -22,12 +22,15 @@ class AccountLinkCard extends StatelessWidget {
     BuildContext context, {
     String? title,
     String? subtitle,
+    bool allowSkip = true,
   }) async {
     final auth = AuthService.instance;
     if (auth.hasPermanentAccount) return true;
 
     final link = await showModalBottomSheet<bool>(
       context: context,
+      isDismissible: allowSkip,
+      enableDrag: allowSkip,
       backgroundColor: AppTheme.inkSoft,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
@@ -64,16 +67,29 @@ class AccountLinkCard extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               const _LinkButton(compact: false),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: Text(
-                  'Şimdilik geç',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+              if (allowSkip) ...[
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: Text(
+                    'Şimdilik geç',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
                   ),
                 ),
-              ),
+              ] else ...[
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: Text(
+                    'Vazgeç',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         );

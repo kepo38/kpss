@@ -330,6 +330,29 @@ void main() {
     expect(FormattedText.wrapBareLatex('I ve II'), 'I ve II');
   });
 
+  test('normalizeSlashFractions converts variable ratios to frac', () {
+    expect(
+      FormattedText.normalizeSlashFractions('Buna göre x/y oranı kaçtır?'),
+      contains(r'$\frac{x}{y}$'),
+    );
+    expect(
+      FormattedText.normalizeSlashFractions(r'Buna göre $x$/$y$ oranı kaçtır?'),
+      contains(r'$\frac{x}{y}$'),
+    );
+    expect(
+      FormattedText.normalizeSlashFractions('Buna göre\nx\ny oranı kaçtır?'),
+      contains(r'$\frac{x}{y}$'),
+    );
+    expect(
+      FormattedText.normalizeSlashFractions('Buna göre x y oranı kaçtır?'),
+      contains(r'$\frac{x}{y}$'),
+    );
+    expect(
+      FormattedText.wrapBareLatex('x/y'),
+      r'$\frac{x}{y}$',
+    );
+  });
+
   test('emphasizeSignWords is no-op for exam stems', () {
     expect(
       FormattedText.emphasizeSignWords('x negatif bir gerçek sayı'),
@@ -363,22 +386,22 @@ void main() {
     );
   });
 
-  test('forceDisplaySizeAll upgrades tfrac and over to displaystyle frac', () {
+  test('forceDisplaySizeAll upgrades tfrac and over to displaystyle dfrac', () {
     expect(
       FormattedText.forceDisplaySizeAll(r'\tfrac{x}{y}'),
-      r'\displaystyle \frac{x}{y}',
+      r'\displaystyle \dfrac{x}{y}',
     );
     expect(
       FormattedText.forceDisplaySizeAll(r'{x \over y}'),
-      r'\displaystyle \frac{x}{y}',
+      r'\displaystyle \dfrac{x}{y}',
     );
     expect(
       FormattedText.forceDisplaySizeAll(r'\frac{x}{y}'),
-      r'\displaystyle \frac{x}{y}',
+      r'\displaystyle \dfrac{x}{y}',
     );
     expect(
       FormattedText.forceDisplaySizeAll(r'\displaystyle \frac{x}{y}'),
-      r'\displaystyle \frac{x}{y}',
+      r'\displaystyle \dfrac{x}{y}',
     );
     expect(
       FormattedText.prepareTex(r'\tfrac{x}{y}'),
@@ -386,6 +409,16 @@ void main() {
     );
     expect(FormattedText.usesDisplayMath(r'\tfrac{x}{y}'), isTrue);
     expect(FormattedText.usesDisplayMath(r'{x \over y}'), isTrue);
+  });
+
+  test('forceDisplaySizeAll keeps nested fractions at display size via dfrac', () {
+    final out = FormattedText.forceDisplaySizeAll(
+      r'\left(\frac{1 + \frac{1}{4}}{2 + \frac{1}{2}}\right)',
+    );
+    expect(RegExp(r'(?<![d])\\frac\{').hasMatch(out), isFalse);
+    expect(out, contains(r'\dfrac{1}{4}'));
+    expect(out, contains(r'\dfrac{1}{2}'));
+    expect(out, startsWith(r'\displaystyle'));
   });
 
   testWidgets('exam layout keeps bold lines at body font size', (tester) async {

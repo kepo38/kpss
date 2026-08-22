@@ -37,6 +37,9 @@ class AdManager extends ChangeNotifier {
   /// Test oturumu boyunca açılan tam çözüm soru ID'leri (ücretsiz veya reklam).
   final Set<String> _unlockedSolutionIds = {};
 
+  /// TG detaylı analiz — oturum boyunca reklamla açılan deneme id'leri.
+  final Set<int> _unlockedTgAnalysisIds = {};
+
   /// Bu turda kalan ücretsiz tam çözüm hakkı (reklam sonrası yenilenir).
   int _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
 
@@ -249,6 +252,24 @@ class AdManager extends ChangeNotifier {
     await prefs.setString(_kWrongNotebookShareAdDay, _todayKey());
     return true;
   }
+
+  /// TG detaylı istatistik / Türkiye geneli sıralama — deneme başına oturum kilidi.
+  Future<bool> requestTgExamAnalysisUnlock(int examId) async {
+    if (examId <= 0) return false;
+    if (_unlockedTgAnalysisIds.contains(examId)) return true;
+    if (_bypassAllAds) {
+      _unlockedTgAnalysisIds.add(examId);
+      return true;
+    }
+    final earned = await _showRewardedVideo();
+    if (earned) {
+      _unlockedTgAnalysisIds.add(examId);
+    }
+    return earned;
+  }
+
+  bool isTgExamAnalysisUnlocked(int examId) =>
+      examId > 0 && (_bypassAllAds || _unlockedTgAnalysisIds.contains(examId));
 
   /// Başarılı paylaşım sonrası kotayı düşer. false → günlük limit dolu.
   Future<bool> consumeWrongNotebookShare({required bool premium}) async {

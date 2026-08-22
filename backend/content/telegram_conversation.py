@@ -53,6 +53,7 @@ def solution_prompt_message() -> str:
         "Çözüm eklemek ister misiniz?\n"
         "(Google'dan kopyalayıp yapıştırabilirsiniz — paneldeki çözüm "
         "alanına yazılır.)\n"
+        "Evet veya Hayır'a basmadan soru panele düşmez.\n"
         "Aşağıdaki düğmelerden seçin."
     )
 
@@ -96,7 +97,10 @@ def try_handle_conversation(
 
     if cancel:
         clear_session(telegram_user_id)
-        return ConversationReply("Çözüm adımı iptal edildi.")
+        return ConversationReply(
+            "Çözüm adımı iptal edildi.\n"
+            "Soru panele düştü — Onay bekleyen sorular listesinde."
+        )
 
     normalized = text.strip().lower()
 
@@ -113,8 +117,8 @@ def try_handle_conversation(
         if normalized in _NO:
             clear_session(telegram_user_id)
             return ConversationReply(
-                "Tamam — soru fotoğrafı sohbette kaldı.\n"
-                "Çözümü panelden istediğiniz zaman düzenleyebilirsiniz."
+                "Tamam — soru panele gönderildi (onay bekliyor).\n"
+                "Çözümü panelden istediğiniz zaman ekleyebilirsiniz."
             )
         return ConversationReply("Lütfen Evet veya Hayır düğmesine basın (iptal: /iptal).")
 

@@ -51,6 +51,7 @@ from .svg_sanitize import extract_svg, is_safe_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
     content_fingerprint,
+    duplicate_flash_html,
     duplicate_payload,
     find_duplicate_question,
     image_fingerprint,
@@ -68,6 +69,7 @@ from .panel_context import (
     mark_question_error_reports_reviewed,
     pending_error_report_count,
     pending_telegram_question_count,
+    pending_telegram_questions_qs,
 )
 from .telegram_panel import build_pending_telegram_rows
 from .test_grouping import (
@@ -696,12 +698,8 @@ def panel_pending_questions(request: HttpRequest) -> HttpResponse:
     if filter_key not in {"all", "risky", "ok"}:
         filter_key = "all"
 
-    base_qs = (
-        Question.objects.filter(
-            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
-            is_published=False,
-        )
-        .select_related("topic", "topic__subject")
+    base_qs = pending_telegram_questions_qs().select_related(
+        "topic", "topic__subject"
     )
     all_rows = build_pending_telegram_rows(base_qs, filter_key="all")
     risky_count = sum(1 for row in all_rows if row.flags.is_risky)
@@ -948,12 +946,16 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                         duplicate = duplicate_payload(dup, match)
                         error = (
                             "Bu soruyu daha önce yüklediniz. "
-                            "Tüm sorular benzersiz olmalı. "
-                            f"Mevcut kayıt: {duplicate['subject_name']} · "
-                            f"{duplicate['topic_name']} · "
-                            f"{duplicate['public_id']}"
+                            "Tüm sorular benzersiz olmalı."
                         )
-                        messages.error(request, error)
+                        messages.error(
+                            request,
+                            duplicate_flash_html(
+                                duplicate,
+                                prefix=error,
+                            ),
+                            extra_tags="html",
+                        )
                     else:
                         _store_ocr_draft(
                             request,
@@ -1450,7 +1452,13 @@ def panel_topic(
     lessons = topic.lessons.order_by("sort_order", "id")
     summary_cards = topic.summary_cards.order_by("sort_order", "id")
     questions = topic.questions.select_related("scenario").order_by("-updated_at")
-    tests = topic.tests.prefetch_related("questions").order_by("-created_at")
+    if tab == "tests":
+        from .test_grouping import merge_duplicate_titled_tests
+        from .topic_slots import ensure_topic_test_slots
+
+        merge_duplicate_titled_tests(topic)
+        ensure_topic_test_slots(topic, migrate_legacy=True)
+    tests = topic.tests.prefetch_related("questions").order_by("created_at", "id")
     scenarios = topic.question_scenarios.annotate(
         question_count=Count("questions")
     ).order_by("sort_order", "id")
@@ -1830,6 +1838,10 @@ def panel_question_edit(
             return HttpResponseBadRequest(
                 "ÖSYM sordu işaretli — hangi çıkmış soru olduğunu yazın."
             )
+        if question.osym_sordu and osym_cikmis_raw:
+            from .osym_archive import resolve_to_catalog_key
+
+            osym_cikmis_raw = resolve_to_catalog_key(osym_cikmis_raw) or osym_cikmis_raw
         question.osym_cikmis_adi = osym_cikmis_raw if question.osym_sordu else ""
         question.tag_kronoloji = request.POST.get("tag_kronoloji") == "on"
         question.tag_padisah_antlasma = (
@@ -1885,8 +1897,8 @@ def panel_question_edit(
             info = duplicate_payload(dup, match)
             messages.error(
                 request,
-                "Bu soruyu daha önce yüklediniz — kayıt yapılmadı. "
-                f"{info['message']}",
+                duplicate_flash_html(info),
+                extra_tags="html",
             )
             if question.pk:
                 return redirect(
@@ -2168,6 +2180,26 @@ def panel_test_edit(
         if not title:
             return HttpResponseBadRequest("Başlık zorunlu.")
 
+        # Aynı konuda aynı başlık → mevcut teste birleştir / üzerine yaz
+        clash = (
+            topic.tests.filter(title__iexact=title)
+            .exclude(pk=test.pk if test else None)
+            .order_by("-is_published", "id")
+            .first()
+        )
+        if clash is not None and test is None:
+            test = clash
+        elif clash is not None and test is not None and clash.pk != test.pk:
+            # Düzenlenen testin sorularını çakışan kayda taşı, çakışanı koru
+            clash.questions.add(*test.questions.all())
+            test.questions.clear()
+            test.delete()
+            test = clash
+            messages.warning(
+                request,
+                f"«{title}» zaten vardı — sorular tek testte birleştirildi.",
+            )
+
         if test is None:
             test = TopicTest(topic=topic, public_id=_pid("test"))
 
@@ -2180,6 +2212,9 @@ def panel_test_edit(
         test.save()
         selected = request.POST.getlist("questions")
         test.questions.set(Question.objects.filter(pk__in=selected, topic=topic))
+        from .test_grouping import merge_duplicate_titled_tests
+
+        merge_duplicate_titled_tests(topic)
         return redirect("panel_topic", topic_id=topic.id, tab="tests")
 
     selected_ids = set()

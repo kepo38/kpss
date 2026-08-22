@@ -10,6 +10,8 @@ import '../screens/tg_exam/tg_exam_result_screen.dart';
 import '../services/kpss_preference_service.dart';
 import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
+import 'exam_section_header.dart';
+import 'tg_exam_gates.dart';
 
 /// Deneme sekmesinde TG denemeleri — Aktif / Geçmiş bölümleri.
 class TgExamsSection extends StatefulWidget {
@@ -65,27 +67,18 @@ class _TgExamsSectionState extends State<TgExamsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'TG Denemelerim',
-                style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.onPage(context),
-                ),
-              ),
-            ),
-            if (service.loading)
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-          ],
+        ExamSectionHeader(
+          title: 'Türkiye Geneli Denemeler',
+          subtitle:
+              'Standart TG denemeleri — aktif ve geçmiş oturumlarınız burada.',
+          trailing: service.loading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
         ),
-        const SizedBox(height: 12),
         if (exams.isEmpty && !service.loading)
           Text(
             service.lastError ??
@@ -283,7 +276,7 @@ class _TgExamCard extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: () => _openAnalysis(context),
                       icon: const Icon(Icons.analytics_outlined, size: 18),
-                      label: const Text('Detaylı Analiz'),
+                      label: const Text('Detaylı Analiz · Reklam'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.champagne,
                         foregroundColor: AppTheme.ink,
@@ -331,8 +324,10 @@ class _TgExamCard extends StatelessWidget {
     }
   }
 
-  void _openWelcome(BuildContext context) {
-    Navigator.of(context).push(
+  Future<void> _openWelcome(BuildContext context) async {
+    if (!await TgExamGates.requireGoogleAccount(context)) return;
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ExamWelcomeScreen(examId: exam.id),
       ),
@@ -347,12 +342,8 @@ class _TgExamCard extends StatelessWidget {
     );
   }
 
-  void _openAnalysis(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TgExamResultScreen(exam: exam),
-      ),
-    );
+  Future<void> _openAnalysis(BuildContext context) async {
+    await TgExamGates.openDetailedAnalysis(context, exam);
   }
 
   void _openSolutions(BuildContext context) {

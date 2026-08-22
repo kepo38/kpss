@@ -155,7 +155,7 @@
         {% if messages %}
         <div class="flash-stack" role="status" aria-live="polite">
           {% for message in messages %}
-          <div class="flash flash-{{ message.tags }}" data-auto-dismiss>{{ message }}</div>
+          <div class="flash flash-{{ message.level_tag }}" data-auto-dismiss>{% if "html" in message.extra_tags %}{{ message|safe }}{% else %}{{ message }}{% endif %}</div>
           {% endfor %}
         </div>
         {% endif %}

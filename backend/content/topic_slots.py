@@ -65,29 +65,60 @@ def _migrate_legacy_test_questions(topic: Topic, slot_tests: list[TopicTest]) ->
     if not slot_tests:
         return 0
     slot_ids = {t.public_id for t in slot_tests}
-    legacy = topic.tests.exclude(public_id__in=slot_ids).filter(is_published=True)
+    legacy = topic.tests.exclude(public_id__in=slot_ids)
     moved = 0
     primary = slot_tests[0]
     for old in legacy:
-        qs = list(old.questions.filter(is_published=True, topic=topic))
+        qs = list(old.questions.filter(topic=topic))
         if qs:
             primary.questions.add(*qs)
             moved += len(qs)
         old.is_published = False
         old.save(update_fields=["is_published", "updated_at"])
+        # Sorular taşındıysa eski kaydı sil; boş yuvaları da temizle
+        old.questions.clear()
+        old.delete()
+    if moved and not primary.is_published:
+        primary.is_published = True
+        primary.save(update_fields=["is_published", "updated_at"])
     return moved
 
 
 def ensure_topic_test_slots(topic: Topic, *, migrate_legacy: bool = True) -> tuple[int, int, int]:
-    """5 test yuvası (Test 1…5); soru yoksa yine de yayınlı."""
+    """5 test yuvası (Test 1…5); soru yoksa yine de yayınlı. Çift başlık birleştirilir."""
+    from .test_grouping import merge_duplicate_titled_tests
+
+    # Önce aynı başlıklı çiftleri birleştir (YAYINDA+TASLAK Test 1 vb.)
+    merge_duplicate_titled_tests(topic)
+
     created = updated = 0
     slot_tests: list[TopicTest] = []
     for i in range(1, SLOTS_PER_TOPIC + 1):
         public_id = slot_test_public_id(topic, i)
+        title = f"Test {i}"
         existing = TopicTest.objects.filter(public_id=public_id).first()
+        if existing is None:
+            # Aynı başlıklı eski kaydı yuvaya dönüştür
+            by_title = (
+                topic.tests.filter(title__iexact=title)
+                .order_by("-is_published", "id")
+                .first()
+            )
+            if by_title is not None and by_title.public_id not in {
+                slot_test_public_id(topic, j) for j in range(1, SLOTS_PER_TOPIC + 1)
+            }:
+                by_title.public_id = public_id
+                by_title.title = title
+                by_title.is_published = True
+                by_title.save(
+                    update_fields=["public_id", "title", "is_published", "updated_at"]
+                )
+                existing = by_title
+                updated += 1
+
         defaults = {
             "topic": topic,
-            "title": f"Test {i}",
+            "title": title,
             "description": "",
             "time_limit_minutes": 0,
             "is_published": True,
@@ -111,8 +142,8 @@ def ensure_topic_test_slots(topic: Topic, *, migrate_legacy: bool = True) -> tup
     if migrate_legacy:
         moved = _migrate_legacy_test_questions(topic, slot_tests)
 
-    slot_ids = {t.public_id for t in slot_tests}
-    topic.tests.exclude(public_id__in=slot_ids).update(is_published=False)
+    # Kalan çift başlıkları tekrar temizle
+    merge_duplicate_titled_tests(topic)
 
     return created, updated, moved
 

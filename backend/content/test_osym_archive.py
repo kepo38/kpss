@@ -7,6 +7,7 @@ from content.osym_archive import (
     archive_key_from_label,
     archive_families,
     parse_archive_key,
+    resolve_to_catalog_key,
 )
 
 
@@ -40,3 +41,12 @@ class OsmArchiveLabelTests(SimpleTestCase):
             "2025 AGS · MEB Akademi Giriş Sınavı",
         )
         self.assertIn("AGS", archive_families())
+
+    def test_short_ags_label_resolves_to_catalog(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2026 AGS"),
+            "2026 AGS · MEB Akademi Giriş Sınavı",
+        )
+
+    def test_ambiguous_kpss_short_label_stays(self):
+        self.assertEqual(resolve_to_catalog_key("2026 KPSS"), "2026 KPSS")

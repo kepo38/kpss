@@ -296,6 +296,7 @@ def duplicate_payload(question: Question, match: str) -> dict:
         "content": "aynı soru metni ve şıklar",
         "stem": "aynı soru metni",
     }
+    match_label = labels.get(match, "benzer içerik")
     return {
         "id": question.id,
         "public_id": question.public_id,
@@ -304,12 +305,33 @@ def duplicate_payload(question: Question, match: str) -> dict:
         "subject_name": topic.subject.name,
         "edit_url": edit_url,
         "match": match,
-        "match_label": labels.get(match, "benzer içerik"),
+        "match_label": match_label,
         "message": (
-            f"Bu soru daha önce yüklendi ({labels.get(match, 'benzer')}): "
+            f"Bu soru daha önce yüklendi ({match_label}): "
             f"{topic.subject.name} · {topic.name} · {question.public_id}"
         ),
     }
+
+
+def duplicate_flash_html(
+    info: dict,
+    *,
+    prefix: str = "Bu soruyu daha önce yüklediniz — kayıt yapılmadı.",
+) -> str:
+    """Panel flash: mevcut soru kimliği tıklanınca düzenleme sayfasına gider."""
+    from django.utils.html import format_html
+
+    return format_html(
+        "{} Bu soru daha önce yüklendi ({}): {} · {} · "
+        '<a href="{}" style="color:#fde68a;font-weight:700;'
+        'text-decoration:underline;">{}</a>',
+        prefix,
+        info["match_label"],
+        info["subject_name"],
+        info["topic_name"],
+        info["edit_url"],
+        info["public_id"],
+    )
 
 
 def apply_fingerprints(

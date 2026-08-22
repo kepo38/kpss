@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
-import '../../widgets/puan_hesaplama_button.dart';
 import '../../widgets/statistics_exams_tab.dart';
 import '../../widgets/statistics_overview_tab.dart';
 import '../../widgets/statistics_publishers_tab.dart';
@@ -61,18 +60,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         leading: embedded ? null : const AppBackButton(),
         automaticallyImplyLeading: !embedded,
         centerTitle: embedded,
-        title: embedded
-            ? Builder(
-                builder: (context) {
-                  final w = MediaQuery.sizeOf(context).width;
-                  final buttonW = (w * 0.56).clamp(196.0, 248.0);
-                  return SizedBox(
-                    width: buttonW,
-                    child: const PuanHesaplamaButton(compact: true),
-                  );
-                },
-              )
-            : const Text('Deneme İstatistiklerim'),
+        title: embedded ? const Text('Denemeler') : const Text('Deneme İstatistiklerim'),
         titleSpacing: embedded ? 0 : null,
         toolbarHeight: embedded ? 52 : null,
         bottom: TabBar(

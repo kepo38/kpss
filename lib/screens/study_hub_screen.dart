@@ -16,7 +16,7 @@ import '../widgets/exam_focus_panel.dart';
 import '../widgets/exam_pack_showcase.dart';
 import '../widgets/premium_header_button.dart';
 import '../widgets/savings_insight_banner.dart';
-import '../widgets/special_tests_entry.dart';
+import '../widgets/branch_exams_entry.dart';
 import 'notes_screen.dart';
 import 'topic_detail_screen.dart';
 
@@ -228,7 +228,7 @@ class StudyHubScreen extends StatelessWidget {
                     child: ExamPackShowcase(kpssType: kpssType),
                   ),
                   SliverToBoxAdapter(
-                    child: SpecialTestsEntry(kpssType: kpssType),
+                    child: BranchExamsEntry(kpssType: kpssType),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 28)),
                 ],

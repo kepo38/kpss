@@ -154,12 +154,14 @@ class TelegramIngestTests(TestCase):
             ).count(),
             1,
         )
-        self.assertEqual(pending_telegram_question_count(), 1)
+        # Evet/Hayır bitmeden panele düşmez
+        self.assertEqual(pending_telegram_question_count(), 0)
         mock_send.assert_called()
         full_reply = mock_send.call_args[0][1]
-        self.assertIn("Soru alındı", full_reply)
+        self.assertIn("Soru hazırlandı", full_reply)
         self.assertIn("⏱", full_reply)
         self.assertIn("Çözüm eklemek ister misiniz", full_reply)
+        self.assertIn("panele düşmez", full_reply)
         self.assertEqual(mock_send.call_args.kwargs.get("parse_mode"), "HTML")
         keyboard = mock_send.call_args.kwargs.get("reply_markup") or mock_send.call_args[1].get("reply_markup")
         self.assertIsNotNone(keyboard)
@@ -311,7 +313,8 @@ class TelegramIngestTests(TestCase):
         )
         mock_delete.assert_not_called()
         reply = mock_send.call_args[0][1]
-        self.assertIn("sohbette kaldı", reply.lower())
+        self.assertIn("panele gönderildi", reply.lower())
+        self.assertEqual(pending_telegram_question_count(), 1)
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",

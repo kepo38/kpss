@@ -8,11 +8,10 @@ import '../../models/tg_exam_models.dart';
 import '../../models/quiz_result.dart';
 import '../../screens/quiz_screen.dart';
 import '../../screens/tg_exam/tg_exam_instant_summary_screen.dart';
-import '../../screens/tg_exam/tg_exam_result_screen.dart';
-import '../../services/auth_service.dart';
 import '../../services/tg_exam_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/tg_exam_gates.dart';
 
 /// TG deneme karşılama ekranı — bildirim deeplink veya liste tıklaması.
 class ExamWelcomeScreen extends StatefulWidget {
@@ -69,13 +68,8 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
   Future<void> _openQuiz({required bool resume}) async {
     final exam = _exam;
     if (exam == null || _starting) return;
-    if (!AuthService.instance.isSignedIn) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Denemeye katılmak için giriş yapın.')),
-      );
-      return;
-    }
+    if (!await TgExamGates.requireGoogleAccount(context)) return;
+    if (!mounted) return;
     setState(() => _starting = true);
     final payload = await TgExamService.instance.fetchQuestions(exam.id);
     if (!mounted) return;
@@ -145,19 +139,15 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     }
   }
 
-  void _openResults() {
+  Future<void> _openResults() async {
     final exam = _exam;
     if (exam == null) return;
     if (exam.canAccessDetailedAnalysis) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TgExamResultScreen(exam: exam),
-        ),
-      );
+      await TgExamGates.openDetailedAnalysis(context, exam);
       return;
     }
     if (exam.hasSubmittedAttempt) {
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => TgExamInstantSummaryScreen(exam: exam),
         ),

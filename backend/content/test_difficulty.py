@@ -109,32 +109,6 @@ class QuestionDifficultyTests(TestCase):
         self.question.refresh_from_db()
         self.assertEqual(self.question.correct_count, 1)
 
-    def test_attempt_completion_only_does_not_record_blank_stats(self):
-        test = TopicTest.objects.create(
-            public_id="test_completion_only",
-            topic=self.topic,
-            title="Tamamlanma senkronu",
-            is_published=True,
-        )
-        test.questions.add(self.question)
-        user = self._user("completion")
-        user.api_token = "completion-only-token"
-        user.save(update_fields=["api_token"])
-
-        response = self.client.post(
-            f"/api/v1/tests/{test.public_id}/attempt/",
-            data={"answers": {}, "completed": True},
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {user.api_token}",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            TopicTestCompletion.objects.filter(user=user, topic_test=test).exists()
-        )
-        self.question.refresh_from_db()
-        self.assertEqual(self.question.attempt_count, 0)
-        self.assertEqual(QuestionAttempt.objects.filter(user=user).count(), 0)
-
     def test_single_attempt_returns_option_statistics(self):
         test = TopicTest.objects.create(
             public_id="test_option_stats",

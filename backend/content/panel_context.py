@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
+from django.db.models import QuerySet
 from django.utils import timezone
 
-from .models import Question, QuestionErrorReport
+from .models import Question, QuestionErrorReport, TelegramBotSession
 
 
 def pending_error_report_count() -> int:
@@ -10,12 +13,32 @@ def pending_error_report_count() -> int:
     return QuestionErrorReport.objects.filter(status="open").count()
 
 
-def pending_telegram_question_count() -> int:
-    """Telegram'dan gelip henüz yayınlanmamış sorular."""
-    return Question.objects.filter(
+def telegram_solution_hold_question_ids(*, max_age_hours: int = 24) -> set[int]:
+    """Evet/Hayır veya çözüm metni beklenen sorular — panele henüz düşmez."""
+    cutoff = timezone.now() - timedelta(hours=max_age_hours)
+    return set(
+        TelegramBotSession.objects.filter(
+            updated_at__gte=cutoff,
+            question_id__isnull=False,
+        ).values_list("question_id", flat=True)
+    )
+
+
+def pending_telegram_questions_qs() -> QuerySet[Question]:
+    """Telegram onay kuyruğu — çözüm diyaloğu bitmeden soru yok."""
+    qs = Question.objects.filter(
         submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
         is_published=False,
-    ).count()
+    )
+    hold = telegram_solution_hold_question_ids()
+    if hold:
+        qs = qs.exclude(pk__in=hold)
+    return qs
+
+
+def pending_telegram_question_count() -> int:
+    """Telegram'dan gelip henüz yayınlanmamış + diyaloğu bitmiş sorular."""
+    return pending_telegram_questions_qs().count()
 
 
 def mark_question_error_reports_reviewed(question: Question) -> int:

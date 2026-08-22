@@ -5,11 +5,11 @@ import '../screens/announcements_screen.dart';
 import '../screens/premium/premium_paywall_screen.dart';
 import '../screens/tg_exam/exam_welcome_screen.dart';
 import '../screens/tg_exam/tg_exam_instant_summary_screen.dart';
-import '../screens/tg_exam/tg_exam_result_screen.dart';
 import '../services/announcement_service.dart';
 import '../services/tg_exam_service.dart';
 import '../services/user_message_service.dart';
 import '../screens/user_messages_screen.dart';
+import '../widgets/tg_exam_gates.dart';
 
 /// Bildirim tıklaması → duyuru / mesaj detayı.
 class AppNavigator {
@@ -240,8 +240,10 @@ class AppNavigator {
   static Future<void> openTgExam(int examId) async {
     final nav = _nav;
     if (nav == null) return;
+    if (!await TgExamGates.requireGoogleAccount(nav.context)) return;
+    if (_nav == null) return;
     await TgExamService.instance.fetchDetail(examId);
-    await nav.push(
+    await _nav!.push(
       MaterialPageRoute<void>(
         builder: (_) => ExamWelcomeScreen(examId: examId),
       ),
@@ -254,8 +256,13 @@ class AppNavigator {
     if (nav == null) return;
 
     final exam = await TgExamService.instance.fetchDetail(examId);
+    final navAfter = _nav;
+    if (navAfter == null) return;
+
     if (exam == null) {
-      await nav.push(
+      if (!await TgExamGates.requireGoogleAccount(navAfter.context)) return;
+      if (_nav == null) return;
+      await _nav!.push(
         MaterialPageRoute<void>(
           builder: (_) => ExamWelcomeScreen(examId: examId),
         ),
@@ -264,16 +271,12 @@ class AppNavigator {
     }
 
     if (exam.canAccessDetailedAnalysis) {
-      await nav.push(
-        MaterialPageRoute<void>(
-          builder: (_) => TgExamResultScreen(exam: exam),
-        ),
-      );
+      await TgExamGates.openDetailedAnalysis(navAfter.context, exam);
       return;
     }
 
     if (exam.hasSubmittedAttempt) {
-      await nav.push(
+      await navAfter.push(
         MaterialPageRoute<void>(
           builder: (_) => TgExamInstantSummaryScreen(exam: exam),
         ),
@@ -281,7 +284,9 @@ class AppNavigator {
       return;
     }
 
-    await nav.push(
+    if (!await TgExamGates.requireGoogleAccount(navAfter.context)) return;
+    if (_nav == null) return;
+    await _nav!.push(
       MaterialPageRoute<void>(
         builder: (_) => ExamWelcomeScreen(examId: examId),
       ),

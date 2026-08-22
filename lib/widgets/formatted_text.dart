@@ -635,7 +635,7 @@ class FormattedText extends StatelessWidget {
   }
 
   static String wrapBareLatex(String input) {
-    var src = _repairLatexEscapes(input.trim());
+    var src = normalizeSlashFractions(_repairLatexEscapes(input.trim()));
     if (src.isEmpty) return src;
     final display = RegExp(r'^\$\$([\s\S]+)\$\$$').firstMatch(src);
     if (display != null) {
@@ -665,18 +665,68 @@ class FormattedText extends StatelessWidget {
     return src;
   }
 
-  /// ÖSYM kitapçığı: \\tfrac / \\over → \\frac; displaystyle yalnızca kesir vb. için.
+  /// `x/y`, `$x$/$y$` ve OCR satır kırıklı `x↵y` → `$\frac{x}{y}$`.
+  /// Mevcut `$…$` / `$$…$$` blokları korunur; sayısal kesirler ayrıca işlenir.
+  static String normalizeSlashFractions(String input) {
+    if (input.isEmpty) return input;
+    var src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+    src = src.replaceAllMapped(
+      RegExp(r'\$([^$]+)\$\s*/\s*\$([^$]+)\$'),
+      (m) => r'$\frac{' + m.group(1)!.trim() + '}{' + m.group(2)!.trim() + r'}$',
+    );
+
+    final holders = <String>[];
+    src = src.replaceAllMapped(
+      RegExp(r'\$\$[\s\S]+?\$\$|\$[^$\n]+\$'),
+      (m) {
+        holders.add(m.group(0)!);
+        return '§§F${holders.length - 1}§§';
+      },
+    );
+
+    src = src.replaceAllMapped(
+      RegExp(r'(?<![\\$A-Za-z0-9/])([A-Za-z])\s*/\s*([A-Za-z])(?![A-Za-z0-9/])'),
+      (m) => r'$\frac{' + m.group(1)! + '}{' + m.group(2)! + r'}$',
+    );
+
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?<![A-Za-z0-9])([A-Za-z])\s*\n\s*/?\s*([A-Za-z])(?![A-Za-z0-9])\s*(?=oranı|oran[ıi]|değeri|kaçtır)',
+        caseSensitive: false,
+      ),
+      (m) => r'$\frac{' + m.group(1)! + '}{' + m.group(2)! + r'}$',
+    );
+
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?<![A-Za-z0-9])([A-Za-z])\s+([A-Za-z])\s+(oran[ıi]|orani)\s',
+        caseSensitive: false,
+      ),
+      (m) => r'$\frac{' + m.group(1)! + '}{' + m.group(2)! + r'}$ ${m.group(3)!} ',
+    );
+
+    return _expandHolders(src, holders, r'§§F(\d+)§§');
+  }
+
+  /// ÖSYM kitapçığı: tüm kesirler display boyutu.
+  ///
+  /// TeX kuralı: dış `\frac` içindeki iç `\frac` scriptstyle (küçük) olur.
+  /// Bu yüzden `\frac` / `\tfrac` → `\dfrac` (iç içe 1/4 de gövde puntosunda kalır).
   static String forceDisplaySizeAll(String tex, {bool forceDisplayStyle = true}) {
     var t = tex.trim();
     if (t.isEmpty) return t;
-    t = t.replaceAll(r'\tfrac', r'\frac');
-    t = t.replaceAll(r'\dfrac', r'\frac');
     t = t.replaceAll(r'\ttfrac', r'\frac');
     t = t.replaceAll(r'\ddfrac', r'\frac');
     t = t.replaceAllMapped(
       RegExp(r'\{([^{}]+)\\over\s*([^{}]+)\}'),
       (m) => '\\frac{${m.group(1)!.trim()}}{${m.group(2)!.trim()}}',
     );
+    // \dfrac / \tfrac koru, düz \frac → \dfrac (iç içe küçülmeyi kes)
+    t = t.replaceAll(r'\dfrac', '§§DFRAC§§');
+    t = t.replaceAll(r'\tfrac', '§§DFRAC§§');
+    t = t.replaceAll(r'\frac', r'\dfrac');
+    t = t.replaceAll('§§DFRAC§§', r'\dfrac');
     final isTabular = t.contains(r'\begin{array}') ||
         t.contains(r'\begin{matrix}') ||
         t.contains(r'\begin{pmatrix}');

@@ -153,6 +153,37 @@ def archive_key_from_label(raw: str) -> str:
     return normalize_osym_cikmis_label(SORU_SUFFIX_RE.sub("", normalized))
 
 
+def resolve_to_catalog_key(raw: str) -> str:
+    """Kısa etiketleri katalog kanoniğine bağlar.
+
+    Örnek: «2026 AGS» → «2026 AGS · MEB Akademi Giriş Sınavı»
+    Belirsiz kısaltmalar (ör. «2026 KPSS») olduğu gibi bırakılır.
+    """
+    key = archive_key_from_label(raw)
+    if not key:
+        return ""
+
+    year, _rest = parse_archive_key(key)
+    years = [year] if year is not None else list(DEFAULT_YEARS)
+    slots = list(iter_catalog_slots(years=years))
+
+    aliases: dict[str, str] = {}
+    family_slots: dict[str, list[str]] = defaultdict(list)
+
+    for y, slot in slots:
+        canon = slot.canonical_label(y)
+        aliases[canon.casefold()] = canon
+        aliases[f"{y} {slot.exam_name}".casefold()] = canon
+        family_slots[f"{y} {slot.family}".casefold()].append(canon)
+
+    for family_key, canons in family_slots.items():
+        unique = list(dict.fromkeys(canons))
+        if len(unique) == 1:
+            aliases[family_key] = unique[0]
+
+    return aliases.get(key.casefold(), key)
+
+
 def parse_archive_key(key: str) -> tuple[int | None, str]:
     """«2025 KPSS Lisans · GYGK» → (2025, kalan parça)."""
     normalized = archive_key_from_label(key)
@@ -190,7 +221,7 @@ def _question_counts_by_key() -> dict[str, dict[str, int | str]]:
         lambda: {"active": 0, "total": 0, "unpublished": 0, "display_label": ""}
     )
     for row in rows:
-        key = archive_key_from_label(row["osym_cikmis_adi"])
+        key = resolve_to_catalog_key(row["osym_cikmis_adi"])
         if not key:
             continue
         bucket = merged[key.casefold()]
@@ -319,7 +350,7 @@ def questions_for_archive_key(
     published_only: bool = False,
 ) -> list[Question]:
     """Verilen arşiv anahtarına düşen sorular."""
-    target = archive_key_from_label(archive_key).casefold()
+    target = resolve_to_catalog_key(archive_key).casefold()
     if not target:
         return []
     qs = Question.objects.filter(osym_sordu=True).select_related("topic", "topic__subject")
@@ -327,7 +358,7 @@ def questions_for_archive_key(
         qs = qs.filter(is_published=True)
     matched: list[Question] = []
     for q in qs:
-        if archive_key_from_label(q.osym_cikmis_adi).casefold() == target:
+        if resolve_to_catalog_key(q.osym_cikmis_adi).casefold() == target:
             matched.append(q)
     matched.sort(key=lambda q: (q.topic.subject.name, q.topic.name, q.public_id))
     return matched

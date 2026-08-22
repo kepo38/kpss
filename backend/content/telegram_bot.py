@@ -548,14 +548,8 @@ def _handle_clear_chat(
             "sohbeti tamamen siler. Temizlik için her zaman /sohbeti_sil kullanın.",
         ]
     )
-    confirm_id = send_message(chat_id, "\n".join(lines))
-    if confirm_id:
-
-        def _remove_confirmation() -> None:
-            time.sleep(4)
-            _try_delete_message(chat_id, int(confirm_id))
-
-        threading.Thread(target=_remove_confirmation, daemon=True).start()
+    # Onay mesajı kalsın — kendini silince sohbet boşalıp “kapandı” gibi görünüyordu.
+    send_message(chat_id, "\n".join(lines))
     return "command"
 
 
@@ -905,9 +899,14 @@ def _build_ingest_success_html(
     lines: list[str] = []
     if forwarded:
         lines.append("(Eski fotoğraf iletildi — işlendi.)")
-    lines.append(
-        f"<b>Soru alındı — onay bekliyor.</b>  <i>⏱ {duration}</i>"
-    )
+    if include_solution_prompt:
+        lines.append(
+            f"<b>Soru hazırlandı.</b>  <i>⏱ {duration}</i>"
+        )
+    else:
+        lines.append(
+            f"<b>Soru alındı — onay bekliyor.</b>  <i>⏱ {duration}</i>"
+        )
     lines.append(f"Konu: {subject} · {topic_name}")
     if topic_auto_detected:
         lines.append("<i>(Konu fotoğraftan otomatik algılandı)</i>")
@@ -920,7 +919,10 @@ def _build_ingest_success_html(
             "🔴 <b>Uyarı: benzer soru var "
             f"(<code>{dup_id}</code>).</b>"
         )
-    lines.append(f"Bekleyen toplam: {pending}")
+    if include_solution_prompt:
+        lines.append("Panele henüz düşmedi — önce Evet veya Hayır seçin.")
+    else:
+        lines.append(f"Bekleyen toplam: {pending}")
     if include_solution_prompt:
         lines.append("")
         lines.extend(
@@ -945,7 +947,10 @@ def _build_ingest_success_plain(
     lines: list[str] = []
     if forwarded:
         lines.append("(Eski fotoğraf iletildi — işlendi.)")
-    lines.append(f"Soru alındı — onay bekliyor.  ⏱ {duration}")
+    if include_solution_prompt:
+        lines.append(f"Soru hazırlandı.  ⏱ {duration}")
+    else:
+        lines.append(f"Soru alındı — onay bekliyor.  ⏱ {duration}")
     lines.append(f"Konu: {topic.subject.name} · {topic.name}")
     if topic_auto_detected:
         lines.append("(Konu fotoğraftan otomatik algılandı)")
@@ -956,7 +961,10 @@ def _build_ingest_success_plain(
         lines.append(
             f"🔴 Uyarı: benzer soru var ({duplicate.public_id})."
         )
-    lines.append(f"Bekleyen toplam: {pending}")
+    if include_solution_prompt:
+        lines.append("Panele henüz düşmedi — önce Evet veya Hayır seçin.")
+    else:
+        lines.append(f"Bekleyen toplam: {pending}")
     if include_solution_prompt:
         lines.append("")
         lines.append(solution_prompt_message())

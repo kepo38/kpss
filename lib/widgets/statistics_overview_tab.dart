@@ -3,8 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/practice_exam_model.dart';
 import '../services/content_bank_service.dart';
+import '../services/exam_trend_service.dart';
 import '../services/notification_service.dart';
 import '../services/practice_exam_service.dart';
+import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
 import 'net_development_chart.dart';
 
@@ -17,90 +19,96 @@ class StatisticsOverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final service = PracticeExamService.instance;
     final summary = service.weeklySummary;
-    final gyTrend = service.gyTrend;
-    final gkTrend = service.gkTrend;
-    final points = List.generate(
-      service.netTrend.length,
-      (index) => NetDevelopmentPoint(
-        label: index < service.netTrendLabels.length
-            ? service.netTrendLabels[index]
-            : '',
-        totalNet: service.netTrend[index],
-        gyNet: index < gyTrend.length ? gyTrend[index] : null,
-        gkNet: index < gkTrend.length ? gkTrend[index] : null,
-      ),
-    );
 
-    return RefreshIndicator(
-      onRefresh: () async => onRefresh(),
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text(
-            'Deneme İstatistiklerim',
-            style: GoogleFonts.inter(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-              color: AppTheme.lightPrimary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _WeeklySummaryCard(
-            summary: summary,
-            dueCount: ContentBankService.instance.wrongQuestionCount,
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Net Gelişim Grafiği',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.w600,
-              color: AppTheme.lightPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: NetDevelopmentChart(points: points),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
+    return ListenableBuilder(
+      listenable: TgExamService.instance,
+      builder: (context, _) {
+        final livePoints = ExamTrendService.instance.buildUnifiedTrend();
+        final gyValues =
+            livePoints.map((p) => p.gyNet).whereType<double>().toList();
+        final gkValues =
+            livePoints.map((p) => p.gkNet).whereType<double>().toList();
+
+        return RefreshIndicator(
+          onRefresh: () async => onRefresh(),
+          child: ListView(
+            padding: const EdgeInsets.all(20),
             children: [
-              Expanded(
-                child: _GkGyCard(
-                  title: 'Genel Yetenek',
-                  net: gyTrend.isEmpty ? 0 : gyTrend.last,
-                  icon: Icons.psychology_outlined,
+              Text(
+                'Deneme İstatistiklerim',
+                style: GoogleFonts.inter(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
                   color: AppTheme.lightPrimary,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _GkGyCard(
-                  title: 'Genel Kültür',
-                  net: gkTrend.isEmpty ? 0 : gkTrend.last,
-                  icon: Icons.public_outlined,
-                  color: AppTheme.lightAccent,
+              const SizedBox(height: 16),
+              _WeeklySummaryCard(
+                summary: summary,
+                dueCount: ContentBankService.instance.wrongQuestionCount,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Genel Başarı Çizgisi',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.lightPrimary,
                 ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'TG denemeleri ve yayınevi kayıtlarınız birlikte',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AppTheme.slate.withValues(alpha: 0.75),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: NetDevelopmentChart(points: livePoints),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _GkGyCard(
+                      title: 'Genel Yetenek',
+                      net: gyValues.isEmpty ? 0 : gyValues.last,
+                      icon: Icons.psychology_outlined,
+                      color: AppTheme.lightPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _GkGyCard(
+                      title: 'Genel Kültür',
+                      net: gkValues.isEmpty ? 0 : gkValues.last,
+                      icon: Icons.public_outlined,
+                      color: AppTheme.lightAccent,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Ders Bazlı Performans',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.lightPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...service.aggregateBySubject.entries.map(
+                (entry) => _SubjectBar(ders: entry.key, sonuc: entry.value),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          Text(
-            'Ders Bazlı Performans',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.w600,
-              color: AppTheme.lightPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...service.aggregateBySubject.entries.map(
-            (entry) => _SubjectBar(ders: entry.key, sonuc: entry.value),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

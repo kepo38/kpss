@@ -6,6 +6,7 @@ import '../../models/tg_exam_models.dart';
 import '../../screens/quiz_screen.dart';
 import '../../services/question_fetch_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/tg_exam_gates.dart';
 import 'tg_exam_result_screen.dart';
 
 /// Sınav bitişi anlık özet — yalnızca temel metrikler; çözümler kilitli kalabilir.
@@ -42,13 +43,9 @@ class _TgExamInstantSummaryScreenState
     if (mounted) setState(() => _loadingSolutions = false);
   }
 
-  void _openDetailedAnalysis() {
+  Future<void> _openDetailedAnalysis() async {
     if (!_exam.canAccessDetailedAnalysis) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TgExamResultScreen(exam: _exam),
-      ),
-    );
+    await TgExamGates.openDetailedAnalysis(context, _exam);
   }
 
   void _finish() {
@@ -213,7 +210,7 @@ class _TgExamInstantSummaryScreenState
               FilledButton.icon(
                 onPressed: _openDetailedAnalysis,
                 icon: const Icon(Icons.analytics_outlined),
-                label: const Text('Detaylı Analiz'),
+                label: const Text('Detaylı Analiz · Reklam'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.champagne,
                   foregroundColor: AppTheme.ink,
