@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/kpss_curriculum.dart';
+import '../layout/app_breakpoints.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
 import '../theme/app_theme.dart';
@@ -148,6 +149,7 @@ class StudyHubScreen extends StatelessWidget {
             builder: (context, _) {
               final subjects = KpssCurriculum.subjectsFor(kpssType);
               final bank = ContentBankService.instance;
+              final gridColumns = AppBreakpoints.subjectGridColumns(context);
               return CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
@@ -184,12 +186,12 @@ class StudyHubScreen extends StatelessWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                     sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: gridColumns,
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
-                        childAspectRatio: 1.28,
+                        childAspectRatio:
+                            AppBreakpoints.subjectGridAspectRatio(gridColumns),
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {

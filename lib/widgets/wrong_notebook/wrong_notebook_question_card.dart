@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../layout/app_breakpoints.dart';
 import '../../models/manual_question_model.dart';
 import '../../models/question_model.dart';
 import '../../theme/app_theme.dart';
@@ -188,7 +189,8 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                                     QuestionStemContent.previewText(
                                       question.soruMetni,
                                     ),
-                                    maxLines: 2,
+                                    maxLines: AppBreakpoints
+                                        .wrongNotebookPreviewMaxLines(context),
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       color: on,

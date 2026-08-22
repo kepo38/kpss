@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'constants/brand_constants.dart';
 import 'config/api_config.dart';
+import 'layout/app_content_frame.dart';
 import 'navigation/app_entry.dart';
 import 'navigation/app_navigator.dart';
 import 'screens/security_warning_modal.dart';
@@ -426,27 +427,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: ThemePreferenceService.instance.themeMode,
-          builder: (context, child) {
-            if (!kIsWeb || child == null) {
-              return child ?? const SizedBox.shrink();
-            }
-            final dark = Theme.of(context).brightness == Brightness.dark;
-            return ColoredBox(
-              color: dark ? const Color(0xFF0A101C) : const Color(0xFFD8DEE8),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 430),
-                  child: Material(
-                    elevation: 12,
-                    shadowColor: Colors.black26,
-                    borderRadius: BorderRadius.circular(28),
-                    clipBehavior: Clip.antiAlias,
-                    child: child,
-                  ),
-                ),
-              ),
-            );
-          },
+          builder: (context, child) => AppContentFrame(child: child),
           home: _buildRoutedHome(),
         );
       },

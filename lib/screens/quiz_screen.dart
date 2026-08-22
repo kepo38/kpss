@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
+import '../layout/app_breakpoints.dart';
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
@@ -2712,7 +2713,11 @@ class _OptionTile extends StatelessWidget {
     }
 
     return Padding(
-      padding: EdgeInsets.only(bottom: _mathStyle ? 8 : 10),
+      padding: EdgeInsets.only(
+        bottom: _mathStyle
+            ? (AppBreakpoints.isTablet(context) ? 6 : 8)
+            : (AppBreakpoints.isTablet(context) ? 8 : 10),
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -2722,8 +2727,16 @@ class _OptionTile extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
             width: double.infinity,
-            constraints: BoxConstraints(minHeight: _mathStyle ? 52 : 0),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            constraints: BoxConstraints(
+              minHeight: AppBreakpoints.quizOptionMinHeight(
+                context,
+                mathStyle: _mathStyle,
+              ),
+            ),
+            padding: AppBreakpoints.quizOptionPadding(
+              context,
+              mathStyle: _mathStyle,
+            ),
             decoration: BoxDecoration(
               color: fill,
               borderRadius: BorderRadius.circular(AppTheme.borderRadius),
