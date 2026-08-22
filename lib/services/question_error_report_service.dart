@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -117,12 +118,13 @@ class QuestionErrorReportService {
     if (!auth.hasPermanentAccount) {
       throw const QuestionErrorReportException(guestWarning);
     }
-    final response = await http
-        .get(
-          ApiConfig.questionErrorReportUri(questionId),
-          headers: auth.authHeaders,
-        )
-        .timeout(const Duration(seconds: 10));
+    final response = await _request(
+      () => http.get(
+        ApiConfig.questionErrorReportUri(questionId),
+        headers: auth.authHeaders,
+      ),
+      timeout: const Duration(seconds: 10),
+    );
     return _decode(questionId, response);
   }
 
@@ -143,20 +145,40 @@ class QuestionErrorReportService {
         ),
       );
     }
-    final response = await http
-        .post(
-          ApiConfig.questionErrorReportUri(questionId),
-          headers: {
-            ...auth.authHeaders,
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'category': category,
-            'note': note.trim(),
-          }),
-        )
-        .timeout(const Duration(seconds: 12));
+    final response = await _request(
+      () => http.post(
+        ApiConfig.questionErrorReportUri(questionId),
+        headers: {
+          ...auth.authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'category': category,
+          'note': note.trim(),
+        }),
+      ),
+      timeout: const Duration(seconds: 12),
+    );
     return _decode(questionId, response);
+  }
+
+  Future<http.Response> _request(
+    Future<http.Response> Function() send, {
+    required Duration timeout,
+  }) async {
+    try {
+      return await send().timeout(timeout);
+    } on TimeoutException {
+      throw const QuestionErrorReportException(
+        'Sunucuya bağlanılamadı (zaman aşımı).',
+      );
+    } on QuestionErrorReportException {
+      rethrow;
+    } catch (_) {
+      throw const QuestionErrorReportException(
+        'Sunucuya bağlanılamadı. İnternet ve API adresini kontrol edin.',
+      );
+    }
   }
 
   QuestionErrorReportState _decode(String questionId, http.Response response) {
@@ -195,6 +217,11 @@ class QuestionErrorReportService {
         }
       } catch (_) {}
       throw QuestionErrorReportException(message);
+    }
+    if (response.statusCode == 401) {
+      throw const QuestionErrorReportException(
+        'Oturum süresi doldu. Çıkış yapıp Google ile tekrar giriş yapın.',
+      );
     }
     if (response.statusCode != 200 && response.statusCode != 201) {
       var message = 'Bildirim gönderilemedi.';

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import ssl
+import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
@@ -22,9 +23,14 @@ from .models import Question, Topic
 from .ocr_ingest import ingest_question_from_image
 from .panel_context import pending_telegram_question_count
 from .telegram_conversation import (
+    ConversationReply,
+    clear_session,
+    get_session,
+    solution_prompt_keyboard,
     solution_prompt_message,
     start_solution_prompt,
     try_handle_conversation,
+    try_handle_conversation_callback,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +47,18 @@ _DRAIN_ERROR_LINE = (
 _DRAIN_ERROR_FOOTER = (
     "Tekrar çalıştırınca aynı fotoğraflar otomatik yeniden denenecek."
 )
+
+_CLEAR_CHAT_COMMANDS = frozenset({
+    "/sohbeti_sil",
+    "/sohbetisil",
+    "/temizle",
+    "sohbeti sil",
+    "sohbet sil",
+    "sohbeti temizle",
+})
+
+_MAX_TRACKED_BOT_MESSAGES = 80
+_recent_bot_messages: dict[int, list[int]] = {}
 
 
 def drain_error_summary(count: int) -> str:
@@ -213,14 +231,149 @@ def ensure_polling_mode() -> str | None:
     return url
 
 
-def send_message(chat_id: int, text: str, *, parse_mode: str | None = None) -> None:
+def send_message(
+    chat_id: int,
+    text: str,
+    *,
+    parse_mode: str | None = None,
+    reply_markup: dict[str, Any] | None = None,
+) -> int | None:
     payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
-        _post("sendMessage", payload)
+        body = _post("sendMessage", payload)
     except Exception:
-        logger.exception("Telegram sendMessage failed chat_id=%s", chat_id)
+        if parse_mode:
+            logger.warning(
+                "Telegram sendMessage HTML failed chat_id=%s — düz metin deneniyor",
+                chat_id,
+            )
+            plain_payload: dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": text,
+            }
+            if reply_markup is not None:
+                plain_payload["reply_markup"] = reply_markup
+            try:
+                body = _post("sendMessage", plain_payload)
+            except Exception:
+                logger.exception(
+                    "Telegram sendMessage failed chat_id=%s", chat_id
+                )
+                return None
+        else:
+            logger.exception("Telegram sendMessage failed chat_id=%s", chat_id)
+            return None
+    message_id = (body.get("result") or {}).get("message_id")
+    if message_id:
+        _track_bot_message(int(chat_id), int(message_id))
+    return int(message_id) if message_id else None
+
+
+def _track_bot_message(chat_id: int, message_id: int) -> None:
+    ids = _recent_bot_messages.setdefault(int(chat_id), [])
+    ids.append(int(message_id))
+    if len(ids) > _MAX_TRACKED_BOT_MESSAGES:
+        del ids[: len(ids) - _MAX_TRACKED_BOT_MESSAGES]
+
+
+def _purge_bot_messages(chat_id: int) -> int:
+    ids = _recent_bot_messages.pop(int(chat_id), [])
+    deleted = 0
+    for message_id in reversed(ids):
+        try:
+            _post(
+                "deleteMessage",
+                {"chat_id": int(chat_id), "message_id": int(message_id)},
+            )
+            deleted += 1
+        except Exception:
+            logger.debug(
+                "Telegram deleteMessage skipped chat_id=%s message_id=%s",
+                chat_id,
+                message_id,
+            )
+        time.sleep(0.04)
+    return deleted
+
+
+def _normalize_command(text: str) -> str:
+    return text.strip().lower().split("@", 1)[0]
+
+
+def _is_clear_chat_command(text: str) -> bool:
+    return _normalize_command(text) in _CLEAR_CHAT_COMMANDS
+
+
+def _handle_clear_chat(chat_id: int, user_id: int) -> HandleOutcome:
+    session = get_session(user_id)
+    photo_message_id = session.source_message_id if session else None
+    clear_session(user_id)
+    deleted = _purge_bot_messages(chat_id)
+    if photo_message_id:
+        delete_message(chat_id, int(photo_message_id))
+    send_message(
+        chat_id,
+        "Sohbet temizlendi.\n"
+        f"Silinen bot mesajı: {deleted}\n"
+        "Bot arka planda dinlemeye devam ediyor — yeni fotoğraf gönderebilirsiniz.\n\n"
+        "Not: Telegram menüsündeki 「Sohbeti Sil」 bunu yapmaz; "
+        "sohbeti tamamen siler. Temizlik için her zaman /sohbeti_sil kullanın.",
+    )
+    return "command"
+
+
+def answer_callback_query(callback_query_id: str, *, text: str = "") -> None:
+    if not callback_query_id:
+        return
+    payload: dict[str, Any] = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    try:
+        _post("answerCallbackQuery", payload)
+    except Exception:
+        logger.exception("Telegram answerCallbackQuery failed id=%s", callback_query_id)
+
+
+def edit_message_reply_markup(
+    chat_id: int,
+    message_id: int,
+    reply_markup: dict[str, Any] | None,
+) -> None:
+    if not message_id:
+        return
+    markup = reply_markup if reply_markup is not None else {"inline_keyboard": []}
+    try:
+        _post(
+            "editMessageReplyMarkup",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reply_markup": markup,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "Telegram editMessageReplyMarkup failed chat_id=%s message_id=%s",
+            chat_id,
+            message_id,
+        )
+
+
+def _dispatch_conversation_reply(
+    chat_id: int,
+    reply: ConversationReply,
+    *,
+    prompt_message_id: int | None = None,
+) -> None:
+    send_message(chat_id, reply.text)
+    if reply.delete_photo_message_id:
+        delete_message(chat_id, int(reply.delete_photo_message_id))
+    if prompt_message_id:
+        edit_message_reply_markup(chat_id, int(prompt_message_id), None)
 
 
 def delete_message(chat_id: int, message_id: int) -> None:
@@ -342,12 +495,38 @@ def _status_text() -> str:
     return "\n".join(lines)
 
 
+def register_bot_commands() -> None:
+    """Telegram komut menüsü — kullanıcı /sohbeti_sil görsün, menüden Sil kullanmasın."""
+    if not telegram_configured():
+        return
+    commands = [
+        {"command": "durum", "description": "Panel ve kuyruk özeti"},
+        {
+            "command": "sohbeti_sil",
+            "description": "Bot mesajlarını temizle (⋮ menüsündeki Sil değil!)",
+        },
+        {"command": "eski", "description": "Kaçan fotoğraflar rehberi"},
+        {"command": "iptal", "description": "Bekleyen çözüm adımını iptal"},
+        {"command": "help", "description": "Yardım ve uyarılar"},
+    ]
+    try:
+        _post("setMyCommands", {"commands": commands})
+    except Exception:
+        logger.exception("Telegram setMyCommands failed")
+
+
 def _help_text() -> str:
     default_slug = getattr(settings, "TELEGRAM_DEFAULT_TOPIC_SLUG", "turkce_anlam")
     return (
         "HEDEF Kamu soru botu\n\n"
+        "⚠️ Sohbeti temizlemek için Telegram menüsündeki "
+        "「Sohbeti Sil」 KULLANMAYIN — sohbet tamamen silinir, "
+        "botu yeniden açmanız gerekir (BotFather gerekmez; bota /start yazmanız yeter).\n"
+        "✅ Bunun yerine komut yazın: /sohbeti_sil\n"
+        "   (yalnızca bot mesajları silinir, arka plan dinlemesi devam eder)\n\n"
         "• Soru fotoğrafı gönderin (altına isteğe bağlı konu slug, "
         f"örn. {default_slug}).\n"
+        "• Konu yazmazsanız ders/konu fotoğraftan otomatik algılanır.\n"
         "• PC kapalıyken bot ~24 saat kuyruğu dinler.\n"
         "• Eve gelince TELEGRAM-WATCH.bat açık tutun (sürekli dinler).\n"
         "• Tek seferlik aktarım: TELEGRAM.bat\n"
@@ -358,10 +537,11 @@ def _help_text() -> str:
         "hayır derseniz fotoğraf kalır.\n"
         "• Aynı fotoğrafı tekrar iletirseniz uyarı alırsınız.\n"
         "• Panel → Onay bekleyen sorular\n\n"
-        "• Fotoğraf sonrası çözüm eklemek için evet deyin; Google'dan "
-        "kopyaladığınız metni yapıştırın.\n\n"
+        "• Fotoğraf sonrası çözüm eklemek için Evet/Hayır düğmeleri çıkar; "
+        "Google'dan kopyaladığınız metni yapıştırabilirsiniz.\n\n"
         "/durum — panel + kuyruk özeti\n"
         "/eski — kaçan fotoğraflar için kısa rehber\n"
+        "/sohbeti_sil — bot mesajlarını temizle (menüden Sil değil!)\n"
         "/iptal — bekleyen çözüm adımını iptal"
     )
 
@@ -439,6 +619,149 @@ def _duplicate_warning(
     return f"Bu fotoğraf zaten kayıtlı: {existing.public_id} ({status})."
 
 
+def _escape_html(text: str) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _format_elapsed(seconds: float) -> str:
+    total = max(1, int(round(seconds)))
+    if total < 60:
+        return f"{total} sn"
+    minutes, secs = divmod(total, 60)
+    if secs:
+        return f"{minutes} dk {secs} sn"
+    return f"{minutes} dk"
+
+
+def _build_ingest_success_html(
+    *,
+    topic: Topic,
+    question: Question,
+    pending: int,
+    elapsed_seconds: float,
+    forwarded: bool,
+    partial: bool,
+    duplicate: Question | None,
+    include_solution_prompt: bool,
+    topic_auto_detected: bool = False,
+) -> str:
+    duration = _escape_html(_format_elapsed(elapsed_seconds))
+    subject = _escape_html(topic.subject.name)
+    topic_name = _escape_html(topic.name)
+    public_id = _escape_html(question.public_id)
+
+    lines: list[str] = []
+    if forwarded:
+        lines.append("(Eski fotoğraf iletildi — işlendi.)")
+    lines.append(
+        f"<b>Soru alındı — onay bekliyor.</b>  <i>⏱ {duration}</i>"
+    )
+    lines.append(f"Konu: {subject} · {topic_name}")
+    if topic_auto_detected:
+        lines.append("<i>(Konu fotoğraftan otomatik algılandı)</i>")
+    lines.append(f"Kimlik: <code>{public_id}</code>")
+    if partial:
+        lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
+    if duplicate is not None:
+        dup_id = _escape_html(duplicate.public_id)
+        lines.append(
+            "🔴 <b>Uyarı: benzer soru var "
+            f"(<code>{dup_id}</code>).</b>"
+        )
+    lines.append(f"Bekleyen toplam: {pending}")
+    if include_solution_prompt:
+        lines.append("")
+        lines.extend(
+            _escape_html(line) for line in solution_prompt_message().split("\n")
+        )
+    return "\n".join(lines)
+
+
+def _build_ingest_success_plain(
+    *,
+    topic: Topic,
+    question: Question,
+    pending: int,
+    elapsed_seconds: float,
+    forwarded: bool,
+    partial: bool,
+    duplicate: Question | None,
+    include_solution_prompt: bool,
+    topic_auto_detected: bool = False,
+) -> str:
+    duration = _format_elapsed(elapsed_seconds)
+    lines: list[str] = []
+    if forwarded:
+        lines.append("(Eski fotoğraf iletildi — işlendi.)")
+    lines.append(f"Soru alındı — onay bekliyor.  ⏱ {duration}")
+    lines.append(f"Konu: {topic.subject.name} · {topic.name}")
+    if topic_auto_detected:
+        lines.append("(Konu fotoğraftan otomatik algılandı)")
+    lines.append(f"Kimlik: {question.public_id}")
+    if partial:
+        lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
+    if duplicate is not None:
+        lines.append(
+            f"🔴 Uyarı: benzer soru var ({duplicate.public_id})."
+        )
+    lines.append(f"Bekleyen toplam: {pending}")
+    if include_solution_prompt:
+        lines.append("")
+        lines.append(solution_prompt_message())
+    return "\n".join(lines)
+
+
+def _send_ingest_success(
+    chat_id: int,
+    *,
+    topic: Topic,
+    question: Question,
+    pending: int,
+    elapsed_seconds: float,
+    forwarded: bool,
+    partial: bool,
+    duplicate: Question | None,
+    include_solution_prompt: bool,
+    topic_auto_detected: bool = False,
+) -> None:
+    keyboard = solution_prompt_keyboard() if include_solution_prompt else None
+    reply_html = _build_ingest_success_html(
+        topic=topic,
+        question=question,
+        pending=pending,
+        elapsed_seconds=elapsed_seconds,
+        forwarded=forwarded,
+        partial=partial,
+        duplicate=duplicate,
+        include_solution_prompt=include_solution_prompt,
+        topic_auto_detected=topic_auto_detected,
+    )
+    sent = send_message(
+        chat_id,
+        reply_html,
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+    if sent is None:
+        reply_plain = _build_ingest_success_plain(
+            topic=topic,
+            question=question,
+            pending=pending,
+            elapsed_seconds=elapsed_seconds,
+            forwarded=forwarded,
+            partial=partial,
+            duplicate=duplicate,
+            include_solution_prompt=include_solution_prompt,
+            topic_auto_detected=topic_auto_detected,
+        )
+        send_message(chat_id, reply_plain, reply_markup=keyboard)
+
+
 def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutcome:
     extracted = _extract_image(message)
     if extracted is None:
@@ -447,6 +770,7 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
     file_id, file_unique_id = extracted
     caption = (message.get("caption") or "").strip()
     caption_slug = _caption_slug(caption)
+    explicit_topic = bool(caption_slug)
     topic = _resolve_topic(caption)
     if topic is None:
         if caption_slug:
@@ -479,6 +803,7 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
         delete_message(int(chat_id), message_id)
         return "skipped"
 
+    started = time.perf_counter()
     try:
         image_bytes, mime = _download_file(file_id)
     except (urllib.error.URLError, RuntimeError, TimeoutError) as exc:
@@ -504,6 +829,7 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
             telegram_message_id=message_id,
             telegram_file_unique_id=file_unique_id,
             allow_duplicate=True,
+            auto_classify_topic=not explicit_topic,
         )
     except IntegrityError:
         existing, match = _find_existing_telegram_question(
@@ -535,39 +861,97 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
         submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
         is_published=False,
     ).count()
-    lines = [
-        "Soru alındı — onay bekliyor.",
-        f"Konu: {topic.subject.name} · {topic.name}",
-        f"Kimlik: {result.question.public_id}",
-    ]
-    if forwarded:
-        lines.insert(1, "(Eski fotoğraf iletildi — işlendi.)")
-    if result.partial:
-        lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
-    if result.duplicate:
-        lines.append(
-            f"Uyarı: benzer soru var ({result.duplicate.public_id})."
-        )
-    lines.append(f"Bekleyen toplam: {pending}")
-    send_message(chat_id, "\n".join(lines))
+    elapsed = time.perf_counter() - started
+    assigned_topic = result.question.topic
 
     from_user = message.get("from") or {}
     user_id = from_user.get("id")
+    include_solution_prompt = user_id is not None
     if user_id is not None:
-        start_solution_prompt(
-            int(user_id),
+        try:
+            start_solution_prompt(
+                int(user_id),
+                int(chat_id),
+                result.question,
+                source_message_id=message_id,
+            )
+        except Exception:
+            logger.exception(
+                "Telegram solution session start failed user_id=%s question=%s",
+                user_id,
+                result.question.public_id,
+            )
+        _send_ingest_success(
             int(chat_id),
-            result.question,
-            source_message_id=message_id,
+            topic=assigned_topic,
+            question=result.question,
+            pending=pending,
+            elapsed_seconds=elapsed,
+            forwarded=forwarded,
+            partial=result.partial,
+            duplicate=result.duplicate,
+            include_solution_prompt=True,
+            topic_auto_detected=result.topic_auto_detected,
         )
-        send_message(chat_id, solution_prompt_message())
     else:
+        _send_ingest_success(
+            int(chat_id),
+            topic=assigned_topic,
+            question=result.question,
+            pending=pending,
+            elapsed_seconds=elapsed,
+            forwarded=forwarded,
+            partial=result.partial,
+            duplicate=result.duplicate,
+            include_solution_prompt=False,
+            topic_auto_detected=result.topic_auto_detected,
+        )
         delete_message(int(chat_id), message_id)
 
     return "ingested"
 
 
+def _handle_callback_query(callback: dict[str, Any]) -> HandleOutcome:
+    from_user = callback.get("from") or {}
+    user_id = from_user.get("id")
+    callback_id = str(callback.get("id") or "")
+
+    if not _allowed_user(user_id):
+        answer_callback_query(callback_id, text="Yetkisiz hesap.")
+        return "unauthorized"
+
+    if not telegram_configured():
+        answer_callback_query(callback_id, text="Bot yapılandırılmamış.")
+        return "error"
+
+    message = callback.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    message_id = int(message.get("message_id") or 0)
+    data = (callback.get("data") or "").strip()
+
+    if user_id is None or chat_id is None:
+        answer_callback_query(callback_id)
+        return "ignored"
+
+    reply = try_handle_conversation_callback(data, int(user_id))
+    answer_callback_query(callback_id)
+    if reply is None:
+        return "ignored"
+
+    _dispatch_conversation_reply(
+        int(chat_id),
+        reply,
+        prompt_message_id=message_id or None,
+    )
+    return "command"
+
+
 def handle_update(update: dict[str, Any]) -> HandleOutcome:
+    callback = update.get("callback_query")
+    if callback:
+        return _handle_callback_query(callback)
+
     message = update.get("message") or update.get("edited_message")
     if not message:
         return "ignored"
@@ -605,6 +989,8 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
         else:
             send_message(chat_id, "İptal edilecek bir adım yok.")
         return "command"
+    if text and _is_clear_chat_command(text):
+        return _handle_clear_chat(int(chat_id), int(user_id))
 
     if not telegram_configured():
         send_message(chat_id, "Bot yapılandırılmamış (TELEGRAM_BOT_TOKEN).")
@@ -614,11 +1000,14 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
         return _process_photo_message(message, int(chat_id))
 
     if text and user_id is not None:
-        reply = try_handle_conversation(int(user_id), text)
+        entities = message.get("entities") or []
+        reply = try_handle_conversation(
+            int(user_id),
+            text,
+            entities=entities,
+        )
         if reply is not None:
-            send_message(chat_id, reply.text)
-            if reply.delete_photo_message_id:
-                delete_message(int(chat_id), int(reply.delete_photo_message_id))
+            _dispatch_conversation_reply(int(chat_id), reply)
             return "command"
 
     if text:

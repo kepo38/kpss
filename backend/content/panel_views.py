@@ -58,6 +58,12 @@ from .question_fingerprint import (
     stem_fingerprint,
 )
 from .embeddings import refresh_question_embedding
+from .osym_cikmis import (
+    normalize_osym_cikmis_label,
+    osym_cikmis_suggestions,
+    record_osym_cikmis_oneri,
+)
+from .rich_text import normalize_pasted_solution
 from .panel_context import (
     mark_question_error_reports_reviewed,
     pending_error_report_count,
@@ -1812,9 +1818,19 @@ def panel_question_edit(
             option_table = Question.OPTION_TABLE_NONE
         question.option_table = option_table
         question.correct_option = request.POST.get("correct_option", "A")
-        question.solution = request.POST.get("solution", "").strip()
+        question.solution = normalize_pasted_solution(
+            request.POST.get("solution", "")
+        )
         question.is_published = request.POST.get("is_published") == "on"
         question.osym_sordu = request.POST.get("osym_sordu") == "on"
+        osym_cikmis_raw = normalize_osym_cikmis_label(
+            request.POST.get("osym_cikmis_adi", "")
+        )
+        if question.osym_sordu and not osym_cikmis_raw:
+            return HttpResponseBadRequest(
+                "ÖSYM sordu işaretli — hangi çıkmış soru olduğunu yazın."
+            )
+        question.osym_cikmis_adi = osym_cikmis_raw if question.osym_sordu else ""
         question.tag_kronoloji = request.POST.get("tag_kronoloji") == "on"
         question.tag_padisah_antlasma = (
             request.POST.get("tag_padisah_antlasma") == "on"
@@ -1902,6 +1918,8 @@ def panel_question_edit(
 
         _apply_question_scenario(question, target_topic, request.POST)
         question.save()
+        if question.osym_sordu and question.osym_cikmis_adi:
+            record_osym_cikmis_oneri(question.osym_cikmis_adi)
         refresh_question_embedding(question)
         reviewed_reports = mark_question_error_reports_reviewed(question)
 
@@ -2007,6 +2025,7 @@ def panel_question_edit(
             "selected_test_assignment": selected_test_assignment,
             "entry_mode": entry_mode,
             "pending_telegram_review": _is_pending_telegram_question(question),
+            "osym_cikmis_suggestions": osym_cikmis_suggestions(),
         },
     )
 
@@ -2075,6 +2094,7 @@ def panel_question_copy(
         is_published=source.is_published,
         difficulty=Question.DIFFICULTY_MEDIUM,
         osym_sordu=source.osym_sordu,
+        osym_cikmis_adi=source.osym_cikmis_adi,
         tag_kronoloji=source.tag_kronoloji,
         tag_padisah_antlasma=source.tag_padisah_antlasma,
         tag_celdirici=source.tag_celdirici,

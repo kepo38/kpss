@@ -24,6 +24,7 @@ class ApiConfig {
   static const String mePath = '/api/v1/me/';
   static const String meMessagesPath = '/api/v1/me/messages/';
   static const String dailyMiniExamPath = '/api/v1/daily-mini-exam/';
+  static const String tgExamsPath = '/api/v1/tg-exams/';
   static const String promoRedeemPath = '/api/v1/promo/redeem/';
   static const String premiumSyncPath = '/api/v1/premium/sync/';
   static const String dailyQuotaPath = '/api/v1/daily-quota/';
@@ -109,4 +110,22 @@ class ApiConfig {
       Uri.parse(
         '$baseUrl/api/v1/exam-packs/${Uri.encodeComponent(packId)}/exams/$examIndex/questions/',
       );
+
+  static Uri tgExamsUri({String? kpssType}) {
+    final base = Uri.parse('$baseUrl$tgExamsPath');
+    if (kpssType == null || kpssType.isEmpty) return base;
+    return base.replace(queryParameters: {'kpss_type': kpssType});
+  }
+
+  static Uri tgExamDetailUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/');
+
+  static Uri tgExamQuestionsUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/questions/');
+
+  static Uri tgExamProgressUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/progress/');
+
+  static Uri tgExamSubmitUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/submit/');
 }

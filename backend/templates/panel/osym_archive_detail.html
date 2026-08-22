@@ -1,0 +1,71 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<header class="page-header">
+  <div class="crumb">
+    <a href="{% url 'panel_home' %}">Dersler</a> /
+    <a href="{% url 'panel_osym_archive' %}">ÖSYM Çıkmış Sorular</a> /
+    {{ archive_key|truncatechars:60 }}
+  </div>
+  <h1>{{ archive_key }}</h1>
+  <p class="lead">
+    <strong>{{ active_count }}</strong> aktif soru
+    {% if total_count != active_count %}· {{ total_count }} toplam (taslak dahil){% endif %}
+  </p>
+</header>
+
+<div class="toolbar">
+  <a class="btn btn-ghost" href="{% url 'panel_osym_archive' %}">← Arşive dön</a>
+  <form method="get" class="osym-detail-filter">
+    <label class="check">
+      <input type="checkbox" name="published" value="1" {% if published_only %}checked{% endif %} onchange="this.form.submit()">
+      Yalnızca yayında
+    </label>
+  </form>
+</div>
+
+<div class="panel-card">
+  {% if questions %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Ders · Konu</th>
+          <th>Soru</th>
+          <th>Durum</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+        <tr>
+          <td>
+            <strong>{{ q.topic.subject.name }}</strong><br>
+            <span class="hint">{{ q.topic.name }}{% if q.subtopic %} · {{ q.subtopic }}{% endif %}</span>
+          </td>
+          <td>
+            <span class="hint">{{ q.public_id }}</span><br>
+            {{ q.stem|truncatechars:100 }}
+            {% if q.osym_cikmis_adi and q.osym_cikmis_adi != archive_key %}
+            <br><span class="hint">Etiket: {{ q.osym_cikmis_adi|truncatechars:80 }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if q.is_published %}
+              <span class="badge on">Yayında</span>
+            {% else %}
+              <span class="badge off">Taslak</span>
+            {% endif %}
+          </td>
+          <td>
+            <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic_id=q.topic_id question_id=q.id %}">Düzenle</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Bu oturum için henüz soru yüklenmemiş.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/practice_exam_model.dart';
 import '../services/practice_exam_service.dart';
 import '../theme/app_theme.dart';
+import 'tg_exams_section.dart';
 
 class StatisticsExamsTab extends StatelessWidget {
   final VoidCallback onRefresh;
@@ -17,13 +18,26 @@ class StatisticsExamsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final exams = PracticeExamService.instance.allExams;
     if (exams.isEmpty) {
-      return const Center(child: Text('Henüz deneme kaydı yok'));
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          TgExamsSection(onRefresh: onRefresh),
+          const SizedBox(height: 24),
+          const Center(child: Text('Henüz deneme kaydı yok')),
+        ],
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(20),
-      itemCount: exams.length,
+      itemCount: exams.length + 1,
       itemBuilder: (context, index) {
-        final exam = exams[index];
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: TgExamsSection(onRefresh: onRefresh),
+          );
+        }
+        final exam = exams[index - 1];
         return _ExamDetailCard(
           exam: exam,
           onDelete: () {

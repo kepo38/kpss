@@ -1047,6 +1047,8 @@ class OcrQuestionResult:
     figure_svg: str = ""
     correct_option: str = ""
     solution: str = ""
+    topic_slug: str = ""
+    subject_slug: str = ""
 
 
 def _read_source_bytes(source: BinaryIO | bytes | Path | str) -> tuple[bytes, str]:

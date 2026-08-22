@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/announcement_model.dart';
 import '../screens/announcements_screen.dart';
 import '../screens/premium/premium_paywall_screen.dart';
-import '../screens/user_messages_screen.dart';
+import '../screens/tg_exam/exam_welcome_screen.dart';
+import '../screens/tg_exam/tg_exam_instant_summary_screen.dart';
+import '../screens/tg_exam/tg_exam_result_screen.dart';
 import '../services/announcement_service.dart';
+import '../services/tg_exam_service.dart';
 import '../services/user_message_service.dart';
+import '../screens/user_messages_screen.dart';
 
 /// Bildirim tıklaması → duyuru / mesaj detayı.
 class AppNavigator {
@@ -18,6 +22,8 @@ class AppNavigator {
   static String? _pendingAnnouncementBody;
   static String? _pendingAnnouncementImage;
   static int? _pendingMessageId;
+  static int? _pendingTgExamId;
+  static int? _pendingTgExamResultsId;
   static bool _pendingPremiumPaywall = false;
 
   static NavigatorState? get _nav => key.currentState;
@@ -27,6 +33,28 @@ class AppNavigator {
     final type = '${data['type'] ?? ''}';
     if (type == 'content_update') return;
     if (type == 'daily_mini_exam' || type == 'daily_missions') return;
+
+    if (type == 'tg_exam_results') {
+      final examId = int.tryParse('${data['exam_id']}');
+      if (examId == null) return;
+      if (_nav != null) {
+        await openTgExamResults(examId);
+      } else {
+        _pendingTgExamResultsId = examId;
+      }
+      return;
+    }
+
+    if (type == 'tg_exam') {
+      final examId = int.tryParse('${data['exam_id']}');
+      if (examId == null) return;
+      if (_nav != null) {
+        await openTgExam(examId);
+      } else {
+        _pendingTgExamId = examId;
+      }
+      return;
+    }
 
     if (type == 'premium') {
       if (_nav != null) {
@@ -84,8 +112,16 @@ class AppNavigator {
   static Future<void> consumePending() async {
     final annId = _pendingAnnouncementId;
     final msgId = _pendingMessageId;
+    final tgExamId = _pendingTgExamId;
+    final tgResultsId = _pendingTgExamResultsId;
     final premium = _pendingPremiumPaywall;
-    if (annId == null && msgId == null && !premium) return;
+    if (annId == null &&
+        msgId == null &&
+        tgExamId == null &&
+        tgResultsId == null &&
+        !premium) {
+      return;
+    }
 
     // Navigator mount olana kadar kısa bekle
     for (var i = 0; i < 20 && _nav == null; i++) {
@@ -95,10 +131,20 @@ class AppNavigator {
 
     _pendingAnnouncementId = null;
     _pendingMessageId = null;
+    _pendingTgExamId = null;
+    _pendingTgExamResultsId = null;
     _pendingPremiumPaywall = false;
 
     if (premium) {
       await openPremiumPaywall();
+      return;
+    }
+    if (tgResultsId != null) {
+      await openTgExamResults(tgResultsId);
+      return;
+    }
+    if (tgExamId != null) {
+      await openTgExam(tgExamId);
       return;
     }
     if (msgId != null) {
@@ -187,6 +233,57 @@ class AppNavigator {
     await nav.push(
       MaterialPageRoute<void>(
         builder: (_) => UserMessageDetailScreen(message: item),
+      ),
+    );
+  }
+
+  static Future<void> openTgExam(int examId) async {
+    final nav = _nav;
+    if (nav == null) return;
+    await TgExamService.instance.fetchDetail(examId);
+    await nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => ExamWelcomeScreen(examId: examId),
+      ),
+    );
+  }
+
+  /// Sonuç bildirimi deeplink — doğrudan sonuç / sıralama ekranı.
+  static Future<void> openTgExamResults(int examId) async {
+    final nav = _nav;
+    if (nav == null) return;
+
+    final exam = await TgExamService.instance.fetchDetail(examId);
+    if (exam == null) {
+      await nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ExamWelcomeScreen(examId: examId),
+        ),
+      );
+      return;
+    }
+
+    if (exam.canAccessDetailedAnalysis) {
+      await nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => TgExamResultScreen(exam: exam),
+        ),
+      );
+      return;
+    }
+
+    if (exam.hasSubmittedAttempt) {
+      await nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => TgExamInstantSummaryScreen(exam: exam),
+        ),
+      );
+      return;
+    }
+
+    await nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => ExamWelcomeScreen(examId: examId),
       ),
     );
   }

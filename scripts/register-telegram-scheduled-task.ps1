@@ -44,8 +44,11 @@ function Get-DelayMmSs {
 }
 
 function Get-TaskCommandLine {
-    # Minimize edilmis pencere; surekli dinleme /auto modunda log dosyasina yazar.
-    return "cmd.exe /c start `"HEDEF Kamu Telegram`" /min `"$BatPath`" /auto"
+    $vbs = Join-Path $ProjectRoot "scripts\telegram-watch-hidden.vbs"
+    if (Test-Path $vbs) {
+        return "wscript.exe //B `"$vbs`""
+    }
+    return "powershell -NoProfile -WindowStyle Hidden -Command `"Start-Process -FilePath '$BatPath' -ArgumentList '/auto','__hidden__' -WindowStyle Hidden`""
 }
 
 function Get-StartupLauncherPath {
@@ -60,11 +63,12 @@ function Get-LegacyStartupLauncherPath {
 
 function Register-StartupLauncher {
     $launcher = Get-StartupLauncherPath
+    $vbs = Join-Path $ProjectRoot "scripts\telegram-watch-hidden.vbs"
     $content = @"
 @echo off
-rem HEDEF Kamu - oturum acilinca Telegram WATCH (surekli dinleme)
+rem HEDEF Kamu - oturum acilinca Telegram WATCH (arka plan, pencere yok)
 timeout /t 45 /nobreak >nul
-start "HEDEF Kamu Telegram" /min "$BatPath" /auto
+wscript.exe //B "$vbs"
 "@
     Set-Content -Path $launcher -Value $content -Encoding UTF8
     $legacy = Get-LegacyStartupLauncherPath
@@ -183,7 +187,7 @@ if ($schtasksOk) {
     Write-Host "Gorev Zamanlayicisi kuruldu (WATCH - surekli dinleme)."
     Write-Host "  Gorev adi : $TaskName"
     Write-Host "  Tetik     : Oturum acilisi + ${DelaySeconds}s"
-    Write-Host "  Calistir  : $BatPath /auto (minimize)"
+    Write-Host "  Calistir  : TELEGRAM-WATCH.bat /auto (arka plan, gizli)"
     Write-Host "  Log       : $LogPath"
     Write-Host ""
     Write-Host "Test: Gorev Zamanlayicisi -> $TaskName -> Calistir"
@@ -203,6 +207,6 @@ Write-Host "  $launcher"
 Write-Host "  Tetik: Oturum acilisi + ${DelaySeconds}s -> TELEGRAM-WATCH.bat /auto"
 Write-Host "  Log  : $LogPath"
 Write-Host ""
-Write-Host "Not: Gorev cubugunda minimize cmd gorulebilir; bot surekli dinler."
+Write-Host "Not: Gorev cubugunda pencere gorunmez; log: $LogPath"
 Write-Host "Kaldir: KALDIR-TELEGRAM-ZAMANLAYICI.bat"
 Write-Host ""

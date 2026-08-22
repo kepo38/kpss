@@ -24,6 +24,15 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
 
+### 22 Ağustos 2026 — ÖSYM Çıkmış Sorular arşiv yöneticisi
+
+| Alan | Ne yapıldı | Dosyalar |
+|---|---|---|
+| **Arşiv panosu** | Yıl × sınav × oturum kartları; tam / kısmi / eksik durumu; soru sayısı | `/panel/osym-cikmis/`, `osym_archive.html` |
+| **Katalog** | KPSS (Lisans/Önlisans/Ortaöğretim/ÖABT), ALES, YKS (TYT/AYT), DGS — 2019–2026 | `osym_archive.py` |
+| **Etiket biçimi** | «2025 KPSS Lisans · Genel Yetenek - Genel Kültür» (+ isteğe « · Soru 12») | `question_form.html`, `osym_cikmis_adi` |
+| **Detay** | Oturumdaki sorular listesi → soru düzenleme | `/panel/osym-cikmis/detay/<etiket>/` |
+
 ### 22 Ağustos 2026 — Türkiye Geneli (TG) Deneme modülü
 
 Tam kapsamlı TG deneme sistemi — normal konu testleri, deneme paketleri ve Telegram OCR akışından **ayrı paket** (`backend/content/tg_exam/`). Ayrıntılı özellik listesi: [Türkiye Geneli (TG) denemeleri](#türkiye-geneli-tg-denemeleri).
@@ -711,6 +720,7 @@ Panel harita işleri bu dosyalarda; soru formuna gömülmez.
 | Özellik | URL |
 |---|---|
 | Kalite panosu (düşük puanlı sorular) | `/panel/kalite/` |
+| **ÖSYM Çıkmış Sorular arşivi** (yıl/sınav/oturum, eksik-tam, soru sayısı) | `/panel/osym-cikmis/` |
 | İncelenecek sorular (hata bildirimleri) | `/panel/incelenecek-sorular/` |
 | Bildirim durumu güncelleme | `/panel/hata-bildirimi/<id>/durum/` |
 

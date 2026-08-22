@@ -19,7 +19,7 @@ import 'app_preferences.dart';
 /// - isPremium == true → tüm reklamlar bypass
 /// - 12 saat kampanya → yalnızca banner; çözüm/kota/interstitial durur
 /// - Panel `bannerAdsEnabled=false` → yalnızca quiz banner kapalı
-class AdManager {
+class AdManager extends ChangeNotifier {
   AdManager._();
   static final AdManager instance = AdManager._();
 
@@ -57,11 +57,13 @@ class AdManager {
     if (value) {
       _disposeAllAds();
     }
+    notifyListeners();
   }
 
   Future<void> initialize() async {
     if (_bypassAllAds) {
       _sdkReady = true;
+      notifyListeners();
       return;
     }
     try {
@@ -69,10 +71,12 @@ class AdManager {
       _sdkReady = true;
       _loadInterstitial();
       _loadRewarded();
+      _retryBannerIfInTestSession();
     } catch (e, st) {
       _sdkReady = false;
       debugPrint('AdManager initialize failed: $e\n$st');
     }
+    notifyListeners();
   }
 
   /// Quiz veya test ekranına giderken bir sonraki geçiş reklamını atla.
@@ -96,12 +100,18 @@ class AdManager {
     if (!_isInTestSession) return;
     if (_suppressBanners || adFreeExperience || _adFreeTestSession) {
       _disposeBanner();
-      AppConfigService.instance.notifyListeners();
+      notifyListeners();
       return;
     }
     _loadBanner();
-    // BannerAd nesnesi oluştu; quiz alt çubuğu yeniden çizilsin.
-    AppConfigService.instance.notifyListeners();
+    notifyListeners();
+  }
+
+  /// SDK geç hazır olduysa (telefonda hızlı test açılışı) banner'ı tekrar dene.
+  void _retryBannerIfInTestSession() {
+    if (!_isInTestSession || _adFreeTestSession || _suppressBanners) return;
+    if (_bannerAd != null) return;
+    _loadBanner();
   }
 
   /// Test oturumu bittiğinde çağrılır.
@@ -140,6 +150,7 @@ class AdManager {
     await AdFreeCampaignService.instance.onRewardedAdCompleted();
     if (AdFreeCampaignService.instance.isAdFreeActive) {
       _disposeBanner();
+      notifyListeners();
     }
     return true;
   }
@@ -385,9 +396,18 @@ class AdManager {
         size: AdSize.banner,
         request: const AdRequest(),
         listener: BannerAdListener(
-          onAdFailedToLoad: (ad, _) => ad.dispose(),
+          onAdLoaded: (_) => notifyListeners(),
+          onAdFailedToLoad: (ad, error) {
+            debugPrint('BannerAd failed to load: $error');
+            ad.dispose();
+            if (identical(_bannerAd, ad)) {
+              _bannerAd = null;
+            }
+            notifyListeners();
+          },
         ),
       )..load();
+      notifyListeners();
     } catch (e, st) {
       debugPrint('BannerAd load failed: $e\n$st');
       _bannerAd = null;
@@ -469,6 +489,7 @@ class AdManager {
   void _disposeBanner() {
     _bannerAd?.dispose();
     _bannerAd = null;
+    notifyListeners();
   }
 
   void _disposeAllAds() {
@@ -479,7 +500,9 @@ class AdManager {
     _rewardedAd = null;
   }
 
+  @override
   void dispose() {
     _disposeAllAds();
+    super.dispose();
   }
 }

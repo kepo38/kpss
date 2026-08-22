@@ -117,6 +117,11 @@
         </label>
         <div class="name">
           <a href="{% url 'panel_question_edit' topic.id q.id %}">{{ q.public_id }}</a>
+          {% if q.osym_sordu and q.osym_cikmis_adi %}
+          <span class="badge osym-cikmis-badge" title="Panel etiketi — uygulamada yalnızca ÖSYM rozeti görünür">{{ q.osym_cikmis_adi }}</span>
+          {% elif q.osym_sordu %}
+          <span class="badge osym-cikmis-badge osym-cikmis-badge-muted">ÖSYM</span>
+          {% endif %}
           <div class="hint">{{ q.stem|truncatechars:90 }}</div>
           {% if q.scenario %}
           <div class="hint">Grup: {{ q.scenario.title }} · sıra {{ q.scenario_order }}</div>

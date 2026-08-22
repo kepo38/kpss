@@ -208,6 +208,14 @@ class QuestionModel {
   bool get hasScenarioPassage =>
       scenarioStem != null && scenarioStem!.trim().isNotEmpty;
 
+  /// TG deneme ekranı — havuzdan gelen sorularda ÖSYM damgası gösterilmez.
+  QuestionModel forTgExamDisplay() => copyWith(osymSordu: false);
+
+  static List<QuestionModel> forTgExamDisplayList(
+    List<QuestionModel> questions,
+  ) =>
+      questions.map((q) => q.forTgExamDisplay()).toList(growable: false);
+
   static List<QuestionModel> keepGroupsContiguous(List<QuestionModel> questions) {
     if (questions.length < 2) return questions;
     final members = <String, List<QuestionModel>>{};

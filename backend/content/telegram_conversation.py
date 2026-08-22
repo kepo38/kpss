@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .embeddings import refresh_question_embedding
 from .models import Question, TelegramBotSession
+from .rich_text import normalize_pasted_solution
 
 _YES = frozenset({"evet", "e", "yes", "y"})
 _NO = frozenset({"hayır", "hayir", "h", "no", "n"})
@@ -52,9 +53,34 @@ def solution_prompt_message() -> str:
         "Çözüm eklemek ister misiniz?\n"
         "(Google'dan kopyalayıp yapıştırabilirsiniz — paneldeki çözüm "
         "alanına yazılır.)\n"
-        "evet / hayır\n"
-        "hayır → fotoğraf sohbette kalır"
+        "Aşağıdaki düğmelerden seçin."
     )
+
+
+def solution_prompt_keyboard() -> dict[str, list[list[dict[str, str]]]]:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Evet", "callback_data": "sol_yes"},
+                {"text": "Hayır", "callback_data": "sol_no"},
+            ]
+        ]
+    }
+
+
+CALLBACK_SOLUTION_YES = "sol_yes"
+CALLBACK_SOLUTION_NO = "sol_no"
+
+
+def try_handle_conversation_callback(
+    callback_data: str,
+    telegram_user_id: int,
+) -> ConversationReply | None:
+    if callback_data == CALLBACK_SOLUTION_YES:
+        return try_handle_conversation(telegram_user_id, "evet")
+    if callback_data == CALLBACK_SOLUTION_NO:
+        return try_handle_conversation(telegram_user_id, "hayır")
+    return None
 
 
 def try_handle_conversation(
@@ -62,6 +88,7 @@ def try_handle_conversation(
     text: str,
     *,
     cancel: bool = False,
+    entities: list[dict] | None = None,
 ) -> ConversationReply | None:
     session = get_session(telegram_user_id)
     if session is None:
@@ -89,10 +116,10 @@ def try_handle_conversation(
                 "Tamam — soru fotoğrafı sohbette kaldı.\n"
                 "Çözümü panelden istediğiniz zaman düzenleyebilirsiniz."
             )
-        return ConversationReply("Lütfen evet veya hayır yazın (iptal: /iptal).")
+        return ConversationReply("Lütfen Evet veya Hayır düğmesine basın (iptal: /iptal).")
 
     if session.step == TelegramBotSession.STEP_SOLUTION_TEXT:
-        solution = text.strip()
+        solution = normalize_pasted_solution(text, entities=entities)
         if not solution:
             return ConversationReply(
                 "Boş metin — çözümü yapıştırın veya /iptal ile vazgeçin."

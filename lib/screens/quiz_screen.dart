@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
+import '../constants/tg_exam_constants.dart';
 import '../layout/app_breakpoints.dart';
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
@@ -24,6 +25,7 @@ import '../services/premium_service.dart';
 import '../services/question_error_report_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/question_note_service.dart';
+import '../services/tg_exam_service.dart';
 import '../services/wrong_notebook_drawing_service.dart';
 import '../services/question_rating_service.dart';
 import '../services/question_view_service.dart';
@@ -69,6 +71,9 @@ class QuizScreen extends StatefulWidget {
   /// Günün Denemesi gibi tanıtım oturumları — çözüm/banner/bitiş reklamı yok.
   final bool adFreeExperience;
   final bool dailyMiniRankingMode;
+  final bool tgExamMode;
+  final bool tgExamSolutionReview;
+  final int? tgExamId;
   final String? statisticsTestId;
   final Future<void> Function({
     required List<String?> answers,
@@ -90,6 +95,9 @@ class QuizScreen extends StatefulWidget {
     this.suppressWrongNotebookHint = false,
     this.adFreeExperience = false,
     this.dailyMiniRankingMode = false,
+    this.tgExamMode = false,
+    this.tgExamSolutionReview = false,
+    this.tgExamId,
     this.statisticsTestId,
     this.onProgress,
   });
@@ -112,6 +120,7 @@ class _QuizScreenState extends State<QuizScreen>
   bool _timerPaused = false;
   Duration _frozenElapsed = Duration.zero;
   bool _timeUpHandled = false;
+  bool _tgTenMinuteWarningPlayed = false;
   bool _isFinishing = false;
   QuestionRatingSummary? _ratingSummary;
   String? _ratingQuestionId;
@@ -185,10 +194,10 @@ class _QuizScreenState extends State<QuizScreen>
         : widget.initialElapsed;
     _startedAt = DateTime.now().subtract(elapsed);
     _frozenElapsed = elapsed;
-    _isCountdown = widget.timeLimitMinutes > 0;
+    _isCountdown = _countdownLimitMinutes > 0;
     Duration initialDisplay;
     if (_isCountdown) {
-      final limit = Duration(minutes: widget.timeLimitMinutes);
+      final limit = Duration(minutes: _countdownLimitMinutes);
       final left = limit - elapsed;
       initialDisplay = left.isNegative ? Duration.zero : left;
     } else {
@@ -196,7 +205,9 @@ class _QuizScreenState extends State<QuizScreen>
     }
     _durationNotifier = ValueNotifier(initialDisplay);
     // Devam edilen oturumda mevcut soru cevaplıysa süre bekletilir.
-    _timerPaused = _selectedAnswer != null || widget.fromWrongNotebook;
+    _timerPaused = widget.tgExamMode
+        ? false
+        : (_selectedAnswer != null || widget.fromWrongNotebook);
     FavoritesService.instance.initialize();
     QuestionNoteService.instance.initialize();
     if (widget.fromWrongNotebook) {
@@ -211,6 +222,9 @@ class _QuizScreenState extends State<QuizScreen>
     unawaited(_loadErrorReportState());
     unawaited(_recordCurrentView());
     unawaited(_persistProgress());
+    if (widget.tgExamSolutionReview && widget.questions.isNotEmpty) {
+      _showingSolution = true;
+    }
     ContentBankService.instance.addListener(_onContentBankUpdated);
     unawaited(_bootstrapWrongNotebookHint());
   }
@@ -255,10 +269,20 @@ class _QuizScreenState extends State<QuizScreen>
   Duration get _elapsedNow =>
       _timerPaused ? _frozenElapsed : DateTime.now().difference(_startedAt);
 
+  /// TG denemede sabit 130 dk geri sayım; diğer modlarda widget süresi.
+  int get _countdownLimitMinutes {
+    if (widget.tgExamMode && !widget.tgExamSolutionReview) {
+      return TgExamConstants.examDurationMinutes;
+    }
+    return widget.timeLimitMinutes;
+  }
+
+  bool get _usesCountdown => _countdownLimitMinutes > 0;
+
   void _syncDisplayFromElapsed(Duration elapsed) {
     final Duration next;
-    if (_isCountdown) {
-      final limit = Duration(minutes: widget.timeLimitMinutes);
+    if (_usesCountdown) {
+      final limit = Duration(minutes: _countdownLimitMinutes);
       final left = limit - elapsed;
       next = left.isNegative ? Duration.zero : left;
     } else {
@@ -282,10 +306,14 @@ class _QuizScreenState extends State<QuizScreen>
     _timerPaused = false;
   }
 
-  /// Cevapsız soruda süre akar; cevaplı soruda bekler (açıklama okurken yanmaz).
+  /// TG denemede süre cevap sonrası da akar; diğer modlarda cevaplı soruda bekler.
   void _syncTimerForCurrentQuestion() {
-    if (widget.fromWrongNotebook) {
+    if (widget.fromWrongNotebook || widget.tgExamSolutionReview) {
       _pauseTimer();
+      return;
+    }
+    if (widget.tgExamMode) {
+      _resumeTimer();
       return;
     }
     if (_selectedAnswer != null) {
@@ -348,13 +376,20 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   void _selectAnswer(String key) {
+    if (widget.tgExamSolutionReview) return;
     if (_selectedAnswer == key) return;
     final isCorrect = key == _currentQuestion.dogruCevap;
     setState(() {
       _selectedAnswer = key;
       _answers[_currentIndex] = key;
-      _pauseTimer();
+      if (!widget.tgExamMode) {
+        _pauseTimer();
+      }
     });
+    if (widget.tgExamMode) {
+      unawaited(_persistProgress());
+      return;
+    }
     unawaited(_loadRating());
     unawaited(_submitQuestionAttempt(key));
     unawaited(_persistProgress());
@@ -395,9 +430,17 @@ class _QuizScreenState extends State<QuizScreen>
     if (!mounted || _timerPaused || widget.questions.isEmpty) return;
     final elapsed = DateTime.now().difference(_startedAt);
     if (_isCountdown) {
-      final limit = Duration(minutes: widget.timeLimitMinutes);
+      final limit = Duration(minutes: _countdownLimitMinutes);
       final left = limit - elapsed;
       _syncDisplayFromElapsed(elapsed);
+      if (widget.tgExamMode &&
+          !widget.tgExamSolutionReview &&
+          !_tgTenMinuteWarningPlayed &&
+          left <= const Duration(minutes: TgExamConstants.warningBeforeEndMinutes) &&
+          left > Duration.zero) {
+        _tgTenMinuteWarningPlayed = true;
+        unawaited(AnswerFeedbackService.instance.playExamTimeWarning());
+      }
       if (left <= Duration.zero && !_timeUpHandled) {
         _timeUpHandled = true;
         _onTimeUp();
@@ -409,6 +452,10 @@ class _QuizScreenState extends State<QuizScreen>
 
   Future<void> _onTimeUp() async {
     if (!mounted) return;
+    if (widget.tgExamMode) {
+      if (mounted) unawaited(_finishTest());
+      return;
+    }
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -605,6 +652,43 @@ class _QuizScreenState extends State<QuizScreen>
     _answers[_currentIndex] = _selectedAnswer;
     if (widget.fromWrongNotebook) {
       return true;
+    }
+    if (widget.tgExamMode && !widget.tgExamSolutionReview) {
+      await _persistProgress();
+      if (!mounted) return false;
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.inkSoft,
+          title: const Text(
+            'Denemeden çık',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          content: Text(
+            'İlerlemeniz kaydedilir. Daha sonra kaldığınız yerden devam edebilirsiniz.',
+            style: TextStyle(
+              height: 1.45,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.champagne),
+              child: const Text('Devam et'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.champagne,
+                foregroundColor: AppTheme.ink,
+              ),
+              child: const Text('Kaydet ve çık'),
+            ),
+          ],
+        ),
+      );
+      return result ?? false;
     }
     await _persistProgress();
     if (!mounted) return false;
@@ -902,12 +986,15 @@ class _QuizScreenState extends State<QuizScreen>
             ..._currentQuestion.siklar.entries.map(
               (entry) {
                 final selected = _selectedAnswer == entry.key;
-                final revealed = _selectedAnswer != null;
+                final revealed = widget.tgExamSolutionReview ||
+                    (!widget.tgExamMode && _selectedAnswer != null);
                 final isCorrectKey =
                     entry.key == _currentQuestion.dogruCevap;
                 _OptionTone? tone;
                 if (revealed) {
-                  if (isCorrectKey) {
+                  if (widget.tgExamMode && !widget.tgExamSolutionReview) {
+                    tone = null;
+                  } else if (isCorrectKey) {
                     tone = _OptionTone.correct;
                   } else if (selected) {
                     tone = _OptionTone.wrong;
@@ -921,10 +1008,12 @@ class _QuizScreenState extends State<QuizScreen>
                   ),
                   isSelected: selected,
                   tone: tone,
-                  percentage: revealed
+                  percentage: revealed && !widget.tgExamMode
                       ? _visibleOptionPercentages[entry.key]
                       : null,
-                  onTap: () => _selectAnswer(entry.key),
+                  onTap: widget.tgExamSolutionReview
+                      ? () {}
+                      : () => _selectAnswer(entry.key),
                 );
               },
             ),
@@ -960,7 +1049,7 @@ class _QuizScreenState extends State<QuizScreen>
     setState(() {
       _currentIndex = index;
       _selectedAnswer = _answers[index];
-      _showingSolution = false;
+      _showingSolution = widget.tgExamSolutionReview;
       _solutionUnlocking = false;
       _drawingEnabled = false;
       _contentZoom.value = Matrix4.identity();
@@ -1126,6 +1215,57 @@ class _QuizScreenState extends State<QuizScreen>
       );
       return;
     }
+    try {
+      final state = await QuestionErrorReportService.instance.load(questionId);
+      if (!mounted) return;
+      if (!state.testsRequirementMet) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              QuestionErrorReportService.testsRequiredWarning(
+                completed: state.testsCompleted,
+                required: state.minTestsRequired,
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+      if (state.reported || !state.canReport) {
+        setState(() {
+          _errorReported = state.reported;
+          _errorDailyLimitReached = state.dailyLimitReached;
+        });
+        if (state.reported) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bu soruyu zaten bildirdiniz.')),
+          );
+        } else if (state.dailyLimitReached) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Günde yalnızca 1 hata bildirimi yapabilirsiniz.'),
+            ),
+          );
+        }
+        return;
+      }
+    } on QuestionErrorReportException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Hata bildirimi durumu alınamadı. İnternet bağlantınızı kontrol edin.',
+          ),
+        ),
+      );
+      return;
+    }
     if (_errorReported) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1143,7 +1283,7 @@ class _QuizScreenState extends State<QuizScreen>
       );
       return;
     }
-    await showQuestionErrorReportSheet(
+    final submitted = await showQuestionErrorReportSheet(
       context: context,
       onSubmit: (category, note) async {
         await QuestionErrorReportService.instance.submit(
@@ -1151,17 +1291,17 @@ class _QuizScreenState extends State<QuizScreen>
           category: category,
           note: note,
         );
-        if (!mounted) return;
-        setState(() {
-          _errorReported = true;
-          _errorDailyLimitReached = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Teşekkürler — bildiriminiz incelenecek.'),
-          ),
-        );
       },
+    );
+    if (!mounted || submitted != true) return;
+    setState(() {
+      _errorReported = true;
+      _errorDailyLimitReached = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Teşekkürler — bildiriminiz incelenecek.'),
+      ),
     );
   }
 
@@ -1229,6 +1369,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   bool get _isSolutionFullyUnlocked {
+    if (widget.tgExamSolutionReview) return true;
     return PremiumService.instance.isPremium ||
         AdManager.instance.isSolutionUnlocked(_currentQuestion.id);
   }
@@ -1271,7 +1412,7 @@ class _QuizScreenState extends State<QuizScreen>
       setState(() {
         _currentIndex++;
         _selectedAnswer = _answers[_currentIndex];
-        _showingSolution = false;
+        _showingSolution = widget.tgExamSolutionReview;
         _solutionUnlocking = false;
         _drawingEnabled = false;
         _resetRatingState();
@@ -1309,19 +1450,28 @@ class _QuizScreenState extends State<QuizScreen>
         firstBlank = firstBlank < 0 ? i : firstBlank;
       }
     }
+    final finishTitle =
+        widget.tgExamMode ? 'Sınavı Tamamla' : 'Boş sorular var';
     if (blankCount > 0) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: AppTheme.inkSoft,
-          title: const Text(
-            'Boş sorular var',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          title: Text(
+            finishTitle,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           content: Text(
-            blankCount == 1
-                ? '1 soruyu boş bıraktınız. Testi yine de bitirmek istiyor musunuz?'
-                : '$blankCount soruyu boş bıraktınız. Testi yine de bitirmek istiyor musunuz?',
+            widget.tgExamMode
+                ? (blankCount == 1
+                    ? '1 soruyu boş bıraktınız. Sınavı göndermek istiyor musunuz?'
+                    : '$blankCount soruyu boş bıraktınız. Sınavı göndermek istiyor musunuz?')
+                : (blankCount == 1
+                    ? '1 soruyu boş bıraktınız. Testi yine de bitirmek istiyor musunuz?'
+                    : '$blankCount soruyu boş bıraktınız. Testi yine de bitirmek istiyor musunuz?'),
             style: TextStyle(
               height: 1.45,
               color: Colors.white.withValues(alpha: 0.78),
@@ -1341,7 +1491,7 @@ class _QuizScreenState extends State<QuizScreen>
                 backgroundColor: AppTheme.champagne,
                 foregroundColor: AppTheme.ink,
               ),
-              child: const Text('Yine de bitir'),
+              child: Text(widget.tgExamMode ? 'Gönder' : 'Yine de bitir'),
             ),
           ],
         ),
@@ -1352,6 +1502,40 @@ class _QuizScreenState extends State<QuizScreen>
         }
         return;
       }
+    } else if (widget.tgExamMode) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.inkSoft,
+          title: const Text(
+            'Sınavı Tamamla',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          content: Text(
+            'Cevaplarınız gönderilecek. Onaylıyor musunuz?',
+            style: TextStyle(
+              height: 1.45,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.champagne),
+              child: const Text('Geri dön'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.champagne,
+                foregroundColor: AppTheme.ink,
+              ),
+              child: const Text('Gönder'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
     }
     await _finishTest();
   }
@@ -1365,7 +1549,7 @@ class _QuizScreenState extends State<QuizScreen>
     setState(() {
       _currentIndex--;
       _selectedAnswer = _answers[_currentIndex];
-      _showingSolution = false;
+      _showingSolution = widget.tgExamSolutionReview;
       _solutionUnlocking = false;
       _drawingEnabled = false;
       _resetRatingState();
@@ -1548,7 +1732,9 @@ class _QuizScreenState extends State<QuizScreen>
     if (!mounted) return;
     AdManager.instance.endTestSession();
     await LastStudySessionService.instance.clearQuizProgress();
-    await AdManager.instance.showTestCompletionInterstitial();
+    if (!widget.tgExamMode) {
+      await AdManager.instance.showTestCompletionInterstitial();
+    }
     if (!mounted) return;
 
     if (!widget.skipResultDialog) {
@@ -1580,9 +1766,8 @@ class _QuizScreenState extends State<QuizScreen>
           ),
         );
 
-    // Çözümü Gör: şık işaretlenmeden kapalı; Gizle her zaman açılabilir.
-    final canToggleSolution =
-        _showingSolution || (_selectedAnswer != null && !_isFinishing);
+    final canToggleSolution = !widget.tgExamMode &&
+        (_showingSolution || (_selectedAnswer != null && !_isFinishing));
     ButtonStyle solutionStyle({required bool enabled}) =>
         OutlinedButton.styleFrom(
           foregroundColor: AppTheme.champagneLight,
@@ -1624,27 +1809,29 @@ class _QuizScreenState extends State<QuizScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: !canToggleSolution
-                          ? null
-                          : _showingSolution
-                              ? () => setState(() {
-                                    _showingSolution = false;
-                                    _drawingEnabled = false;
-                                  })
-                              : _requestSolution,
-                      style: solutionStyle(enabled: canToggleSolution),
-                      child: Text(
-                        _showingSolution ? 'Çözümü Gizle' : 'Çözümü Gör',
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                  if (!widget.tgExamMode) const SizedBox(width: 6),
+                  if (!widget.tgExamMode)
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: !canToggleSolution
+                            ? null
+                            : _showingSolution
+                                ? () => setState(() {
+                                      _showingSolution = false;
+                                      _drawingEnabled = false;
+                                    })
+                                : _requestSolution,
+                        style: solutionStyle(enabled: canToggleSolution),
+                        child: Text(
+                          _showingSolution ? 'Çözümü Gizle' : 'Çözümü Gör',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
+                  if (!widget.tgExamMode) const SizedBox(width: 6),
+                  if (widget.tgExamMode) const SizedBox(width: 6),
                   Expanded(
                     child: isLast
                         ? FilledButton(
@@ -1672,7 +1859,9 @@ class _QuizScreenState extends State<QuizScreen>
                               ),
                             ),
                             child: Text(
-                              widget.fromWrongNotebook ? 'Çıkış' : 'Bitir',
+                              widget.fromWrongNotebook
+                                  ? 'Çıkış'
+                                  : (widget.tgExamMode ? 'Tamamla' : 'Bitir'),
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1694,7 +1883,10 @@ class _QuizScreenState extends State<QuizScreen>
             ),
             if (!_isFinishing)
               ListenableBuilder(
-                listenable: AppConfigService.instance,
+                listenable: Listenable.merge([
+                  AppConfigService.instance,
+                  AdManager.instance,
+                ]),
                 builder: (context, _) {
                   final bannerAd = AdManager.instance.bannerAd;
                   if (bannerAd == null) return const SizedBox.shrink();
@@ -1913,20 +2105,25 @@ class _QuizScreenState extends State<QuizScreen>
                 ValueListenableBuilder<Duration>(
                   valueListenable: _durationNotifier,
                   builder: (context, duration, _) {
-                    final urgent =
-                        _isCountdown && duration.inSeconds <= 60;
+                    final urgent = _isCountdown &&
+                        (widget.tgExamMode && !widget.tgExamSolutionReview
+                            ? duration.inSeconds <=
+                                TgExamConstants.warningBeforeEndMinutes * 60
+                            : duration.inSeconds <= 60);
                     return QuizHeaderStrip(
-                      // ÖSYM rozeti üst şeritte, ekran ortasında — yerini değiştirme.
-                      osymSordu: _currentQuestion.osymSordu,
+                      // TG denemede havuz sorularının ÖSYM damgası gösterilmez.
+                      osymSordu:
+                          !widget.tgExamMode && _currentQuestion.osymSordu,
                       durationText: _formatDuration(duration),
                       isCountdown: _isCountdown,
                       urgent: urgent,
                       showTimer: !widget.fromWrongNotebook,
                       questionLabel: null,
-                      successLabel: widget.fromWrongNotebook
+                      successLabel: widget.fromWrongNotebook ||
+                              widget.tgExamMode
                           ? null
                           : _successRateLabel(),
-                      successRate: widget.fromWrongNotebook
+                      successRate: widget.fromWrongNotebook || widget.tgExamMode
                           ? null
                           : _successRateMeterValue(),
                       difficultyLabel: _difficultyLabel(),
@@ -1958,14 +2155,32 @@ class _QuizScreenState extends State<QuizScreen>
                             selectedAnswer == widget.questions[i].dogruCevap;
                         final active = i == _currentIndex;
                         final previouslySolved = !answered &&
+                            !widget.tgExamMode &&
                             ContentBankService.instance
                                 .isQuestionSolved(widget.questions[i].id);
-                        final chip = _questionChipColors(
-                          answered: answered,
-                          answeredCorrectly: answeredCorrectly,
-                          previouslySolved: previouslySolved,
-                          active: active,
-                        );
+                        final chip = widget.tgExamMode &&
+                                !widget.tgExamSolutionReview
+                            ? (
+                                fill: answered
+                                    ? AppTheme.champagne.withValues(
+                                        alpha: active ? 0.38 : 0.22,
+                                      )
+                                    : (active
+                                        ? Colors.white.withValues(alpha: 0.1)
+                                        : Colors.transparent),
+                                border: answered
+                                    ? AppTheme.champagne
+                                    : Colors.white.withValues(
+                                        alpha: active ? 1 : 0.82,
+                                      ),
+                                text: Colors.white,
+                              )
+                            : _questionChipColors(
+                                answered: answered,
+                                answeredCorrectly: answeredCorrectly,
+                                previouslySolved: previouslySolved,
+                                active: active,
+                              );
 
                         return GestureDetector(
                           onTap: () => _goTo(i),
@@ -2000,12 +2215,17 @@ class _QuizScreenState extends State<QuizScreen>
                     child: Wrap(
                       spacing: 14,
                       runSpacing: 6,
-                      children: [
-                        _legendDot(Colors.white, 'Cevaplanmadı'),
-                        _legendDot(_correctGreen, 'Doğru'),
-                        _legendDot(_answeredWrongBurgundy, 'Yanlış'),
-                        _legendDot(_previousBlue, 'Daha önce'),
-                      ],
+                      children: widget.tgExamMode && !widget.tgExamSolutionReview
+                          ? [
+                              _legendDot(AppTheme.champagne, 'İşaretli'),
+                              _legendDot(Colors.white, 'Boş'),
+                            ]
+                          : [
+                              _legendDot(Colors.white, 'Cevaplanmadı'),
+                              _legendDot(_correctGreen, 'Doğru'),
+                              _legendDot(_answeredWrongBurgundy, 'Yanlış'),
+                              _legendDot(_previousBlue, 'Daha önce'),
+                            ],
                     ),
                   ),
                 ],

@@ -1,0 +1,53 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> / TG Deneme Oluşturucu
+</div>
+<h1>TG Deneme Oluşturucu</h1>
+<p class="lead">
+  Türkiye Geneli aylık denemeleri buradan planlayın. Sorular otomatik dağılımla havuzdan çekilir;
+  önizlemede tek tıkla değiştirebilir, ardından yayınlayabilirsiniz.
+</p>
+
+<div class="toolbar">
+  <strong>{{ exams|length }} deneme</strong>
+  <a class="btn btn-primary" href="{% url 'panel_tg_exam_new' %}">Yeni deneme</a>
+</div>
+
+<details class="hint" style="margin:12px 0 20px;padding:12px;border:1px solid var(--hairline);border-radius:8px;">
+  <summary style="cursor:pointer;font-weight:600;">Varsayılan soru dağılımı (120 soru)</summary>
+  <pre style="margin:12px 0 0;font-size:12px;overflow:auto;">{{ distribution_json }}</pre>
+</details>
+
+<div class="list">
+  {% for e in exams %}
+  <div class="row" style="align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div class="name" style="flex:1;min-width:240px;">
+      <a href="{% url 'panel_tg_exam_edit' e.id %}"><strong>{{ e.title }}</strong></a>
+      <div class="hint">
+        {{ e.get_kpss_type_display }} · {{ e.start_at|date:"d.m.Y H:i" }} — {{ e.end_at|date:"d.m.Y H:i" }}
+        · {{ e.question_count }} soru · {{ e.duration_minutes }} dk
+      </div>
+    </div>
+    {% if e.is_published %}
+      <span class="badge on">Yayında</span>
+    {% else %}
+      <span class="badge off">Taslak</span>
+    {% endif %}
+    {% if e.is_results_published %}
+      <span class="badge on">Sonuçlar açık</span>
+    {% endif %}
+    {% if e.is_published %}
+      {% if e.announcement_push_sent_at %}
+        <span class="badge on">Duyuru gönderildi</span>
+      {% else %}
+        <span class="badge off">Duyuru: {{ e.announcement_push_due_at|date:"d.m H:i" }}</span>
+      {% endif %}
+    {% endif %}
+    <a class="btn btn-ghost" href="{% url 'panel_tg_exam_edit' e.id %}">Düzenle</a>
+  </div>
+  {% empty %}
+  <div class="empty">Henüz TG denemesi yok. Yeni deneme oluşturun.</div>
+  {% endfor %}
+</div>
+{% endblock %}

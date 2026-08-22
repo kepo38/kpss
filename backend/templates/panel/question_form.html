@@ -34,7 +34,7 @@
 </p>
 
 <div class="workspace">
-  <form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
+  <form class="form" id="question-form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
     {% csrf_token %}
     <input type="hidden" name="source_image_hash" id="source-image-hash" value="{{ question.source_image_hash|default:'' }}">
     <input type="hidden" name="source_image_phash" id="source-image-phash" value="{{ question.source_image_phash|default:'' }}">
@@ -202,6 +202,26 @@
       <input type="checkbox" name="osym_sordu" id="osym-sordu" {% if question.osym_sordu %}checked{% endif %}>
       ÖSYM sordu <span style="opacity:.7;font-weight:400">(uygulamada sorunun sağ üstünde ÖSYM rozeti)</span>
     </label>
+    <div id="osym-cikmis-wrap" class="osym-cikmis-wrap" {% if not question.osym_sordu %}hidden{% endif %}>
+      <label>Hangi çıkmış soru?
+        <input
+          type="text"
+          name="osym_cikmis_adi"
+          id="osym-cikmis-adi"
+          maxlength="200"
+          list="osym-cikmis-suggestions"
+          placeholder="örn. 2025 KPSS Lisans · Genel Yetenek - Genel Kültür"
+          value="{{ question.osym_cikmis_adi|default:'' }}"
+          {% if question.osym_sordu %}required{% endif %}
+        >
+      </label>
+      <datalist id="osym-cikmis-suggestions">
+        {% for label in osym_cikmis_suggestions %}
+        <option value="{{ label }}"></option>
+        {% endfor %}
+      </datalist>
+      <span class="hint">Yalnızca panelde görünür; testlerde normal ÖSYM rozeti kalır. Arşiv yöneticisinde gruplanması için «Yıl Sınav · Oturum» biçimini kullanın; isteğe bağlı « · Soru 12» eklenebilir. <a href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a></span>
+    </div>
     <fieldset style="border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:12px 14px;margin:0 0 8px;">
       <legend style="padding:0 6px;font-size:.9rem;opacity:.9;">Özel test etiketleri</legend>
       <p class="hint" style="margin:0 0 10px;">Kayıtta metin kalıpları da otomatik işaretleyebilir. Çeldirici yalnızca elle işaretlenir.</p>
@@ -546,6 +566,37 @@
   btn.addEventListener('click', function () { runOcr(); });
   input.addEventListener('change', function () {
     if (input.files && input.files[0]) runOcr();
+  });
+})();
+</script>
+<script>
+(function () {
+  var osymCheck = document.getElementById('osym-sordu');
+  var wrap = document.getElementById('osym-cikmis-wrap');
+  var field = document.getElementById('osym-cikmis-adi');
+  var form = document.getElementById('question-form');
+  if (!osymCheck || !wrap || !field || !form) return;
+
+  function syncOsymCikmis() {
+    var on = osymCheck.checked;
+    wrap.hidden = !on;
+    field.required = on;
+    if (on) {
+      window.setTimeout(function () { field.focus(); }, 0);
+    }
+  }
+
+  osymCheck.addEventListener('change', syncOsymCikmis);
+
+  form.addEventListener('submit', function (ev) {
+    if (!osymCheck.checked) return;
+    var val = (field.value || '').trim();
+    if (val) return;
+    ev.preventDefault();
+    wrap.hidden = false;
+    field.required = true;
+    field.focus();
+    field.reportValidity();
   });
 })();
 </script>

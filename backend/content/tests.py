@@ -992,18 +992,64 @@ class QuestionOsymSorduTests(TestCase):
         self.client.force_login(self.staff)
         res = self.client.post(
             f"/panel/konu/{self.topic.id}/soru/yeni/",
-            self._question_payload(osym_sordu="on"),
+            self._question_payload(
+                osym_sordu="on",
+                osym_cikmis_adi="2022 KPSS B Grubu · Soru 8",
+            ),
         )
         self.assertEqual(res.status_code, 302)
         question = Question.objects.get(topic=self.topic)
         self.assertTrue(question.osym_sordu)
+        self.assertEqual(question.osym_cikmis_adi, "2022 KPSS B Grubu · Soru 8")
+
+    def test_panel_save_osym_requires_cikmis_adi(self):
+        self.client.force_login(self.staff)
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._question_payload(osym_sordu="on"),
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(Question.objects.filter(topic=self.topic).exists())
+
+    def test_api_exposes_osym_sordu_not_cikmis_adi(self):
+        from content.models import OsymCikmisOneri
+        from content.serializers import QuestionSerializer
+
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_osym_1",
+            stem="Metin",
+            option_a="a",
+            option_b="b",
+            option_c="c",
+            option_d="d",
+            option_e="e",
+            osym_sordu=True,
+            osym_cikmis_adi="2021 KPSS · Gizli etiket",
+        )
+        data = QuestionSerializer(question).data
+        self.assertTrue(data["osymSordu"])
+        self.assertNotIn("osym_cikmis_adi", data)
+        self.assertNotIn("osymCikmisAdi", data)
+
+    def test_osym_cikmis_oneri_recorded_on_save(self):
+        from content.models import OsymCikmisOneri
+
+        self.client.force_login(self.staff)
+        label = "2020 KPSS A Grubu · Tarih 5"
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._question_payload(osym_sordu="on", osym_cikmis_adi=label),
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(OsymCikmisOneri.objects.filter(label=label).exists())
 
     def test_api_exposes_osym_sordu(self):
         from content.serializers import QuestionSerializer
 
         question = Question.objects.create(
             topic=self.topic,
-            public_id="q_osym_1",
+            public_id="q_osym_2",
             stem="Metin",
             option_a="a",
             option_b="b",

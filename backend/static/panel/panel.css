@@ -20,7 +20,7 @@
   --sidebar-w: 248px;
   --font: "Outfit", system-ui, sans-serif;
   --serif: "Fraunces", Georgia, serif;
-  /* ÷SYM kitapÁ??? ˆnizlemesi */
+  /* ?SYM kitap???? ?nizlemesi */
   --exam-serif: "Times New Roman", Times, "Tinos", Georgia, serif;
   --exam-math: "Cambria Math", "Latin Modern Math", serif;
   --exam-sans: Arial, Helvetica, sans-serif;
@@ -42,7 +42,7 @@ html, body {
 a { color: var(--champagne-soft); text-decoration: none; }
 a:hover { color: #fff; }
 
-/* óó Shell: sidebar + main óó */
+/* ?? Shell: sidebar + main ?? */
 .layout {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
@@ -632,6 +632,32 @@ h2 {
   object-fit: contain;
   border-radius: 8px;
   box-shadow: 0 3px 12px rgba(0,0,0,0.32);
+}
+.osym-cikmis-wrap {
+  margin: 0 0 12px 28px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  background: rgba(250, 204, 21, 0.06);
+}
+.osym-cikmis-wrap input[type="text"] {
+  width: 100%;
+  max-width: 520px;
+}
+.badge.osym-cikmis-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.14);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  vertical-align: middle;
+}
+.badge.osym-cikmis-badge-muted {
+  color: rgba(253, 230, 138, 0.75);
 }
 .quiz-mock-stem {
   font-family: var(--exam-serif);
@@ -1460,7 +1486,7 @@ textarea { min-height: 140px; resize: vertical; }
   }
 }
 
-/* Uygulama durumu KPI kartlarù */
+/* Uygulama durumu KPI kartlar? */
 .app-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1515,3 +1541,166 @@ textarea { min-height: 140px; resize: vertical; }
   font-size: 14px;
 }
 .app-stats-notes li + li { margin-top: 6px; }
+
+/* √ñSYM √áƒ±kmƒ±≈ü Sorular ar≈üivi */
+.osym-archive-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+}
+.osym-stat-card {
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.osym-stat-value {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+}
+.osym-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.osym-stat-ok .osym-stat-value { color: var(--ok); }
+.osym-stat-warn .osym-stat-value { color: var(--champagne-soft); }
+.osym-stat-miss .osym-stat-value { color: rgba(255,255,255,0.45); }
+
+.osym-archive-card { margin-bottom: 18px; }
+.osym-archive-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: flex-end;
+}
+.osym-archive-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.osym-filter-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  padding-bottom: 8px;
+}
+
+.osym-year-block { margin-bottom: 16px; }
+.osym-year-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.osym-year-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 26px;
+}
+.osym-exam-group + .osym-exam-group {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-soft);
+}
+.osym-exam-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.osym-family-badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(201, 168, 108, 0.16);
+  color: var(--champagne-soft);
+}
+.osym-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.osym-session-card {
+  display: block;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255,255,255,0.03);
+  transition: border-color 0.15s, background 0.15s;
+}
+.osym-session-card:hover {
+  border-color: var(--border);
+  background: rgba(255,255,255,0.06);
+}
+.osym-session-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.osym-session-name {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text);
+}
+.osym-status-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.85;
+}
+.osym-status-complete { border-color: rgba(52, 211, 153, 0.35); }
+.osym-status-complete .osym-status-icon { color: var(--ok); }
+.osym-status-partial { border-color: rgba(201, 168, 108, 0.45); }
+.osym-status-partial .osym-status-icon { color: var(--champagne-soft); }
+.osym-status-missing { border-color: rgba(255,255,255,0.08); opacity: 0.82; }
+.osym-status-missing .osym-status-icon { color: rgba(255,255,255,0.35); }
+
+.osym-session-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+.osym-session-count strong {
+  color: #fff;
+  font-size: 18px;
+}
+.osym-progress-bar {
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.osym-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--champagne), var(--ok));
+}
+.osym-status-missing .osym-progress-bar span { background: rgba(255,255,255,0.15); }
+.osym-session-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.osym-extra-row { text-decoration: none; }
+.osym-detail-filter { margin-left: auto; }
+.pill-warn {
+  background: rgba(201, 168, 108, 0.2);
+  color: var(--champagne-soft);
+}
+

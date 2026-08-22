@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 
 from .telegram_views import telegram_webhook
 from .views import (
@@ -34,6 +34,7 @@ from .views import (
     QuestionViewRecordView,
     DailyQuotaView,
 )
+from .tg_exam.api_urls import urlpatterns as tg_exam_api_urls
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
@@ -116,4 +117,4 @@ urlpatterns = [
         telegram_webhook,
         name="telegram-webhook",
     ),
-]
+] + tg_exam_api_urls

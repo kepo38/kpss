@@ -37,6 +37,18 @@ class AnswerFeedbackService {
     }
   }
 
+  /// TG denemede son 10 dakikaya girildiğinde tek seferlik uyarı.
+  Future<void> playExamTimeWarning() async {
+    await ensureReady();
+    HapticFeedback.heavyImpact();
+    try {
+      await _player.stop();
+      await _player.play(AssetSource('sounds/focus_complete.wav'));
+    } catch (_) {
+      SystemSound.play(SystemSoundType.alert);
+    }
+  }
+
   Future<void> dispose() async {
     await _player.dispose();
     _ready = false;

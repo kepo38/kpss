@@ -1,6 +1,6 @@
-from django.urls import path
+from django.urls import include, path
 
-from . import panel_views
+from . import panel_osym_archive_views, panel_views
 
 urlpatterns = [
     path("", panel_views.panel_home, name="panel_home"),
@@ -285,6 +285,17 @@ urlpatterns = [
         "deneme-paket/<int:pack_id>/sil/",
         panel_views.panel_exam_pack_delete,
         name="panel_exam_pack_delete",
+    ),
+    path("", include("content.tg_exam.panel_urls")),
+    path(
+        "osym-cikmis/",
+        panel_osym_archive_views.panel_osym_archive,
+        name="panel_osym_archive",
+    ),
+    path(
+        "osym-cikmis/detay/<path:label>/",
+        panel_osym_archive_views.panel_osym_archive_detail,
+        name="panel_osym_archive_detail",
     ),
     path("uygulama-durumu/", panel_views.panel_app_stats, name="panel_app_stats"),
     path("kullanicilar/", panel_views.panel_users, name="panel_users"),

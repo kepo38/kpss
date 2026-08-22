@@ -3,10 +3,23 @@ setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
 set "AUTO=0"
+set "HIDDEN=0"
 if /i "%~1"=="/auto" set "AUTO=1"
+if /i "%~2"=="__hidden__" set "HIDDEN=1"
 
-set "ROOT=D:\HEDEFKAMU"
+set "ROOT=%~dp0"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "LOCK=%ROOT%\telegram_bot.lock"
+
+rem /auto: gorunmez arka plan (cocuk oturumu / otomatik baslangic)
+if "!AUTO!"=="1" if "!HIDDEN!"=="0" (
+  if exist "%ROOT%\scripts\telegram-watch-hidden.vbs" (
+    wscript.exe //B "%ROOT%\scripts\telegram-watch-hidden.vbs"
+    exit /b 0
+  )
+  powershell -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%~f0' -ArgumentList '/auto','__hidden__' -WindowStyle Hidden"
+  exit /b 0
+)
 
 if "!AUTO!"=="1" (
   title HEDEF Kamu - Telegram WATCH (otomatik)
@@ -60,7 +73,7 @@ if "!AUTO!"=="0" (
   echo   Bu pencere acik kaldigi surece fotograflar aninda islenir.
   echo   Django / panel ayri acik olmali.
   echo   Durdurmak: Ctrl+C
-  echo   PC acilisinda otomatik: KUR-TELEGRAM-ZAMANLAYICI.bat
+  echo   PC acilisinda otomatik (gizli): KUR-TELEGRAM-ZAMANLAYICI.bat
   echo.
 )
 
@@ -105,9 +118,16 @@ if "!AUTO!"=="0" (
   echo [.] Surekli dinleme basliyor...
   echo.
   "!PY!" manage.py run_telegram_bot --watch
+  set "RC=!ERRORLEVEL!"
 ) else (
   echo [.] Surekli dinleme basliyor...>> "%ROOT%\logs\telegram-watch.log"
+  :watch_loop_auto
   "!PY!" manage.py run_telegram_bot --watch >> "%ROOT%\logs\telegram-watch.log" 2>&1
+  set "RC=!ERRORLEVEL!"
+  if "!RC!"=="0" exit /b 0
+  echo [!] Bot durdu ^(kod !RC!^), 10 sn sonra yeniden baslatiliyor...>> "%ROOT%\logs\telegram-watch.log"
+  timeout /t 10 /nobreak >nul
+  goto watch_loop_auto
 )
 set "RC=!ERRORLEVEL!"
 

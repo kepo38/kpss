@@ -33,6 +33,8 @@ from .models import (
     TopicLesson,
     TopicSummaryCard,
     TopicTest,
+    TgExam,
+    TgExamAttempt,
     UserMessage,
 )
 
@@ -184,6 +186,8 @@ class QuestionAdmin(ModelAdmin):
         "correct_count",
         "wrong_count",
         "blank_count",
+        "last_used_in_tg_exam_at",
+        "tg_exam_cooldown_counter",
         "created_at",
         "updated_at",
     )
@@ -201,6 +205,7 @@ class QuestionAdmin(ModelAdmin):
                     "subtopic",
                     "is_published",
                     "osym_sordu",
+                    "osym_cikmis_adi",
                     "tag_kronoloji",
                     "tag_padisah_antlasma",
                     "tag_celdirici",
@@ -1056,3 +1061,90 @@ class PromoCodeRedemptionAdmin(ModelAdmin):
     readonly_fields = ("redeemed_at",)
     date_hierarchy = "redeemed_at"
     list_filter_sheet = False
+
+
+@admin.register(TgExam)
+class TgExamAdmin(ModelAdmin):
+    list_display = (
+        "title",
+        "kpss_type",
+        "start_at",
+        "end_at",
+        "duration_minutes",
+        "is_published",
+        "is_results_published",
+        "announcement_push_sent_at",
+        "results_push_sent_at",
+    )
+    list_filter = ("kpss_type", "is_published", "is_results_published")
+    search_fields = ("title",)
+    list_editable = ("is_published",)
+    date_hierarchy = "start_at"
+    actions = ("publish_results_action", "send_announcement_action")
+    readonly_fields = (
+        "announcement_push_sent_at",
+        "announcement_push_success_count",
+        "announcement_push_fail_count",
+        "results_published_at",
+        "results_push_sent_at",
+        "results_push_success_count",
+        "results_push_fail_count",
+        "created_at",
+        "updated_at",
+    )
+
+    @admin.action(description="Sonuçları yayınla ve katılımcılara bildirim gönder")
+    def publish_results_action(self, request, queryset):
+        from django.contrib import messages
+        from django.utils import timezone
+
+        from .tg_exam import publish_exam_results
+
+        count = 0
+        for exam in queryset:
+            if timezone.now() < exam.end_at:
+                messages.warning(
+                    request,
+                    f"{exam.title}: Bitiş saati gelmeden yayınlanamaz.",
+                )
+                continue
+            if publish_exam_results(exam, send_push=True):
+                count += 1
+        if count:
+            messages.success(request, f"{count} deneme sonucu yayınlandı.")
+
+    @admin.action(description="Deneme duyuru bildirimi gönder (FCM — manuel)")
+    def send_announcement_action(self, request, queryset):
+        from django.contrib import messages
+
+        from .tg_exam import send_scheduled_tg_exam_announcement
+
+        for exam in queryset:
+            if send_scheduled_tg_exam_announcement(exam, send_push=True, force=True):
+                exam.refresh_from_db()
+                messages.success(
+                    request,
+                    f"{exam.title}: duyuru gönderildi "
+                    f"({exam.announcement_push_success_count} başarılı).",
+                )
+            else:
+                messages.error(
+                    request,
+                    f"{exam.title}: duyuru gönderilemedi (yayında değil veya zaten gönderildi).",
+                )
+
+
+@admin.register(TgExamAttempt)
+class TgExamAttemptAdmin(ModelAdmin):
+    list_display = (
+        "user",
+        "exam",
+        "net",
+        "ranking",
+        "is_submitted",
+        "submitted_at",
+    )
+    list_filter = ("is_submitted", "exam")
+    search_fields = ("user__email", "exam__title")
+    readonly_fields = ("started_at", "submitted_at")
+    autocomplete_fields = ("user", "exam")

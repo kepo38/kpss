@@ -49,6 +49,7 @@ import 'services/play_billing_service.dart';
 import 'services/premium_sync_service.dart';
 import 'services/practice_exam_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/tg_exam_service.dart';
 import 'services/user_message_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/boot_splash_screen.dart';
@@ -187,6 +188,9 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       unawaited(ExamCatalogService.instance.refresh());
       unawaited(NotificationService.instance.ensureScheduled());
       unawaited(PremiumSyncService.instance.syncIfYearlyActive());
+      if (TgExamService.instance.isInitialized) {
+        unawaited(TgExamService.instance.refresh());
+      }
     }
   }
 

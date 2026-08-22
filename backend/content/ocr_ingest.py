@@ -22,6 +22,7 @@ from .question_fingerprint import (
 )
 from .special_question_tags import apply_auto_tags
 from .svg_sanitize import extract_svg, is_safe_svg
+from .topic_classifier import classify_topic_from_ocr
 
 
 def _sanitize_figure_svg(raw: str) -> str:
@@ -67,6 +68,7 @@ class IngestQuestionResult:
     duplicate_match: str = ""
     partial: bool = False
     engine: str = ""
+    topic_auto_detected: bool = False
 
 
 def _run_ocr(image: BinaryIO, *, mime: str = "image/jpeg") -> tuple[object, str, str, bool, bool]:
@@ -157,6 +159,7 @@ def ingest_question_from_image(
     telegram_message_id: int | None = None,
     telegram_file_unique_id: str = "",
     allow_duplicate: bool = True,
+    auto_classify_topic: bool = False,
 ) -> IngestQuestionResult:
     try:
         ocr, img_hash, img_phash, gemini_attempted, gemini_failed = _run_ocr(
@@ -197,6 +200,20 @@ def ingest_question_from_image(
     if correct_option not in "ABCDE":
         correct_option = "A"
     solution = (getattr(ocr, "solution", "") or "").strip()
+
+    topic_auto_detected = False
+    if auto_classify_topic:
+        classified = classify_topic_from_ocr(
+            stem,
+            opts,
+            getattr(ocr, "raw_text", "") or "",
+            topic_slug_hint=getattr(ocr, "topic_slug", "") or "",
+            subject_slug_hint=getattr(ocr, "subject_slug", "") or "",
+            fallback=topic,
+        )
+        if classified is not None and classified.source != "fallback":
+            topic = classified.topic
+            topic_auto_detected = True
 
     c_hash = content_fingerprint(
         stem,
@@ -280,4 +297,5 @@ def ingest_question_from_image(
         duplicate_match=match,
         partial=partial,
         engine=getattr(ocr, "engine", "") or "",
+        topic_auto_detected=topic_auto_detected,
     )

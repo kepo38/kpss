@@ -45,11 +45,12 @@ class QuestionErrorReportAction extends StatelessWidget {
   }
 }
 
-Future<void> showQuestionErrorReportSheet({
+/// `true` = bildirim gönderildi.
+Future<bool?> showQuestionErrorReportSheet({
   required BuildContext context,
   required Future<void> Function(String category, String note) onSubmit,
 }) {
-  return showModalBottomSheet<void>(
+  return showModalBottomSheet<bool>(
     context: context,
     backgroundColor: AppTheme.inkSoft,
     isScrollControlled: true,
@@ -78,6 +79,7 @@ class _QuestionErrorReportSheetBodyState
   String _category = 'wrong_answer';
   final _noteController = TextEditingController();
   bool _submitting = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -85,18 +87,30 @@ class _QuestionErrorReportSheetBodyState
     super.dispose();
   }
 
+  String _messageFromError(Object error) {
+    if (error is QuestionErrorReportException) {
+      return error.message;
+    }
+    final text = error.toString();
+    if (text.startsWith('QuestionErrorReportException: ')) {
+      return text.substring('QuestionErrorReportException: '.length);
+    }
+    return 'Bildirim gönderilemedi. Lütfen tekrar deneyin.';
+  }
+
   Future<void> _submit() async {
     if (_submitting) return;
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
     try {
       await widget.onSubmit(_category, _noteController.text);
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = _messageFromError(error));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -144,6 +158,28 @@ class _QuestionErrorReportSheetBodyState
                 color: Colors.white.withValues(alpha: 0.62),
               ),
             ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7F1D1D).withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFFF87171).withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: Color(0xFFFECACA),
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             ...QuestionErrorReportService.reportCategories.map((entry) {
               final selected = _category == entry.$1;
@@ -157,7 +193,10 @@ class _QuestionErrorReportSheetBodyState
                   child: InkWell(
                     onTap: _submitting
                         ? null
-                        : () => setState(() => _category = entry.$1),
+                        : () => setState(() {
+                              _category = entry.$1;
+                              _errorMessage = null;
+                            }),
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       width: double.infinity,

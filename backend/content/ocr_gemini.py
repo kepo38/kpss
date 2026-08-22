@@ -67,6 +67,10 @@ Kurallar:
   Örnek: {"A": "I ve II", "B": "I ve IV", "C": "II ve III", "D": "III ve V", "E": "IV ve V"}
 - Watermark (ÖSYM vb.) metne dahil etme.
 
+ders_slug ve konu_slug:
+- Yalnızca panelde kayıtlı ders/konu listesinden seç (aşağıda verilir).
+- Listede olmayan slug uydurma; emin değilsen konu_slug boş bırak.
+
 dogru_cevap:
 - Yalnızca A, B, C, D veya E yaz.
 - Görselde işaretli/daireli şık varsa onu kullan.
@@ -98,7 +102,9 @@ Geometri sorusu ise:
   "soru_metni": "...",
   "siklar": {"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."},
   "dogru_cevap": "...",
-  "detayli_cozum": "..."
+  "detayli_cozum": "...",
+  "ders_slug": "tarih",
+  "konu_slug": "tarih_padisah_antlasma"
 }
 """
 
@@ -328,6 +334,22 @@ def _payload_solution(data: dict[str, Any]) -> str:
     return ""
 
 
+def _payload_subject_slug(data: dict[str, Any]) -> str:
+    for key in ("ders_slug", "dersSlug", "subject_slug", "subjectSlug"):
+        val = data.get(key)
+        if val:
+            return str(val).strip().lower()
+    return ""
+
+
+def _payload_topic_slug(data: dict[str, Any]) -> str:
+    for key in ("konu_slug", "konuSlug", "topic_slug", "topicSlug"):
+        val = data.get(key)
+        if val:
+            return str(val).strip().lower()
+    return ""
+
+
 # JSON \f \b \t \n \r kaçışları LaTeX komutlarından ters eğik çizgiyi yer.
 _LATEX_JSON_CMDS = (
     "frac",
@@ -516,12 +538,29 @@ def _retryable(exc: RuntimeError) -> bool:
     )
 
 
+def _ocr_prompt_with_panel_catalog() -> str:
+    try:
+        from .topic_classifier import panel_topic_catalog_text
+
+        catalog = panel_topic_catalog_text()
+    except Exception:
+        catalog = ""
+    if not catalog:
+        return _PROMPT
+    return (
+        f"{_PROMPT}\n\n"
+        "Panelde kayıtlı ders/konu listesi (ders_slug ve konu_slug YALNIZCA buradan):\n"
+        f"{catalog}\n"
+    )
+
+
 def _post_gemini(image_bytes: bytes, mime: str) -> tuple[dict[str, Any], str]:
     last_err: Exception | None = None
+    prompt = _ocr_prompt_with_panel_catalog()
     for model in _model_candidates():
         try:
             raw = _post_gemini_model(
-                image_bytes, mime, model, _PROMPT, timeout=45, json_mode=True
+                image_bytes, mime, model, prompt, timeout=45, json_mode=True
             )
             data = _extract_json(raw)
             if not data:
@@ -602,6 +641,8 @@ def ocr_question_image_gemini(
     figure_svg = _payload_figure(data)
     correct_option = _payload_answer(data)
     solution = _payload_solution(data)
+    subject_slug = _payload_subject_slug(data)
+    topic_slug = _payload_topic_slug(data)
     stem, options = _post_process_gemini_payload(stem, options, figure_svg)
 
     # JSON şıkları eksikse ham metinden ayrıştır
@@ -642,4 +683,6 @@ def ocr_question_image_gemini(
         figure_svg=figure_svg,
         correct_option=correct_option,
         solution=solution,
+        topic_slug=topic_slug,
+        subject_slug=subject_slug,
     )

@@ -364,3 +364,186 @@ def send_user_message_push(message) -> PushResult:
             error="Bildirim hiçbir cihaza ulaşmadı.",
         )
     return PushResult(ok=True, success=success, failure=failure)
+
+
+def send_tg_exam_results_push(exam) -> PushResult:
+    """TG denemesine katılmış kullanıcılara sonuç bildirimi gönder."""
+    ready, err = firebase_ready()
+    if not ready:
+        return PushResult(ok=False, error=err)
+
+    from firebase_admin import messaging
+
+    from .models import DeviceToken, TgExamAttempt
+
+    try:
+        _ensure_firebase_app()
+    except Exception as exc:  # noqa: BLE001
+        return PushResult(ok=False, error=f"Firebase başlatılamadı: {exc}")
+
+    title = "Türkiye Geneli Deneme"
+    body = "Deneme sonuçların açıklandı, sıralamanı görmek için tıkla!"
+    data = {
+        "type": "tg_exam_results",
+        "exam_id": str(exam.pk),
+        "title": title,
+        "body": body[:500],
+    }
+    android = messaging.AndroidConfig(
+        priority="high",
+        notification=messaging.AndroidNotification(
+            title=title,
+            body=body,
+            channel_id="announcements",
+            sound="default",
+        ),
+    )
+    note = messaging.Notification(title=title, body=body)
+
+    user_ids = list(
+        TgExamAttempt.objects.filter(
+            exam_id=exam.pk,
+            is_submitted=True,
+        )
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    if not user_ids:
+        return PushResult(ok=True, success=0, failure=0)
+
+    tokens = list(
+        DeviceToken.objects.filter(
+            user_id__in=user_ids,
+            is_active=True,
+        ).values_list("token", flat=True)
+    )
+    if not tokens:
+        return PushResult(
+            ok=False,
+            error="Katılımcıların kayıtlı cihaz jetonu yok.",
+        )
+
+    success = 0
+    failure = 0
+    for i in range(0, len(tokens), 500):
+        chunk = tokens[i : i + 500]
+        try:
+            resp = messaging.send_each_for_multicast(
+                messaging.MulticastMessage(
+                    tokens=chunk,
+                    notification=note,
+                    data=data,
+                    android=android,
+                )
+            )
+            success += resp.success_count
+            failure += resp.failure_count
+            _deactivate_bad_tokens(chunk, resp.responses)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("FCM tg_exam_results failed")
+            return PushResult(
+                ok=False,
+                success=success,
+                failure=failure + len(chunk),
+                error=str(exc),
+            )
+
+    if success == 0:
+        return PushResult(
+            ok=False,
+            success=success,
+            failure=failure,
+            error="Sonuç bildirimi hiçbir cihaza ulaşmadı.",
+        )
+    return PushResult(ok=True, success=success, failure=failure)
+
+
+def send_tg_exam_announcement_push(
+    exam,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+) -> PushResult:
+    """TG denemesi duyurusu — tüm kullanıcılara (FCM topic / cihaz jetonları)."""
+    ready, err = firebase_ready()
+    if not ready:
+        return PushResult(ok=False, error=err)
+
+    from firebase_admin import messaging
+
+    from .models import DeviceToken
+
+    try:
+        _ensure_firebase_app()
+    except Exception as exc:  # noqa: BLE001
+        return PushResult(ok=False, error=f"Firebase başlatılamadı: {exc}")
+
+    if title is None or body is None:
+        from content.tg_exam.announcements import build_announcement_push_copy
+
+        built_title, built_body = build_announcement_push_copy(exam)
+        title = title or built_title
+        body = body or built_body
+    data = {
+        "type": "tg_exam",
+        "exam_id": str(exam.pk),
+        "title": title,
+        "body": body[:500],
+    }
+    android = messaging.AndroidConfig(
+        priority="high",
+        notification=messaging.AndroidNotification(
+            title=title,
+            body=body,
+            channel_id="announcements",
+            sound="default",
+        ),
+    )
+    note = messaging.Notification(title=title, body=body)
+
+    topic = getattr(settings, "FCM_ANNOUNCEMENT_TOPIC", "kpss_duyuru") or "kpss_duyuru"
+    success = 0
+    failure = 0
+    topic_ok = False
+    try:
+        messaging.send(
+            messaging.Message(
+                topic=topic,
+                notification=note,
+                data=data,
+                android=android,
+            )
+        )
+        topic_ok = True
+        success += 1
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("FCM tg_exam topic send failed: %s", exc)
+        failure += 1
+
+    if not topic_ok:
+        tokens = list(
+            DeviceToken.objects.filter(is_active=True).values_list("token", flat=True)
+        )
+        for i in range(0, len(tokens), 500):
+            chunk = tokens[i : i + 500]
+            if not chunk:
+                continue
+            try:
+                resp = messaging.send_each_for_multicast(
+                    messaging.MulticastMessage(
+                        tokens=chunk,
+                        notification=note,
+                        data=data,
+                        android=android,
+                    )
+                )
+                success += resp.success_count
+                failure += resp.failure_count
+                _deactivate_bad_tokens(chunk, resp.responses)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("FCM tg_exam announcement multicast failed")
+                return PushResult(ok=False, success=success, failure=failure, error=str(exc))
+
+    if success == 0:
+        return PushResult(ok=False, success=success, failure=failure, topic_ok=topic_ok)
+    return PushResult(ok=True, success=success, failure=failure, topic_ok=topic_ok)

@@ -234,6 +234,13 @@ class Question(models.Model):
         verbose_name="ÖSYM sordu",
         help_text="İşaretlenirse uygulamada sorunun sağ üstünde ÖSYM rozeti görünür.",
     )
+    osym_cikmis_adi = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        verbose_name="Çıkmış soru adı",
+        help_text="Panel içi etiket — uygulama testlerinde gösterilmez; yalnızca ÖSYM rozeti görünür.",
+    )
     tag_kronoloji = models.BooleanField(
         default=False,
         db_index=True,
@@ -320,6 +327,20 @@ class Question(models.Model):
         db_index=True,
         verbose_name="Telegram dosya kimliği",
         help_text="Aynı fotoğrafın ilet/re-send tekrarını engeller.",
+    )
+    last_used_in_tg_exam_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Son TG deneme kullanımı",
+        help_text="Son TG denemesinde yayınlandığı zaman.",
+    )
+    tg_exam_cooldown_counter = models.PositiveSmallIntegerField(
+        default=0,
+        db_index=True,
+        verbose_name="TG deneme cooldown",
+        help_text="Son kullanımdan bu yana yayınlanan TG deneme sayısı. "
+        "4 ve üzeri → kolay/orta soru tekrar seçilebilir.",
     )
 
     class Meta:
@@ -1853,6 +1874,160 @@ class PromoCodeRedemption(models.Model):
 
     def __str__(self) -> str:
         return f"{self.promo_code.code} · {self.user.email}"
+
+
+class OsymCikmisOneri(models.Model):
+    """Panelde çıkmış soru adı yazarken otomatik tamamlama önerileri."""
+
+    label = models.CharField(max_length=200, unique=True)
+    use_count = models.PositiveIntegerField(default=1)
+    last_used = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-use_count", "-last_used", "label"]
+        verbose_name = "ÖSYM çıkmış soru önerisi"
+        verbose_name_plural = "ÖSYM çıkmış soru önerileri"
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class TgExam(models.Model):
+    """Türkiye Geneli aylık deneme — panelden planlanır, FCM ile duyurulur."""
+
+    title = models.CharField(max_length=200, verbose_name="Deneme adı")
+    kpss_type = models.CharField(
+        max_length=20,
+        choices=KPSS_TYPE_CHOICES,
+        verbose_name="KPSS tipi",
+    )
+    start_at = models.DateTimeField(verbose_name="Başlangıç")
+    end_at = models.DateTimeField(verbose_name="Bitiş")
+    duration_minutes = models.PositiveIntegerField(
+        default=130,
+        verbose_name="Süre (dk)",
+    )
+    question_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Yayınlanmış soru public_id listesi (sıralı).",
+    )
+    is_results_published = models.BooleanField(
+        default=False,
+        verbose_name="Sonuçlar açıklandı",
+    )
+    results_published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Sonuç yayın zamanı",
+    )
+    results_push_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Sonuç bildirimi gönderildi",
+    )
+    results_push_success_count = models.PositiveIntegerField(default=0)
+    results_push_fail_count = models.PositiveIntegerField(default=0)
+    announcement_push_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Duyuru bildirimi gönderildi",
+        help_text="Başlangıçtan 2 saat önce otomatik FCM duyurusu.",
+    )
+    announcement_push_success_count = models.PositiveIntegerField(default=0)
+    announcement_push_fail_count = models.PositiveIntegerField(default=0)
+    is_published = models.BooleanField(
+        default=False,
+        verbose_name="Yayında",
+        help_text="Kapalıysa mobil listede görünmez.",
+    )
+    tg_usage_recorded = models.BooleanField(
+        default=False,
+        verbose_name="Soru kullanımı kaydedildi",
+        help_text="Yayınlandığında soru cooldown metadatası bir kez işlendi.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-start_at"]
+        verbose_name = "TG denemesi"
+        verbose_name_plural = "TG denemeleri"
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def question_count(self) -> int:
+        return len(self.question_ids or [])
+
+    @property
+    def announcement_push_due_at(self):
+        from datetime import timedelta
+
+        return self.start_at - timedelta(hours=2)
+
+
+class TgExamAttempt(models.Model):
+    """Kullanıcının TG deneme oturumu — devam veya gönderilmiş."""
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="tg_exam_attempts",
+        verbose_name="Kullanıcı",
+    )
+    exam = models.ForeignKey(
+        TgExam,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+        verbose_name="Deneme",
+    )
+    answers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='{"q_public_id": "A"}',
+    )
+    current_index = models.PositiveIntegerField(default=0)
+    elapsed_seconds = models.PositiveIntegerField(default=0)
+    correct = models.PositiveSmallIntegerField(default=0)
+    wrong = models.PositiveSmallIntegerField(default=0)
+    blank = models.PositiveSmallIntegerField(default=0)
+    net = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=0,
+    )
+    subject_nets = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='{"tarih": 12.5, "cografya": 8.25}',
+    )
+    ranking = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Sıralama",
+    )
+    duration_seconds = models.PositiveIntegerField(default=0)
+    is_submitted = models.BooleanField(default=False, verbose_name="Gönderildi")
+    started_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [("user", "exam")]
+        ordering = ["-submitted_at", "-started_at"]
+        indexes = [
+            models.Index(
+                fields=["exam", "-net", "duration_seconds"],
+                name="tg_exam_rank_idx",
+            ),
+        ]
+        verbose_name = "TG deneme sonucu"
+        verbose_name_plural = "TG deneme sonuçları"
+
+    def __str__(self) -> str:
+        status = "gönderildi" if self.is_submitted else "devam"
+        return f"{self.user_id} · {self.exam_id} · {status}"
 
 
 def normalize_promo_code(raw: str) -> str:

@@ -774,6 +774,17 @@ class _TestRow extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (stats.attemptCount > 0) ...[
+                  Semantics(
+                    label: '${test.title} tamamlandı',
+                    child: const Icon(
+                      Icons.check_circle_rounded,
+                      size: 22,
+                      color: Color(0xFF22C55E),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 SizedBox(
                   width: 72,
                   height: 36,

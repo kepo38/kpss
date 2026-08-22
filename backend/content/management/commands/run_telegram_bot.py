@@ -2,6 +2,7 @@ import json
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from django.conf import settings
@@ -17,6 +18,7 @@ from content.telegram_bot import (
     handle_update,
     notify_drain_complete,
     peek_update_queue,
+    register_bot_commands,
     set_webhook,
     telegram_configured,
     telegram_lock,
@@ -36,9 +38,12 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _fetch_updates(token: str, offset: int, *, timeout: int) -> list[dict]:
+    allowed = urllib.parse.quote(
+        json.dumps(["message", "edited_message", "callback_query"])
+    )
     api = (
         f"https://api.telegram.org/bot{token}/getUpdates"
-        f"?timeout={timeout}&offset={offset}"
+        f"?timeout={timeout}&offset={offset}&allowed_updates={allowed}"
     )
     with urllib.request.urlopen(
         api, timeout=max(timeout + 5, 10), context=_ssl_context()
@@ -110,6 +115,7 @@ class Command(BaseCommand):
                     f"Webhook kapatıldı (yerel aktarım için): {cleared}"
                 )
             )
+        register_bot_commands()
 
     def _run_diagnose(self) -> None:
         wh = get_webhook_info()
@@ -149,7 +155,12 @@ class Command(BaseCommand):
         )
 
     def _process_batch(
-        self, batch: list[dict], offset: int, stats: DrainStats | None
+        self,
+        batch: list[dict],
+        offset: int,
+        stats: DrainStats | None,
+        *,
+        advance_on_error: bool = False,
     ) -> tuple[int, int, bool]:
         """Offset yalnizca basarili/atlanan mesajlarda ilerler; hatada kalir."""
         processed = 0
@@ -160,10 +171,16 @@ class Command(BaseCommand):
                 if stats is not None:
                     stats.errors += 1
                 self.stderr.write(f"Mesaj işlenemedi: {exc}")
+                if advance_on_error:
+                    offset = update["update_id"] + 1
+                    continue
                 return offset, processed, True
             if outcome == "error":
                 if stats is not None:
                     stats.errors += 1
+                if advance_on_error:
+                    offset = update["update_id"] + 1
+                    continue
                 return offset, processed, True
             if stats is not None:
                 stats.record(outcome)
@@ -260,7 +277,7 @@ class Command(BaseCommand):
             if batch:
                 self.stdout.write(f"{len(batch)} bekleyen mesaj işleniyor…")
                 offset, processed, stopped_on_error = self._process_batch(
-                    batch, offset, None
+                    batch, offset, None, advance_on_error=True
                 )
                 if stopped_on_error:
                     self.stdout.write(

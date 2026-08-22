@@ -13,6 +13,8 @@ from content.telegram_panel import telegram_question_ocr_flags
 from content.telegram_bot import (
     TelegramBotLockError,
     _allowed_user,
+    _build_ingest_success_html,
+    _format_elapsed,
     _resolve_topic,
     acquire_telegram_lock,
     drain_error_summary,
@@ -143,9 +145,115 @@ class TelegramIngestTests(TestCase):
         )
         self.assertEqual(pending_telegram_question_count(), 1)
         mock_send.assert_called()
-        prompt = mock_send.call_args_list[-1][0][1]
-        self.assertIn("Çözüm eklemek ister misiniz", prompt)
+        full_reply = mock_send.call_args[0][1]
+        self.assertIn("Soru alındı", full_reply)
+        self.assertIn("⏱", full_reply)
+        self.assertIn("Çözüm eklemek ister misiniz", full_reply)
+        self.assertEqual(mock_send.call_args.kwargs.get("parse_mode"), "HTML")
+        keyboard = mock_send.call_args.kwargs.get("reply_markup") or mock_send.call_args[1].get("reply_markup")
+        self.assertIsNotNone(keyboard)
+        self.assertEqual(keyboard["inline_keyboard"][0][0]["text"], "Evet")
         mock_delete.assert_not_called()
+
+    def test_format_elapsed_seconds(self):
+        self.assertEqual(_format_elapsed(0.2), "1 sn")
+        self.assertEqual(_format_elapsed(28.4), "28 sn")
+        self.assertEqual(_format_elapsed(90), "1 dk 30 sn")
+
+    def test_ingest_html_shows_red_duplicate_warning(self):
+        existing = Question.objects.create(
+            topic=self.topic,
+            public_id="q_dup_warn",
+            stem="Benzer soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=True,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        )
+        created = Question.objects.create(
+            topic=self.topic,
+            public_id="q_new_warn",
+            stem="Yeni soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=False,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        )
+        html = _build_ingest_success_html(
+            topic=self.topic,
+            question=created,
+            pending=2,
+            elapsed_seconds=31.2,
+            forwarded=False,
+            partial=False,
+            duplicate=existing,
+            include_solution_prompt=True,
+        )
+        self.assertIn("⏱ 31 sn", html)
+        self.assertIn("🔴", html)
+        self.assertIn("<b>Uyarı: benzer soru var", html)
+        self.assertIn("<code>q_dup_warn</code>", html)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+        TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
+    )
+    @patch("content.telegram_bot.edit_message_reply_markup")
+    @patch("content.telegram_bot.answer_callback_query")
+    @patch("content.telegram_bot.delete_message")
+    @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot._download_file")
+    @patch("content.ocr_ingest._run_ocr")
+    def test_solution_callback_yes_button(
+        self, mock_ocr, mock_download, mock_send, mock_delete, mock_answer, mock_edit
+    ):
+        mock_download.return_value = (b"fake-image", "image/jpeg")
+        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False)
+
+        handle_update(
+            {
+                "message": {
+                    "message_id": 104,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "photo": [
+                        {
+                            "file_id": "abc5",
+                            "file_unique_id": "uniq-104",
+                            "width": 100,
+                            "height": 100,
+                        }
+                    ],
+                }
+            }
+        )
+
+        handle_update(
+            {
+                "callback_query": {
+                    "id": "cb-1",
+                    "from": {"id": 42},
+                    "data": "sol_yes",
+                    "message": {
+                        "message_id": 500,
+                        "chat": {"id": 1001},
+                    },
+                }
+            }
+        )
+
+        mock_answer.assert_called_once()
+        mock_delete.assert_called_once_with(1001, 104)
+        mock_edit.assert_called_once_with(1001, 500, None)
+        reply = mock_send.call_args_list[-1][0][1]
+        self.assertIn("yapıştırın", reply.lower())
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",
@@ -475,6 +583,54 @@ class TelegramIngestTests(TestCase):
         self.assertEqual(outcome, "skipped")
         self.assertEqual(Question.objects.count(), 1)
         mock_delete.assert_called_once_with(1001, 401)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+    )
+    @patch("content.telegram_bot.send_message")
+    def test_sohbeti_sil_clears_without_stopping_bot(self, mock_send):
+        from content.models import TelegramBotSession
+
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_clear_chat",
+            stem="Soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=False,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        )
+        TelegramBotSession.objects.create(
+            telegram_user_id=42,
+            chat_id=1001,
+            step=TelegramBotSession.STEP_SOLUTION_YES_NO,
+            question=question,
+            source_message_id=777,
+        )
+        mock_send.return_value = 999
+
+        outcome = handle_update(
+            {
+                "message": {
+                    "message_id": 888,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "sohbeti sil",
+                }
+            }
+        )
+
+        self.assertEqual(outcome, "command")
+        self.assertFalse(
+            TelegramBotSession.objects.filter(telegram_user_id=42).exists()
+        )
+        reply = mock_send.call_args[0][1]
+        self.assertIn("dinlemeye devam", reply.lower())
+        self.assertNotIn("kapan", reply.lower())
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",
