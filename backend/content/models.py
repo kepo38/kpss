@@ -703,6 +703,23 @@ class ContentRevision(models.Model):
 class MobileUiConfig(models.Model):
     """Tek satırlık mobil arayüz ayarları — ana sayfa promosyon balonu vb."""
 
+    # (db_key, api_camel_key, panel_label, section)
+    STUDIO_MODULE_DEFS: tuple[tuple[str, str, str, str], ...] = (
+        ("offline_pack", "offlinePack", "Offline Paket", "premium"),
+        ("topic_tracking", "topicTracking", "Konu Takibi", "premium"),
+        ("task_management", "taskManagement", "Görev Yönetimi", "premium"),
+        ("cloud_sync", "cloudSync", "Bulut Senkron", "premium"),
+        ("leaderboard", "leaderboard", "Sıralama", "premium"),
+        ("micro_learning", "microLearning", "Mikro Öğrenme", "tools"),
+        ("favorites", "favorites", "Favorilerim", "tools"),
+        ("wrong_notebook", "wrongNotebook", "Yanlış Defteri", "tools"),
+        ("focus_pomodoro", "focusPomodoro", "Odak · Pomodoro", "tools"),
+        ("performance", "performance", "Performans", "tools"),
+        ("exam_analytics", "examAnalytics", "Deneme Analizi", "tools"),
+        ("special_notes", "specialNotes", "Özel Notlarım", "tools"),
+        ("badges", "badges", "Rozetler", "tools"),
+    )
+
     wrong_notebook_bubble_enabled = models.BooleanField(
         default=True,
         verbose_name="Yanlış defteri balonu aktif",
@@ -716,6 +733,12 @@ class MobileUiConfig(models.Model):
         default=True,
         verbose_name="Quiz banner reklamları",
     )
+    studio_modules = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Stüdyo modülleri",
+        help_text="Modül anahtarı → aktif. Boş sözlük = tüm modüller açık.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -725,7 +748,27 @@ class MobileUiConfig(models.Model):
     def __str__(self) -> str:
         bubble = "açık" if self.wrong_notebook_bubble_enabled else "kapalı"
         banner = "açık" if self.banner_ads_enabled else "kapalı"
-        return f"Mobil arayüz · balon {bubble} · banner {banner}"
+        disabled = [
+            label
+            for db_key, _, label, _ in self.STUDIO_MODULE_DEFS
+            if not self.is_studio_module_enabled(db_key)
+        ]
+        extra = f" · pasif: {', '.join(disabled)}" if disabled else ""
+        return f"Mobil arayüz · balon {bubble} · banner {banner}{extra}"
+
+    def is_studio_module_enabled(self, db_key: str) -> bool:
+        modules = self.studio_modules or {}
+        if not isinstance(modules, dict):
+            return True
+        if db_key not in modules:
+            return True
+        return bool(modules.get(db_key))
+
+    def studio_modules_for_api(self) -> dict[str, bool]:
+        return {
+            api_key: self.is_studio_module_enabled(db_key)
+            for db_key, api_key, _, _ in self.STUDIO_MODULE_DEFS
+        }
 
 
 def get_mobile_ui_config() -> MobileUiConfig:

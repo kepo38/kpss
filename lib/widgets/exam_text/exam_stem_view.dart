@@ -23,6 +23,7 @@ class ExamStemView extends StatelessWidget {
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,
+      examScaleDown: false,
       textAlign: TextAlign.justify,
       style: ExamTypography.body(
         color: Colors.white,

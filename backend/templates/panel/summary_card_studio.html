@@ -1,7 +1,7 @@
 {% extends "panel/base.html" %}
 {% load static %}
 {% block content %}
-<link rel="stylesheet" href="{% static 'panel/summary-card-studio.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'panel/summary-card-studio.css' %}?v=3">
 
 <div class="crumb">
   <a href="{% url 'panel_home' %}">Dersler</a> /
@@ -15,8 +15,18 @@
 <h1>{{ page_title }}</h1>
 <p class="lead">
   Ders ve konu seçin; başlık, özet ve isteğe bağlı görsel ekleyin.
-  Sağda uygulamadaki kaydırma kartı anlık görünür.
+  Sağdaki telefon önizlemesi uygulamadaki kartı anlık gösterir.
 </p>
+
+<div class="sc-howto">
+  <p class="sc-howto-title">Özet metnini renklendirmek / vurgulamak</p>
+  <ol class="sc-howto-steps">
+    <li>Özet kutusunda vurgulamak istediğiniz kelimeyi <strong>fare ile seçin</strong>.</li>
+    <li>Seçiliyken üstteki düğmeye basın: <span class="sc-btn-demo"><strong>K</strong></span> kalın · <span class="sc-btn-demo"><em>I</em></span> italik · <span class="sc-btn-demo sc-u">A</span> altı çizili · <span class="sc-btn-demo sc-g">G</span> yeşil.</li>
+    <li>Sağdaki önizlemede sonucu kontrol edin; kaydedince uygulamada da aynı görünür.</li>
+  </ol>
+  <p class="hint sc-howto-note"><strong>Başlık</strong> alanı düz metindir — kalın/renk yalnızca <strong>özet</strong> gövdesinde çalışır.</p>
+</div>
 
 <div class="workspace">
   <div class="sc-studio-left">
@@ -59,9 +69,53 @@
       </label>
 
       <label>Özet
-        <textarea name="body" id="sc-body" required rows="6"
+        <textarea class="js-rich" name="body" id="sc-body" required rows="6"
                   placeholder="Formül, kural veya ÖSYM ipucu…">{{ card.body|default:'' }}</textarea>
+        <span class="hint">İpucu: Metni seçip K / I / A düğmelerine basmanız yeterli; elle yazmak zorunda değilsiniz.</span>
       </label>
+
+      <div class="sc-format-tip">
+        <p class="sc-format-tip-head">Ne yazarsanız ne görünür?</p>
+        <div class="sc-format-table-wrap">
+          <table class="sc-format-table">
+            <thead>
+              <tr>
+                <th scope="col">Siz ne yaparsınız?</th>
+                <th scope="col">Metinde (kaydedilen)</th>
+                <th scope="col">Uygulamada</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>«türev» seç → <strong>K</strong></td>
+                <td><code class="sc-raw">Zincir kuralında **türev** alınır.</code></td>
+                <td class="sc-format-demo sc-rich-preview" data-markup="Zincir kuralında **türev** alınır."></td>
+              </tr>
+              <tr>
+                <td>«dikkat» seç → <span class="sc-u">A</span></td>
+                <td><code class="sc-raw">__dikkat__ edin.</code></td>
+                <td class="sc-format-demo sc-rich-preview" data-markup="__dikkat__ edin."></td>
+              </tr>
+              <tr>
+                <td>«ÖSYM» seç → <span class="sc-g">G</span></td>
+                <td><code class="sc-raw">{green}ÖSYM{/green} buradan sorar.</code></td>
+                <td class="sc-format-demo sc-rich-preview" data-markup="{green}ÖSYM{/green} buradan sorar."></td>
+              </tr>
+              <tr>
+                <td>Formül yaz → <code>$…$</code></td>
+                <td><code class="sc-raw">Alan: $A=\pi r^2$</code></td>
+                <td class="sc-format-demo sc-rich-preview" data-markup="Alan: $A=\pi r^2$"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="sc-format-actions">
+          <button type="button" class="btn btn-ghost sc-sample-btn" id="sc-insert-sample">
+            Örnek metni özet kutusuna yapıştır
+          </button>
+          <span class="hint">Tüm biçimleri tek seferde denemek için.</span>
+        </div>
+      </div>
 
       <label>Görsel
         <input type="file" name="image" id="sc-image" accept="image/*">
@@ -119,7 +173,7 @@
             <div class="sc-mock-chip" id="pv-sc-kind">Püf nokta</div>
             <h2 class="sc-mock-title" id="pv-sc-title">Başlık buraya…</h2>
             <img class="sc-mock-img" id="pv-sc-img" alt="" hidden>
-            <p class="sc-mock-body" id="pv-sc-body">Özet metni buraya…</p>
+            <p class="sc-mock-body sc-rich-preview" id="pv-sc-body">Özet metni buraya…</p>
           </div>
           <div class="sc-mock-actions" aria-hidden="true">
             <span>Unuttum</span>
@@ -131,5 +185,6 @@
   </aside>
 </div>
 
-<script src="{% static 'panel/summary-card-studio.js' %}?v=1"></script>
+<script src="{% static 'panel/rich-format.js' %}?v=4"></script>
+<script src="{% static 'panel/summary-card-studio.js' %}?v=3"></script>
 {% endblock %}

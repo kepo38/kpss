@@ -63,142 +63,178 @@ class _AddExamSheetState extends State<AddExamSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.92,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.92,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Text(
-                      'Deneme Kaydı',
-                      style: GoogleFonts.inter(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Form(
-                  key: _formKey,
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
+                  child: Row(
                     children: [
-                      TextFormField(
-                        controller: _nameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Deneme adı',
-                          hintText: 'Örn: Palme Genel Deneme 4',
-                        ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? 'Deneme adı gerekli' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _publisher,
-                        decoration: const InputDecoration(labelText: 'Yayın evi'),
-                        items: PublisherConstants.yayinEvleri
-                            .map((p) =>
-                                DropdownMenuItem(value: p, child: Text(p)))
-                            .toList(),
-                        onChanged: (v) => setState(() => _publisher = v!),
-                      ),
-                      const SizedBox(height: 12),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Deneme tarihi'),
-                        subtitle: Text(
-                          '${_date.day}.${_date.month}.${_date.year}',
-                        ),
-                        trailing: const Icon(Icons.calendar_today),
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _date,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (picked != null) setState(() => _date = picked);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _PreviewCard(gy: _previewGy, gk: _previewGk),
-                      const SizedBox(height: 20),
-                      _SectionHeader(
-                        title: 'Genel Yetenek',
-                        icon: Icons.psychology_outlined,
-                        color: AppTheme.lightPrimary,
-                      ),
-                      ...PracticeExamModel.genelYetenekDersleri.map(
-                        (d) => _ScoreRow(
-                          label: d,
-                          totalQuestions: PracticeExamModel.soruSayisi(d),
-                          input: _scores[d]!,
-                          onChanged: () => setState(() {}),
+                      Text(
+                        'Deneme Kaydı',
+                        style: GoogleFonts.inter(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      _SectionHeader(
-                        title: 'Genel Kültür',
-                        icon: Icons.public_outlined,
-                        color: AppTheme.lightAccent,
-                      ),
-                      ...PracticeExamModel.genelKulturDersleri.map(
-                        (d) => _ScoreRow(
-                          label: d,
-                          totalQuestions: PracticeExamModel.soruSayisi(d),
-                          input: _scores[d]!,
-                          onChanged: () => setState(() {}),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _notesCtrl,
-                        maxLines: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'Notlar (isteğe bağlı)',
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _save,
-                        child: const Text('Denemeyi Kaydet'),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+                Expanded(
+                  child: Form(
+                    key: _formKey,
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                      children: [
+                        TextFormField(
+                          controller: _nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Deneme adı',
+                            hintText: 'Örn: Palme Genel Deneme 4',
+                          ),
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'Deneme adı gerekli'
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _publisher,
+                          decoration:
+                              const InputDecoration(labelText: 'Yayın evi'),
+                          items: PublisherConstants.yayinEvleri
+                              .map((p) => DropdownMenuItem(
+                                    value: p,
+                                    child: Text(p),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() => _publisher = v!),
+                        ),
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Deneme tarihi'),
+                          subtitle: Text(
+                            '${_date.day}.${_date.month}.${_date.year}',
+                          ),
+                          trailing: const Icon(Icons.calendar_today),
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _date,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setState(() => _date = picked);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _PreviewCard(gy: _previewGy, gk: _previewGk),
+                        const SizedBox(height: 20),
+                        _SectionHeader(
+                          title: 'Genel Yetenek',
+                          icon: Icons.psychology_outlined,
+                          color: AppTheme.lightPrimary,
+                        ),
+                        ...PracticeExamModel.genelYetenekDersleri.map(
+                          (d) => _ScoreRow(
+                            label: d,
+                            totalQuestions: PracticeExamModel.soruSayisi(d),
+                            input: _scores[d]!,
+                            onChanged: () => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _SectionHeader(
+                          title: 'Genel Kültür',
+                          icon: Icons.public_outlined,
+                          color: AppTheme.lightAccent,
+                        ),
+                        ...PracticeExamModel.genelKulturDersleri.map(
+                          (d) => _ScoreRow(
+                            label: d,
+                            totalQuestions: PracticeExamModel.soruSayisi(d),
+                            input: _scores[d]!,
+                            onChanged: () => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _notesCtrl,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Notlar (isteğe bağlı)',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.grey.shade300.withValues(alpha: 0.65),
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 12,
+                          offset: const Offset(0, -4),
+                        ),
+                      ],
+                    ),
+                    child: FilledButton(
+                      onPressed: _save,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const Text('Denemeyi Kaydet'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 

@@ -8,6 +8,7 @@ import '../constants/daily_mini_exam_constants.dart';
 import '../constants/savings_constants.dart';
 import '../data/kpss_curriculum.dart';
 import '../models/content_models.dart';
+import '../models/manual_question_model.dart';
 import '../models/question_model.dart';
 import '../utils/daily_mission_copy.dart';
 import '../widgets/countdown_widget.dart';
@@ -34,6 +35,8 @@ class ContentBankService extends ChangeNotifier {
   static const _kWrongQuestionBodies = 'content_wrong_question_bodies';
   /// Yanlış defterinde gösterilecek işaretlenmiş şık (soruId → A–E).
   static const _kWrongQuestionSelections = 'content_wrong_question_selections';
+  /// Yanlış defteri soru durumu (soruId → fresh/repeat/solved).
+  static const _kWrongQuestionStatuses = 'content_wrong_question_statuses';
   /// Bitmiş testte yanlış kalan sorular — sonradan doğru cevap istatistiğe yazılmaz.
   static const _kStatLockedWrongQuestions = 'content_stat_locked_wrong_questions';
   static const _kQuestions = 'content_questions';
@@ -67,6 +70,7 @@ class ContentBankService extends ChangeNotifier {
   final Set<String> _solvedQuestionIds = {};
   final Set<String> _wrongQuestionIds = {};
   final Map<String, String> _wrongQuestionSelections = {};
+  final Map<String, ManualQuestionStatus> _wrongQuestionStatuses = {};
   final Set<String> _statLockedWrongQuestions = {};
   final Set<String> _cachedWrongBodyIds = {};
   String? _activeUserScopeId;
@@ -213,6 +217,11 @@ class ContentBankService extends ChangeNotifier {
       fromKey: _scopedKeyFor(_kWrongQuestionBodies, fromUserId),
       toKey: _scopedKeyFor(_kWrongQuestionBodies, toUserId),
     );
+    await _mergeStringMapPref(
+      prefs,
+      fromKey: _scopedKeyFor(_kWrongQuestionStatuses, fromUserId),
+      toKey: _scopedKeyFor(_kWrongQuestionStatuses, toUserId),
+    );
   }
 
   Future<void> _mergeStringListPref(
@@ -288,6 +297,7 @@ class ContentBankService extends ChangeNotifier {
       (_kWrongQuestions, _scopedKey(_kWrongQuestions)),
       (_kWrongQuestionBodies, _scopedKey(_kWrongQuestionBodies)),
       (_kWrongQuestionSelections, _scopedKey(_kWrongQuestionSelections)),
+      (_kWrongQuestionStatuses, _scopedKey(_kWrongQuestionStatuses)),
       (_kStatLockedWrongQuestions, _scopedKey(_kStatLockedWrongQuestions)),
     ];
     for (final pair in pairs) {
@@ -363,6 +373,7 @@ class ContentBankService extends ChangeNotifier {
   void _loadUserWrongNotebookFromPrefs(SharedPreferences prefs) {
     _wrongQuestionIds.clear();
     _wrongQuestionSelections.clear();
+    _wrongQuestionStatuses.clear();
     _statLockedWrongQuestions.clear();
 
     final wrongRaw = prefs.getString(_scopedKey(_kWrongQuestions));
@@ -379,6 +390,18 @@ class ContentBankService extends ChangeNotifier {
       );
     }
 
+    final wrongStatusRaw =
+        prefs.getString(_scopedKey(_kWrongQuestionStatuses));
+    if (wrongStatusRaw != null) {
+      final map = jsonDecode(wrongStatusRaw) as Map<String, dynamic>;
+      map.forEach((key, value) {
+        try {
+          _wrongQuestionStatuses[key.toString()] =
+              ManualQuestionStatus.values.byName(value.toString());
+        } catch (_) {}
+      });
+    }
+
     final statLockedRaw =
         prefs.getString(_scopedKey(_kStatLockedWrongQuestions));
     if (statLockedRaw != null) {
@@ -387,6 +410,7 @@ class ContentBankService extends ChangeNotifier {
     }
 
     _pruneSampleSeedProgress();
+    _pruneWrongQuestionStatuses();
     _mergeWrongQuestionBodies(
       prefs.getString(_scopedKey(_kWrongQuestionBodies)),
     );
@@ -612,7 +636,15 @@ class ContentBankService extends ChangeNotifier {
     return _tests
         .where((t) => t.kpssType == type && t.topicId == topicId && t.published)
         .toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      ..sort((a, b) => _topicTestSortKey(a).compareTo(_topicTestSortKey(b)));
+  }
+
+  static int _topicTestSortKey(TopicTestModel test) {
+    final match = RegExp(r'(\d+)').firstMatch(test.title);
+    if (match != null) {
+      return int.tryParse(match.group(1)!) ?? 9999;
+    }
+    return 9999 - test.createdAt.millisecondsSinceEpoch.remainder(9999);
   }
 
   TopicTestModel? testById(String testId) {
@@ -1128,8 +1160,17 @@ class ContentBankService extends ChangeNotifier {
     final beforeSolved = _solvedQuestionIds.length;
     _wrongQuestionIds.removeAll(_sampleSeedQuestionIds);
     _solvedQuestionIds.removeAll(_sampleSeedQuestionIds);
+    for (final id in _sampleSeedQuestionIds) {
+      _wrongQuestionStatuses.remove(id);
+    }
     return beforeWrong != _wrongQuestionIds.length ||
         beforeSolved != _solvedQuestionIds.length;
+  }
+
+  void _pruneWrongQuestionStatuses() {
+    _wrongQuestionStatuses.removeWhere(
+      (id, _) => !_wrongQuestionIds.contains(id),
+    );
   }
 
   bool _mergeWrongQuestionBodies(String? raw) {
@@ -1169,12 +1210,31 @@ class ContentBankService extends ChangeNotifier {
   Future<void> removeWrongQuestion(String questionId) async {
     if (!_wrongQuestionIds.remove(questionId)) return;
     _wrongQuestionSelections.remove(questionId);
+    _wrongQuestionStatuses.remove(questionId);
     await Future.wait([
       _persistWrongQuestions(),
       _persistWrongQuestionBodies(),
       _persistWrongSelections(),
+      _persistWrongQuestionStatuses(),
       FavoritesService.instance.remove(questionId),
     ]);
+    _notifyProgress();
+  }
+
+  ManualQuestionStatus wrongQuestionStatusFor(String questionId) =>
+      _wrongQuestionStatuses[questionId] ?? ManualQuestionStatus.fresh;
+
+  Future<void> setWrongQuestionStatus(
+    String questionId,
+    ManualQuestionStatus status,
+  ) async {
+    if (!_wrongQuestionIds.contains(questionId)) return;
+    if (status == ManualQuestionStatus.fresh) {
+      _wrongQuestionStatuses.remove(questionId);
+    } else {
+      _wrongQuestionStatuses[questionId] = status;
+    }
+    await _persistWrongQuestionStatuses();
     _notifyProgress();
   }
 
@@ -1421,6 +1481,20 @@ class ContentBankService extends ChangeNotifier {
       return;
     }
     await prefs.setString(key, jsonEncode(_wrongQuestionSelections));
+  }
+
+  Future<void> _persistWrongQuestionStatuses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _scopedKey(_kWrongQuestionStatuses);
+    if (_wrongQuestionStatuses.isEmpty) {
+      await prefs.remove(key);
+      return;
+    }
+    final encoded = {
+      for (final entry in _wrongQuestionStatuses.entries)
+        entry.key: entry.value.name,
+    };
+    await prefs.setString(key, jsonEncode(encoded));
   }
 
   Future<void> _persistStatLockedWrongQuestions() async {

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../models/manual_question_model.dart';
 import '../../models/question_model.dart';
 import '../../theme/app_theme.dart';
 import '../question_stem_content.dart';
 import 'wrong_notebook_guest_frost.dart';
+import 'wrong_notebook_status_chip.dart';
 import 'wrong_notebook_utils.dart';
 
 class WrongNotebookSubjectHeader extends StatelessWidget {
@@ -90,6 +92,8 @@ class WrongNotebookQuestionCard extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback? onShare;
   final VoidCallback? onSignIn;
+  final ManualQuestionStatus status;
+  final ValueChanged<ManualQuestionStatus> onStatusChanged;
 
   const WrongNotebookQuestionCard({
     super.key,
@@ -102,6 +106,8 @@ class WrongNotebookQuestionCard extends StatelessWidget {
     required this.onSimilar,
     required this.onTap,
     required this.onRemove,
+    required this.status,
+    required this.onStatusChanged,
     this.onShare,
     this.onSignIn,
   });
@@ -193,16 +199,30 @@ class WrongNotebookQuestionCard extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  'SORUYA TEKRAR GÖZ AT',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: AppTheme.mutedOnPage(context)
-                                        .withValues(alpha: 0.7),
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'SORUYA TEKRAR GÖZ AT',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppTheme.mutedOnPage(context)
+                                              .withValues(alpha: 0.7),
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () {},
+                                      behavior: HitTestBehavior.opaque,
+                                      child: WrongNotebookStatusChip(
+                                        status: status,
+                                        onChanged: onStatusChanged,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../services/app_config_service.dart';
 import '../../services/offline_pack_service.dart';
 import '../../services/play_billing_service.dart';
 import '../../services/premium_service.dart';
@@ -25,6 +26,7 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
   void initState() {
     super.initState();
     _service.addListener(_onChanged);
+    AppConfigService.instance.addListener(_onChanged);
     PlayBillingService.instance.premiumNotifier.addListener(_onChanged);
     if (!_service.isInitialized) {
       _service.initialize();
@@ -34,6 +36,7 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
   @override
   void dispose() {
     _service.removeListener(_onChanged);
+    AppConfigService.instance.removeListener(_onChanged);
     PlayBillingService.instance.premiumNotifier.removeListener(_onChanged);
     super.dispose();
   }
@@ -53,6 +56,14 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
 
   Future<void> _download() async {
     if (_busy) return;
+    if (!PremiumService.instance.isOfflinePackModuleEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Offline paket şu an kullanıma kapalı.'),
+        ),
+      );
+      return;
+    }
     if (!PremiumService.instance.canUseOfflinePack) {
       await _openPaywall();
       return;
@@ -76,14 +87,17 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final moduleOn = PremiumService.instance.isOfflinePackModuleEnabled;
     final yearly = PremiumService.instance.canUseOfflinePack;
     final ready = _service.isReady;
     final dateText = _service.lastDownloadedAt == null
         ? 'Henüz indirilmedi'
         : DateFormat('d.MM.yyyy · HH:mm').format(_service.lastDownloadedAt!);
-    final statusValue = yearly
-        ? (ready ? 'Çevrimdışı kullanıma hazır' : 'İndirme gerekli')
-        : 'Yıllık Premium gerekli';
+    final statusValue = !moduleOn
+        ? 'Geçici olarak kapalı'
+        : yearly
+            ? (ready ? 'Çevrimdışı kullanıma hazır' : 'İndirme gerekli')
+            : 'Yıllık Premium gerekli';
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
@@ -168,7 +182,30 @@ class _OfflinePackScreenState extends State<OfflinePackScreen> {
                   lastDownload: dateText,
                 ),
                 const SizedBox(height: 22),
-                if (!yearly) ...[
+                if (!moduleOn) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFF94A3B8).withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: Text(
+                      'Offline paket yönetici tarafından geçici olarak '
+                      'kapatıldı. İndirme ve satın alma şu an mümkün değil.',
+                      style: TextStyle(
+                        color: AppTheme.ink.withValues(alpha: 0.78),
+                        height: 1.4,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                ] else if (!yearly) ...[
                   ScaleButton(
                     onPressed: _openPaywall,
                     child: _PrimaryCta(

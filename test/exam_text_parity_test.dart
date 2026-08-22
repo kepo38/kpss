@@ -118,6 +118,8 @@ void main() {
     expect(ExamOptionView.isCompactOption('42'), isFalse);
     expect(ExamOptionView.isCompactOption(r'$x+1$'), isTrue);
     expect(ExamOptionView.isCompactOption(r'$12$'), isTrue);
+    expect(ExamOptionView.isMathStyleOption('42'), isTrue);
+    expect(ExamOptionView.isMathStyleOption(r'$12$'), isTrue);
   });
 
   test('dash-separated options become two or three columns', () {

@@ -103,7 +103,9 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final stats = _bank.topicStats(widget.topicId);
     final lessons = _bank.lessonsForTopic(widget.topicId);
     final summaryCards = _bank.summaryCardsForTopic(widget.topicId);
-    final canLearn = summaryCards.isNotEmpty || lessons.isNotEmpty;
+    final readySummaryCards =
+        summaryCards.where((card) => card.hasContent).toList();
+    final canLearn = readySummaryCards.isNotEmpty || lessons.isNotEmpty;
     final progress =
         _bank.topicQuestionProgress(widget.kpssType, widget.topicId);
 
@@ -174,12 +176,12 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
               onTap: !canLearn
                   ? null
                   : () {
-                      if (summaryCards.isNotEmpty) {
+                      if (readySummaryCards.isNotEmpty) {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => TopicSummaryStudyScreen(
                               topicName: topic?.name ?? 'Konu',
-                              cards: summaryCards,
+                              cards: readySummaryCards,
                             ),
                           ),
                         );
@@ -195,16 +197,35 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                       );
                     },
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'TESTLER',
-              style: TextStyle(
-                fontSize: 11,
-                letterSpacing: 2.2,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.champagne,
+            if (summaryCards.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _SectionHeader(
+                title: 'ÖZET KONULAR',
+                subtitle: readySummaryCards.isEmpty
+                    ? '${summaryCards.length} kart · henüz hazır değil'
+                    : '${readySummaryCards.length}/${summaryCards.length} kart hazır',
               ),
-            ),
+              const SizedBox(height: 12),
+              ...summaryCards.map(
+                (card) => _SummaryCardRow(
+                  card: card,
+                  onOpen: card.hasContent
+                      ? () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => TopicSummaryStudyScreen(
+                                topicName: topic?.name ?? 'Konu',
+                                cards: readySummaryCards,
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            const _SectionHeader(title: 'TESTLER'),
             const SizedBox(height: 12),
             if (tests.isEmpty)
               Text(
@@ -214,6 +235,8 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
             else
               ...tests.map((test) {
                 final tStats = _bank.testStats(test.id);
+                final questionCount = _bank.catalogQuestionCount(test);
+                final isReady = questionCount > 0;
                 final isPremium = PremiumService.instance.isPremium;
                 final canWatchAd = !isPremium &&
                     _bank.canWatchAdForDailyTestBonus(
@@ -223,14 +246,17 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                 return _TestRow(
                   test: test,
                   stats: tStats,
-                  quotaHint: !isPremium &&
+                  questionCount: questionCount,
+                  enabled: isReady,
+                  quotaHint: isReady &&
+                      !isPremium &&
                       !_bank.canStartDailySubjectTest(
                         widget.kpssType,
                         widget.subjectId,
                       ),
                   canWatchAdForBonus: canWatchAd,
                   busy: _startingTest,
-                  onStart: () => _startTest(test),
+                  onStart: isReady ? () => _startTest(test) : null,
                 );
               }),
           ],
@@ -625,17 +651,131 @@ class _StatStrip extends StatelessWidget {
       );
 }
 
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+
+  const _SectionHeader({
+    required this.title,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 11,
+            letterSpacing: 2.2,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.champagne,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle!,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.38),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SummaryCardRow extends StatelessWidget {
+  final TopicSummaryCardModel card;
+  final VoidCallback? onOpen;
+
+  const _SummaryCardRow({
+    required this.card,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onOpen != null;
+    final titleColor = enabled
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.38);
+    final metaColor = enabled
+        ? Colors.white.withValues(alpha: 0.45)
+        : Colors.white.withValues(alpha: 0.28);
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.62,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    card.title,
+                    style: TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    enabled ? card.kindLabel : 'Henüz içerik eklenmedi',
+                    style: TextStyle(fontSize: 12, color: metaColor),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 72,
+              height: 36,
+              child: TextButton(
+                onPressed: onOpen,
+                style: TextButton.styleFrom(
+                  foregroundColor: enabled
+                      ? AppTheme.champagne
+                      : Colors.white.withValues(alpha: 0.28),
+                ),
+                child: Text(enabled ? 'OKU' : 'PASİF'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TestRow extends StatelessWidget {
   final TopicTestModel test;
   final TestStatsSummary stats;
+  final int questionCount;
+  final bool enabled;
   final bool quotaHint;
   final bool canWatchAdForBonus;
   final bool busy;
-  final VoidCallback onStart;
+  final VoidCallback? onStart;
 
   const _TestRow({
     required this.test,
     required this.stats,
+    required this.questionCount,
+    this.enabled = true,
     this.quotaHint = false,
     this.canWatchAdForBonus = false,
     this.busy = false,
@@ -645,79 +785,92 @@ class _TestRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final metaParts = <String>[
-      '${ContentBankService.instance.catalogQuestionCount(test)} soru',
-      if (stats.attemptCount > 0) ...[
-        '${stats.attemptCount} deneme',
-        'en iyi %${(stats.bestAccuracy * 100).round()}',
-      ],
+      if (enabled) ...[
+        '$questionCount soru',
+        if (stats.attemptCount > 0) ...[
+          '${stats.attemptCount} deneme',
+          'en iyi %${(stats.bestAccuracy * 100).round()}',
+        ],
+      ] else
+        'Henüz soru eklenmedi',
     ];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 2),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+    final titleColor =
+        enabled ? Colors.white : Colors.white.withValues(alpha: 0.38);
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.62,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 2),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      test.title,
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (metaParts.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        metaParts.join(' · '),
+                        test.title,
                         style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.45),
+                          fontFamily: 'serif',
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
                         ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 72,
-                height: 36,
-                child: TextButton(
-                  onPressed: busy ? null : onStart,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.neonEdge,
-                  ),
-                  child: busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppTheme.neonEdge,
+                      if (metaParts.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          metaParts.join(' · '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(
+                              alpha: enabled ? 0.45 : 0.28,
+                            ),
                           ),
-                        )
-                      : const Text('BAŞLA'),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
+                SizedBox(
+                  width: 72,
+                  height: 36,
+                  child: TextButton(
+                    onPressed: enabled && !busy ? onStart : null,
+                    style: TextButton.styleFrom(
+                      foregroundColor: enabled
+                          ? AppTheme.neonEdge
+                          : Colors.white.withValues(alpha: 0.28),
+                    ),
+                    child: busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.neonEdge,
+                            ),
+                          )
+                        : Text(enabled ? 'BAŞLA' : 'PASİF'),
+                  ),
+                ),
+              ],
+            ),
+            if (enabled && quotaHint) ...[
+              const SizedBox(height: 10),
+              _DailyQuotaBanner(canWatchAdForBonus: canWatchAdForBonus),
             ],
-          ),
-          if (quotaHint) ...[
-            const SizedBox(height: 10),
-            _DailyQuotaBanner(canWatchAdForBonus: canWatchAdForBonus),
           ],
-        ],
+        ),
       ),
     );
   }

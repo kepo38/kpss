@@ -47,12 +47,12 @@ class WrongNotebookShareCard extends StatelessWidget {
             const _PremiumAtmosphere(),
             const IgnorePointer(child: _ShareBackdropMark()),
             Padding(
-              padding: const EdgeInsets.fromLTRB(48, 56, 48, 48),
+              padding: const EdgeInsets.fromLTRB(48, 82, 48, 48),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const _ShareHeader(),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 14),
                   Expanded(
                     child: _ShareFillScaler(
                       child: bankQuestion != null
@@ -60,7 +60,7 @@ class WrongNotebookShareCard extends StatelessWidget {
                           : _ManualBody(item: manualQuestion!),
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
                   const _ShareFooter(),
                 ],
               ),
@@ -203,10 +203,11 @@ class _ShareFillScaler extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final layoutW = constraints.maxWidth * 0.78;
-        return Center(
+        return Align(
+          alignment: Alignment.topCenter,
           child: FittedBox(
             fit: BoxFit.contain,
-            alignment: Alignment.center,
+            alignment: Alignment.topCenter,
             child: SizedBox(
               width: layoutW,
               child: child,
@@ -225,6 +226,7 @@ class _ShareHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        const SizedBox(height: 10),
         Text(
           '◆',
           style: TextStyle(
@@ -365,7 +367,6 @@ class _BankBody extends StatelessWidget {
     final meta = [
       if (question.dersAdi.trim().isNotEmpty) question.dersAdi.trim(),
       if (question.konuAdi.trim().isNotEmpty) question.konuAdi.trim(),
-      if (question.altKonuAdi.trim().isNotEmpty) question.altKonuAdi.trim(),
     ].join(' · ');
 
     return DecoratedBox(

@@ -601,6 +601,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                   );
                                 }
                                 final q = row.question!;
+                                final bank = ContentBankService.instance;
                                 return WrongNotebookQuestionCard(
                                   question: q,
                                   isFavorite: favs.isFavorite(q.id),
@@ -609,6 +610,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                   showProBadge:
                                       !PremiumService.instance.isPremium,
                                   frostStem: guestLocked,
+                                  status: bank.wrongQuestionStatusFor(q.id),
+                                  onStatusChanged: (status) {
+                                    unawaited(
+                                      bank.setWrongQuestionStatus(
+                                        q.id,
+                                        status,
+                                      ),
+                                    );
+                                    if (mounted) setState(() {});
+                                  },
                                   onSignIn: () {
                                     unawaited(
                                       _unlockGuestQuestion(context, q),

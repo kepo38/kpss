@@ -168,6 +168,7 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final offlineOn = PremiumService.instance.isOfflinePackModuleEnabled;
     final monthly = _billing.monthlyProduct;
     final yearly = _billing.yearlyProduct;
     final loading =
@@ -275,7 +276,9 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
                       ),
                     ),
                     const SizedBox(height: 32),
-                    ...PremiumService.features.map(
+                    ...PremiumService.features
+                        .where((f) => offlineOn || !f.yearlyOnly)
+                        .map(
                       (f) => _FeatureRow(
                         icon: _iconFor(f.iconName),
                         title: f.title,
@@ -317,10 +320,10 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
                     const SizedBox(height: 12),
                     _PlanCard(
                       title: '1 yıllık abonelik',
-                      subtitle: _yearlySubtitle(yearly),
+                      subtitle: _yearlySubtitle(yearly, offlineOn: offlineOn),
                       price: _yearlyPrice(yearly),
                       priceCaption: 'yıllık · otomatik yenilenir',
-                      badge: 'Offline paket dahil',
+                      badge: offlineOn ? 'Offline paket dahil' : 'En avantajlı paket',
                       selected: _selected == _PlanKind.yearly,
                       loading: loading && yearly == null,
                       onTap: () => setState(() => _selected = _PlanKind.yearly),
@@ -437,11 +440,12 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
     return IapConstants.yearlyFallbackPrice;
   }
 
-  String _yearlySubtitle(ProductDetails? product) {
-    if (product != null) {
-      return 'En avantajlı paket · offline kütüphane dahil';
-    }
-    return 'En avantajlı paket · offline kütüphane dahil';
+  String _yearlySubtitle(ProductDetails? product, {required bool offlineOn}) {
+    final hint = offlineOn
+        ? 'En avantajlı paket · offline kütüphane dahil'
+        : 'En avantajlı paket · tüm premium özellikler';
+    if (product != null) return hint;
+    return hint;
   }
 
   PricingPhaseWrapper? _introPhase(ProductDetails? product) {

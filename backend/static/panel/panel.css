@@ -1411,6 +1411,11 @@ textarea { min-height: 140px; resize: vertical; }
   font-weight: 700;
   white-space: nowrap;
 }
+.nav-pending-count,
+.pending-count {
+  color: #fbbf24;
+  font-weight: 700;
+}
 @media (max-width: 900px) {
   .quality-filters {
     grid-template-columns: repeat(2, minmax(140px, 1fr));

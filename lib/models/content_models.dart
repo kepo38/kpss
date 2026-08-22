@@ -94,6 +94,8 @@ class TopicTestModel {
     this.published = true,
   });
 
+  bool get hasQuestions => questionCount > 0 || questionIds.isNotEmpty;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'topicId': topicId,
@@ -316,6 +318,9 @@ class TopicSummaryCardModel {
         SummaryCardKind.tip => 'Püf nokta',
         SummaryCardKind.osym => 'ÖSYM buradan sorar',
       };
+
+  bool get hasContent =>
+      body.trim().isNotEmpty || (imageUrl?.trim().isNotEmpty ?? false);
 
   Map<String, dynamic> toJson() => {
         'id': id,

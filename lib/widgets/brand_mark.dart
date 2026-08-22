@@ -107,6 +107,8 @@ class QuizHeaderStrip extends StatelessWidget {
   final String? questionLabel;
   /// Yeşil başarı oranı — eski Soru X/Y yerinde (ör. `Başarı: %49`).
   final String? successLabel;
+  /// 0–1 arası; dikey gösterge çubuğu için. Veri yoksa örnek %70.
+  final double? successRate;
   final String? difficultyLabel;
   final String? attemptLabel;
   final Widget? leading;
@@ -121,6 +123,7 @@ class QuizHeaderStrip extends StatelessWidget {
     required this.urgent,
     this.questionLabel,
     this.successLabel,
+    this.successRate,
     this.difficultyLabel,
     this.attemptLabel,
     this.leading,
@@ -165,9 +168,9 @@ class QuizHeaderStrip extends StatelessWidget {
     final timeColor = urgent ? Colors.redAccent : Colors.white;
     final iconColor = urgent ? Colors.redAccent : AppTheme.champagne;
 
-    final rightMeta = Column(
+    final chipsColumn = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (successLabel != null)
           Container(
@@ -184,7 +187,7 @@ class QuizHeaderStrip extends StatelessWidget {
               successLabel!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
@@ -198,7 +201,7 @@ class QuizHeaderStrip extends StatelessWidget {
             questionLabel!,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.right,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -216,6 +219,21 @@ class QuizHeaderStrip extends StatelessWidget {
         ],
       ],
     );
+
+    final showRateMeter = successLabel != null && successRate != null;
+    final rightMeta = showRateMeter
+        ? IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                chipsColumn,
+                const SizedBox(width: 8),
+                _SuccessRateMeter(rate: successRate!.clamp(0.0, 1.0)),
+              ],
+            ),
+          )
+        : chipsColumn;
 
     final leftMeta = leading != null
         ? leading!
@@ -269,7 +287,7 @@ class QuizHeaderStrip extends StatelessWidget {
                         alignment: Alignment.centerRight,
                         child: Padding(
                           // Başarı chip’i kenardan biraz içeride.
-                          padding: const EdgeInsets.only(right: 14),
+                          padding: const EdgeInsets.only(right: 24),
                           child: rightMeta,
                         ),
                       ),
@@ -290,6 +308,76 @@ class QuizHeaderStrip extends StatelessWidget {
         const _AccentLine(height: _lineHeight),
       ],
     );
+  }
+}
+
+class _SuccessRateMeter extends StatelessWidget {
+  final double rate;
+
+  const _SuccessRateMeter({required this.rate});
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = rate.clamp(0.0, 1.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight;
+        final filledHeight = height * clamped;
+        final dimHeight = height - filledHeight;
+
+        return Container(
+          width: 5,
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            boxShadow: [
+              BoxShadow(
+                color: _rateColor(clamped).withValues(alpha: 0.35),
+                blurRadius: 6,
+                spreadRadius: 0.5,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: Stack(
+              fit: StackFit.expand,
+              alignment: Alignment.bottomCenter,
+              children: [
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Color(0xFFF87171),
+                        Color(0xFFFBBF24),
+                        Color(0xFF34D399),
+                      ],
+                      stops: [0.0, 0.48, 1.0],
+                    ),
+                  ),
+                ),
+                if (dimHeight > 0)
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: Container(
+                      height: dimHeight,
+                      color: Colors.black.withValues(alpha: 0.52),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Color _rateColor(double rate) {
+    if (rate >= 0.65) return const Color(0xFF34D399);
+    if (rate >= 0.4) return const Color(0xFFFBBF24);
+    return const Color(0xFFF87171);
   }
 }
 

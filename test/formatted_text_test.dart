@@ -539,6 +539,25 @@ void main() {
     );
   });
 
+  test('uprightMathLetters uprights letters inside sqrt and frac', () {
+    expect(
+      FormattedText.uprightMathLetters(r'\sqrt{4xy}'),
+      r'\sqrt{4\mathrm{x}\mathrm{y}}',
+    );
+    expect(
+      FormattedText.uprightMathLetters(r'x + y + \sqrt{4xy}'),
+      contains(r'\sqrt{4\mathrm{x}\mathrm{y}}'),
+    );
+    expect(
+      FormattedText.uprightMathLetters(r'\frac{18}{a}'),
+      contains(r'{\mathrm{a}}'),
+    );
+    expect(
+      FormattedText.uprightMathLetters(r'\text{Kelime}'),
+      r'\text{Kelime}',
+    );
+  });
+
   test('uprightMathLetters restores commands (no §§C leak)', () {
     final out = FormattedText.uprightMathLetters(r'a^{b} + b \cdot c');
     expect(out.contains('§§'), isFalse);

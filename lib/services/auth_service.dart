@@ -22,6 +22,7 @@ import 'premium_sync_service.dart';
 import 'manual_question_service.dart';
 import 'question_rating_service.dart';
 import 'question_note_service.dart';
+import 'wrong_notebook_drawing_service.dart';
 import 'summary_card_progress_service.dart';
 
 /// Firebase anonim oturum + isteğe bağlı Google hesabı bağlama.
@@ -644,6 +645,7 @@ class AuthService extends ChangeNotifier {
     await DailyQuotaService.instance.onUserSessionChanged();
     await ManualQuestionService.instance.onUserSessionChanged();
     await QuestionNoteService.instance.onUserSessionChanged();
+    await WrongNotebookDrawingService.instance.onUserSessionChanged();
     await SummaryCardProgressService.instance.onUserSessionChanged();
     await DailyMiniExamService.instance.onAuthSessionChanged();
   }

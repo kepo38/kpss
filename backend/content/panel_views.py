@@ -58,6 +58,10 @@ from .question_fingerprint import (
     stem_fingerprint,
 )
 from .embeddings import refresh_question_embedding
+from .panel_context import (
+    mark_question_error_reports_reviewed,
+    pending_error_report_count,
+)
 from .test_grouping import (
     assign_question_to_test,
     rebalance_topic_tests,
@@ -649,7 +653,7 @@ def panel_error_reports(request: HttpRequest) -> HttpResponse:
             "status_choices": ERROR_REPORT_STATUS_CHOICES,
             "category_choices": ERROR_REPORT_CATEGORY_CHOICES,
             "status_counts": status_counts,
-            "open_count": status_counts.get("open", 0),
+            "open_count": pending_error_report_count(),
         },
     )
 
@@ -1824,6 +1828,7 @@ def panel_question_edit(
         _apply_question_scenario(question, target_topic, request.POST)
         question.save()
         refresh_question_embedding(question)
+        reviewed_reports = mark_question_error_reports_reviewed(question)
 
         assignment = request.POST.get("test_assignment", "auto")
         test = assign_question_to_test(question, target_topic, assignment)
@@ -1837,7 +1842,12 @@ def panel_question_edit(
             request,
             f"Soru kaydedildi → {test.title} "
             f"({test.questions.count()}/{target_topic.questions_per_test or 20}). "
-            "Uygulamalar birkaç saniye içinde güncellenir.",
+            "Uygulamalar birkaç saniye içinde güncellenir."
+            + (
+                f" {reviewed_reports} hata bildirimi incelendi olarak işaretlendi."
+                if reviewed_reports
+                else ""
+            ),
         )
         return redirect("panel_topic", topic_id=target_topic.id, tab="questions")
 
@@ -2811,6 +2821,10 @@ def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
         cfg.banner_ads_enabled = (
             request.POST.get("banner_ads_enabled") == "on"
         )
+        modules: dict[str, bool] = {}
+        for db_key, _, _, _ in cfg.STUDIO_MODULE_DEFS:
+            modules[db_key] = request.POST.get(f"studio_{db_key}") == "on"
+        cfg.studio_modules = modules
         cfg.save()
         messages.success(request, "Mobil arayüz ayarları kaydedildi.")
         return redirect("panel_mobile_ui")
@@ -2821,6 +2835,16 @@ def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
         {
             "config": cfg,
             "page_title": "Mobil arayüz",
+            "studio_rows": [
+                {
+                    "db_key": db_key,
+                    "api_key": api_key,
+                    "label": label,
+                    "section": section,
+                    "enabled": cfg.is_studio_module_enabled(db_key),
+                }
+                for db_key, api_key, label, section in cfg.STUDIO_MODULE_DEFS
+            ],
         },
     )
 

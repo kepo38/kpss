@@ -8,12 +8,11 @@ import 'option_column_layout.dart';
 /// Badge diameter (CircleAvatar radius 14) + gap after badge in option rows.
 const double kOptionBadgeLeadingWidth = 28 + 12;
 
-/// Short / math-ish şık: larger type (default option is 15).
-const double kCompactOptionFontSize = 18;
+/// Matematik / kısa sayısal şık punto (normal şık 15).
+const double kCompactOptionFontSize = 19;
 
-/// Şık metni — ÖSYM hizası: **tüm şıklar sola**.
-/// Yalnızca LaTeX (`$…$`) içeren şıklar daha büyük punto; ortalanmaz.
-/// Eşleştirme satırında eşit sütun (yalnızca forceColumns) — tasarım korunur.
+/// Şık metni — ÖSYM hizası: uzun metin sola; matematik şıkları ortalı + sabit punto.
+/// Eşleştirme satırında eşit sütun (yalnızca forceColumns).
 class ExamOptionView extends StatelessWidget {
   final String text;
   final int? forceColumns;
@@ -24,15 +23,28 @@ class ExamOptionView extends StatelessWidget {
     this.forceColumns,
   });
 
-  /// Büyük punto yalnızca LaTeX şıklarında.
-  /// Uzunluk eşiği / tire istisnası yok — aynı soruda A–E hizası bozulmasın.
+  /// Yalnızca LaTeX `$…$` — eski kısa-metin eşiği kaldırıldı (hizayı bozuyordu).
   static bool isCompactOption(String text) {
-    final visible = FormattedText.stripMarkup(text)
+    final visible = _visiblePlain(text);
+    if (visible.isEmpty) return false;
+    return visible.contains(r'$');
+  }
+
+  /// Matematik / kısa sayısal şık — ortalı büyük punto.
+  static bool isMathStyleOption(String text) {
+    if (isCompactOption(text)) return true;
+    final visible = _visiblePlain(text);
+    if (visible.isEmpty || visible.length > 56) return false;
+    if (RegExp(r'^\d+$').hasMatch(visible)) return true;
+    return RegExp(r'[√⁄÷×±^_=\\]|\\sqrt|\\frac|\\dfrac|\\tfrac')
+        .hasMatch(visible);
+  }
+
+  static String _visiblePlain(String text) {
+    return FormattedText.stripMarkup(text)
         .replaceAll('\u00a0', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (visible.isEmpty) return false;
-    return visible.contains(r'$');
   }
 
   List<String> _forcedCells(int columns) {
@@ -47,10 +59,7 @@ class ExamOptionView extends StatelessWidget {
         for (var i = cells.length; i < columns; i++) '',
       ];
     }
-    final raw = FormattedText.stripMarkup(text)
-        .replaceAll('\u00a0', ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    final raw = _visiblePlain(text);
     if (raw.isEmpty) return List.filled(columns, '');
     final dashParts = raw
         .split(RegExp(r'\s+(?:[-–—―−]{1,3}|---+)\s+'))
@@ -97,10 +106,10 @@ class ExamOptionView extends StatelessWidget {
       );
     }
 
-    final compact = isCompactOption(text);
+    final mathStyle = isMathStyleOption(text);
     final style = ExamTypography.option(
       color: Colors.white,
-      fontSize: compact ? kCompactOptionFontSize : 15,
+      fontSize: mathStyle ? kCompactOptionFontSize : 15,
     );
 
     return FormattedText(
@@ -109,7 +118,8 @@ class ExamOptionView extends StatelessWidget {
       ),
       examLayout: true,
       examWrap: true,
-      textAlign: TextAlign.start,
+      examScaleDown: false,
+      textAlign: mathStyle ? TextAlign.center : TextAlign.start,
       style: style,
     );
   }

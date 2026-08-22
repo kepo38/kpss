@@ -1,4 +1,6 @@
 import 'database_service.dart';
+import 'app_config_service.dart';
+import '../constants/studio_modules.dart';
 import 'play_billing_service.dart';
 
 /// Premium erişim kontrolü — tüm premium modüller bu servis üzerinden doğrulanır.
@@ -17,7 +19,10 @@ class PremiumService {
     return DatabaseService.instance.currentUser?.isYearlyPremium ?? false;
   }
 
-  bool get canUseOfflinePack => isYearlyPremium;
+  bool get isOfflinePackModuleEnabled =>
+      AppConfigService.instance.isStudioModuleEnabled(StudioModules.offlinePack);
+
+  bool get canUseOfflinePack => isYearlyPremium && isOfflinePackModuleEnabled;
 
   bool checkAccess() => isPremium;
 

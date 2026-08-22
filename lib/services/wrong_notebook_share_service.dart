@@ -13,7 +13,7 @@ import '../models/manual_question_model.dart';
 import '../models/question_model.dart';
 import '../widgets/account_link_card.dart';
 import '../widgets/wrong_notebook/wrong_notebook_share_card.dart';
-import 'ad_constants.dart';
+import '../widgets/wrong_notebook/wrong_notebook_share_quota_dialog.dart';
 import 'ad_manager.dart';
 import 'ad_service.dart';
 import 'premium_service.dart';
@@ -95,27 +95,7 @@ class WrongNotebookShareService {
     }
 
     if (!context.mounted) return false;
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Paylaşım hakkı'),
-        content: Text(
-          'Ekran görüntüsü yasaktır. Yanlış defterinden '
-          'GÜNDE ${AdConstants.wrongNotebookSharesPerDayFree} SORU PAYLAŞABİLİRSİNİZ; '
-          'bunun için kısa bir reklam izlemeniz gerekir. Devam edilsin mi?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reklam izle'),
-          ),
-        ],
-      ),
-    );
+    final proceed = await showWrongNotebookShareQuotaDialog(context);
     if (proceed != true) return false;
 
     final earned = await AdService.showRewardedAd(

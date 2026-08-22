@@ -10,6 +10,7 @@ class HomeModuleRow extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final bool locked;
+  final bool disabled;
   final bool accent;
   final bool premiumTone;
   final Color? tint;
@@ -21,6 +22,7 @@ class HomeModuleRow extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.locked = false,
+    this.disabled = false,
     this.accent = false,
     this.premiumTone = false,
     this.tint,
@@ -28,16 +30,23 @@ class HomeModuleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gold = premiumTone || locked;
+    final inactive = disabled;
+    final gold = !inactive && (premiumTone || locked);
     final tintColor = tint ??
         (gold ? AppTheme.champagne : AppTheme.neonEdge);
-    final iconColor = gold ? AppTheme.champagneLight : tintColor;
-    final titleColor = Colors.white.withValues(alpha: 0.96);
-    final subColor = Colors.white.withValues(alpha: 0.52);
+    final iconColor = inactive
+        ? Colors.white.withValues(alpha: 0.35)
+        : (gold ? AppTheme.champagneLight : tintColor);
+    final titleColor = Colors.white.withValues(alpha: inactive ? 0.42 : 0.96);
+    final subColor = Colors.white.withValues(alpha: inactive ? 0.32 : 0.52);
+    final effectiveSubtitle =
+        inactive ? 'Geçici olarak kapalı' : subtitle;
 
     return ScaleButton(
-      onPressed: onTap,
-      child: Container(
+      onPressed: inactive ? null : onTap,
+      child: Opacity(
+        opacity: inactive ? 0.55 : 1,
+        child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
         decoration: BoxDecoration(
@@ -117,7 +126,31 @@ class HomeModuleRow extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (locked) ...[
+                      if (inactive) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: const Color(0xFF64748B).withValues(alpha: 0.22),
+                            border: Border.all(
+                              color: const Color(0xFF94A3B8).withValues(alpha: 0.45),
+                            ),
+                          ),
+                          child: Text(
+                            'PASİF',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                              color: Colors.white.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ),
+                      ] else if (locked) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -146,7 +179,7 @@ class HomeModuleRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    subtitle,
+                    effectiveSubtitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -165,6 +198,7 @@ class HomeModuleRow extends StatelessWidget {
               color: tintColor.withValues(alpha: 0.75),
             ),
           ],
+        ),
         ),
       ),
     );

@@ -21,12 +21,10 @@ class QuizStroke {
 /// Kaydedilmiş çizimleri etkileşimsiz gösterir (kalem kapalıyken).
 class QuizStrokeLayer extends StatelessWidget {
   final List<QuizStroke> strokes;
-  final double scrollOffset;
 
   const QuizStrokeLayer({
     super.key,
     required this.strokes,
-    this.scrollOffset = 0,
   });
 
   @override
@@ -34,7 +32,10 @@ class QuizStrokeLayer extends StatelessWidget {
     if (strokes.isEmpty) return const SizedBox.shrink();
     return IgnorePointer(
       child: CustomPaint(
-        painter: QuizStrokePainter(strokes, scrollOffset: scrollOffset),
+        painter: QuizStrokePainter(
+          strokes,
+          paintOffset: Offset.zero,
+        ),
         child: const SizedBox.expand(),
       ),
     );
@@ -47,6 +48,7 @@ class QuizDrawingOverlay extends StatefulWidget {
   final VoidCallback onClear;
   final VoidCallback? onUndo;
   final double scrollOffset;
+  final EdgeInsets contentPadding;
 
   const QuizDrawingOverlay({
     super.key,
@@ -55,6 +57,7 @@ class QuizDrawingOverlay extends StatefulWidget {
     required this.onClear,
     this.onUndo,
     this.scrollOffset = 0,
+    this.contentPadding = EdgeInsets.zero,
   });
 
   @override
@@ -83,8 +86,15 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
   /// Araç çubuğunun alttan uzaklığı — sürükleyerek değişir.
   double _toolbarBottom = 12;
 
-  Offset _toContent(Offset viewport) =>
-      Offset(viewport.dx, viewport.dy + widget.scrollOffset);
+  Offset _toContent(Offset viewport) => Offset(
+        viewport.dx - widget.contentPadding.left,
+        viewport.dy - widget.contentPadding.top + widget.scrollOffset,
+      );
+
+  Offset get _paintOffset => Offset(
+        -widget.contentPadding.left,
+        -widget.contentPadding.top + widget.scrollOffset,
+      );
 
   void _addPoint(Offset viewportPoint) {
     final point = _toContent(viewportPoint);
@@ -160,7 +170,7 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                             highlighter: _highlighter,
                           ),
                       ],
-                      scrollOffset: widget.scrollOffset,
+                      paintOffset: _paintOffset,
                     ),
                   ),
                 ),
@@ -456,11 +466,11 @@ class _ToolButton extends StatelessWidget {
 
 class QuizStrokePainter extends CustomPainter {
   final List<QuizStroke> strokes;
-  final double scrollOffset;
+  final Offset paintOffset;
 
   const QuizStrokePainter(
     this.strokes, {
-    this.scrollOffset = 0,
+    this.paintOffset = Offset.zero,
   });
 
   @override
@@ -489,11 +499,14 @@ class QuizStrokePainter extends CustomPainter {
 
       final path = Path()
         ..moveTo(
-          stroke.points.first.dx,
-          stroke.points.first.dy - scrollOffset,
+          stroke.points.first.dx - paintOffset.dx,
+          stroke.points.first.dy - paintOffset.dy,
         );
       for (final point in stroke.points.skip(1)) {
-        path.lineTo(point.dx, point.dy - scrollOffset);
+        path.lineTo(
+          point.dx - paintOffset.dx,
+          point.dy - paintOffset.dy,
+        );
       }
       canvas.drawPath(path, paint);
     }
@@ -502,5 +515,5 @@ class QuizStrokePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant QuizStrokePainter oldDelegate) =>
       oldDelegate.strokes != strokes ||
-      oldDelegate.scrollOffset != scrollOffset;
+      oldDelegate.paintOffset != paintOffset;
 }

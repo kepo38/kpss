@@ -32,6 +32,7 @@ import 'services/last_study_session_service.dart';
 import 'services/local_database.dart';
 import 'services/notes_service.dart';
 import 'services/question_note_service.dart';
+import 'services/wrong_notebook_drawing_service.dart';
 import 'services/exam_catalog_service.dart';
 import 'services/kpss_preference_service.dart';
 import 'services/theme_preference_service.dart';
@@ -297,6 +298,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
         PracticeExamService.instance.initialize(),
         NotesService.instance.initialize(),
         QuestionNoteService.instance.initialize(),
+        WrongNotebookDrawingService.instance.initialize(),
         FavoritesService.instance.initialize(),
         SummaryCardProgressService.instance.initialize(),
         AdFreeCampaignService.instance.initialize(),

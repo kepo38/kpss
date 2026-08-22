@@ -1211,16 +1211,18 @@ class _PremiumTimerRing extends StatelessWidget {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  isBreak ? 'Mola' : 'HEDEF Kamu',
-                  style: GoogleFonts.manrope(
-                    fontSize: 13,
-                    letterSpacing: 1.4,
-                    fontWeight: FontWeight.w600,
-                    color: glow.withValues(alpha: 0.9),
+                if (isBreak) ...[
+                  Text(
+                    'Mola',
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      letterSpacing: 1.4,
+                      fontWeight: FontWeight.w600,
+                      color: glow.withValues(alpha: 0.9),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
+                  const SizedBox(height: 6),
+                ],
                 Text(
                   time,
                   style: GoogleFonts.manrope(
@@ -1244,7 +1246,7 @@ class _PremiumTimerRing extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      'ÇALIŞIYOR',
+                      'HEDEF Kamu',
                       style: GoogleFonts.manrope(
                         fontSize: 10,
                         letterSpacing: 1.2,

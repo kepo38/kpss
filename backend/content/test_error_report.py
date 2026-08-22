@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
@@ -9,6 +10,10 @@ from content.models import (
     Topic,
     TopicTest,
     TopicTestCompletion,
+)
+from content.panel_context import (
+    mark_question_error_reports_reviewed,
+    pending_error_report_count,
 )
 
 
@@ -103,3 +108,82 @@ class QuestionErrorReportApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["minTestsRequired"], 5)
         self.assertEqual(QuestionErrorReport.objects.count(), 0)
+
+
+class QuestionErrorReportPanelTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="panel-staff",
+            password="secret",
+            is_staff=True,
+        )
+        self.subject = Subject.objects.create(slug="turkce", name="Türkçe")
+        self.topic = Topic.objects.create(
+            subject=self.subject,
+            slug="paragraf",
+            name="Paragraf",
+        )
+        self.question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_panel_err",
+            stem="Soru metni",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=True,
+        )
+
+    def _report(self, status: str = "open", index: int = 0) -> QuestionErrorReport:
+        user, _ = AppUser.objects.get_or_create(
+            google_sub=f"panel-reporter-{index}",
+            defaults={
+                "email": f"panel{index}@example.com",
+                "display_name": f"Öğrenci {index}",
+                "api_token": f"panel-token-{index}",
+            },
+        )
+        return QuestionErrorReport.objects.create(
+            question=self.question,
+            user=user,
+            category="typo",
+            status=status,
+        )
+
+    def test_pending_count_only_open(self):
+        self._report("open", index=1)
+        self._report("open", index=2)
+        self._report("reviewed", index=3)
+        self._report("resolved", index=4)
+        self.assertEqual(pending_error_report_count(), 2)
+
+    def test_mark_reviewed_on_question_edit(self):
+        self._report("open", index=1)
+        self._report("open", index=2)
+        updated = mark_question_error_reports_reviewed(self.question)
+        self.assertEqual(updated, 2)
+        self.assertEqual(pending_error_report_count(), 0)
+
+    def test_panel_nav_shows_yellow_pending_count(self):
+        self._report("open", index=1)
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("panel_home"))
+        self.assertContains(response, 'nav-pending-count"> (1)</span>')
+
+    def test_panel_error_reports_page_shows_pending_count(self):
+        self._report("open", index=1)
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("panel_error_reports"))
+        self.assertContains(response, 'pending-count">1</span>')
+        self.assertNotContains(response, 'pending-count">2</span>')
+
+    def test_status_change_drops_pending_count(self):
+        report = self._report("open", index=1)
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("panel_error_report_status", kwargs={"report_id": report.id}),
+            data={"status": "reviewed"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(pending_error_report_count(), 0)

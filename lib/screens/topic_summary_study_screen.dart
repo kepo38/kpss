@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/content_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
+import '../widgets/embossed_app_bar_title.dart';
 import '../widgets/topic_summary_swipe_deck.dart';
 
 /// Yalnızca özet kart destesi + Unuttum / Biliyorum.
@@ -27,14 +28,7 @@ class TopicSummaryStudyScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         centerTitle: true,
         leading: const AppBackButton(),
-        title: const Text(
-          'Özet Konular',
-          style: TextStyle(
-            fontFamily: 'serif',
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-          ),
-        ),
+        title: const EmbossedAppBarTitle('Özet Konular'),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(

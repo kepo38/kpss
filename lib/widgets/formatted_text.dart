@@ -143,6 +143,28 @@ class FormattedText extends StatelessWidget {
   static bool isPlainMathLetter(String tex) =>
       _plainMathLetterRe.hasMatch(tex.trim());
 
+  static String _uprightBareLetters(String s) {
+    return s.replaceAllMapped(
+      RegExp(r'[A-Za-zÇçĞğİıÖöŞşÜü]'),
+      (m) => '\\mathrm{${m.group(0)}}',
+    );
+  }
+
+  static String _wrapLettersUpright(String s) {
+    final holders = <String>[];
+    String hold(String raw) {
+      holders.add(raw);
+      return '§§@${holders.length - 1}@§§';
+    }
+
+    var t = s.replaceAllMapped(
+      RegExp(r'\\mathrm\{[^{}]*\}'),
+      (m) => hold(m.group(0)!),
+    );
+    t = _uprightBareLetters(t);
+    return _expandHolders(t, holders, r'§§@(\d+)@§§');
+  }
+
   /// Latin / Türkçe harfleri dik (\mathrm). Array/matrix ortamlarına dokunma.
   static String uprightMathLetters(String tex) {
     if (tex.isEmpty) return tex;
@@ -151,35 +173,52 @@ class FormattedText extends StatelessWidget {
 
     final holders = <String>[];
     // Placeholder'da Latin harf OLMAMALI: aksi halde aşağıdaki
-    // \mathrm sarmalayıcı `§§C0§§` içindeki C'yi bozup expand'i kırar →
-    // ekranda `§§C0§§` sızıntısı (örn. \cdot yerine).
+    // \mathrm sarmalayıcı placeholder içindeki harfi bozup expand'i kırar →
+    // ekranda §§ sızıntısı (örn. \cdot yerine).
     String hold(String raw) {
       holders.add(raw);
       return '§§#${holders.length - 1}#§§';
     }
 
     var t = tex;
-    t = t.replaceAllMapped(RegExp(r'\\[a-zA-Z]+\*?'), (m) => hold(m.group(0)!));
-    var bracePass = 0;
-    while (bracePass < 8 && t.contains('{')) {
-      final next =
-          t.replaceAllMapped(RegExp(r'\{[^{}]*\}'), (m) => hold(m.group(0)!));
-      if (next == t) break;
-      t = next;
-      bracePass++;
-    }
+
+    // \text{…} / \mathrm{…} içeriğine dokunma.
     t = t.replaceAllMapped(
-      RegExp(r'[A-Za-zÇçĞğİıÖöŞşÜü]'),
-      (m) => '\\mathrm{${m.group(0)}}',
+      RegExp(r'\\(?:text|mathrm|mathbf)\*?(?:\[[^\]]*\])?\{[^{}]*\}'),
+      (m) => hold(m.group(0)!),
     );
+
+    t = t.replaceAllMapped(RegExp(r'\\[a-zA-Z]+\*?'), (m) => hold(m.group(0)!));
+
+    // Basit {4xy}, {a} gruplarında harfleri dik yap; `\mathrm{…}` iç {x} eşleşmesin.
+    for (var pass = 0; pass < 12 && t.contains('{'); pass++) {
+      t = t.replaceAllMapped(
+        RegExp(r'\\mathrm\{[^{}]*\}'),
+        (m) => hold(m.group(0)!),
+      );
+
+      var changed = false;
+      t = t.replaceAllMapped(RegExp(r'\{([^{}]*)\}'), (m) {
+        final inner = m.group(1)!;
+        if (inner.contains('\\')) {
+          changed = true;
+          return hold(m.group(0)!);
+        }
+        if (RegExp(r'^[clr]$').hasMatch(inner)) {
+          return m.group(0)!;
+        }
+        final upright = _uprightBareLetters(inner);
+        if (upright == inner) return m.group(0)!;
+        changed = true;
+        final wrapped = '{$upright}';
+        return hold(wrapped);
+      });
+      if (!changed) break;
+    }
+
+    t = _wrapLettersUpright(t);
     t = _expandHolders(t, holders, r'§§#(\d+)#§§');
-    t = t.replaceAllMapped(RegExp(r'\{([A-Za-zÇçĞğİıÖöŞşÜü])\}'), (m) {
-      final letter = m.group(1)!;
-      if (letter == 'c' || letter == 'l' || letter == 'r') {
-        return m.group(0)!;
-      }
-      return '{\\mathrm{$letter}}';
-    });
+
     return t;
   }
 

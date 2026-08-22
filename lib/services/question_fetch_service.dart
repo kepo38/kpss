@@ -9,6 +9,7 @@ import '../models/question_model.dart';
 import '../widgets/countdown_widget.dart';
 import 'content_bank_service.dart';
 import 'offline_pack_service.dart';
+import 'premium_service.dart';
 
 class QuestionFetchResult {
   final List<QuestionModel> questions;
@@ -201,6 +202,7 @@ class QuestionFetchService {
   }
 
   bool get _useLocalFullBank =>
+      PremiumService.instance.canUseOfflinePack &&
       OfflinePackService.instance.isReady &&
       ContentBankService.instance.hasFullQuestionBank;
 

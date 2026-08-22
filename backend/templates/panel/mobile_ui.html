@@ -5,7 +5,7 @@
   {{ page_title }}
 </div>
 <h1>{{ page_title }}</h1>
-<p class="lead">Ana sayfa balonu ve quiz banner reklamlarını buradan yönetin.</p>
+<p class="lead">Ana sayfa balonu, quiz banner ve Stüdyo modül görünürlüğünü buradan yönetin.</p>
 
 <form class="form" method="post" style="max-width:720px;">
   {% csrf_token %}
@@ -39,6 +39,39 @@
         {% if config.banner_ads_enabled %}checked{% endif %}>
       Banner reklamları göster (aktif)
     </label>
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Stüdyo — Premium suite</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Pasif modüller uygulamada soluk görünür ve tıklanamaz. Offline Paket kapalıyken
+      indirme ve satın alma akışı da engellenir.
+    </p>
+    {% for row in studio_rows %}
+      {% if row.section == "premium" %}
+      <label class="check">
+        <input type="checkbox" name="studio_{{ row.db_key }}"
+          {% if row.enabled %}checked{% endif %}>
+        {{ row.label }} <span class="media-hint">({{ row.api_key }})</span>
+      </label>
+      {% endif %}
+    {% endfor %}
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Stüdyo — Çalışma araçları</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Ücretsiz araçlar. Pasif yapıldığında Stüdyo listesinde görünür ama kullanılamaz.
+    </p>
+    {% for row in studio_rows %}
+      {% if row.section == "tools" %}
+      <label class="check">
+        <input type="checkbox" name="studio_{{ row.db_key }}"
+          {% if row.enabled %}checked{% endif %}>
+        {{ row.label }} <span class="media-hint">({{ row.api_key }})</span>
+      </label>
+      {% endif %}
+    {% endfor %}
   </fieldset>
 
   <p class="media-hint">Son güncelleme: {{ config.updated_at|date:"d.m.Y H:i" }}</p>

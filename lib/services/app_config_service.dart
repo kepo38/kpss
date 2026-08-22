@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import '../constants/studio_modules.dart';
 import 'auth_service.dart';
 
 /// Sunucudan mobil arayüz ayarları — promosyon balonu, banner reklam vb.
@@ -17,6 +18,9 @@ class AppConfigService extends ChangeNotifier {
   String _wrongNotebookBubbleLabel = 'YANLIŞ DEFTERİM';
   /// API gelmezse / yüklenmeden önce banner açık (mevcut davranış).
   bool _bannerAdsEnabled = true;
+  final Map<String, bool> _studioModules = {
+    for (final key in StudioModules.allKeys) key: true,
+  };
   DateTime? _updatedAt;
   bool _authListening = false;
 
@@ -27,6 +31,10 @@ class AppConfigService extends ChangeNotifier {
   bool get wrongNotebookBubbleEnabled => _wrongNotebookBubbleEnabled;
   String get wrongNotebookBubbleLabel => _wrongNotebookBubbleLabel;
   bool get bannerAdsEnabled => _bannerAdsEnabled;
+
+  /// Panelden pasif yapılan Stüdyo modülleri — anahtar yoksa açık.
+  bool isStudioModuleEnabled(String moduleId) =>
+      _studioModules[moduleId] ?? true;
 
   String? _sessionDismissKey() {
     final userId = AuthService.instance.user?.id;
@@ -79,6 +87,14 @@ class AppConfigService extends ChangeNotifier {
       // Anahtar yoksa eski sunucular için banner açık kalsın.
       if (map.containsKey('bannerAdsEnabled')) {
         _bannerAdsEnabled = map['bannerAdsEnabled'] == true;
+      }
+      final studioRaw = map['studioModules'];
+      if (studioRaw is Map) {
+        for (final key in StudioModules.allKeys) {
+          if (studioRaw.containsKey(key)) {
+            _studioModules[key] = studioRaw[key] == true;
+          }
+        }
       }
       final rawUpdated = map['updatedAt']?.toString();
       if (rawUpdated != null && rawUpdated.isNotEmpty) {

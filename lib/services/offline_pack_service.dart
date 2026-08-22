@@ -75,7 +75,10 @@ class OfflinePackService extends ChangeNotifier {
   }
 
   String statusLabel() {
-    if (!PremiumService.instance.canUseOfflinePack) {
+    if (!PremiumService.instance.isOfflinePackModuleEnabled) {
+      return 'Geçici olarak kapalı';
+    }
+    if (!PremiumService.instance.isYearlyPremium) {
       return 'Yalnızca yıllık Premium';
     }
     if (isReady) {
@@ -89,6 +92,13 @@ class OfflinePackService extends ChangeNotifier {
     if (!AuthService.instance.hasPermanentAccount) {
       _status = OfflinePackDownloadStatus.denied;
       _lastError = 'Offline paket için Google ile giriş gerekli.';
+      notifyListeners();
+      return false;
+    }
+
+    if (!PremiumService.instance.isOfflinePackModuleEnabled) {
+      _status = OfflinePackDownloadStatus.denied;
+      _lastError = 'Offline paket şu an kullanıma kapalı.';
       notifyListeners();
       return false;
     }

@@ -23,6 +23,7 @@ import '../services/premium_service.dart';
 import '../services/question_error_report_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/question_note_service.dart';
+import '../services/wrong_notebook_drawing_service.dart';
 import '../services/question_rating_service.dart';
 import '../services/question_view_service.dart';
 import '../theme/app_theme.dart';
@@ -30,6 +31,7 @@ import '../theme/exam_typography.dart';
 import '../utils/solution_preview.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
+import '../widgets/embossed_app_bar_title.dart';
 import '../widgets/favorite_heart_button.dart';
 import '../widgets/exam_text/exam_option_view.dart';
 import '../widgets/exam_text/exam_solution_view.dart';
@@ -140,6 +142,8 @@ class _QuizScreenState extends State<QuizScreen>
   static const _correctGreen = Color(0xFF34D399);
   static const _wrongRed = Color(0xFFF87171);
   static const _answeredWrongBurgundy = Color(0xFF9F1239);
+  static const _quizContentPaddingLeft = 20.0;
+  static const _quizContentPaddingTop = 8.0;
   static const _previousBlue = Color(0xFF60A5FA);
 
   @override
@@ -194,6 +198,9 @@ class _QuizScreenState extends State<QuizScreen>
     _timerPaused = _selectedAnswer != null || widget.fromWrongNotebook;
     FavoritesService.instance.initialize();
     QuestionNoteService.instance.initialize();
+    if (widget.fromWrongNotebook) {
+      unawaited(_loadPersistedDrawings(_currentQuestion.id));
+    }
     AnswerFeedbackService.instance.ensureReady();
     AdManager.instance.startTestSession(
       adFreeExperience: widget.adFreeExperience,
@@ -443,7 +450,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   /// Doğru cevaplayan oranı — `Başarı: %49`. Veri yoksa `Başarı: —`.
-  String _successRateLabel() {
+  double? _successRatePercent() {
     final live = _optionPercentages;
     if (live != null && live.isNotEmpty) {
       final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
@@ -457,30 +464,40 @@ class _QuizScreenState extends State<QuizScreen>
         }
       }
       if (livePct != null) {
-        return 'Başarı: %${livePct.round()}';
+        return livePct <= 1.0 ? livePct * 100 : livePct;
       }
     }
 
     final summaryRate = _attemptSummaries[_currentQuestion.id]?.correctRate;
     if (summaryRate != null) {
-      final pct = summaryRate <= 1.0 ? summaryRate * 100 : summaryRate;
-      return 'Başarı: %${pct.round()}';
+      return summaryRate <= 1.0 ? summaryRate * 100 : summaryRate;
     }
 
     final refreshed = _liveCorrectRates[_currentQuestion.id];
     if (refreshed != null) {
-      final pct = refreshed <= 1.0 ? refreshed * 100 : refreshed;
-      return 'Başarı: %${pct.round()}';
+      return refreshed <= 1.0 ? refreshed * 100 : refreshed;
     }
 
     final rate = _currentQuestion.correctRate;
     if (rate != null) {
-      final pct = rate <= 1.0 ? (rate * 100) : rate;
-      return 'Başarı: %${pct.round()}';
+      return rate <= 1.0 ? rate * 100 : rate;
     }
 
-    // Henüz cevap istatistiği yok — chip yine görünsün (ör. Matematik Test 1).
-    return 'Başarı: —';
+    return null;
+  }
+
+  String _successRateLabel() {
+    final pct = _successRatePercent();
+    if (pct != null) return 'Başarı: %${pct.round()}';
+    // Henüz istatistik yok — örnek gösterim.
+    return 'Başarı: %70';
+  }
+
+  /// Dikey gösterge; veri yokken örnek %70.
+  double _successRateMeterValue() {
+    final pct = _successRatePercent();
+    if (pct != null) return (pct / 100).clamp(0.0, 1.0);
+    return 0.7;
   }
 
   Map<String, double>? get _optionPercentages =>
@@ -762,11 +779,60 @@ class _QuizScreenState extends State<QuizScreen>
     return result ?? false;
   }
 
+  static const _drawingKeySep = '::';
+
+  String _drawingStorageKey(String questionId, {required bool solution}) =>
+      '$questionId$_drawingKeySep${solution ? 'solution' : 'question'}';
+
+  String get _activeDrawingKey => _drawingStorageKey(
+        _currentQuestion.id,
+        solution: _showingSolution,
+      );
+
+  Future<void> _loadPersistedDrawings(String questionId) async {
+    if (!widget.fromWrongNotebook) return;
+    await WrongNotebookDrawingService.instance.initialize();
+    if (!mounted) return;
+    for (final solution in [false, true]) {
+      final strokes = WrongNotebookDrawingService.instance.strokesFor(
+        questionId,
+        solution: solution,
+      );
+      if (strokes.isEmpty) continue;
+      _drawings[_drawingStorageKey(questionId, solution: solution)] =
+          List<QuizStroke>.from(strokes);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _persistDrawingSurface({
+    required String questionId,
+    required bool solution,
+  }) async {
+    if (!widget.fromWrongNotebook) return;
+    final key = _drawingStorageKey(questionId, solution: solution);
+    await WrongNotebookDrawingService.instance.saveStrokes(
+      questionId,
+      solution: solution,
+      strokes: _drawings[key] ?? const [],
+    );
+  }
+
+  Future<void> _persistCurrentDrawings() async {
+    if (!widget.fromWrongNotebook || widget.questions.isEmpty) return;
+    final questionId = _currentQuestion.id;
+    await Future.wait([
+      _persistDrawingSurface(questionId: questionId, solution: false),
+      _persistDrawingSurface(questionId: questionId, solution: true),
+    ]);
+  }
+
   void _exitWrongNotebook() {
     if (_isFinishing || !mounted) return;
     _isFinishing = true;
     _drawingEnabled = false;
     _ticker?.cancel();
+    unawaited(_persistCurrentDrawings());
     AdManager.instance.endTestSession();
     Navigator.of(context).pop();
   }
@@ -887,6 +953,9 @@ class _QuizScreenState extends State<QuizScreen>
     if (index < 0 || index >= widget.questions.length) return;
     if (index == _currentIndex) return;
     _answers[_currentIndex] = _selectedAnswer;
+    if (widget.fromWrongNotebook) {
+      unawaited(_persistCurrentDrawings());
+    }
     setState(() {
       _currentIndex = index;
       _selectedAnswer = _answers[index];
@@ -904,6 +973,9 @@ class _QuizScreenState extends State<QuizScreen>
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
     unawaited(_recordCurrentView());
+    if (widget.fromWrongNotebook) {
+      unawaited(_loadPersistedDrawings(widget.questions[index].id));
+    }
   }
 
   Future<void> _recordCurrentView() async {
@@ -1192,11 +1264,15 @@ class _QuizScreenState extends State<QuizScreen>
     if (_isFinishing) return;
     _answers[_currentIndex] = _selectedAnswer;
     if (_currentIndex < widget.questions.length - 1) {
+      if (widget.fromWrongNotebook) {
+        unawaited(_persistCurrentDrawings());
+      }
       setState(() {
         _currentIndex++;
         _selectedAnswer = _answers[_currentIndex];
         _showingSolution = false;
         _solutionUnlocking = false;
+        _drawingEnabled = false;
         _resetRatingState();
         _resetErrorReportState();
         _syncTimerForCurrentQuestion();
@@ -1207,6 +1283,11 @@ class _QuizScreenState extends State<QuizScreen>
       if (_selectedAnswer != null) unawaited(_loadRating());
       unawaited(_loadErrorReportState());
       unawaited(_recordCurrentView());
+      if (widget.fromWrongNotebook) {
+        unawaited(
+          _loadPersistedDrawings(widget.questions[_currentIndex].id),
+        );
+      }
     } else {
       if (widget.fromWrongNotebook) {
         _exitWrongNotebook();
@@ -1277,11 +1358,15 @@ class _QuizScreenState extends State<QuizScreen>
   void _previousQuestion() {
     if (_isFinishing || _currentIndex <= 0) return;
     _answers[_currentIndex] = _selectedAnswer;
+    if (widget.fromWrongNotebook) {
+      unawaited(_persistCurrentDrawings());
+    }
     setState(() {
       _currentIndex--;
       _selectedAnswer = _answers[_currentIndex];
       _showingSolution = false;
       _solutionUnlocking = false;
+      _drawingEnabled = false;
       _resetRatingState();
       _resetErrorReportState();
       _syncTimerForCurrentQuestion();
@@ -1292,6 +1377,11 @@ class _QuizScreenState extends State<QuizScreen>
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
     unawaited(_recordCurrentView());
+    if (widget.fromWrongNotebook) {
+      unawaited(
+        _loadPersistedDrawings(widget.questions[_currentIndex].id),
+      );
+    }
   }
 
   Future<void> _showResultDialog(QuizResult result) {
@@ -1539,7 +1629,10 @@ class _QuizScreenState extends State<QuizScreen>
                       onPressed: !canToggleSolution
                           ? null
                           : _showingSolution
-                              ? () => setState(() => _showingSolution = false)
+                              ? () => setState(() {
+                                    _showingSolution = false;
+                                    _drawingEnabled = false;
+                                  })
                               : _requestSolution,
                       style: solutionStyle(enabled: canToggleSolution),
                       child: Text(
@@ -1641,16 +1734,11 @@ class _QuizScreenState extends State<QuizScreen>
               alignment: Alignment.centerLeft,
               child: Transform.translate(
                 offset: const Offset(-10, 0),
-                child: Text(
-                  testTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.champagne,
-                    height: 1.15,
+                child: SizedBox(
+                  width: (titleW * 0.4).clamp(96.0, 220.0),
+                  child: EmbossedAppBarTitle(
+                    testTitle,
+                    alignLeft: true,
                   ),
                 ),
               ),
@@ -1711,7 +1799,7 @@ class _QuizScreenState extends State<QuizScreen>
         appBar: AppBar(
           backgroundColor: AppTheme.inkSoft,
           foregroundColor: Colors.white,
-          centerTitle: widget.dailyMiniRankingMode,
+          centerTitle: false,
           titleSpacing: 0,
           leadingWidth: 48,
           leading: AppBackButton(onPressed: () async {
@@ -1725,17 +1813,33 @@ class _QuizScreenState extends State<QuizScreen>
             }
           }),
           title: widget.dailyMiniRankingMode
-              ? const Text(
-                  DailyMiniExamConstants.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.visible,
-                  style: TextStyle(
-                    fontFamily: 'sans-serif',
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.7,
-                    color: Colors.white,
-                    height: 1.05,
+              ? ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (bounds) => const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFF7EED8),
+                      AppTheme.champagneLight,
+                      AppTheme.neonGold,
+                      AppTheme.champagne,
+                      Color(0xFFB8944A),
+                    ],
+                    stops: [0.0, 0.22, 0.48, 0.72, 1.0],
+                  ).createShader(bounds),
+                  child: const Text(
+                    DailyMiniExamConstants.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.visible,
+                    textAlign: TextAlign.start,
+                    style: TextStyle(
+                      fontFamily: 'sans-serif',
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.7,
+                      color: Colors.white,
+                      height: 1.05,
+                    ),
                   ),
                 )
               : widget.fromWrongNotebook
@@ -1819,6 +1923,9 @@ class _QuizScreenState extends State<QuizScreen>
                       successLabel: widget.fromWrongNotebook
                           ? null
                           : _successRateLabel(),
+                      successRate: widget.fromWrongNotebook
+                          ? null
+                          : _successRateMeterValue(),
                       difficultyLabel: _difficultyLabel(),
                       difficultyOnRight: widget.fromWrongNotebook,
                       attemptLabel: _viewLabelForCurrent(),
@@ -1912,8 +2019,8 @@ class _QuizScreenState extends State<QuizScreen>
                         zoomEnabled:
                             !_drawingEnabled && !_isFinishing,
                         padding: EdgeInsets.fromLTRB(
-                          20,
-                          8,
+                          _quizContentPaddingLeft,
+                          _quizContentPaddingTop,
                           20,
                           _drawingEnabled ? 72 : 16,
                         ),
@@ -1924,14 +2031,13 @@ class _QuizScreenState extends State<QuizScreen>
                               padding: EdgeInsets.zero,
                             ),
                             if (!_drawingEnabled &&
-                                (_drawings[_currentQuestion.id] ??
+                                (_drawings[_activeDrawingKey] ??
                                         const [])
                                     .isNotEmpty)
                               Positioned.fill(
                                 child: QuizStrokeLayer(
-                                  scrollOffset: 0,
                                   strokes:
-                                      _drawings[_currentQuestion.id]!,
+                                      _drawings[_activeDrawingKey]!,
                                 ),
                               ),
                           ],
@@ -1946,16 +2052,25 @@ class _QuizScreenState extends State<QuizScreen>
                                     ? _scrollController.offset
                                     : 0.0;
                             final strokes =
-                                _drawings[_currentQuestion.id] ??
+                                _drawings[_activeDrawingKey] ??
                                     const [];
                             return QuizDrawingOverlay(
                               scrollOffset: scrollOffset,
+                              contentPadding: const EdgeInsets.only(
+                                left: _quizContentPaddingLeft,
+                                top: _quizContentPaddingTop,
+                              ),
                               strokes: strokes,
                               onStrokeComplete: (stroke) {
                                 if (_isFinishing) return;
+                                final surface = _showingSolution;
+                                final questionId = _currentQuestion.id;
                                 setState(() {
                                   final list = _drawings.putIfAbsent(
-                                    _currentQuestion.id,
+                                    _drawingStorageKey(
+                                      questionId,
+                                      solution: surface,
+                                    ),
                                     () => [],
                                   );
                                   if (list.length >=
@@ -1964,26 +2079,62 @@ class _QuizScreenState extends State<QuizScreen>
                                   }
                                   list.add(stroke);
                                 });
+                                if (widget.fromWrongNotebook) {
+                                  unawaited(
+                                    _persistDrawingSurface(
+                                      questionId: questionId,
+                                      solution: surface,
+                                    ),
+                                  );
+                                }
                               },
                               onUndo: () {
                                 if (_isFinishing) return;
-                                final list =
-                                    _drawings[_currentQuestion.id];
+                                final surface = _showingSolution;
+                                final questionId = _currentQuestion.id;
+                                final key = _drawingStorageKey(
+                                  questionId,
+                                  solution: surface,
+                                );
+                                final list = _drawings[key];
                                 if (list == null || list.isEmpty) {
                                   return;
                                 }
                                 setState(() {
                                   list.removeLast();
                                   if (list.isEmpty) {
-                                    _drawings
-                                        .remove(_currentQuestion.id);
+                                    _drawings.remove(key);
                                   }
                                 });
+                                if (widget.fromWrongNotebook) {
+                                  unawaited(
+                                    _persistDrawingSurface(
+                                      questionId: questionId,
+                                      solution: surface,
+                                    ),
+                                  );
+                                }
                               },
-                              onClear: () => setState(
-                                () => _drawings
-                                    .remove(_currentQuestion.id),
-                              ),
+                              onClear: () {
+                                final surface = _showingSolution;
+                                final questionId = _currentQuestion.id;
+                                setState(
+                                  () => _drawings.remove(
+                                    _drawingStorageKey(
+                                      questionId,
+                                      solution: surface,
+                                    ),
+                                  ),
+                                );
+                                if (widget.fromWrongNotebook) {
+                                  unawaited(
+                                    _persistDrawingSurface(
+                                      questionId: questionId,
+                                      solution: surface,
+                                    ),
+                                  );
+                                }
+                              },
                             );
                           },
                         ),
@@ -2503,14 +2654,22 @@ class _OptionTile extends StatelessWidget {
 
   static const _correct = Color(0xFF34D399);
   static const _wrong = Color(0xFFF87171);
+  static const _borderWidth = 2.0;
+  static const _trailingSlotWidth = 36.0;
+
+  bool get _mathStyle =>
+      forceColumns == null && ExamOptionView.isMathStyleOption(text);
 
   @override
   Widget build(BuildContext context) {
+    return _buildClassicTile(context);
+  }
+
+  Widget _buildClassicTile(BuildContext context) {
     final Color fill;
     final Color border;
     final Color badge;
     final Color badgeText;
-    final double borderWidth;
     final List<BoxShadow>? glow;
 
     switch (tone) {
@@ -2519,7 +2678,6 @@ class _OptionTile extends StatelessWidget {
         border = _correct;
         badge = _correct;
         badgeText = AppTheme.ink;
-        borderWidth = 2;
         glow = [
           BoxShadow(
             color: _correct.withValues(alpha: 0.35),
@@ -2532,7 +2690,6 @@ class _OptionTile extends StatelessWidget {
         border = _wrong;
         badge = _wrong;
         badgeText = AppTheme.ink;
-        borderWidth = 2;
         glow = [
           BoxShadow(
             color: _wrong.withValues(alpha: 0.3),
@@ -2551,12 +2708,11 @@ class _OptionTile extends StatelessWidget {
             ? AppTheme.champagne
             : Colors.white.withValues(alpha: 0.12);
         badgeText = isSelected ? AppTheme.ink : Colors.white;
-        borderWidth = isSelected ? 2 : 1;
         glow = null;
     }
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: _mathStyle ? 8 : 10),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -2566,11 +2722,12 @@ class _OptionTile extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
             width: double.infinity,
+            constraints: BoxConstraints(minHeight: _mathStyle ? 52 : 0),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: fill,
               borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-              border: Border.all(color: border, width: borderWidth),
+              border: Border.all(color: border, width: _borderWidth),
               boxShadow: glow,
             ),
             child: Row(
@@ -2595,21 +2752,35 @@ class _OptionTile extends StatelessWidget {
                     forceColumns: forceColumns,
                   ),
                 ),
-                if (tone == _OptionTone.correct)
-                  const Icon(Icons.check_rounded, color: _correct, size: 20)
-                else if (tone == _OptionTone.wrong)
-                  const Icon(Icons.close_rounded, color: _wrong, size: 20),
-                if (percentage != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    '%${percentage!.toStringAsFixed(1)}',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.78),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
+                SizedBox(
+                  width: _trailingSlotWidth,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: tone == _OptionTone.correct
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: _correct,
+                            size: 20,
+                          )
+                        : tone == _OptionTone.wrong
+                            ? const Icon(
+                                Icons.close_rounded,
+                                color: _wrong,
+                                size: 20,
+                              )
+                            : percentage != null
+                                ? Text(
+                                    '%${percentage!.toStringAsFixed(1)}',
+                                    style: TextStyle(
+                                      color: Colors.white
+                                          .withValues(alpha: 0.78),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
                   ),
-                ],
+                ),
               ],
             ),
           ),

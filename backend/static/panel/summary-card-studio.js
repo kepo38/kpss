@@ -27,6 +27,46 @@
     return opt ? opt.textContent.trim() : "Konu";
   }
 
+  const SAMPLE_BODY =
+    "**Zincir kuralı:** dış fonksiyonun türevi × iç fonksiyonun türevi.\n\n" +
+    "Örnek: $f(g(x))$ için {green}ÖSYM{/green} genelde bileşke sorar.\n\n" +
+    "__Unutmayın:__ önce iç, sonra dış türev alınır.";
+
+  function renderMarkupHtml(raw) {
+    var text = String(raw || "").trim();
+    if (!text) return "";
+    if (window.KpssMathRender && window.KpssMathRender.documentHtml) {
+      return window.KpssMathRender.documentHtml(text);
+    }
+    return "<p>" + text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>";
+  }
+
+  function bodyPreviewHtml(raw) {
+    var text = String(raw || "").trim();
+    if (!text) {
+      return '<p class="sc-mock-placeholder">Özet metni buraya…</p>';
+    }
+    var html = renderMarkupHtml(text);
+    return html || '<p class="sc-mock-placeholder">Özet metni buraya…</p>';
+  }
+
+  function renderFormatExamples() {
+    document.querySelectorAll(".sc-format-demo[data-markup]").forEach(function (cell) {
+      var markup = cell.getAttribute("data-markup") || "";
+      cell.innerHTML = renderMarkupHtml(markup);
+    });
+  }
+
+  function bindSampleButton() {
+    var btn = document.getElementById("sc-insert-sample");
+    if (!btn || !body) return;
+    btn.addEventListener("click", function () {
+      body.value = SAMPLE_BODY;
+      body.dispatchEvent(new Event("input", { bubbles: true }));
+      body.focus();
+    });
+  }
+
   function syncText() {
     if (pvTopic) pvTopic.textContent = topicLabel();
     if (pvKind) {
@@ -38,8 +78,7 @@
       pvTitle.textContent = t || "Başlık buraya…";
     }
     if (pvBody) {
-      const b = (body && body.value.trim()) || "";
-      pvBody.textContent = b || "Özet metni buraya…";
+      pvBody.innerHTML = bodyPreviewHtml(body && body.value);
     }
   }
 
@@ -117,6 +156,16 @@
   if (imageInput) imageInput.addEventListener("change", syncImage);
   if (clearImage) clearImage.addEventListener("change", syncImage);
 
-  syncText();
-  syncImage();
+  function boot() {
+    syncText();
+    syncImage();
+    renderFormatExamples();
+    bindSampleButton();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 })();

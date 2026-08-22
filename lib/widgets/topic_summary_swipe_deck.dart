@@ -4,6 +4,7 @@ import '../models/content_models.dart';
 import '../services/summary_card_progress_service.dart';
 import '../theme/app_theme.dart';
 import 'favorite_heart_button.dart';
+import 'formatted_text.dart';
 
 /// Konu detayında Tinder tarzı özet kart destesi.
 class TopicSummarySwipeDeck extends StatefulWidget {
@@ -28,6 +29,9 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
     with SingleTickerProviderStateMixin {
   double _dragDx = 0;
   bool _busy = false;
+  bool _scrollLocked = false;
+  double _verticalSlop = 0;
+  double _horizontalSlop = 0;
 
   List<TopicSummaryCardModel> get _queue {
     final progress = SummaryCardProgressService.instance;
@@ -150,10 +154,25 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
               ),
             Expanded(
               child: GestureDetector(
-                onHorizontalDragUpdate: _busy
+                onHorizontalDragStart: _busy || _scrollLocked
                     ? null
-                    : (d) => setState(() => _dragDx += d.delta.dx),
-                onHorizontalDragEnd: _busy
+                    : (_) {
+                        _verticalSlop = 0;
+                        _horizontalSlop = 0;
+                      },
+                onHorizontalDragUpdate: _busy || _scrollLocked
+                    ? null
+                    : (d) {
+                        _verticalSlop += d.delta.dy.abs();
+                        _horizontalSlop += d.delta.dx.abs();
+                        // Dikey kaydırma niyeti → kart swipe etmesin.
+                        if (_verticalSlop > 22 &&
+                            _verticalSlop > _horizontalSlop * 1.25) {
+                          return;
+                        }
+                        setState(() => _dragDx += d.delta.dx);
+                      },
+                onHorizontalDragEnd: _busy || _scrollLocked
                     ? null
                     : (d) {
                         if (_dragDx > 110 ||
@@ -189,7 +208,13 @@ class _TopicSummarySwipeDeckState extends State<TopicSummarySwipeDeck>
                           angle: progress * 0.08,
                           child: Stack(
                             children: [
-                              SummaryCardFace(card: card),
+                              SummaryCardFace(
+                                card: card,
+                                onScrollLockChanged: (locked) {
+                                  if (_scrollLocked == locked) return;
+                                  setState(() => _scrollLocked = locked);
+                                },
+                              ),
                               if (progress > 0.15)
                                 _SwipeStamp(
                                   label: 'BİLİYORUM',
@@ -406,11 +431,13 @@ class _SwipeStamp extends StatelessWidget {
 class SummaryCardFace extends StatelessWidget {
   final TopicSummaryCardModel card;
   final bool showHeart;
+  final ValueChanged<bool>? onScrollLockChanged;
 
   const SummaryCardFace({
     super.key,
     required this.card,
     this.showHeart = true,
+    this.onScrollLockChanged,
   });
 
   /// Favorilerden tam kart göstermek için.
@@ -572,41 +599,72 @@ class SummaryCardFace extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            card.title,
-            style: const TextStyle(
-              fontFamily: 'serif',
-              fontSize: 21,
-              height: 1.15,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
-              color: Colors.white,
-            ),
-          ),
-          if (card.imageUrl != null && card.imageUrl!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Image.network(
-                  card.imageUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
           Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Text(
-                card.body,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.42,
-                  color: Colors.white.withValues(alpha: 0.78),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (onScrollLockChanged == null) return false;
+                if (n is ScrollStartNotification) {
+                  onScrollLockChanged!(true);
+                } else if (n is ScrollEndNotification) {
+                  onScrollLockChanged!(false);
+                }
+                return false;
+              },
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.only(right: 4, bottom: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      card.title,
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 21,
+                        height: 1.15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        color: Colors.white,
+                      ),
+                    ),
+                    if (card.imageUrl != null &&
+                        card.imageUrl!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: Image.network(
+                            card.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.white.withValues(alpha: 0.06),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                color: Colors.white.withValues(alpha: 0.35),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (card.body.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      FormattedText(
+                        card.body,
+                        paragraphLayout: true,
+                        preserveLineBreaks: true,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          height: 1.48,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
