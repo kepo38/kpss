@@ -346,7 +346,12 @@ class AuthService extends ChangeNotifier {
     _busy = true;
     _lastError = null;
     notifyListeners();
+    String? guestSubForMerge;
     try {
+      final fbBefore = FirebaseAuth.instance.currentUser;
+      if (fbBefore != null && fbBefore.isAnonymous) {
+        guestSubForMerge = fbBefore.uid;
+      }
       final googleUser = await _googleSignIn
           .signIn()
           .timeout(const Duration(seconds: 15));
@@ -432,6 +437,7 @@ class AuthService extends ChangeNotifier {
         idToken: idToken,
         accessToken: accessToken,
         displayName: googleUser.displayName,
+        guestSub: guestSubForMerge,
       );
     } on TimeoutException {
       debugPrint('Google giriş: timeout');
@@ -468,15 +474,19 @@ class AuthService extends ChangeNotifier {
     String? idToken,
     String? accessToken,
     String? displayName,
+    String? guestSub,
   }) async {
     try {
       final trimmedName = displayName?.trim();
+      final trimmedGuestSub = guestSub?.trim();
       final res = await http
           .post(
             ApiConfig.authGoogleUri(),
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
+              if (hasBackendSession && isAnonymous && (_token?.isNotEmpty ?? false))
+                'Authorization': 'Bearer $_token',
             },
             body: jsonEncode({
               if (idToken != null && idToken.isNotEmpty) 'id_token': idToken,
@@ -484,6 +494,8 @@ class AuthService extends ChangeNotifier {
                 'access_token': accessToken,
               if (trimmedName != null && trimmedName.isNotEmpty)
                 'display_name': trimmedName,
+              if (trimmedGuestSub != null && trimmedGuestSub.isNotEmpty)
+                'guest_sub': trimmedGuestSub,
             }),
           )
           .timeout(const Duration(seconds: 15));

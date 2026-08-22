@@ -271,7 +271,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       child: Row(
         children: [
-          const AppBackButton(),
+          AppBackButton.onDark(accent: _Neon.cyan),
           Expanded(
             child: Text(
               'ODAK MODU',

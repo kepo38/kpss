@@ -12,6 +12,7 @@ import urllib.request
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from .models import AppUser
@@ -253,7 +254,11 @@ def _verify_google_tokeninfo(id_token: str) -> dict[str, Any]:
     }
 
 
-def upsert_firebase_user(claims: dict[str, Any]) -> AppUser:
+def upsert_firebase_user(
+    claims: dict[str, Any],
+    *,
+    guest_sub: str = "",
+) -> AppUser:
     """Firebase (anonim veya Google) oturumunu AppUser kaydına yazar."""
     sub = (claims.get("sub") or "").strip()
     if not sub:
@@ -290,6 +295,7 @@ def upsert_firebase_user(claims: dict[str, Any]) -> AppUser:
             current=user.display_name,
         )
         user.save()
+        purge_orphan_guest_after_merge(guest_sub=guest_sub, keep_user=user)
         return user
 
     if is_anonymous:
@@ -325,9 +331,10 @@ def upsert_firebase_user(claims: dict[str, Any]) -> AppUser:
             current=existing_email.display_name,
         )
         existing_email.save()
+        purge_orphan_guest_after_merge(guest_sub=guest_sub, keep_user=existing_email)
         return existing_email
 
-    return AppUser.objects.create(
+    user = AppUser.objects.create(
         google_sub=sub,
         email=email,
         display_name=name or email.split("@")[0],
@@ -336,13 +343,178 @@ def upsert_firebase_user(claims: dict[str, Any]) -> AppUser:
         api_token=new_api_token(),
         last_login_at=now,
     )
+    purge_orphan_guest_after_merge(guest_sub=guest_sub, keep_user=user)
+    return user
 
 
-def upsert_app_user(claims: dict[str, Any]) -> AppUser:
+def _merge_premium_fields(*, guest: AppUser, target: AppUser) -> None:
+    """Misafir premium'u kalıcı hesaba taşır (hedef aktif değilse veya daha uzunsa)."""
+    if not guest.premium_active:
+        return
+    if not target.premium_active:
+        target.is_premium = guest.is_premium
+        target.premium_expires_at = guest.premium_expires_at
+        target.premium_granted_at = guest.premium_granted_at
+        target.premium_grant_note = guest.premium_grant_note or target.premium_grant_note
+        target.premium_product_id = guest.premium_product_id or target.premium_product_id
+        target.save(
+            update_fields=[
+                "is_premium",
+                "premium_expires_at",
+                "premium_granted_at",
+                "premium_grant_note",
+                "premium_product_id",
+                "updated_at",
+            ]
+        )
+        return
+    guest_exp = guest.premium_expires_at
+    target_exp = target.premium_expires_at
+    if guest_exp is None:
+        return
+    if target_exp is None:
+        return
+    if guest_exp <= target_exp:
+        return
+    target.premium_expires_at = guest_exp
+    if guest.premium_product_id and not target.premium_product_id:
+        target.premium_product_id = guest.premium_product_id
+    target.save(
+        update_fields=["premium_expires_at", "premium_product_id", "updated_at"]
+    )
+
+
+def _move_or_drop_unique_rows(model, *, guest: AppUser, target: AppUser, key_fields: tuple[str, ...]) -> None:
+    """Misafir FK kayıtlarını hedefe taşır; çakışanları siler."""
+    for row in model.objects.filter(user=guest).iterator():
+        lookup = {field: getattr(row, field) for field in key_fields}
+        lookup["user"] = target
+        if model.objects.filter(**lookup).exists():
+            row.delete()
+        else:
+            row.user = target
+            row.save(update_fields=["user"])
+
+
+def merge_guest_user_into(*, guest: AppUser, target: AppUser) -> None:
+    """Misafir AppUser verisini kalıcı hesaba birleştirip misafir satırını siler."""
+    if guest.pk == target.pk:
+        return
+    if not guest.is_anonymous:
+        return
+    if target.is_anonymous:
+        return
+
+    from .models import (
+        DailyMiniExamAttempt,
+        DailyMiniRankingWinner,
+        DailySubjectFreeUsage,
+        DeviceToken,
+        PromoCodeRedemption,
+        QuestionAttempt,
+        QuestionErrorReport,
+        QuestionRating,
+        QuestionView,
+        TopicTestCompletion,
+        UserMessage,
+    )
+
+    with transaction.atomic():
+        guest = AppUser.objects.select_for_update().get(pk=guest.pk)
+        target = AppUser.objects.select_for_update().get(pk=target.pk)
+        if not guest.is_anonymous or target.is_anonymous or guest.pk == target.pk:
+            return
+
+        _merge_premium_fields(guest=guest, target=target)
+
+        _move_or_drop_unique_rows(
+            QuestionAttempt, guest=guest, target=target, key_fields=("question",)
+        )
+        _move_or_drop_unique_rows(
+            QuestionView, guest=guest, target=target, key_fields=("question",)
+        )
+        _move_or_drop_unique_rows(
+            QuestionRating, guest=guest, target=target, key_fields=("question",)
+        )
+        _move_or_drop_unique_rows(
+            TopicTestCompletion, guest=guest, target=target, key_fields=("topic_test",)
+        )
+        _move_or_drop_unique_rows(
+            DailySubjectFreeUsage,
+            guest=guest,
+            target=target,
+            key_fields=("subject_slug", "day"),
+        )
+        _move_or_drop_unique_rows(
+            QuestionErrorReport, guest=guest, target=target, key_fields=("question",)
+        )
+        _move_or_drop_unique_rows(
+            DailyMiniExamAttempt,
+            guest=guest,
+            target=target,
+            key_fields=("exam_date", "kpss_type"),
+        )
+        _move_or_drop_unique_rows(
+            PromoCodeRedemption, guest=guest, target=target, key_fields=("promo_code",)
+        )
+
+        for token_row in DeviceToken.objects.filter(user=guest):
+            if DeviceToken.objects.filter(token=token_row.token).exclude(pk=token_row.pk).exists():
+                token_row.delete()
+            else:
+                token_row.user = target
+                token_row.save(update_fields=["user"])
+
+        UserMessage.objects.filter(user=guest).update(user=target)
+        DailyMiniRankingWinner.objects.filter(user=guest).update(user=target)
+
+        guest.delete()
+
+
+def purge_orphan_guest_after_merge(*, guest_sub: str, keep_user: AppUser) -> bool:
+    """
+    Misafir → Google birleşiminde eski anonim satırı temizler.
+    Aynı Firebase UID ile yükseltmede (link başarılı) no-op.
+    """
+    guest_sub = (guest_sub or "").strip()
+    if not guest_sub or keep_user.is_anonymous:
+        return False
+    if guest_sub == (keep_user.google_sub or "").strip():
+        return False
+
+    guest = (
+        AppUser.objects.filter(google_sub=guest_sub, is_anonymous=True)
+        .exclude(pk=keep_user.pk)
+        .first()
+    )
+    if guest is None:
+        return False
+
+    merge_guest_user_into(guest=guest, target=keep_user)
+    logger.info(
+        "Misafir hesap birleştirildi guest_sub=%s → user_id=%s",
+        guest_sub,
+        keep_user.pk,
+    )
+    return True
+
+
+def resolve_guest_sub_for_merge(request, guest_sub_param: str = "") -> str:
+    """İstek gövdesi veya Bearer misafir oturumundan eski Firebase UID."""
+    guest_sub = (guest_sub_param or "").strip()
+    if guest_sub:
+        return guest_sub
+    prior = get_user_from_request(request)
+    if prior is not None and prior.is_anonymous:
+        return (prior.google_sub or "").strip()
+    return ""
+
+
+def upsert_app_user(claims: dict[str, Any], *, guest_sub: str = "") -> AppUser:
     """Geriye dönük uyumluluk."""
     claims = dict(claims)
     claims.setdefault("is_anonymous", False)
-    return upsert_firebase_user(claims)
+    return upsert_firebase_user(claims, guest_sub=guest_sub)
 
 
 def user_to_dict(user: AppUser) -> dict[str, Any]:

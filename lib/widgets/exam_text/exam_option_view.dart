@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
-import '../../utils/turkish_hyphenation.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
 
@@ -94,9 +93,9 @@ class ExamOptionView extends StatelessWidget {
             if (i > 0) const SizedBox(width: 6),
             Expanded(
               child: Text(
-                TurkishHyphenation.hyphenate(cells[i]),
+                cells[i],
                 textAlign: TextAlign.center,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: style,
               ),
@@ -112,10 +111,10 @@ class ExamOptionView extends StatelessWidget {
       fontSize: mathStyle ? kCompactOptionFontSize : 15,
     );
 
+    // Şıklarda soft hyphen (TDK heceleme) kullanılmaz — Android/Tinos satır
+    // kırılınca harfler üst üste binip boşluklar kaybolabiliyor.
     return FormattedText(
-      TurkishHyphenation.hyphenate(
-        FormattedText.wrapBareLatex(FormattedText.stripMarkup(text)),
-      ),
+      FormattedText.wrapBareLatex(FormattedText.stripMarkup(text)),
       examLayout: true,
       examWrap: true,
       examScaleDown: false,

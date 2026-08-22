@@ -12,6 +12,7 @@ from .auth import (
     get_user_from_request,
     heal_guest_display_name,
     resolve_google_claims,
+    resolve_guest_sub_for_merge,
     upsert_firebase_user,
     user_to_dict,
 )
@@ -1049,7 +1050,14 @@ class GoogleAuthView(APIView):
             ).strip()
             if client_name and not (claims.get("name") or "").strip():
                 claims["name"] = client_name
-            user = upsert_firebase_user(claims)
+            guest_sub_param = str(
+                request.data.get("guest_sub")
+                or request.data.get("previous_google_sub")
+                or request.data.get("guestSub")
+                or ""
+            ).strip()
+            guest_sub = resolve_guest_sub_for_merge(request, guest_sub_param)
+            user = upsert_firebase_user(claims, guest_sub=guest_sub)
         except AuthError as exc:
             logger.info(
                 "Google auth AuthError status=%s detail=%s",
