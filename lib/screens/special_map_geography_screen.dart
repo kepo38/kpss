@@ -289,10 +289,7 @@ class _SpecialMapGeographyScreenState extends State<SpecialMapGeographyScreen> {
           duration: result.duration,
           completedAt: DateTime.now(),
         ),
-        questionIds: [
-          ...result.correctQuestionIds,
-          ...result.wrongQuestionIds,
-        ],
+        questionIds: result.questionIds,
         wrongQuestionIds: result.wrongQuestionIds,
         selectedAnswers: result.selectedAnswers,
       );

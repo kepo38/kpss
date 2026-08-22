@@ -85,7 +85,7 @@ def panel_osym_archive(request: HttpRequest) -> HttpResponse:
             "selected_family": family,
             "selected_year": year_filter,
             "show_missing_only": show_missing_only,
-            "label_format_hint": "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
+            "label_format_hint": "2025 KPSS Lisans · Genel Yetenek - Genel Kültür  veya  2025 AGS · MEB Akademi Giriş Sınavı",
         },
     )
 

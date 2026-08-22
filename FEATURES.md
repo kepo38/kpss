@@ -24,12 +24,74 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
 
+### 22 Ağustos 2026 — Misafir↔Google aktarım · yanlış defteri · Telegram OCR
+
+Bu tur: misafirken biriken yanlış defteri verisinin Google girişinde kaybolması düzeltildi; testte işaretlenen yanlış şık defter incelemesinde gösterilir; Telegram bot farklı fotoğrafları yanlışlıkla «aynı fotoğraf» sanmaz; ÖSYM arşiv kataloğuna AGS eklendi.
+
+#### Misafir ↔ Google hesap ilişkisi (detay)
+
+Yanlış defteri, notlar, kalem çizimleri ve kitaptaki yanlışlar **tamamen cihazda** tutulur; Django sunucusunda yanlış defteri tablosu yoktur. Google girişi yalnızca `AppUser` / analitik birleştirmesi için backend’e gider (`guest_sub` ile `merge_guest_user_into`).
+
+| Kavram | Açıklama |
+|:---|:---|
+| **Misafir kimliği** | Firebase anonim `user.id` veya çevrimdışı `local:guest-{timestamp}` (`local_guest_id` prefs’te yedeklenir) |
+| **Google kimliği** | Backend `AppUser.pk` string — kalıcı hesap (`hasPermanentAccount`) |
+| **Veri kapsamı** | SharedPreferences / SQLite anahtarları `{anahtar}_{userId}` ile kullanıcıya özel |
+| **Taşınan (misafir→Google)** | Yanlış soru listesi, işaretli şıklar, soru gövdeleri, TEKRAR ET/ÇÖZÜLDÜ, istatistik kilidi, notlar, kalem çizimleri, manuel foto sorular |
+| **Taşınmayan** | Günlük test kotası ilerlemesi, deneme geçmişi (`TestAttempt`) — kasıtlı |
+
+**Google giriş akışı (`signInWithGoogle`):**
+
+1. Giriş **öncesi** `previousUserId = _user?.id` yakalanır.
+2. Backend token exchange → yeni `_user` (Google hesabı).
+3. `_relayUserScopedServices(previousUserId: …)` tüm yerel servisleri sırayla günceller.
+4. Her servis: henüz yüklenmemişse önce `initialize()`, sonra misafir scope → Google scope **migrate** + yeniden yükle.
+
+| Servis | Taşınan prefs / veri | Dosya |
+|:---|:---|:---|
+| **ContentBankService** | `content_wrong_question_*`, işaretli şıklar, gövdeler, stat kilidi | `content_bank_service.dart` |
+| **ManualQuestionService** | SQLite `manual_wrong_questions` satırları `reassignUser` | `manual_question_service.dart` |
+| **QuestionNoteService** | `question_notes_v1_{userId}` | `question_note_service.dart` |
+| **WrongNotebookDrawingService** | `wrong_notebook_drawings_v1_{userId}` | `wrong_notebook_drawing_service.dart` |
+
+**Yedek eşleme:** `local_guest_id` prefs anahtarı; servis `previousUserId` alamazsa misafir defterini buradan bulur (`_inferGuestScopeForMigration` / `_inferGuestUserId`).
+
+**UI tetikleyiciler:** `AccountLinkCard.prompt` sonrası `AuthService.relayUserScopedServices(previousUserId: …)` — yanlış defteri buz kaldırma ve «Tüm yanlışları çöz» Google kapısı (`wrong_questions_screen.dart`).
+
+**Bilinen sınır:** Daha önce hatalı sürümle Google’a geçilmiş ve defter boş kalmış cihazlarda veri yalnızca hâlâ `guest-…` anahtarlarındaysa yeni APK ile tekrar girişte taşınabilir.
+
+#### Yanlış defteri — işaretli şık
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Kayıt hatası** | Test bitince `recordAttempt` yanlış şıkları quiz sırası yerine «önce doğru sonra yanlış» listesiyle eşleştiriyordu → yanlış/indeks kayması | `topic_detail_screen.dart`, `special_map_geography_screen.dart`, `daily_mini_exam_service.dart`, `continue_study_card.dart` |
+| **Eşleme mantığı** | `_mergeWrongSelections` artık soru ID → cevap haritası kullanır | `content_bank_service.dart` |
+| **Defter inceleme** | Açılışta `wrongSelectionFor` → `QuizScreen.initialAnswers`; testte verilen yanlış şık kırmızı, doğru yeşil | `wrong_questions_screen.dart`, `quiz_screen.dart` |
+| **Anlık kayıt** | Defter modunda şık değişince `setWrongQuestionSelection` | `content_bank_service.dart`, `quiz_screen.dart` |
+
+#### Telegram bot — OCR kuyruk düzeltmesi
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Paralel OCR** | Fotoğraflar arka planda işlenir (`TELEGRAM_OCR_WORKERS`, varsayılan 2); bir OCR sürerken diğer fotoğraf bloklanmaz | `telegram_bot.py` |
+| **Anında onay** | «📷 Fotoğraf alındı, OCR başlıyor…» | `telegram_bot.py` |
+| **Kilit anahtarı** | Eşzamanlılık kilidi `file_unique_id` yerine `chat_id:message_id` — farklı fotoğraflar birbirini «aynı fotoğraf» sanmaz | `telegram_bot.py` |
+| **IntegrityError** | Kayıt çakışmasında yanıltıcı «aynı fotoğraf» metni düzeltildi; retry + mevcut kayıt bulma | `telegram_bot.py`, `test_telegram_ingest.py` |
+| **Test modu** | `TELEGRAM_INLINE_PHOTOS=True` — birim testlerde senkron OCR | `test_telegram_ingest.py` |
+
+#### ÖSYM arşiv — AGS katalog güncellemesi
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **AGS eklendi** | «AGS · MEB Akademi Giriş Sınavı» (80 soru), 2019–2026 | `osym_archive.py` |
+| **KPSS sadeleştirme** | Lisans’tan Eğitim Bilimleri kaldırıldı; tüm ÖABT branşları kaldırıldı (AGS ayrı sınav) | `osym_archive.py`, `test_osym_archive.py` |
+
 ### 22 Ağustos 2026 — ÖSYM Çıkmış Sorular arşiv yöneticisi
 
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
 | **Arşiv panosu** | Yıl × sınav × oturum kartları; tam / kısmi / eksik durumu; soru sayısı | `/panel/osym-cikmis/`, `osym_archive.html` |
-| **Katalog** | KPSS (Lisans/Önlisans/Ortaöğretim/ÖABT), ALES, YKS (TYT/AYT), DGS — 2019–2026 | `osym_archive.py` |
+| **Katalog** | KPSS (Lisans/Önlisans/Ortaöğretim), **AGS**, ALES, YKS (TYT/AYT), DGS — 2019–2026 | `osym_archive.py` |
 | **Etiket biçimi** | «2025 KPSS Lisans · Genel Yetenek - Genel Kültür» (+ isteğe « · Soru 12») | `question_form.html`, `osym_cikmis_adi` |
 | **Detay** | Oturumdaki sorular listesi → soru düzenleme | `/panel/osym-cikmis/detay/<etiket>/` |
 
@@ -380,7 +442,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Defter soru notu** | Karta tıklayınca süre ve Soru 1/1 yok; **Çıkış** (onaysız deftere dönüş); testte işaretlediği şık işaretli; normal testte aynı soru işaretsiz + mavi «Daha önce». Sağda seviye; solda **Not Al** + «KAYITLI KALIR». Bitmiş testte yanlış kalan sorular sonradan doğru cevaplansa istatistik güncellenmez | `quiz_take_note_button.dart`, `quiz_question_note_card.dart`, `quiz_wrong_notebook_banner.dart`, `question_note_service.dart`, `content_bank_service.dart` |
 | **Defter kayıtlı toast** | Ortada premium toast, 3 sn; konu testleri + günlük deneme; **Akıllı Tekrar**’da bastırılır | `quiz_wrong_notebook_banner.dart`, `quiz_screen.dart`, `smart_review_screen.dart` |
 | **BENZER upsell** | Başlık **BENZER SORULAR**; üstte 👯; alt metin «Yanlışlarını daha iyi analiz et» | `pro_upsell_sheet.dart` |
-| **Misafir yanlış defteri** | Yalnızca **soru metni** hafif buzlu; kalp, sil, BENZER açık. Karta dokununca Google ister; **bağlanınca defter Google hesabına aktarılır**, buz kalkar, soru açılır | `wrong_notebook_guest_frost.dart`, `content_bank_service.dart` (scope migrate), `question_note_service.dart`, `manual_question_service.dart`, `wrong_questions_screen.dart` |
+| **Misafir yanlış defteri** | Yalnızca **soru metni** hafif buzlu; kalp, sil, BENZER açık. Karta dokununca Google ister; **bağlanınca defter Google hesabına aktarılır** (soru listesi, işaretli şıklar, notlar, çizimler, manuel foto), buz kalkar, soru açılır. `relayUserScopedServices(previousUserId)` + `local_guest_id` yedek eşleme | `wrong_notebook_guest_frost.dart`, `auth_service.dart`, `content_bank_service.dart`, `manual_question_service.dart`, `question_note_service.dart`, `wrong_notebook_drawing_service.dart`, `wrong_questions_screen.dart` |
 | **Puan Hesaplama** | Gelişim’den kaldırıldı. Deneme sekmesi AppBar’da dar, ortalanmış kompakt **PUAN HESAPLAMA** (eski «Deneme» + `+` yok; FAB «Deneme Ekle» durur) | `analytics_hub_screen.dart`, `statistics_screen.dart`, `puan_hesaplama_button.dart` |
 | **Puan ekranı etiketleri** | **GY-Net** / **GK-Net** (üstte puan; net ayrı) | `puan_hesaplama_screen.dart` |
 | **Quiz sonuç** | Konu adı üstte; motive satır; +XP ve seri chip; soru başı ortalama süre **NET** kutusunun üstünde | `quiz_screen.dart`, `shareable_result_card.dart`, `gamification_service.dart` |
@@ -509,7 +571,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Akıllı tekrar** | Ders filtresi; set yanlış defteri + %60 altı konular; «AKILLI TEKRARI BAŞLAT» → `PremiumGate.requirePremium` (PRO rozeti + kilit ikonu); ekranı görmek ücretsiz, **oturumu başlatmak Premium** | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart`, `premium_gate.dart` | **Premium** (başlat) |
-| **Yanlış defteri** | Konu testlerinden yanlışlar; kullanıcı başına yerel; karttan kaldır; inceleme (**Çıkış**, işaretli şık, **Not Al**). **Tüm yanlışları çöz** quiz başlığı boş (AppBar’da YANLIŞLARIM yok). Normal testte «Daha önce» toast. **Akıllı Tekrar** pill (başlat Premium). **Kitaptaki Yanlışlarım:** manuel foto; **1. foto ücretsiz**, **2.+** Pro değilse ödüllü reklam; **kalem/annotate ücretsiz**. Misafir: metin buzlu → Google’da aktarım | `wrong_questions_screen.dart`, `wrong_notebook_manual_screen.dart`, `manual_question_annotate_viewer.dart`, `wrong_notebook/*`, `quiz_wrong_notebook_banner.dart` | Liste/annotate **ücretsiz**; benzer **Premium**; ekstra foto **reklam veya Premium** |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; kullanıcı başına yerel; karttan kaldır; inceleme (**Çıkış**, **testte işaretlenen yanlış şık** kırmızı / doğru yeşil, **Not Al**). **Tüm yanlışları çöz** quiz başlığı boş (AppBar’da YANLIŞLARIM yok). Normal testte «Daha önce» toast. **Akıllı Tekrar** pill (başlat Premium). **Kitaptaki Yanlışlarım:** manuel foto; **1. foto ücretsiz**, **2.+** Pro değilse ödüllü reklam; **kalem/annotate ücretsiz**. Misafir: metin buzlu → Google’da tam aktarım (`relayUserScopedServices`) | `wrong_questions_screen.dart`, `wrong_notebook_manual_screen.dart`, `content_bank_service.dart`, `auth_service.dart`, `wrong_notebook/*`, `quiz_wrong_notebook_banner.dart` | Liste/annotate **ücretsiz**; benzer **Premium**; ekstra foto **reklam veya Premium** |
 | **Benzer sorular** | Embedding tabanlı benzer set; kaynak + %88+ aynı kök hariç; ücretsizde `ProUpsellSheet` | `wrong_questions_screen.dart`, `pro_upsell_sheet.dart`, `embeddings.py` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; şampanya etiket «Yanlış defteriyle deneme oluşturabilirsin»; ana CTA «Derslerden test çöz» | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
@@ -859,10 +921,11 @@ Google giriş = Profil → **Google ile giriş yap** (`AccountLinkCard` / `signI
 
 | Özellik | Misafir | Google giriş sonrası | Dosya / not |
 |:---|:---:|:---|:---|
-| **Yanlış defteri — soru metni** | 🟣 Buzlu / kilitli | 🟢 Tam metin | `wrong_questions_screen.dart` |
+| **Yanlış defteri — soru metni** | 🟣 Buzlu / kilitli | 🟢 Tam metin + misafir defteri taşınır | `wrong_questions_screen.dart`, `auth_service.dart` |
+| **Yanlış defteri — işaretli şık** | 🟢 Testte kaydedilir (cihaz) | 🟢 Defter incelemesinde gösterilir | `content_bank_service.dart`, `quiz_screen.dart` |
 | **Yanlış defteri — WhatsApp paylaşım** | 🔵 Zorunlu | 🟢 + günlük kota | `wrong_notebook_share_service.dart` |
-| **Yanlış defteri — Not Al** | 🟣 Misafir notu taşınmaz | 🟢 Kalıcı not | `question_note_service.dart` |
-| **Yanlış defteri — kalem çizimi** | 🟢 Oturum içi | 🟢 Soru/çözüm ayrı kayıt | `wrong_notebook_drawing_service.dart` |
+| **Yanlış defteri — Not Al** | 🟣 Misafir notu taşınmaz* | 🟢 Kalıcı not (Google’a taşınır) | `question_note_service.dart` |
+| **Yanlış defteri — kalem çizimi** | 🟢 Oturum içi | 🟢 Soru/çözüm ayrı kayıt (Google’a taşınır) | `wrong_notebook_drawing_service.dart` |
 | **Yanlış defteri — TEKRAR ET / ÇÖZÜLDÜ** | 🟢 | 🟢 Cihazda kalır | `content_bank_service.dart` |
 | **Kitaptaki yanlışlar — foto ekle** | 🟣 İlk foto sınırı | 🟢 Misafir defteri Google’a taşınır | `manual_question_service.dart` |
 | **Günlük test kotası (sunucu)** | 🟣 Yalnız cihaz yanığı | 🟢 Hesap bazlı `DailyQuotaService` | `daily_quota_service.dart` |
@@ -935,11 +998,39 @@ Paywall listesi: `PremiumService.features` · Kapı: `PremiumGate` / `ProUpsellS
 | Uygulamayı aç / ders oku | ✓ | ✓ |
 | 1 konu testi / gün / ders | ✓ (cihaz yanığı) | ✓ (hesap + sunucu kotası) |
 | Yanlış defteri tam metin | ✗ buzlu | ✓ |
+| Yanlış defteri → Google taşıma | — | ✓ tek seferlik migrate (giriş anında) |
+| Testte işaretlenen yanlış şık | ✓ yerel kayıt | ✓ defter incelemesinde görünür |
 | Canlı «Başarı %» / «N kişi gördü» | Kısmen yerel | ✓ sunucu |
 | WhatsApp paylaşım | ✗ | ✓ |
 | Mini deneme sıralama | Yalnız 1. gün | ✓ |
 | Odak 40–60 dk / tam ekran | ✗ | ✓ |
 | Offline paket | ✗ | ✓ + yıllık Premium |
+
+\* **Not taşıma:** Google girişinde `QuestionNoteService.onUserSessionChanged` misafir notlarını birleştirir; giriş öncesi not yoksa tablo boş kalır.
+
+#### Misafir → Google teknik akış (geliştirici)
+
+```
+Misafir test çözer → yanlışlar prefs’te {key}_{guestId}
+       ↓
+Profil / AccountLinkCard → signInWithGoogle()
+       ↓
+previousUserId yakalanır → backend exchange → yeni userId
+       ↓
+AuthService._relayUserScopedServices(previousUserId)
+       ├─ ContentBankService.onUserSessionChanged
+       ├─ ManualQuestionService.onUserSessionChanged
+       ├─ QuestionNoteService.onUserSessionChanged
+       └─ WrongNotebookDrawingService.onUserSessionChanged
+       ↓
+Scoped prefs merge → Google userId altında kalıcı
+```
+
+**Prefs örnekleri:** `content_wrong_questions_{userId}`, `content_wrong_question_selections_{userId}`, `question_notes_v1_{userId}`, `wrong_notebook_drawings_v1_{userId}`, `local_guest_id` (yedek misafir kimliği).
+
+**Backend:** `POST /api/v1/auth/google/` + isteğe `guest_sub` — yalnızca `AppUser` birleştirme; yanlış defteri sunucuya gitmez.
+
+**Doğrulama:** Misafirken 1+ yanlış ekle → Google bağla → Yanlış Defteri aynı sorular + işaretli şıklar; `uygulamayi-yukle.bat` ile güncel APK gerekir.
 
 ---
 

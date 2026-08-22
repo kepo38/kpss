@@ -23,24 +23,42 @@ class WrongNotebookDrawingService extends ChangeNotifier {
 
   String _scopedKey(String base) => '${base}_$_userScopeId';
 
-  Future<void> onUserSessionChanged() async {
+  Future<void> onUserSessionChanged({String? previousUserId}) async {
+    var previous = previousUserId ?? _activeUserScopeId;
     if (!_loaded) {
       await initialize();
-      return;
     }
-    final previous = _activeUserScopeId;
     final scope = _userScopeId;
-    if (previous == scope) return;
+    if (previous == null || previous.isEmpty) {
+      previous = await _inferGuestUserId(scope);
+    }
+    if (previous == null || previous.isEmpty || previous == scope) return;
     final prefs = await SharedPreferences.getInstance();
     if (_shouldMigrateGuest(previous, scope)) {
       await _migrateScope(
         prefs,
-        fromUserId: previous!,
+        fromUserId: previous,
         toUserId: scope,
       );
     }
     await _loadForCurrentUser();
     notifyListeners();
+  }
+
+  Future<String?> _inferGuestUserId(String toUserId) async {
+    if (!AuthService.instance.hasPermanentAccount) return null;
+    final prefs = await SharedPreferences.getInstance();
+    const localGuestKey = 'local_guest_id';
+    final localGuest = prefs.getString(localGuestKey);
+    if (localGuest == null ||
+        localGuest.isEmpty ||
+        localGuest == toUserId) {
+      return null;
+    }
+    final fromKey = '${_kKey}_$localGuest';
+    final fromRaw = prefs.getString(fromKey);
+    if (fromRaw == null || fromRaw.isEmpty) return null;
+    return localGuest;
   }
 
   bool _shouldMigrateGuest(String? fromUserId, String toUserId) {

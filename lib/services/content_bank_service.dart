@@ -155,20 +155,21 @@ class ContentBankService extends ChangeNotifier {
   String _scopedKeyFor(String base, String userId) => '${base}_$userId';
 
   /// Google / misafir oturumu değişince kullanıcıya özel ilerleme + yanlış defteri.
-  Future<void> onUserSessionChanged() async {
+  /// [previousUserId] — giriş öncesi misafir kimliği (AuthService aktarır).
+  Future<void> onUserSessionChanged({String? previousUserId}) async {
+    var previous = previousUserId ?? _activeUserScopeId;
     if (!_loaded) {
       await initialize();
-      return;
     }
-    final previous = _activeUserScopeId;
     final scope = _userScopeId;
-    if (previous == scope) return;
+    previous ??= await _inferGuestScopeForMigration(scope);
+    if (previous == null || previous.isEmpty || previous == scope) return;
     _dropCachedWrongBodies();
     final prefs = await SharedPreferences.getInstance();
     if (_shouldMigrateGuestWrongNotebook(previous, scope)) {
       await _migrateWrongNotebookScope(
         prefs,
-        fromUserId: previous!,
+        fromUserId: previous,
         toUserId: scope,
       );
     }
@@ -181,6 +182,21 @@ class ContentBankService extends ChangeNotifier {
     await _syncDeviceFreeFromUserAttempts();
     _pruneSampleSeedProgress();
     _notifyProgress(urgent: true);
+  }
+
+  /// Yerel misafir (`guest-…`) defteri — oturum değişiminde yedek eşleme.
+  Future<String?> _inferGuestScopeForMigration(String toUserId) async {
+    if (!AuthService.instance.hasPermanentAccount) return null;
+    final prefs = await SharedPreferences.getInstance();
+    const localGuestKey = 'local_guest_id';
+    final localGuest = prefs.getString(localGuestKey);
+    if (localGuest != null &&
+        localGuest.isNotEmpty &&
+        localGuest != toUserId &&
+        prefs.containsKey(_scopedKeyFor(_kWrongQuestions, localGuest))) {
+      return localGuest;
+    }
+    return null;
   }
 
   bool _shouldMigrateGuestWrongNotebook(String? fromUserId, String toUserId) {
@@ -1241,6 +1257,20 @@ class ContentBankService extends ChangeNotifier {
   String? wrongSelectionFor(String questionId) =>
       _wrongQuestionSelections[questionId];
 
+  /// Yanlış defterinde görüntülenen / güncellenen işaretli şık.
+  Future<void> setWrongQuestionSelection(
+    String questionId,
+    String option,
+  ) async {
+    if (!_wrongQuestionIds.contains(questionId)) return;
+    final selected = option.trim().toUpperCase();
+    if (!RegExp(r'^[A-E]$').hasMatch(selected)) return;
+    if (_wrongQuestionSelections[questionId] == selected) return;
+    _wrongQuestionSelections[questionId] = selected;
+    await _persistWrongSelections();
+    _notifyProgress();
+  }
+
   bool isStatLockedForQuestion(String questionId) =>
       _statLockedWrongQuestions.contains(questionId);
 
@@ -1254,13 +1284,16 @@ class ContentBankService extends ChangeNotifier {
   ) {
     if (questionIds.isEmpty ||
         selectedAnswers.isEmpty ||
-        questionIds.length != selectedAnswers.length) {
+        questionIds.length != selectedAnswers.length ||
+        wrongQuestionIds.isEmpty) {
       return;
     }
+    final answerById = <String, String?>{};
     for (var i = 0; i < questionIds.length; i++) {
-      final id = questionIds[i];
-      if (!wrongQuestionIds.contains(id)) continue;
-      final selected = selectedAnswers[i]?.trim().toUpperCase() ?? '';
+      answerById[questionIds[i]] = selectedAnswers[i];
+    }
+    for (final id in wrongQuestionIds) {
+      final selected = answerById[id]?.trim().toUpperCase() ?? '';
       if (RegExp(r'^[A-E]$').hasMatch(selected)) {
         _wrongQuestionSelections[id] = selected;
       }

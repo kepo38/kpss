@@ -529,12 +529,13 @@ class AuthService extends ChangeNotifier {
         _lastError = 'Eksik oturum bilgisi.';
         return false;
       }
+      final previousUserId = _user?.id;
       _token = token;
       _user = UserModel.fromJson(Map<String, dynamic>.from(userJson));
       await _persist();
       _syncPremiumSideEffects();
       notifyListeners();
-      await _relayUserScopedServices();
+      await _relayUserScopedServices(previousUserId: previousUserId);
       unawaited(PremiumSyncService.instance.syncIfYearlyActive());
       return true;
     } catch (e) {
@@ -652,12 +653,24 @@ class AuthService extends ChangeNotifier {
     unawaited(_relayUserScopedServices());
   }
 
-  Future<void> _relayUserScopedServices() async {
-    await ContentBankService.instance.onUserSessionChanged();
+  Future<void> relayUserScopedServices({String? previousUserId}) async {
+    await _relayUserScopedServices(previousUserId: previousUserId);
+  }
+
+  Future<void> _relayUserScopedServices({String? previousUserId}) async {
+    await ContentBankService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
     await DailyQuotaService.instance.onUserSessionChanged();
-    await ManualQuestionService.instance.onUserSessionChanged();
-    await QuestionNoteService.instance.onUserSessionChanged();
-    await WrongNotebookDrawingService.instance.onUserSessionChanged();
+    await ManualQuestionService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
+    await QuestionNoteService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
+    await WrongNotebookDrawingService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
     await SummaryCardProgressService.instance.onUserSessionChanged();
     await DailyMiniExamService.instance.onAuthSessionChanged();
   }

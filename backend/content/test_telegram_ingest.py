@@ -75,6 +75,17 @@ class TelegramBotHelperTests(TestCase):
 
 
 class TelegramIngestTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._settings_override = override_settings(TELEGRAM_INLINE_PHOTOS=True)
+        cls._settings_override.enable()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._settings_override.disable()
+        super().tearDownClass()
+
     def setUp(self):
         self.subject = Subject.objects.create(slug="turkce", name="Türkçe")
         self.topic = Topic.objects.create(
@@ -583,6 +594,43 @@ class TelegramIngestTests(TestCase):
         self.assertEqual(outcome, "skipped")
         self.assertEqual(Question.objects.count(), 1)
         mock_delete.assert_called_once_with(1001, 401)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+        TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
+    )
+    @patch("content.telegram_bot._find_existing_after_conflict")
+    @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot.ingest_question_from_image")
+    def test_integrity_error_without_row_uses_retry_lookup(
+        self, mock_ingest, mock_send, mock_after_conflict
+    ):
+        mock_ingest.side_effect = IntegrityError("unique")
+        mock_after_conflict.return_value = (None, None)
+
+        outcome = handle_update(
+            {
+                "message": {
+                    "message_id": 402,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "photo": [
+                        {
+                            "file_id": "abc",
+                            "file_unique_id": "uniq-race-miss",
+                            "width": 100,
+                            "height": 100,
+                        }
+                    ],
+                }
+            }
+        )
+
+        self.assertEqual(outcome, "error")
+        mock_after_conflict.assert_called_once()
+        body = mock_send.call_args[0][1]
+        self.assertIn("çakışması", body.lower())
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",

@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/manual_question_model.dart';
+import 'app_preferences.dart';
 import 'auth_service.dart';
 import 'local_database.dart';
 
@@ -28,22 +29,38 @@ class ManualQuestionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> onUserSessionChanged() async {
+  Future<void> onUserSessionChanged({String? previousUserId}) async {
+    var previous = previousUserId ?? _activeUserId;
     if (!_initialized) {
       await initialize();
-      return;
     }
-    final previousUserId = _activeUserId;
     final userId = _userId;
-    if (previousUserId == userId) return;
-    if (_shouldMigrateGuestRows(previousUserId, userId)) {
+    if (previous == null || previous.isEmpty) {
+      previous = await _inferGuestUserId(userId);
+    }
+    if (previous == null || previous == userId) return;
+    if (_shouldMigrateGuestRows(previous, userId)) {
       await LocalDatabase.instance.reassignManualWrongQuestionsUser(
-        fromUserId: previousUserId!,
+        fromUserId: previous,
         toUserId: userId,
       );
     }
     await _loadForCurrentUser();
     notifyListeners();
+  }
+
+  Future<String?> _inferGuestUserId(String toUserId) async {
+    if (!AuthService.instance.hasPermanentAccount) return null;
+    final prefs = await AppPreferences.instance;
+    final localGuest = prefs.getString('local_guest_id');
+    if (localGuest == null ||
+        localGuest.isEmpty ||
+        localGuest == toUserId) {
+      return null;
+    }
+    final rows =
+        await LocalDatabase.instance.getManualWrongQuestionsForUser(localGuest);
+    return rows.isEmpty ? null : localGuest;
   }
 
   Future<void> _loadForCurrentUser() async {

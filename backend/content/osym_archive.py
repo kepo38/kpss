@@ -88,10 +88,7 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
     {
         "family": "KPSS",
         "exam_name": "KPSS Lisans",
-        "sessions": (
-            ("gygk", "Genel Yetenek - Genel Kültür", 120),
-            ("eb", "Eğitim Bilimleri", 80),
-        ),
+        "sessions": (("gygk", "Genel Yetenek - Genel Kültür", 120),),
     },
     {
         "family": "KPSS",
@@ -104,22 +101,9 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
         "sessions": (("gygk", "Genel Yetenek - Genel Kültür", 120),),
     },
     {
-        "family": "KPSS",
-        "exam_name": "KPSS ÖABT",
-        "sessions": (
-            ("matematik", "Matematik", 50),
-            ("turkce", "Türkçe", 50),
-            ("sinif", "Sınıf Öğretmenliği", 50),
-            ("rehberlik", "Rehberlik", 50),
-            ("fen", "Fen Bilimleri", 50),
-            ("sosyal", "Sosyal Bilgiler", 50),
-            ("ingilizce", "İngilizce", 50),
-            ("almanca", "Almanca", 50),
-            ("fransizca", "Fransızca", 50),
-            ("din", "Din Kültürü", 50),
-            ("beden", "Beden Eğitimi", 50),
-            ("okul_oncesi", "Okul Öncesi", 50),
-        ),
+        "family": "AGS",
+        "exam_name": "AGS",
+        "sessions": (("ags", "MEB Akademi Giriş Sınavı", 80),),
     },
     {
         "family": "ALES",

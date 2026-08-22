@@ -3,7 +3,9 @@
 from django.test import SimpleTestCase
 
 from content.osym_archive import (
+    OsymArchiveSlot,
     archive_key_from_label,
+    archive_families,
     parse_archive_key,
 )
 
@@ -24,3 +26,17 @@ class OsmArchiveLabelTests(SimpleTestCase):
     def test_empty_label(self):
         self.assertEqual(archive_key_from_label(""), "")
         self.assertEqual(archive_key_from_label("   "), "")
+
+    def test_ags_catalog_slot(self):
+        slot = OsymArchiveSlot(
+            family="AGS",
+            exam_name="AGS",
+            session_key="ags",
+            session_name="MEB Akademi Giriş Sınavı",
+            expected_count=80,
+        )
+        self.assertEqual(
+            slot.canonical_label(2025),
+            "2025 AGS · MEB Akademi Giriş Sınavı",
+        )
+        self.assertIn("AGS", archive_families())

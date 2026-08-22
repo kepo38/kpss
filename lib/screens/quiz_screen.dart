@@ -393,6 +393,14 @@ class _QuizScreenState extends State<QuizScreen>
     unawaited(_loadRating());
     unawaited(_submitQuestionAttempt(key));
     unawaited(_persistProgress());
+    if (widget.fromWrongNotebook) {
+      unawaited(
+        ContentBankService.instance.setWrongQuestionSelection(
+          _currentQuestion.id,
+          key,
+        ),
+      );
+    }
     _flashColor = isCorrect ? _correctGreen : _wrongRed;
     _flashCtrl.forward(from: 0);
     if (isCorrect) {

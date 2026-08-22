@@ -7,9 +7,11 @@ import json
 import logging
 import os
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,7 +41,13 @@ HandleOutcome = Literal[
     "ingested", "skipped", "error", "command", "ignored", "unauthorized"
 ]
 
-_RETRY_HINT = "Bir sonraki TELEGRAM.bat'ta tekrar denenecek."
+_inflight_lock = threading.Lock()
+_inflight_keys: set[str] = set()
+_inflight_started: dict[str, float] = {}
+_INFLIGHT_TTL_SECONDS = 900
+
+_photo_executor: ThreadPoolExecutor | None = None
+_photo_executor_lock = threading.Lock()
 
 _DRAIN_ERROR_LINE = (
     "Hata: {count} (fotoğraflar bot sohbetinde — TELEGRAM.bat'ı tekrar çalıştırın)"
@@ -71,6 +79,10 @@ def drain_error_footer() -> str:
 
 class TelegramBotLockError(RuntimeError):
     """TELEGRAM.bat / run_telegram_bot zaten calisiyor."""
+
+
+class PhotoAlreadyProcessing(RuntimeError):
+    """Ayni Telegram mesaji baska bir OCR/islemde."""
 
 
 def lock_file_path() -> Path:
@@ -128,6 +140,82 @@ def telegram_lock_active() -> bool:
     except ValueError:
         return False
     return _pid_alive(pid)
+
+
+def _retry_hint() -> str:
+    if telegram_lock_active():
+        return (
+            "TELEGRAM-WATCH açıksa birkaç saniye içinde otomatik yeniden denenecek."
+        )
+    return "TELEGRAM.bat veya TELEGRAM-WATCH.bat ile tekrar deneyin."
+
+
+def _processing_key(chat_id: int, message_id: int) -> str:
+    return f"{chat_id}:{message_id}"
+
+
+def _prune_stale_inflight() -> None:
+    now = time.monotonic()
+    stale = [
+        key
+        for key, started in _inflight_started.items()
+        if now - started > _INFLIGHT_TTL_SECONDS
+    ]
+    for key in stale:
+        _inflight_keys.discard(key)
+        _inflight_started.pop(key, None)
+
+
+def _get_photo_executor() -> ThreadPoolExecutor:
+    global _photo_executor
+    with _photo_executor_lock:
+        if _photo_executor is None:
+            workers = int(getattr(settings, "TELEGRAM_OCR_WORKERS", 2) or 2)
+            _photo_executor = ThreadPoolExecutor(
+                max_workers=max(1, workers),
+                thread_name_prefix="tg-ocr",
+            )
+        return _photo_executor
+
+
+def _submit_photo_work(work: Any) -> None:
+    """OCR'yi arka planda calistir; testlerde TELEGRAM_INLINE_PHOTOS=True."""
+    if getattr(settings, "TELEGRAM_INLINE_PHOTOS", False):
+        work()
+        return
+
+    def wrapped() -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            work()
+        except Exception:
+            logger.exception("Telegram photo worker failed")
+        finally:
+            close_old_connections()
+
+    _get_photo_executor().submit(wrapped)
+
+
+@contextmanager
+def _photo_processing_guard(processing_key: str) -> Iterator[None]:
+    key = (processing_key or "").strip()
+    if not key:
+        yield
+        return
+    with _inflight_lock:
+        _prune_stale_inflight()
+        if key in _inflight_keys:
+            raise PhotoAlreadyProcessing(key)
+        _inflight_keys.add(key)
+        _inflight_started[key] = time.monotonic()
+    try:
+        yield
+    finally:
+        with _inflight_lock:
+            _inflight_keys.discard(key)
+            _inflight_started.pop(key, None)
 
 
 @contextmanager
@@ -580,19 +668,22 @@ def _is_forwarded(message: dict[str, Any]) -> bool:
     return bool(message.get("forward_origin") or message.get("forward_date"))
 
 
+def _find_by_file_unique_id(file_unique_id: str) -> Question | None:
+    uid = (file_unique_id or "").strip()
+    if not uid:
+        return None
+    return Question.objects.filter(telegram_file_unique_id=uid).first()
+
+
 def _find_existing_telegram_question(
     *,
     chat_id: int,
     message_id: int,
     file_unique_id: str,
 ) -> tuple[Question | None, Literal["file", "message"] | None]:
-    if file_unique_id:
-        by_file = Question.objects.filter(
-            telegram_file_unique_id=file_unique_id,
-            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
-        ).first()
-        if by_file is not None:
-            return by_file, "file"
+    by_file = _find_by_file_unique_id(file_unique_id)
+    if by_file is not None:
+        return by_file, "file"
     by_message = Question.objects.filter(
         telegram_chat_id=chat_id,
         telegram_message_id=message_id,
@@ -600,6 +691,26 @@ def _find_existing_telegram_question(
     ).first()
     if by_message is not None:
         return by_message, "message"
+    return None, None
+
+
+def _find_existing_after_conflict(
+    *,
+    chat_id: int,
+    message_id: int,
+    file_unique_id: str,
+) -> tuple[Question | None, Literal["file", "message"] | None]:
+    """IntegrityError sonrasi — baska surec az once kaydetmis olabilir."""
+    for delay in (0.0, 0.2, 0.6, 1.2):
+        if delay:
+            time.sleep(delay)
+        existing, match = _find_existing_telegram_question(
+            chat_id=chat_id,
+            message_id=message_id,
+            file_unique_id=file_unique_id,
+        )
+        if existing is not None:
+            return existing, match
     return None, None
 
 
@@ -762,6 +873,142 @@ def _send_ingest_success(
         send_message(chat_id, reply_plain, reply_markup=keyboard)
 
 
+def _ingest_photo_worker(
+    *,
+    message: dict[str, Any],
+    chat_id: int,
+    message_id: int,
+    file_id: str,
+    file_unique_id: str,
+    topic: Topic,
+    explicit_topic: bool,
+    forwarded: bool,
+) -> None:
+    processing_key = _processing_key(int(chat_id), message_id)
+    try:
+        with _photo_processing_guard(processing_key):
+            started = time.perf_counter()
+            try:
+                image_bytes, mime = _download_file(file_id)
+            except (urllib.error.URLError, RuntimeError, TimeoutError) as exc:
+                send_message(
+                    chat_id,
+                    f"Fotoğraf indirilemedi: {exc}\n{_retry_hint()}",
+                )
+                return
+
+            ext = "jpg" if "jpeg" in mime else mime.split("/")[-1]
+            filename = f"telegram_{message_id}.{ext}"
+            buffer = io.BytesIO(image_bytes)
+
+            try:
+                result = ingest_question_from_image(
+                    buffer,
+                    topic=topic,
+                    filename=filename,
+                    mime=mime,
+                    publish=False,
+                    submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+                    telegram_chat_id=int(chat_id),
+                    telegram_message_id=message_id,
+                    telegram_file_unique_id=file_unique_id,
+                    allow_duplicate=True,
+                    auto_classify_topic=not explicit_topic,
+                )
+            except IntegrityError:
+                logger.warning(
+                    "Telegram ingest IntegrityError chat=%s msg=%s file_uid=%s",
+                    chat_id,
+                    message_id,
+                    file_unique_id,
+                )
+                existing, match = _find_existing_after_conflict(
+                    chat_id=int(chat_id),
+                    message_id=message_id,
+                    file_unique_id=file_unique_id,
+                )
+                if existing is not None:
+                    send_message(
+                        chat_id,
+                        _duplicate_warning(
+                            existing, match or "file", forwarded=forwarded
+                        ),
+                    )
+                    delete_message(int(chat_id), message_id)
+                    return
+                send_message(
+                    chat_id,
+                    "Kaydedilemedi: kayıt çakışması (eşzamanlı yazma).\n"
+                    "Birkaç saniye bekleyip tekrar gönderin.\n"
+                    f"{_retry_hint()}",
+                )
+                return
+
+            if not result.ok or result.question is None:
+                send_message(
+                    chat_id,
+                    f"Kaydedilemedi: {result.error or 'bilinmeyen hata'}\n{_retry_hint()}",
+                )
+                return
+
+            pending = Question.objects.filter(
+                submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+                is_published=False,
+            ).count()
+            elapsed = time.perf_counter() - started
+            assigned_topic = result.question.topic
+
+            from_user = message.get("from") or {}
+            user_id = from_user.get("id")
+            if user_id is not None:
+                try:
+                    start_solution_prompt(
+                        int(user_id),
+                        int(chat_id),
+                        result.question,
+                        source_message_id=message_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Telegram solution session start failed user_id=%s question=%s",
+                        user_id,
+                        result.question.public_id,
+                    )
+                _send_ingest_success(
+                    int(chat_id),
+                    topic=assigned_topic,
+                    question=result.question,
+                    pending=pending,
+                    elapsed_seconds=elapsed,
+                    forwarded=forwarded,
+                    partial=result.partial,
+                    duplicate=result.duplicate,
+                    include_solution_prompt=True,
+                    topic_auto_detected=result.topic_auto_detected,
+                )
+            else:
+                _send_ingest_success(
+                    int(chat_id),
+                    topic=assigned_topic,
+                    question=result.question,
+                    pending=pending,
+                    elapsed_seconds=elapsed,
+                    forwarded=forwarded,
+                    partial=result.partial,
+                    duplicate=result.duplicate,
+                    include_solution_prompt=False,
+                    topic_auto_detected=result.topic_auto_detected,
+                )
+                delete_message(int(chat_id), message_id)
+    except PhotoAlreadyProcessing:
+        send_message(
+            chat_id,
+            "Bu mesaj zaten OCR kuyruğunda.\n"
+            "Farklı bir soru fotoğrafı gönderdiyseniz sırayla işlenecek — "
+            "birkaç saniye bekleyin.",
+        )
+
+
 def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutcome:
     extracted = _extract_image(message)
     if extracted is None:
@@ -778,13 +1025,13 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
                 chat_id,
                 f"Konu bulunamadı: {caption_slug} — "
                 "düzeltin veya slug yazmadan gönderin.\n"
-                f"{_RETRY_HINT}",
+                f"{_retry_hint()}",
             )
         else:
             send_message(
                 chat_id,
                 "Aktif konu bulunamadı. Önce müfredatı seed edin.\n"
-                f"{_RETRY_HINT}",
+                f"{_retry_hint()}",
             )
         return "error"
 
@@ -803,111 +1050,34 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
         delete_message(int(chat_id), message_id)
         return "skipped"
 
-    started = time.perf_counter()
-    try:
-        image_bytes, mime = _download_file(file_id)
-    except (urllib.error.URLError, RuntimeError, TimeoutError) as exc:
-        send_message(
-            chat_id,
-            f"Fotoğraf indirilemedi: {exc}\n{_RETRY_HINT}",
-        )
-        return "error"
-
-    ext = "jpg" if "jpeg" in mime else mime.split("/")[-1]
-    filename = f"telegram_{message_id}.{ext}"
-    buffer = io.BytesIO(image_bytes)
-
-    try:
-        result = ingest_question_from_image(
-            buffer,
-            topic=topic,
-            filename=filename,
-            mime=mime,
-            publish=False,
-            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
-            telegram_chat_id=int(chat_id),
-            telegram_message_id=message_id,
-            telegram_file_unique_id=file_unique_id,
-            allow_duplicate=True,
-            auto_classify_topic=not explicit_topic,
-        )
-    except IntegrityError:
-        existing, match = _find_existing_telegram_question(
-            chat_id=int(chat_id),
-            message_id=message_id,
-            file_unique_id=file_unique_id,
-        )
-        if existing is not None:
+    processing_key = _processing_key(int(chat_id), message_id)
+    with _inflight_lock:
+        _prune_stale_inflight()
+        if processing_key in _inflight_keys:
             send_message(
                 chat_id,
-                _duplicate_warning(existing, match or "file", forwarded=forwarded),
+                "Bu mesaj zaten OCR kuyruğunda.\n"
+                "Farklı bir soru fotoğrafı gönderdiyseniz sırayla işlenecek — "
+                "birkaç saniye bekleyin.",
             )
-            delete_message(int(chat_id), message_id)
             return "skipped"
-        send_message(
-            chat_id,
-            f"Kaydedilemedi: aynı fotoğraf zaten işleniyor.\n{_RETRY_HINT}",
-        )
-        return "error"
 
-    if not result.ok or result.question is None:
-        send_message(
-            chat_id,
-            f"Kaydedilemedi: {result.error or 'bilinmeyen hata'}\n{_RETRY_HINT}",
-        )
-        return "error"
-
-    pending = Question.objects.filter(
-        submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
-        is_published=False,
-    ).count()
-    elapsed = time.perf_counter() - started
-    assigned_topic = result.question.topic
-
-    from_user = message.get("from") or {}
-    user_id = from_user.get("id")
-    include_solution_prompt = user_id is not None
-    if user_id is not None:
-        try:
-            start_solution_prompt(
-                int(user_id),
-                int(chat_id),
-                result.question,
-                source_message_id=message_id,
-            )
-        except Exception:
-            logger.exception(
-                "Telegram solution session start failed user_id=%s question=%s",
-                user_id,
-                result.question.public_id,
-            )
-        _send_ingest_success(
-            int(chat_id),
-            topic=assigned_topic,
-            question=result.question,
-            pending=pending,
-            elapsed_seconds=elapsed,
+    send_message(
+        chat_id,
+        "📷 Fotoğraf alındı, OCR başlıyor…",
+    )
+    _submit_photo_work(
+        lambda: _ingest_photo_worker(
+            message=message,
+            chat_id=int(chat_id),
+            message_id=message_id,
+            file_id=file_id,
+            file_unique_id=file_unique_id,
+            topic=topic,
+            explicit_topic=explicit_topic,
             forwarded=forwarded,
-            partial=result.partial,
-            duplicate=result.duplicate,
-            include_solution_prompt=True,
-            topic_auto_detected=result.topic_auto_detected,
         )
-    else:
-        _send_ingest_success(
-            int(chat_id),
-            topic=assigned_topic,
-            question=result.question,
-            pending=pending,
-            elapsed_seconds=elapsed,
-            forwarded=forwarded,
-            partial=result.partial,
-            duplicate=result.duplicate,
-            include_solution_prompt=False,
-            topic_auto_detected=result.topic_auto_detected,
-        )
-        delete_message(int(chat_id), message_id)
-
+    )
     return "ingested"
 
 

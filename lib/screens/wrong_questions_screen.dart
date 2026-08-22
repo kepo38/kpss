@@ -149,22 +149,25 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     BuildContext context,
     QuestionModel question,
   ) async {
+    final previousUserId = AuthService.instance.user?.id;
     final ok = await AccountLinkCard.prompt(
       context,
       title: 'Giriş yap',
       subtitle: 'Soru metnini görmek için Google hesabını bağla.',
     );
     if (!ok || !mounted) return;
-    // Aktarım auth içinde beklenir; emin olmak için bir kez daha senkronize et.
-    await ContentBankService.instance.onUserSessionChanged();
+    await AuthService.instance.relayUserScopedServices(
+      previousUserId: previousUserId,
+    );
     if (!mounted) return;
     await _openQuestion(this.context, question.id);
   }
 
   Future<void> _openQuestion(BuildContext context, String questionId) async {
     final bank = ContentBankService.instance;
+    await bank.initialize();
     final question = bank.questionById(questionId);
-    if (question == null) return;
+    if (!mounted || question == null) return;
 
     AdManager.instance.skipNextPageTransition();
     final storedAnswer = bank.wrongSelectionFor(question.id);
@@ -332,13 +335,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   Future<void> _practiceAll(List<QuestionModel> questions) async {
     if (questions.isEmpty) return;
     if (!AuthService.instance.hasPermanentAccount) {
+      final previousUserId = AuthService.instance.user?.id;
       final ok = await AccountLinkCard.prompt(
         context,
         title: 'Giriş yap',
         subtitle: 'Tüm yanlışları çözmek için Google hesabını bağla.',
       );
       if (!ok || !mounted) return;
-      await ContentBankService.instance.onUserSessionChanged();
+      await AuthService.instance.relayUserScopedServices(
+        previousUserId: previousUserId,
+      );
       if (!mounted) return;
     }
     AdManager.instance.skipNextPageTransition();
