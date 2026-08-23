@@ -27,14 +27,14 @@ class AiCoachInsightCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionLabel(
-          title: 'Yapay Zeka Koç',
+          title: 'HEDEF KAMU KOÇLUK',
           subtitle: 'Trend analizi ve kişisel yorum',
         ),
         const SizedBox(height: 10),
         ProFeatureLock(
           locked: !isPremium,
           upsellTitle: 'AI KOÇ',
-          upsellSubtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+          upsellSubtitle: kProUpsellSubtitle,
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),

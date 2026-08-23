@@ -37,7 +37,7 @@ class _WeakPointRemediationCardState extends State<WeakPointRemediationCard> {
         context,
         emoji: '🚨',
         title: 'TELAFİ TESTİ',
-        subtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+        subtitle: kProUpsellSubtitle,
       );
       return;
     }
@@ -87,7 +87,7 @@ class _WeakPointRemediationCardState extends State<WeakPointRemediationCard> {
         ProFeatureLock(
           locked: !widget.isPremium,
           upsellTitle: 'TELAFİ TESTİ',
-          upsellSubtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+          upsellSubtitle: kProUpsellSubtitle,
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),

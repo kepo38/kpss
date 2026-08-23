@@ -43,6 +43,9 @@ class AdManager extends ChangeNotifier {
   /// Oturum önbelleği — bugün açılmış detaylı çözüm soru ID'leri.
   final Set<String> _unlockedSolutionIds = {};
 
+  Future<void>? _hydrateDailySolutionUnlocksFuture;
+  bool _hydrateDailySolutionPendingReplace = false;
+
   /// TG detaylı analiz — oturum boyunca reklamla açılan deneme id'leri.
   final Set<int> _unlockedTgAnalysisIds = {};
 
@@ -118,7 +121,7 @@ class AdManager extends ChangeNotifier {
       if (_focusBreakActive && _focusScreenOpen) {
         _loadFocusBreakBanner();
       }
-      unawaited(_refreshDailySolutionRemaining());
+      await ensureDailySolutionUnlocksHydrated(replaceMemory: true);
     } catch (e, st) {
       _sdkReady = false;
       debugPrint('AdManager initialize failed: $e\n$st');
@@ -170,13 +173,35 @@ class AdManager extends ChangeNotifier {
   void startTestSession({bool adFreeExperience = false}) {
     _isInTestSession = true;
     _adFreeTestSession = adFreeExperience;
-    _unlockedSolutionIds.clear();
-    unawaited(_hydrateDailySolutionUnlocks());
+    unawaited(
+      ensureDailySolutionUnlocksHydrated(replaceMemory: true).then((_) {
+        if (_isInTestSession) notifyListeners();
+      }),
+    );
     unawaited(_refreshPanelFlagsForTest());
     notifyListeners();
   }
 
-  Future<void> _hydrateDailySolutionUnlocks() async {
+  /// SharedPreferences'taki bugünkü açılmış çözümleri belleğe yükler.
+  Future<void> ensureDailySolutionUnlocksHydrated({bool replaceMemory = false}) {
+    if (replaceMemory) _hydrateDailySolutionPendingReplace = true;
+    _hydrateDailySolutionUnlocksFuture ??= _runHydrateDailySolutionUnlocks();
+    return _hydrateDailySolutionUnlocksFuture!;
+  }
+
+  Future<void> _runHydrateDailySolutionUnlocks() async {
+    try {
+      do {
+        final replaceMemory = _hydrateDailySolutionPendingReplace;
+        _hydrateDailySolutionPendingReplace = false;
+        await _hydrateDailySolutionUnlocks(replaceMemory: replaceMemory);
+      } while (_hydrateDailySolutionPendingReplace);
+    } finally {
+      _hydrateDailySolutionUnlocksFuture = null;
+    }
+  }
+
+  Future<void> _hydrateDailySolutionUnlocks({bool replaceMemory = false}) async {
     if (_isPremium || _adFreeTestSession) {
       _dailyDetailedSolutionsRemaining =
           AdConstants.freeDetailedSolutionsPerDay;
@@ -184,9 +209,27 @@ class AdManager extends ChangeNotifier {
     }
     final ids =
         await DailySolutionQuotaService.instance.unlockedQuestionIdsToday();
-    _unlockedSolutionIds.addAll(ids);
+    if (replaceMemory) {
+      _unlockedSolutionIds
+        ..clear()
+        ..addAll(ids);
+    } else {
+      _unlockedSolutionIds.addAll(ids);
+    }
     await _refreshDailySolutionRemaining();
-    if (_isInTestSession) notifyListeners();
+  }
+
+  Future<bool> isSolutionUnlockedAsync(String questionId) async {
+    if (questionId.isEmpty) return false;
+    if (_isPremium || _adFreeTestSession) return true;
+    if (_unlockedSolutionIds.contains(questionId)) return true;
+    await ensureDailySolutionUnlocksHydrated();
+    if (_unlockedSolutionIds.contains(questionId)) return true;
+    if (await DailySolutionQuotaService.instance.isUnlockedToday(questionId)) {
+      _unlockedSolutionIds.add(questionId);
+      return true;
+    }
+    return false;
   }
 
   Future<void> _refreshDailySolutionRemaining() async {

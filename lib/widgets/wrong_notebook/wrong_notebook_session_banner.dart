@@ -5,12 +5,10 @@ import '../../theme/app_theme.dart';
 /// Test bazlı yanlış inceleme — üst bilgi şeridi.
 class WrongNotebookSessionBanner extends StatelessWidget {
   final String title;
-  final VoidCallback onViewAll;
 
   const WrongNotebookSessionBanner({
     super.key,
     required this.title,
-    required this.onViewAll,
   });
 
   static const _red = Color(0xFFF87171);
@@ -23,25 +21,49 @@ class WrongNotebookSessionBanner extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          color: _red.withValues(alpha: 0.08),
-          border: Border.all(color: _red.withValues(alpha: 0.55), width: 1.5),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              _red.withValues(alpha: 0.12),
+              AppTheme.champagne.withValues(alpha: 0.08),
+            ],
+          ),
+          border: Border.all(color: _red.withValues(alpha: 0.45), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.champagne.withValues(alpha: 0.08),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.filter_alt_outlined,
-                    size: 20,
-                    color: _redDeep.withValues(alpha: 0.9),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _redDeep.withValues(alpha: 0.12),
+                  border: Border.all(color: _red.withValues(alpha: 0.35)),
+                ),
+                child: Icon(
+                  Icons.filter_alt_rounded,
+                  size: 18,
+                  color: _redDeep.withValues(alpha: 0.92),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       title,
                       style: TextStyle(
                         fontFamily: 'serif',
@@ -51,30 +73,16 @@ class WrongNotebookSessionBanner extends StatelessWidget {
                         color: AppTheme.onPage(context),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: onViewAll,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _redDeep,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Bu testteki yanlış sorular aşağıda listelenir.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: AppTheme.mutedOnPage(context),
+                      ),
                     ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'Tüm Yanlışlarımı Gör',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ],

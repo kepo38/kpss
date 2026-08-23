@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/services/ad_constants.dart';
+import 'package:kpss_akademi/services/app_preferences.dart';
 import 'package:kpss_akademi/services/daily_solution_quota_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,6 +9,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    AppPreferences.resetInstanceForTest();
   });
 
   group('DailySolutionQuotaService', () {

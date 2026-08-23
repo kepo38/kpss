@@ -13,8 +13,31 @@
     return "$" + cleaned + "$";
   }
 
+  function mergeSplitInlineDollarMath(text) {
+    var src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (!src) return src;
+    var display = [];
+    src = src.replace(/\$\$[\s\S]+?\$\$/g, function (m) {
+      display.push(m);
+      return "§§D" + (display.length - 1) + "§§";
+    });
+    var prev;
+    do {
+      prev = src;
+      src = src.replace(/\$([^$\n]*)\n(\s*[^$\n]+)\$/g, function (_, a, b) {
+        a = String(a || "").trim();
+        b = String(b || "").trim();
+        return a ? "$" + a + " " + b + "$" : "$" + b + "$";
+      });
+    } while (src !== prev);
+    src = src.replace(/§§D(\d+)§§/g, function (_, idx) {
+      return display[Number(idx)] || "";
+    });
+    return src;
+  }
+
   function normalizeLatex(text) {
-    var src = repairLatexEscapes(String(text || ""));
+    var src = mergeSplitInlineDollarMath(repairLatexEscapes(String(text || "")));
     return src
       .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
         return "$$" + body.trim() + "$$";
@@ -129,7 +152,7 @@
    * "GösterimKitabın" / "sayfaİlk" / "$…$3. Gün" / "göre;$120" da.
    */
   function restoreCollapsedBreaks(text) {
-    var src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    var src = mergeSplitInlineDollarMath(String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
     if (!src) return src;
     var holders = [];
     src = src.replace(
@@ -988,6 +1011,7 @@
     normalizeLatex: normalizeLatex,
     normalizeExamArrows: normalizeExamArrows,
     normalizeMarkup: normalizeMarkup,
+    mergeSplitInlineDollarMath: mergeSplitInlineDollarMath,
     restoreCollapsedBreaks: restoreCollapsedBreaks,
     structureSolutionOutline: structureSolutionOutline,
     wrapBareLatex: wrapBareLatex,

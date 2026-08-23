@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'pro_upsell_sheet.dart';
 
+/// Pro kilit / upsell alt metni — iki satır.
+const kProUpsellSubtitle = 'Pro Üyeliğe Geç\nHedefin Olan Kamuya Atan';
+
 /// Pro özellik — bulanık + kilit overlay.
 class ProFeatureLock extends StatelessWidget {
   final Widget child;
@@ -19,8 +22,7 @@ class ProFeatureLock extends StatelessWidget {
     required this.locked,
     this.onUnlock,
     this.upsellTitle = 'PRO ÖZELLİK',
-    this.upsellSubtitle =
-        'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+    this.upsellSubtitle = kProUpsellSubtitle,
   });
 
   Future<void> _handleTap(BuildContext context) async {

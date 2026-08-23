@@ -68,7 +68,7 @@ class StatisticsOverviewTab extends StatelessWidget {
               ProFeatureLock(
                 locked: !isPremium,
                 upsellTitle: 'TREND ANALİZİ',
-                upsellSubtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+                upsellSubtitle: kProUpsellSubtitle,
                 child: ExamPremiumCardShell(
                   accentBar: false,
                   padding: const EdgeInsets.all(14),

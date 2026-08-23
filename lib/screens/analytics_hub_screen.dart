@@ -119,11 +119,6 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
               children: [
                 _HeroSummary(overall: overall),
                 const SizedBox(height: 20),
-                AiCoachInsightCard(
-                  insight: coachInsight,
-                  isPremium: widget.isPremium,
-                ),
-                const SizedBox(height: 20),
                 WeeklyStudyPlanCard(
                   days: weeklyPlan,
                   isPremium: widget.isPremium,
@@ -172,6 +167,11 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                 _SubjectCarouselSection(
                   subjects: subjects,
                   kpssType: widget.kpssType,
+                ),
+                const SizedBox(height: 28),
+                AiCoachInsightCard(
+                  insight: coachInsight,
+                  isPremium: widget.isPremium,
                 ),
               ],
             ),

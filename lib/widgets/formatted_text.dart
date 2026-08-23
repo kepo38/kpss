@@ -663,10 +663,38 @@ class FormattedText extends StatelessWidget {
     return out;
   }
 
+  static String mergeSplitInlineDollarMath(String input) {
+    if (input.isEmpty) return input;
+    var src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final display = <String>[];
+    src = src.replaceAllMapped(RegExp(r'\$\$[\s\S]+?\$\$'), (m) {
+      display.add(m.group(0)!);
+      return '§§D${display.length - 1}§§';
+    });
+    var prev = '';
+    while (prev != src) {
+      prev = src;
+      src = src.replaceAllMapped(
+        RegExp(r'\$([^$\n]*)\n(\s*[^$\n]+)\$'),
+        (m) {
+          final a = m.group(1)!.trim();
+          final b = m.group(2)!.trim();
+          if (a.isEmpty) return '\$$b\$';
+          return '\$$a $b\$';
+        },
+      );
+    }
+    src = src.replaceAllMapped(RegExp(r'§§D(\d+)§§'), (m) {
+      return display[int.parse(m.group(1)!)];
+    });
+    return src;
+  }
+
   /// Çözüm metni — markup + LaTeX + satır kırılımları (madde yapısı hariç).
   static String normalizeForSolutionDisplay(String input) {
     if (input.isEmpty) return input;
     var text = normalizeMarkup(input);
+    text = mergeSplitInlineDollarMath(text);
     text = normalizeLatex(text);
     return restoreCollapsedBreaks(text);
   }
@@ -828,7 +856,9 @@ class FormattedText extends StatelessWidget {
       return '\$$cleaned\$';
     }
 
-    var text = repairGoogleDocsVertBars(_repairLatexEscapes(input))
+    var text = mergeSplitInlineDollarMath(
+      repairGoogleDocsVertBars(_repairLatexEscapes(input)),
+    )
         .replaceAllMapped(
           RegExp(r'\\\[([\s\S]+?)\\\]'),
           (m) => r'$$' + m.group(1)!.trim() + r'$$',
@@ -842,7 +872,9 @@ class FormattedText extends StatelessWidget {
 
   static String restoreCollapsedBreaks(String input) {
     if (input.isEmpty) return input;
-    var src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    var src = mergeSplitInlineDollarMath(
+      input.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
+    );
     final holders = <String>[];
     src = src.replaceAllMapped(
       RegExp(

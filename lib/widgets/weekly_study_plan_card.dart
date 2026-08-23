@@ -36,7 +36,7 @@ class WeeklyStudyPlanCard extends StatelessWidget {
           ProFeatureLock(
             locked: !isPremium,
             upsellTitle: 'HAFTALIK PLAN',
-            upsellSubtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+            upsellSubtitle: kProUpsellSubtitle,
             child: Column(
               children: [
                 for (final day in future) ...[
@@ -194,7 +194,7 @@ class DailyMissionProTeaser extends StatelessWidget {
           context,
           emoji: '📋',
           title: 'TÜM GÖREVLER',
-          subtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+          subtitle: kProUpsellSubtitle,
         ),
         borderRadius: BorderRadius.circular(10),
         child: Container(
@@ -217,7 +217,7 @@ class DailyMissionProTeaser extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '+$hiddenCount görev daha · Pro ile tüm listeyi gör',
+                  '+$hiddenCount görev daha',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// SharedPreferences tek örnek — cold start'ta paralel getInstance gecikmesini önler.
@@ -40,5 +41,12 @@ class AppPreferences {
     final start = _firstOpenAt;
     if (createdAt == null || start == null) return false;
     return !createdAt.toUtc().isAfter(start.toUtc());
+  }
+
+  @visibleForTesting
+  static void resetInstanceForTest() {
+    _instance = null;
+    _loading = null;
+    _firstOpenAt = null;
   }
 }

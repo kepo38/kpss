@@ -10,9 +10,11 @@ from content.rich_text_telegram import (
 from content.rich_text_common import (
     choose_paste_text,
     html_to_markdown,
+    merge_split_inline_dollar_math,
     normalize_latex,
     normalize_paste_text,
     repair_latex_escapes,
+    restore_collapsed_breaks,
 )
 from content.telegram_conversation import try_handle_conversation
 
@@ -50,6 +52,19 @@ class RichTextNormalizationTests(SimpleTestCase):
     def test_repair_latex_escapes(self):
         src = "$rac{1}{2}$"
         self.assertIn(r"\frac", repair_latex_escapes(src))
+
+    def test_merge_split_inline_dollar_math(self):
+        src = "$Y\n= 7$"
+        out = merge_split_inline_dollar_math(src)
+        self.assertEqual(out, "$Y = 7$")
+        laid_out = restore_collapsed_breaks(src)
+        self.assertIn("$Y = 7$", laid_out)
+        self.assertNotIn("\n= 7$", laid_out)
+
+    def test_normalize_latex_merges_split_dollar(self):
+        src = "Sonuç: $Y\n= 7$ olur."
+        out = normalize_latex(src)
+        self.assertIn("$Y = 7$", out)
 
     def test_restore_collapsed_breaks_after_math(self):
         src = "Sonuç ($a^b \\equiv a$).Verilen ifade"

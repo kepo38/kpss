@@ -1786,18 +1786,7 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
                 const SizedBox(height: 8),
                 if (showWrongReview) ...[
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(dialogContext, true),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _wrongRed,
-                      side: const BorderSide(color: _wrongRed, width: 2),
-                      minimumSize: const Size(double.infinity, 44),
-                    ),
-                    child: const Text(
-                      'Yanlışlarımı Gör',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
+                  _ResultWrongReviewButton(wrongCount: result.wrong),
                   const SizedBox(height: 8),
                 ],
                 FilledButton(
@@ -1864,12 +1853,25 @@ class _QuizScreenState extends State<QuizScreen>
       if (!mounted) return;
     }
 
+    if (!mounted) return;
+
     final navigator = Navigator.of(context);
     final sessionFilter =
         reviewWrongs ? _buildWrongSessionFilter(result) : null;
-    navigator.pop(result);
 
     if (sessionFilter != null) {
+      await ContentBankService.instance.updateAnswerOutcomes(
+        wrongQuestionIds: result.wrongQuestionIds,
+        correctQuestionIds: result.correctQuestionIds,
+        questionIds: result.questionIds,
+        selectedAnswers: result.selectedAnswers,
+      );
+    }
+
+    if (!mounted) return;
+    navigator.pop(result);
+
+    if (sessionFilter != null && navigator.mounted) {
       await openWrongNotebookSession(navigator, sessionFilter);
     }
   }
@@ -2995,7 +2997,7 @@ class _FrostUnlockButton extends StatelessWidget {
                           ? (proGate ? 'Açılıyor…' : 'Reklam yükleniyor…')
                           : proGate
                               ? 'Pro ile tam çözümü aç'
-                              : 'Reklam izle — tam çözümü aç',
+                              : 'Reklam izle\ntam çözümü aç',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'serif',
@@ -3261,6 +3263,114 @@ class _OptionTile extends StatelessWidget {
 }
 
 enum _DailyMiniExitChoice { stay, submitRanking, saveOnly }
+
+class _ResultWrongReviewButton extends StatelessWidget {
+  final int wrongCount;
+
+  const _ResultWrongReviewButton({required this.wrongCount});
+
+  static const _wrongRed = Color(0xFFF87171);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.pop(context, true),
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFFFF6E8),
+                Color(0xFFE2C998),
+                AppTheme.champagne,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.champagne.withValues(alpha: 0.28),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(1.4),
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12.6),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF2A1218),
+                  _wrongRed.withValues(alpha: 0.18),
+                  const Color(0xFF1A1018),
+                ],
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _wrongRed.withValues(alpha: 0.14),
+                    border: Border.all(
+                      color: AppTheme.champagne.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.menu_book_rounded,
+                    size: 20,
+                    color: AppTheme.champagneLight,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Yanlışlarımı Gör',
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFF6E7C3),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$wrongCount soru · hemen tekrar et',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.68),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 18,
+                  color: AppTheme.champagne.withValues(alpha: 0.9),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ResultRewardChip extends StatelessWidget {
   final IconData icon;

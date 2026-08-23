@@ -58,6 +58,32 @@ void main() {
     });
   });
 
+  group('Enter ile bölünmüş inline \$ math', () {
+    test('mergeSplitInlineDollarMath birleştirir', () {
+      expect(
+        FormattedText.mergeSplitInlineDollarMath(r'$Y' '\n' r'= 7$'),
+        r'$Y = 7$',
+      );
+      final closedBeforeBreak = 'Sonuç: ' r'$6$' '\n' 'Sonucun';
+      expect(
+        FormattedText.mergeSplitInlineDollarMath(closedBeforeBreak),
+        closedBeforeBreak,
+      );
+      final display = r'Blok $$X' '\n' r'+ Y$$ devam';
+      expect(
+        FormattedText.mergeSplitInlineDollarMath(display),
+        display,
+      );
+    });
+
+    test('prepareSolutionText bölünmüş harf formülünü düzeltir', () {
+      const splitY = r'1. Adım: Ortadaki rakamı bulduk: $Y' '\n' r'= 7$.';
+      final laidOut = FormattedText.prepareSolutionText(splitY);
+      expect(laidOut, contains(r'$Y = 7$'));
+      expect(laidOut, isNot(contains(r'\n= 7$')));
+    });
+  });
+
   group('Google Docs XYZ toplama çözümü', () {
     test('array formülü ve adım başlıklarını ayırır', () {
       final laidOut = FormattedText.prepareSolutionText(_xyzSample);

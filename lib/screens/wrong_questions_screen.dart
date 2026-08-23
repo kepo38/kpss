@@ -70,11 +70,15 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   }
 
   Future<void> _hydrateMissingBodies() async {
-    final missing = ContentBankService.instance.unresolvedWrongQuestionIds;
-    if (missing.isEmpty || _hydrating) return;
+    final session = _activeSessionFilter;
+    final ids = <String>{
+      ...ContentBankService.instance.unresolvedWrongQuestionIds,
+      if (session != null) ...session.questionIds,
+    };
+    if (ids.isEmpty || _hydrating) return;
     setState(() => _hydrating = true);
     try {
-      await QuestionFetchService.instance.fetchByIds(missing);
+      await QuestionFetchService.instance.fetchByIds(ids.toList());
       await ContentBankService.instance.persistWrongQuestionBodiesNow();
     } catch (e, st) {
       debugPrint('Wrong notebook hydrate error: $e\n$st');
@@ -412,14 +416,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   List<QuestionModel> _sourceQuestions(ContentBankService bank) {
     final session = _activeSessionFilter;
     if (session != null) {
-      if (session.prefetchedQuestions.isNotEmpty) {
-        final byId = {for (final q in session.prefetchedQuestions) q.id: q};
-        return session.questionIds
-            .map((id) => byId[id])
-            .whereType<QuestionModel>()
-            .toList();
+      final byId = <String, QuestionModel>{
+        for (final q in session.prefetchedQuestions) q.id: q,
+      };
+      for (final q in bank.questionsByIds(session.questionIds)) {
+        byId.putIfAbsent(q.id, () => q);
       }
-      return bank.questionsByIds(session.questionIds);
+      return session.questionIds
+          .map((id) => byId[id])
+          .whereType<QuestionModel>()
+          .toList();
     }
     return bank.questionsByIds(bank.wrongQuestionIds.toList());
   }
@@ -537,8 +543,6 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                       if (_activeSessionFilter != null)
                         WrongNotebookSessionBanner(
                           title: _activeSessionFilter!.sessionTitle,
-                          onViewAll: () =>
-                              setState(() => _activeSessionFilter = null),
                         ),
                       if (_activeSessionFilter == null && archiveAtLimit)
                         WrongNotebookCapacityBanner(
@@ -597,8 +601,10 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                       18,
                                     ),
                                     child: Text(
-                                      'Test yanlışın yok. Kitap soruların için '
-                                      'yukarıdaki pembe alana dokun.',
+                                      _activeSessionFilter != null
+                                          ? 'Bu testte yanlış soru bulunamadı.'
+                                          : 'Test yanlışın yok. Kitap soruların için '
+                                              'yukarıdaki pembe alana dokun.',
                                       style: TextStyle(
                                         color: AppTheme.slate
                                             .withValues(alpha: 0.68),

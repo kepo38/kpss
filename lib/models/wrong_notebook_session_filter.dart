@@ -1,7 +1,6 @@
 import 'question_model.dart';
 import '../data/kpss_curriculum.dart';
 import '../services/last_study_session_service.dart';
-import '../widgets/countdown_widget.dart';
 
 /// Az önce biten testteki yanlışlar — Yanlış Defteri oturum filtresi.
 class WrongNotebookSessionFilter {
@@ -27,10 +26,13 @@ class WrongNotebookSessionFilter {
     required List<QuestionModel> allQuestions,
     String? testId,
   }) {
-    final wrongSet = wrongQuestionIds.toSet();
-    final prefetched =
-        allQuestions.where((q) => wrongSet.contains(q.id)).toList();
-    final count = wrongQuestionIds.length;
+    final byId = {for (final q in allQuestions) q.id: q};
+    final prefetched = wrongQuestionIds
+        .map((id) => byId[id])
+        .whereType<QuestionModel>()
+        .toList();
+    final count =
+        prefetched.isNotEmpty ? prefetched.length : wrongQuestionIds.length;
 
     final subject = KpssCurriculum.findSubject(meta.kpssType, meta.subjectId);
     final topic = KpssCurriculum.findTopic(meta.kpssType, meta.topicId);

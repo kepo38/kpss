@@ -333,7 +333,7 @@ _COLLAPSED_WORD_BOUNDARY_RE = re.compile(
 
 
 def normalize_latex(text: str) -> str:
-    src = repair_latex_escapes(text or "")
+    src = merge_split_inline_dollar_math(repair_latex_escapes(text or ""))
     src = re.sub(
         r"\\\[([\s\S]+?)\\\]",
         lambda m: _display_latex_body_to_dollars(m.group(1)),
@@ -448,6 +448,38 @@ def normalize_markup(text: str) -> str:
     return src.strip()
 
 
+def merge_split_inline_dollar_math(text: str) -> str:
+    """Panelde Enter ile bölünmüş `$Y\\n= 7$` → `$Y = 7$`."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src:
+        return src
+    display: list[str] = []
+
+    def stash_display(match: re.Match[str]) -> str:
+        display.append(match.group(0))
+        return f"§§D{len(display) - 1}§§"
+
+    src = re.sub(r"\$\$[\s\S]+?\$\$", stash_display, src)
+    prev = None
+    while prev != src:
+        prev = src
+        src = re.sub(
+            r"\$([^$\n]*)\n(\s*[^$\n]+)\$",
+            lambda m: (
+                f"${m.group(1).strip()} {m.group(2).strip()}$"
+                if m.group(1).strip()
+                else f"${m.group(2).strip()}$"
+            ),
+            src,
+        )
+    src = re.sub(
+        r"§§D(\d+)§§",
+        lambda m: display[int(m.group(1))] if int(m.group(1)) < len(display) else m.group(0),
+        src,
+    )
+    return src
+
+
 def _protect_math_spans(text: str, holders: list[str]) -> str:
     """$...$ / $$...$$ / \\(...\\) / \\[...\\] bloklarını yer tutucu yap."""
 
@@ -467,7 +499,7 @@ def _protect_math_spans(text: str, holders: list[str]) -> str:
 
 def restore_collapsed_breaks(text: str) -> str:
     """Google / sohbet kopyasında yutulan satır kırıklarını geri aç."""
-    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    src = merge_split_inline_dollar_math((text or "").replace("\r\n", "\n").replace("\r", "\n"))
     if not src:
         return src
     math_holders: list[str] = []
