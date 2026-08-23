@@ -4,8 +4,11 @@ import 'package:intl/intl.dart';
 
 import '../../models/tg_exam_models.dart';
 import '../../screens/quiz_screen.dart';
+import '../../services/play_billing_service.dart';
+import '../../services/premium_service.dart';
 import '../../services/question_fetch_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/tg_exam/tg_exam_pro_analysis_teaser.dart';
 import '../../widgets/tg_exam_gates.dart';
 import 'tg_exam_result_screen.dart';
 
@@ -193,6 +196,19 @@ class _TgExamInstantSummaryScreenState
               wide: true,
             ),
             const SizedBox(height: 28),
+            ValueListenableBuilder<bool>(
+              valueListenable: PlayBillingService.instance.premiumNotifier,
+              builder: (context, _, __) {
+                final isPremium = PremiumService.instance.isPremium;
+                return TgExamProAnalysisTeaser(
+                  exam: _exam,
+                  isPremium: isPremium,
+                  onOpenFullAnalysis:
+                      _exam.canAccessDetailedAnalysis ? _openDetailedAnalysis : null,
+                );
+              },
+            ),
+            const SizedBox(height: 28),
             _LockedActionButton(
               enabled: canSolutions,
               loading: _loadingSolutions,
@@ -205,24 +221,11 @@ class _TgExamInstantSummaryScreenState
                       '$_unlockLabel\'de otomatik olarak açılacaktır.',
               onPressed: _openSolutions,
             ),
-            if (canAnalysis) ...[
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: _openDetailedAnalysis,
-                icon: const Icon(Icons.analytics_outlined),
-                label: const Text('Detaylı Analiz · Reklam'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.champagne,
-                  foregroundColor: AppTheme.ink,
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-              ),
-            ],
             const SizedBox(height: 20),
-            if (!canSolutions)
+            if (!canSolutions && !canAnalysis)
               Text(
-                'Sıralama ve Türkiye geneli karşılaştırma, sonuçlar '
-                'açıklandığında Denemelerim sekmesinde görünecek.',
+                'Sonuçlar açıklandığında Denemelerim sekmesinden de '
+                'Türkiye geneli analize ulaşabilirsin.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 12,

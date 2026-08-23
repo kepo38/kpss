@@ -6,10 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/savings_constants.dart';
+import '../constants/wrong_notebook_constants.dart';
 import '../data/kpss_curriculum.dart';
 import '../models/content_models.dart';
 import '../models/manual_question_model.dart';
 import '../models/question_model.dart';
+import '../models/wrong_notebook_capacity_result.dart';
 import '../utils/daily_mission_copy.dart';
 import '../widgets/countdown_widget.dart';
 import 'user_savings_insight_service.dart';
@@ -20,6 +22,7 @@ import 'daily_quota_service.dart';
 import 'favorites_service.dart';
 import 'local_database.dart';
 import 'premium_service.dart';
+import 'wrong_notebook_capacity.dart';
 
 /// Öğrenci tarafı soru bankası, konu testleri ve istatistikler.
 /// İçerik üretimi Django web panelindedir; mobil yalnızca yayın paketini okur.
@@ -874,7 +877,7 @@ class ContentBankService extends ChangeNotifier {
     return _questions.where((q) => q.dersAdi == subjectName).length;
   }
 
-  Future<void> recordAttempt(
+  Future<WrongNotebookCapacityResult> recordAttempt(
     TestAttemptModel attempt, {
     List<String> questionIds = const [],
     List<String> wrongQuestionIds = const [],
@@ -882,22 +885,22 @@ class ContentBankService extends ChangeNotifier {
   }) async {
     _attempts.add(attempt);
     final futures = <Future<void>>[_persistAttempts()];
+    var capacity = WrongNotebookCapacityResult.none;
     if (questionIds.isNotEmpty) {
       _solvedQuestionIds.addAll(questionIds);
       futures.add(_persistSolvedQuestions());
     }
     if (wrongQuestionIds.isNotEmpty) {
-      final newlyWrong = wrongQuestionIds
-          .where((id) => !_wrongQuestionIds.contains(id))
-          .toList();
-      _wrongQuestionIds.addAll(wrongQuestionIds);
-      if (newlyWrong.isNotEmpty) {
-        _mergeWrongSelections(questionIds, newlyWrong, selectedAnswers);
+      capacity = _capWrongIdsForArchive(wrongQuestionIds);
+      final allowedNew = _allowedNewWrongIds(wrongQuestionIds);
+      if (allowedNew.isNotEmpty) {
+        _wrongQuestionIds.addAll(allowedNew);
+        _mergeWrongSelections(questionIds, allowedNew, selectedAnswers);
+        futures.add(_persistWrongQuestions());
+        futures.add(_persistWrongQuestionBodies());
+        futures.add(_persistWrongSelections());
       }
       _statLockedWrongQuestions.addAll(wrongQuestionIds);
-      futures.add(_persistWrongQuestions());
-      futures.add(_persistWrongQuestionBodies());
-      futures.add(_persistWrongSelections());
       futures.add(_persistStatLockedWrongQuestions());
     }
     await Future.wait(futures);
@@ -926,6 +929,7 @@ class ContentBankService extends ChangeNotifier {
         QuestionAttemptService.instance.markTestCompleted(attempt.testId),
       );
     }
+    return capacity;
   }
 
   /// Tasarruf hesabı ve istatistikler için salt okunur deneme listesi.
@@ -1243,6 +1247,49 @@ class ContentBankService extends ChangeNotifier {
 
   int get wrongQuestionCount => _visibleWrongQuestionIds.length;
 
+  int get wrongNotebookArchivedCount => _archivedWrongQuestionCount;
+
+  int get wrongNotebookFreeLimit => WrongNotebookConstants.freeArchiveLimit;
+
+  int get wrongNotebookRemainingSlots {
+    if (PremiumService.instance.isPremium) return 1 << 30;
+    return (wrongNotebookFreeLimit - _archivedWrongQuestionCount)
+        .clamp(0, wrongNotebookFreeLimit);
+  }
+
+  bool get isWrongNotebookAtFreeLimit =>
+      !PremiumService.instance.isPremium && wrongNotebookRemainingSlots <= 0;
+
+  int get _archivedWrongQuestionCount => _wrongQuestionIds
+      .where((id) => !_sampleSeedQuestionIds.contains(id))
+      .length;
+
+  WrongNotebookCapacityResult _capWrongIdsForArchive(
+    Iterable<String> candidateIds,
+  ) {
+    final capped = WrongNotebookCapacity.capNewIds(
+      isPremium: PremiumService.instance.isPremium,
+      archivedCount: _archivedWrongQuestionCount,
+      freeLimit: wrongNotebookFreeLimit,
+      candidateIds: candidateIds,
+      existingIds: _wrongQuestionIds,
+    );
+    return WrongNotebookCapacityResult(
+      added: capped.allowed.length,
+      skipped: capped.skipped,
+    );
+  }
+
+  List<String> _allowedNewWrongIds(Iterable<String> candidateIds) {
+    return WrongNotebookCapacity.capNewIds(
+      isPremium: PremiumService.instance.isPremium,
+      archivedCount: _archivedWrongQuestionCount,
+      freeLimit: wrongNotebookFreeLimit,
+      candidateIds: candidateIds,
+      existingIds: _wrongQuestionIds,
+    ).allowed;
+  }
+
   /// Normal testte «defterde kayıtlı» uyarısı — gövde cache’inden bağımsız ID kontrolü.
   bool isInWrongNotebook(String questionId) {
     if (_sampleSeedQuestionIds.contains(questionId)) return false;
@@ -1406,24 +1453,24 @@ class ContentBankService extends ChangeNotifier {
   }
 
   /// Yanlış listesine ekle; doğru çözülse bile listeden düşmez.
-  Future<void> updateAnswerOutcomes({
+  Future<WrongNotebookCapacityResult> updateAnswerOutcomes({
     List<String> wrongQuestionIds = const [],
     List<String> correctQuestionIds = const [],
     List<String> questionIds = const [],
     List<String?> selectedAnswers = const [],
   }) async {
     final futures = <Future<void>>[];
+    var capacity = WrongNotebookCapacityResult.none;
     if (wrongQuestionIds.isNotEmpty) {
-      final newlyWrong = wrongQuestionIds
-          .where((id) => !_wrongQuestionIds.contains(id))
-          .toList();
-      _wrongQuestionIds.addAll(wrongQuestionIds);
-      if (newlyWrong.isNotEmpty) {
-        _mergeWrongSelections(questionIds, newlyWrong, selectedAnswers);
+      capacity = _capWrongIdsForArchive(wrongQuestionIds);
+      final allowedNew = _allowedNewWrongIds(wrongQuestionIds);
+      if (allowedNew.isNotEmpty) {
+        _wrongQuestionIds.addAll(allowedNew);
+        _mergeWrongSelections(questionIds, allowedNew, selectedAnswers);
+        futures.add(_persistWrongQuestions());
+        futures.add(_persistWrongQuestionBodies());
+        futures.add(_persistWrongSelections());
       }
-      futures.add(_persistWrongQuestions());
-      futures.add(_persistWrongQuestionBodies());
-      futures.add(_persistWrongSelections());
     }
     if (correctQuestionIds.isNotEmpty || wrongQuestionIds.isNotEmpty) {
       _solvedQuestionIds
@@ -1431,9 +1478,10 @@ class ContentBankService extends ChangeNotifier {
         ..addAll(wrongQuestionIds);
       futures.add(_persistSolvedQuestions());
     }
-    if (futures.isEmpty) return;
+    if (futures.isEmpty) return capacity;
     await Future.wait(futures);
     _notifyProgress();
+    return capacity;
   }
 
   /// Konudaki yayınlanmış testlerdeki toplam / çözülen / çözülmeyen soru.

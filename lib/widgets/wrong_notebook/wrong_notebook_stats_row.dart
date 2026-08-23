@@ -7,6 +7,8 @@ class WrongNotebookStatsRow extends StatelessWidget {
   final int subjectCount;
   final String? topSubject;
   final int? topSubjectCount;
+  final int? archiveLimit;
+  final int? archivedCount;
 
   const WrongNotebookStatsRow({
     super.key,
@@ -14,6 +16,8 @@ class WrongNotebookStatsRow extends StatelessWidget {
     required this.subjectCount,
     this.topSubject,
     this.topSubjectCount,
+    this.archiveLimit,
+    this.archivedCount,
   });
 
   @override
@@ -31,8 +35,12 @@ class WrongNotebookStatsRow extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   icon: Icons.format_list_numbered_rounded,
-                  value: '$questionCount',
-                  label: 'Toplam yanlış',
+                  value: archiveLimit != null && archivedCount != null
+                      ? '$archivedCount/$archiveLimit'
+                      : '$questionCount',
+                  label: archiveLimit != null
+                      ? 'Arşivdeki yanlış'
+                      : 'Toplam yanlış',
                   on: on,
                   muted: muted,
                   card: card,

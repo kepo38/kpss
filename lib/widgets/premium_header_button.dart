@@ -21,7 +21,20 @@ class PremiumHeaderButton extends StatelessWidget {
     }
     return ScaleButton(
       onPressed: onTap,
-      child: const _ProPill(),
+      child: const _ProPillTapTarget(),
+    );
+  }
+}
+
+/// Minimum 44×44 dokunma alanı (Material guideline).
+class _ProPillTapTarget extends StatelessWidget {
+  const _ProPillTapTarget();
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      child: const Center(child: _ProPill()),
     );
   }
 }
@@ -132,51 +145,57 @@ class _ActiveBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFFF8EE),
-              Color(0xFFF0E0BC),
-            ],
-          ),
-          border: Border.all(
-            color: const Color(0xFFD4AF6A),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.champagne.withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.verified_rounded,
-              size: 13,
-              color: Color(0xFFB8924A),
-            ),
-            SizedBox(width: 4),
-            Text(
-              'Premium',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.1,
-                color: AppTheme.ink,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFFFF8EE),
+                  Color(0xFFF0E0BC),
+                ],
               ),
+              border: Border.all(
+                color: const Color(0xFFD4AF6A),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.champagne.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.verified_rounded,
+                  size: 13,
+                  color: Color(0xFFB8924A),
+                ),
+                SizedBox(width: 4),
+                Text(
+                  'Premium',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                    color: AppTheme.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -33,26 +33,35 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Liste zaten bu denemeyi biliyor — detay gelene kadar boş ekran gösterme.
+    _exam = TgExamService.instance.examById(widget.examId);
+    _loading = _exam == null;
+    TgExamService.instance.setVisibleExam(widget.examId);
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
-    unawaited(_load());
+    unawaited(_load(silent: _exam != null));
   }
 
   @override
   void dispose() {
     _clock?.cancel();
+    TgExamService.instance.clearVisibleExam(widget.examId);
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// [silent]: elde veri varken arka planda tazele — ekranı boşaltma.
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     final detail = await TgExamService.instance.fetchDetail(widget.examId);
     if (!mounted) return;
     if (detail == null) {
+      if (_exam != null) return;
       setState(() {
         _loading = false;
         _error = 'Deneme bulunamadı veya yayında değil.';
@@ -62,6 +71,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     setState(() {
       _exam = detail;
       _loading = false;
+      _error = null;
     });
   }
 
@@ -74,10 +84,12 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     final payload = await TgExamService.instance.fetchQuestions(exam.id);
     if (!mounted) return;
     setState(() => _starting = false);
-    if (payload == null || payload.questions.isEmpty) {
+    if (!payload.ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Sorular yüklenemedi. Deneme aktif mi?'),
+          content: Text(
+            payload.error ?? 'Sorular yüklenemedi. Deneme aktif mi?',
+          ),
           backgroundColor: _TgWelcomeTheme.crimsonDeep,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -127,7 +139,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     );
 
     if (!mounted) return;
-    await _load();
+    await _load(silent: true);
 
     if (result != null && result.completed) {
       final submitted = await submitTgExamFromQuiz(
@@ -648,7 +660,8 @@ class _TimelineCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
-                  value: progress <= 0 ? null : progress,
+                  // Deneme başlamadan belirsiz (kayan) çubuk "yükleniyor" gibi duruyordu.
+                  value: progress.clamp(0.0, 1.0),
                   minHeight: 7,
                   backgroundColor: Colors.white.withValues(alpha: 0.14),
                   color: Colors.white,

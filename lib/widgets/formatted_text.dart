@@ -614,7 +614,7 @@ class FormattedText extends StatelessWidget {
 
   static String _repairLatexEscapes(String text) {
     if (text.isEmpty) return text;
-    var out = text
+    var out = repairGoogleDocsVertBars(text)
         .replaceAll('\x0crac', r'\frac')
         .replaceAll('\x08eta', r'\beta')
         .replaceAll('\x08egin', r'\begin')
@@ -628,7 +628,10 @@ class FormattedText extends StatelessWidget {
         .replaceAll(r'$sqrt{', r'$\sqrt{');
     out = out.replaceAllMapped(
       RegExp(r'\\vert\s*\{([^{}]*?)\\vert(?:\{\})?\}'),
-      (m) => '\\lvert ${m.group(1)!.trim()} \\rvert',
+      (m) {
+        final inner = m.group(1)!.trim();
+        return inner.isEmpty ? r'\vert' : '\\lvert $inner \\rvert';
+      },
     );
     if (out.contains('frac') && !out.contains(r'\frac')) {
       out = out.replaceAllMapped(
@@ -637,6 +640,41 @@ class FormattedText extends StatelessWidget {
       );
     }
     return out;
+  }
+
+  /// Google Docs / Telegram `\(\vert{}-3\vert{}\)` → `\lvert -3 \rvert`.
+  static String repairGoogleDocsVertBars(String input) {
+    if (input.isEmpty) return input;
+    var out = input
+        .replaceAllMapped(
+          RegExp(r'\\\(\s*\\vert\{\}\s*\\\)'),
+          (_) => '|',
+        )
+        .replaceAll('(\\vert{})', '|');
+
+    out = out.replaceAllMapped(
+      RegExp(r'\\vert\{\}([^\\]*?)\\vert\{\}'),
+      (m) {
+        final inner = m.group(1)!.trim();
+        if (inner.isEmpty) return r'\vert';
+        return '\\lvert $inner \\rvert';
+      },
+    );
+    return out;
+  }
+
+  /// Çözüm metni — markup + LaTeX + satır kırılımları (madde yapısı hariç).
+  static String normalizeForSolutionDisplay(String input) {
+    if (input.isEmpty) return input;
+    var text = normalizeMarkup(input);
+    text = normalizeLatex(text);
+    return restoreCollapsedBreaks(text);
+  }
+
+  /// Tam çözüm pipeline (panel + uygulama).
+  static String prepareSolutionText(String input) {
+    if (input.isEmpty) return input;
+    return structureSolutionOutline(normalizeForSolutionDisplay(input));
   }
 
   static bool looksLikeMath(String input) {
@@ -780,14 +818,17 @@ class FormattedText extends StatelessWidget {
   static String normalizeLatex(String input) {
     if (input.isEmpty) return input;
     String inlineBodyToDollars(String body) {
-      var cleaned = body.trim();
+      var cleaned = repairGoogleDocsVertBars(body.trim());
       if (cleaned.contains('\n')) {
         cleaned = cleaned.replaceAll(RegExp(r'\s*\n\s*'), ' ').trim();
+      }
+      if (RegExp(r'\\begin\{(?:array|matrix|pmatrix|cases)\}').hasMatch(cleaned)) {
+        return r'$$' + cleaned + r'$$';
       }
       return '\$$cleaned\$';
     }
 
-    var text = input
+    var text = repairGoogleDocsVertBars(_repairLatexEscapes(input))
         .replaceAllMapped(
           RegExp(r'\\\[([\s\S]+?)\\\]'),
           (m) => r'$$' + m.group(1)!.trim() + r'$$',
@@ -848,6 +889,95 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(?<!\n)(?=[A-E]\s+Seçeneği\s*:)', caseSensitive: false),
       (_) => '\n',
     );
+    // Adım Adım Çözüm: yapışık başlık
+    src = src.replaceAllMapped(
+      RegExp(r'(Adım Adım Çözüm:)(?!\n)(?=\S)', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    // şartlar şunlardır:Rakamlar
+    src = src.replaceAllMapped(
+      RegExp(r'(şunlardır:)(?!\n)(?=Rakamlar)', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    // §§M)Rakamlar — parantez + yeni madde
+    src = src.replaceAllMapped(
+      RegExp(r'(§§M\d+§§\))(?!\n)(?=[A-ZÇĞİÖŞÜ])'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(§§M\d+§§)(?=§§M\d+§§)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(§§M\d+§§)(?!\n)(?=[A-ZÇĞİÖŞÜ])'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<=[a-zçğıöşüâîû])(?=§§M)'),
+      (_) => '\n',
+    );
+    // §§M sonrası liste etiketi / yeni cümle
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(§§M\d+§§)(?!\n)(?=(?:Rakamlar|Kendisi|Son maddede|Elde edilen|Kağıda|Şimdi |Bulduğumuz|Görüldüğü|Now:|Çarpım ))',
+        caseSensitive: false,
+      ),
+      (m) => '${m.group(1)}\n',
+    );
+    // Numaralı bölüm: 1. Tek/ … 2. Kağıttaki
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\n)(?=\d+\.\s+(?:Tek/|Kağıttaki))', caseSensitive: false),
+      (_) => '\n',
+    );
+    // Mutlak değer denemesi: ...edelim:A) / ❌B) / C) 5'in...
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?<!\n)(?=[A-E]\)\s+(?:\d|[\u0027\u2019]|[A-Za-zÇĞİÖŞÜçğıöşü]))',
+      ),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([❌✅])(?!\n)(?=[A-E]\))'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(olsaydı:)(?!\n)(?=[\$\\\(])', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?<!\n)(?=(?:Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı|oranı))\s*:)',
+        caseSensitive: false,
+      ),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\((?:Çift|Tek)\))(?!\n)(?=Rakamlar)', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\(Tek\))(?!\n)(?=Görüldüğü)', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\d+\.\s+[^:]+:)(\s*)(?=\\\(|\$|§§M)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([a-zçğıöşüâîû]:)(?!\n)(?=\$)', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\$)(?!\n)(?=[A-ZÇĞİÖŞÜ])'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(\$[^$\n]+\$)(?!\n)\s*(?=İlk|Now:|Sonra|Bu )',
+        caseSensitive: false,
+      ),
+      (m) => '${m.group(1)}\n',
+    );
     src = src.replaceAllMapped(
       RegExp(r'([.!?])(?!\n)(?=\d+\s)'),
       (m) => '${m.group(1)}\n',
@@ -857,6 +987,7 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(?<=[a-zçğıöşüâîû]{2})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])'),
       (_) => '\n',
     );
+    src = _restoreCollapsedPresenceTable(src);
     src = src.replaceAllMapped(
       RegExp(r'(?<!\n)(\d+\.\s+Adım)'),
       (m) => '\n${m.group(1)}',
@@ -915,6 +1046,148 @@ class FormattedText extends StatelessWidget {
     return src.replaceAll(RegExp(r'\n{3,}'), '\n\n').replaceFirst(RegExp(r'^\n+'), '');
   }
 
+  static final _presenceCellRe = RegExp(
+    r'^(Yok|Var)\s*\(\s*[01]\s*\)$',
+    caseSensitive: false,
+  );
+  static final _allCapsNameRe = RegExp(r'^[A-ZÇĞİÖŞÜÂÎÛ]{3,}$');
+  static final _binCodeRe = RegExp(r'^[01]{3}$');
+
+  static String _restoreCollapsedPresenceTable(String src) {
+    src = src.replaceAllMapped(
+      RegExp(r'(Öğrenci)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)', caseSensitive: false),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(Harfi)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(Harfi)(?=Oluşan\s+Benzersiz)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\n)(?=Oluşan Benzersiz)'),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\))(?=[A-ZÇĞİÖŞÜÂÎÛ]{3,})'),
+      (m) => ')\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=(?:Yok|Var)\s*\(\s*[01]\s*\))'),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\(\s*[01]\s*\))(?=(?:Yok|Var)\s*\()'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(\(\s*[01]\s*\))(?=[01]{3}(?:[A-ZÇĞİÖŞÜÂÎÛ]|$))'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([01]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû]{3,})'),
+      (_) => '\n',
+    );
+    return src;
+  }
+
+  static String _formatPresenceTable(String text) {
+    final lines = text.split('\n');
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) {
+      final probe = lines[i].trim();
+      if (probe == 'Öğrenci' ||
+          RegExp(r'\bHarfi\b').hasMatch(probe) ||
+          probe.contains('Benzersiz Kod')) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return text;
+
+    final headers = <String>[];
+    var i = start;
+    while (i < lines.length) {
+      final s = lines[i].trim();
+      if (s.isEmpty) {
+        i += 1;
+        continue;
+      }
+      if (_allCapsNameRe.hasMatch(s) || _presenceCellRe.hasMatch(s)) break;
+      final gluedHeader = RegExp(
+        r'^(Öğrenci)\s*([A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)$',
+        caseSensitive: false,
+      ).firstMatch(s);
+      if (gluedHeader != null) {
+        headers.add(gluedHeader.group(1)!);
+        headers.add(gluedHeader.group(2)!);
+        i += 1;
+        continue;
+      }
+      headers.add(s);
+      i += 1;
+    }
+    final letterHeaders = [
+      for (final header in headers)
+        if (header.toLowerCase() != 'öğrenci' &&
+            !header.toLowerCase().contains('kod'))
+          header.replaceFirst(RegExp(r'\s*Harfi\s*$', caseSensitive: false), '').trim(),
+    ];
+    final rows = <({String name, List<String> cells, String code})>[];
+    while (i < lines.length) {
+      final s = lines[i].trim();
+      if (s.isEmpty) {
+        i += 1;
+        continue;
+      }
+      if (!_allCapsNameRe.hasMatch(s)) break;
+      final name = s;
+      i += 1;
+      final cells = <String>[];
+      var code = '';
+      while (i < lines.length) {
+        final t = lines[i].trim();
+        if (_presenceCellRe.hasMatch(t)) {
+          cells.add(t);
+          i += 1;
+        } else if (_binCodeRe.hasMatch(t)) {
+          code = t;
+          i += 1;
+          break;
+        } else {
+          break;
+        }
+      }
+      if (cells.isEmpty) break;
+      rows.add((name: name, cells: cells, code: code));
+    }
+    if (rows.length < 2) return text;
+
+    final block = <String>['**Harf kodu:**'];
+    for (final row in rows) {
+      final bits = <String>[];
+      for (var c = 0; c < row.cells.length; c++) {
+        final label = c < letterHeaders.length
+            ? letterHeaders[c]
+            : String.fromCharCode(72 + c);
+        final kind = row.cells[c].toLowerCase().startsWith('var') ? 'var' : 'yok';
+        bits.add('$label $kind');
+      }
+      final tail = row.code.isNotEmpty ? ' → **${row.code}**' : '';
+      block.add('- **${row.name}:** ${bits.join(', ')}$tail');
+    }
+    final before = lines.sublist(0, start).join('\n').trimRight();
+    final after = lines.sublist(i).join('\n').trimLeft();
+    return [if (before.isNotEmpty) before, block.join('\n'), if (after.isNotEmpty) after]
+        .join('\n\n');
+  }
+
   static final _optionHeaderRe = RegExp(
     r'^(?:[-•*◦○–—]\s+)?(?:\*\*)?'
     r'([A-E])\)\s+'
@@ -933,19 +1206,50 @@ class FormattedText extends StatelessWidget {
     r'\s*:?\s*(?:\*\*)?\s*$',
     caseSensitive: false,
   );
+  /// Google çözümü: `A) 3'ün sağında olsaydı:`
+  static final _optionTrialHeaderRe = RegExp(
+    r'^(?:[-•*◦○–—]\s+)?(?:\*\*)?'
+    r'([A-E])\)\s+(.+\S)\s*:?\s*$',
+  );
   static final _bulletStripRe = RegExp(r'^(\s*)[-•*◦○–—]\s+');
   static final _kuralOzetiRe = RegExp(r'^Kural\s+Özeti\s*:?\s*$', caseSensitive: false);
   static final _resultTailRe = RegExp(
     r'(→\s*)(🧍\s*)?(Oturuyor|AYAKTA)\.?\s*$',
     caseSensitive: false,
   );
+  static final _formulaListLabelRe = RegExp(
+    r'^(Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı(?:nın mutlak değeri)?|oranı))\s*:\s*.+',
+    caseSensitive: false,
+  );
+  static final _numberedSectionRe = RegExp(r'^\d+\.\s+.+\S');
+  static final _numberedSectionTitleRe = RegExp(
+    r'^(\d+\.\s+[^:]+:)(.*)$',
+    dotAll: true,
+  );
+  static final _stepHeaderRe = RegExp(r'^\d+\.\s+Adım:', caseSensitive: false);
+  static final _conditionBulletRe = RegExp(
+    r'^(?:Rakamlar\s|Son maddede)',
+    caseSensitive: false,
+  );
+  static final _adimAdimHeaderRe = RegExp(
+    r'^(.*?Adım Adım Çözüm:)\s*(.*)$',
+    caseSensitive: false,
+  );
 
   static bool _isOptionHeaderLine(String line) {
     final s = line.trim();
     if (s.isEmpty) return false;
-    return _optionHeaderRe.hasMatch(s) ||
+    if (_optionHeaderRe.hasMatch(s) ||
         _optionSecenegiOnlyRe.hasMatch(s) ||
-        _optionSecenegiInlineRe.hasMatch(s);
+        _optionSecenegiInlineRe.hasMatch(s)) {
+      return true;
+    }
+    final trial = _optionTrialHeaderRe.firstMatch(s);
+    if (trial != null) {
+      final body = trial.group(2)!.trim();
+      return body.contains(RegExp(r"[\s'\d]"));
+    }
+    return false;
   }
 
   static ({String letter, String title, String? inline})? _parseOptionHeader(
@@ -975,6 +1279,12 @@ class FormattedText extends StatelessWidget {
     if (hm != null) {
       final letter = hm.group(1)!.toUpperCase();
       return (letter: letter, title: '$letter Seçeneği', inline: null);
+    }
+    hm = _optionTrialHeaderRe.firstMatch(s);
+    if (hm != null) {
+      final letter = hm.group(1)!.toUpperCase();
+      final body = hm.group(2)!.trim();
+      return (letter: letter, title: '$letter) $body', inline: null);
     }
     return null;
   }
@@ -1007,11 +1317,66 @@ class FormattedText extends StatelessWidget {
         i += 1;
         continue;
       }
-      if (i == 0 &&
-          (line.startsWith('💡') ||
-              line.contains('Adım Adım') ||
-              line.contains('Adim Adim'))) {
+      if (i == 0 && line.contains('Adım Adım')) {
+        final hdr = _adimAdimHeaderRe.firstMatch(line);
+        if (hdr != null) {
+          out.add('**${hdr.group(1)!.trim()}**');
+          out.add('');
+          final rest = hdr.group(2)!.trim();
+          if (rest.isNotEmpty) out.add(rest);
+          i += 1;
+          continue;
+        }
         out.add('**${_stripOuterBold(line)}**');
+        out.add('');
+        i += 1;
+        continue;
+      }
+      if (i == 0 &&
+          (line.startsWith('💡') || line.contains('Adim Adim'))) {
+        out.add('**${_stripOuterBold(line)}**');
+        out.add('');
+        i += 1;
+        continue;
+      }
+      if (_formulaListLabelRe.hasMatch(line)) {
+        while (i < lines.length && _formulaListLabelRe.hasMatch(lines[i].trim())) {
+          out.add('- ${lines[i].trim()}');
+          i += 1;
+        }
+        out.add('');
+        continue;
+      }
+      if (_conditionBulletRe.hasMatch(line)) {
+        while (i < lines.length && _conditionBulletRe.hasMatch(lines[i].trim())) {
+          out.add('- ${lines[i].trim()}');
+          i += 1;
+        }
+        out.add('');
+        continue;
+      }
+      if (_stepHeaderRe.hasMatch(line)) {
+        final core = line.trim();
+        if (core.startsWith('**') &&
+            core.endsWith('**') &&
+            core.indexOf('**', 2) == core.length - 2) {
+          out.add(core);
+        } else {
+          out.add('**$core**');
+        }
+        out.add('');
+        i += 1;
+        continue;
+      }
+      if (_numberedSectionRe.hasMatch(line)) {
+        final title = _numberedSectionTitleRe.firstMatch(line);
+        if (title != null && title.group(2)!.trim().isNotEmpty) {
+          out.add('**${title.group(1)!.trim()}**');
+          out.add('');
+          out.add(title.group(2)!.trim());
+        } else {
+          out.add('**$line**');
+        }
         out.add('');
         i += 1;
         continue;
@@ -1049,8 +1414,9 @@ class FormattedText extends StatelessWidget {
   /// Google çözüm yapısı: madde + A–E iç içe liste (idempotent).
   static String structureSolutionOutline(String input) {
     if (input.isEmpty) return input;
-    final src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+    var src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
     if (src.isEmpty) return src;
+    src = _formatPresenceTable(src);
     final lines = src.split('\n');
     final optionIdxs = <int>[];
     for (var i = 0; i < lines.length; i++) {
@@ -1058,7 +1424,10 @@ class FormattedText extends StatelessWidget {
         optionIdxs.add(i);
       }
     }
-    if (optionIdxs.length < 2) return src;
+    if (optionIdxs.length < 2) {
+      final preamble = _structurePreambleLines(lines);
+      return preamble.isEmpty ? src : preamble.join('\n').trim();
+    }
 
     final out = _structurePreambleLines(lines.sublist(0, optionIdxs.first));
     if (out.isNotEmpty && out.last.isNotEmpty) out.add('');
@@ -1156,11 +1525,14 @@ class FormattedText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = style ?? DefaultTextStyle.of(context).style;
-    final markup = normalizeMarkup(data);
-    final normalized = normalizeLatex(
-      preserveLineBreaks ? markup : examFormat(markup),
-    );
-    final laidOut = structureSolutionOutline(restoreCollapsedBreaks(normalized));
+    final String laidOut;
+    if (preserveLineBreaks) {
+      laidOut = prepareSolutionText(data);
+    } else {
+      var text = normalizeMarkup(data);
+      text = normalizeLatex(examFormat(text));
+      laidOut = structureSolutionOutline(restoreCollapsedBreaks(text));
+    }
     final useExamLayout = examLayout || preserveLineBreaks;
 
     if (preserveLineBreaks || laidOut.contains('\n') || examWrap) {

@@ -5,9 +5,14 @@ import '../models/practice_exam_model.dart';
 import '../services/content_bank_service.dart';
 import '../services/exam_trend_service.dart';
 import '../services/notification_service.dart';
+import '../services/play_billing_service.dart';
 import '../services/practice_exam_service.dart';
+import '../services/premium_service.dart';
 import '../services/tg_exam_service.dart';
+import '../services/ai_coach_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ai_coach_insight_card.dart';
+import '../widgets/pro_feature_lock.dart';
 import 'exam_premium_shell.dart';
 import 'net_development_chart.dart';
 
@@ -22,8 +27,12 @@ class StatisticsOverviewTab extends StatelessWidget {
     final summary = service.weeklySummary;
 
     return ListenableBuilder(
-      listenable: TgExamService.instance,
+      listenable: Listenable.merge([
+        TgExamService.instance,
+        PlayBillingService.instance.premiumNotifier,
+      ]),
       builder: (context, _) {
+        final isPremium = PremiumService.instance.isPremium;
         final livePoints = ExamTrendService.instance.buildUnifiedTrend();
         final gyValues =
             livePoints.map((p) => p.gyNet).whereType<double>().toList();
@@ -46,15 +55,25 @@ class StatisticsOverviewTab extends StatelessWidget {
                 dueCount: ContentBankService.instance.wrongQuestionCount,
               ),
               const SizedBox(height: 22),
+              AiCoachInsightCard(
+                insight: AiCoachService.instance.buildExamTrendInsight(),
+                isPremium: isPremium,
+              ),
+              const SizedBox(height: 22),
               const ExamPremiumSectionLabel(
                 label: 'Genel Başarı Çizgisi',
                 subtitle: 'TG denemeleri ve yayınevi kayıtlarınız birlikte',
               ),
               const SizedBox(height: 12),
-              ExamPremiumCardShell(
-                accentBar: false,
-                padding: const EdgeInsets.all(14),
-                child: NetDevelopmentChart(points: livePoints),
+              ProFeatureLock(
+                locked: !isPremium,
+                upsellTitle: 'TREND ANALİZİ',
+                upsellSubtitle: 'Pro Üyeliğe Geç, Hedefin Olan Kamuya Atan',
+                child: ExamPremiumCardShell(
+                  accentBar: false,
+                  padding: const EdgeInsets.all(14),
+                  child: NetDevelopmentChart(points: livePoints),
+                ),
               ),
               const SizedBox(height: 20),
               Row(

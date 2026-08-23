@@ -15,6 +15,7 @@ import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_shell_top_bar.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/shell_ad_banner_slot.dart';
 import '../widgets/tg_exam_promo_bubble.dart';
 import '../widgets/wrong_notebook_promo_bubble.dart';
 import 'analytics_hub_screen.dart';
@@ -61,6 +62,7 @@ class _MainShellState extends State<MainShell> {
           kpssType: KpssPreferenceService.instance.kpssType,
         ),
       );
+      AdManager.instance.ensureShellBanner();
     });
   }
 
@@ -91,6 +93,9 @@ class _MainShellState extends State<MainShell> {
     if (_isPremium.value == next) return;
     AdManager.instance.setPremium(next);
     _isPremium.value = next;
+    if (!next) {
+      AdManager.instance.ensureShellBanner();
+    }
   }
 
   Future<void> _openPaywall() async {
@@ -144,6 +149,8 @@ class _MainShellState extends State<MainShell> {
       backgroundColor: AppTheme.page(context),
       body: Stack(
         children: [
+          WrongNotebookPromoBubble(homeVisible: _index == 0),
+          TgExamPromoBubble(subjectsTabVisible: _index == 1),
           Column(
             children: [
               AppShellTopBar(
@@ -158,53 +165,59 @@ class _MainShellState extends State<MainShell> {
                 child: ValueListenableBuilder<KpssType>(
                   valueListenable: _selectedType,
                   builder: (context, type, _) {
-                    return IndexedStack(
-                      index: _index,
-                      sizing: StackFit.expand,
-                      children: [
-                        StudyHubScreen(
-                          key: const PageStorageKey<String>('shell_home'),
-                          kpssType: type,
-                          embedded: true,
-                          pane: StudyHubPane.home,
-                          selectedType: _selectedType,
-                          onKpssTypeChanged: _onExamTypeChanged,
-                          isPremium: _isPremium,
-                          onPremiumTap: _openPaywall,
-                          onMoreTap: _openMore,
-                          shellTopBarVisible: true,
-                        ),
-                        StudyHubScreen(
-                          key: const PageStorageKey<String>('shell_subjects'),
-                          kpssType: type,
-                          embedded: true,
-                          pane: StudyHubPane.subjects,
-                          shellTopBarVisible: true,
-                        ),
-                        AnalyticsHubScreen(
-                          key: const PageStorageKey<String>('shell_analytics'),
-                          kpssType: type,
-                          embedded: true,
-                        ),
-                        const StatisticsScreen(
-                          key: PageStorageKey<String>('shell_stats'),
-                          embedded: true,
-                        ),
-                      ],
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _isPremium,
+                      builder: (context, premium, _) {
+                        return IndexedStack(
+                          index: _index,
+                          sizing: StackFit.expand,
+                          children: [
+                            StudyHubScreen(
+                              key: const PageStorageKey<String>('shell_home'),
+                              kpssType: type,
+                              embedded: true,
+                              pane: StudyHubPane.home,
+                              selectedType: _selectedType,
+                              onKpssTypeChanged: _onExamTypeChanged,
+                              isPremium: _isPremium,
+                              onPremiumTap: _openPaywall,
+                              onMoreTap: _openMore,
+                              shellTopBarVisible: true,
+                            ),
+                            StudyHubScreen(
+                              key: const PageStorageKey<String>('shell_subjects'),
+                              kpssType: type,
+                              embedded: true,
+                              pane: StudyHubPane.subjects,
+                              shellTopBarVisible: true,
+                            ),
+                            AnalyticsHubScreen(
+                              key: const PageStorageKey<String>('shell_analytics'),
+                              kpssType: type,
+                              embedded: true,
+                              isPremium: premium,
+                            ),
+                            const StatisticsScreen(
+                              key: PageStorageKey<String>('shell_stats'),
+                              embedded: true,
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),
               ),
+              const ShellAdBannerSlot(),
             ],
           ),
-          WrongNotebookPromoBubble(homeVisible: _index == 0),
-          TgExamPromoBubble(subjectsTabVisible: _index == 1),
         ],
       ),
       bottomNavigationBar: _PremiumBottomBar(
         index: _index,
         onChanged: (i) {
           setState(() => _index = i);
+          AdManager.instance.ensureShellBanner();
           if (i == 1 || i == 3) {
             unawaited(
               TgExamService.instance.initialize(

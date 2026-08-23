@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../constants/publisher_constants.dart';
+import '../../models/exam_insight.dart';
 import '../../models/practice_exam_model.dart';
+import '../../services/exam_insight_service.dart';
 import '../../services/practice_exam_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -264,17 +266,24 @@ class _AddExamSheetState extends State<AddExamSheet> {
         ),
     };
 
-    await PracticeExamService.instance.addExam(PracticeExamModel(
+    final exam = PracticeExamModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       denemeAdi: _nameCtrl.text.trim(),
       yayinEvi: _publisher,
       tarih: _date,
       dersSonuclari: dersSonuclari,
       notlar: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-    ));
+    );
+
+    await PracticeExamService.instance.addExam(exam);
+
+    final insight = ExamInsightService.instance.buildForNewExam(
+      exam,
+      PracticeExamService.instance.allExams,
+    );
 
     if (!mounted) return;
-    Navigator.pop(context, true);
+    Navigator.pop(context, ExamSaveResult(insight: insight));
   }
 }
 

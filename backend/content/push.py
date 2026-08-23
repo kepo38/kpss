@@ -366,6 +366,60 @@ def send_user_message_push(message) -> PushResult:
     return PushResult(ok=True, success=success, failure=failure)
 
 
+def _tg_exam_push_banner_url() -> str | None:
+    """FCM big-picture / genişletilmiş bildirim görseli."""
+    base = (getattr(settings, "PUBLIC_BASE_URL", "") or "").rstrip("/")
+    if not base:
+        return None
+    return f"{base}/static/content/tg_exam_push_banner.jpg"
+
+
+def _tg_exam_push_data(
+    *,
+    push_type: str,
+    exam,
+    payload: dict[str, str],
+) -> dict[str, str]:
+    data = {
+        "type": push_type,
+        "exam_id": str(exam.pk),
+        "title": payload["title"],
+        "body": payload["body"][:500],
+        "headline": payload.get("headline", ""),
+        "exam_title": payload.get("exam_title", ""),
+        "starts_at_label": payload.get("starts_at_label", ""),
+        "metrics_label": payload.get("metrics_label", ""),
+        "cta_hint": payload.get("cta_hint", ""),
+        "style": "tg_exam_premium",
+    }
+    image_url = _tg_exam_push_banner_url()
+    if image_url:
+        data["image_url"] = image_url
+    return data
+
+
+def _tg_exam_android_config(*, title: str, body: str) -> "messaging.AndroidConfig":
+    from firebase_admin import messaging
+
+    from content.tg_exam.announcements import TG_EXAM_PUSH_CHANNEL, TG_EXAM_PUSH_COLOR
+
+    image_url = _tg_exam_push_banner_url()
+    notification_kwargs: dict = {
+        "title": title,
+        "body": body,
+        "channel_id": TG_EXAM_PUSH_CHANNEL,
+        "sound": "default",
+        "color": TG_EXAM_PUSH_COLOR,
+        "tag": "tg_exam",
+    }
+    if image_url:
+        notification_kwargs["image"] = image_url
+    return messaging.AndroidConfig(
+        priority="high",
+        notification=messaging.AndroidNotification(**notification_kwargs),
+    )
+
+
 def send_tg_exam_results_push(exam) -> PushResult:
     """TG denemesine katılmış kullanıcılara sonuç bildirimi gönder."""
     ready, err = firebase_ready()
@@ -375,29 +429,22 @@ def send_tg_exam_results_push(exam) -> PushResult:
     from firebase_admin import messaging
 
     from .models import DeviceToken, TgExamAttempt
+    from content.tg_exam.announcements import build_results_push_payload
 
     try:
         _ensure_firebase_app()
     except Exception as exc:  # noqa: BLE001
         return PushResult(ok=False, error=f"Firebase başlatılamadı: {exc}")
 
-    title = "Türkiye Geneli Deneme"
-    body = "Deneme sonuçların açıklandı, sıralamanı görmek için tıkla!"
-    data = {
-        "type": "tg_exam_results",
-        "exam_id": str(exam.pk),
-        "title": title,
-        "body": body[:500],
-    }
-    android = messaging.AndroidConfig(
-        priority="high",
-        notification=messaging.AndroidNotification(
-            title=title,
-            body=body,
-            channel_id="announcements",
-            sound="default",
-        ),
+    payload = build_results_push_payload(exam)
+    title = payload["title"]
+    body = payload["body"]
+    data = _tg_exam_push_data(
+        push_type="tg_exam_results",
+        exam=exam,
+        payload=payload,
     )
+    android = _tg_exam_android_config(title=title, body=body)
     note = messaging.Notification(title=title, body=body)
 
     user_ids = list(
@@ -479,26 +526,24 @@ def send_tg_exam_announcement_push(
         return PushResult(ok=False, error=f"Firebase başlatılamadı: {exc}")
 
     if title is None or body is None:
-        from content.tg_exam.announcements import build_announcement_push_copy
+        from content.tg_exam.announcements import build_announcement_push_payload
 
-        built_title, built_body = build_announcement_push_copy(exam)
-        title = title or built_title
-        body = body or built_body
-    data = {
-        "type": "tg_exam",
-        "exam_id": str(exam.pk),
-        "title": title,
-        "body": body[:500],
-    }
-    android = messaging.AndroidConfig(
-        priority="high",
-        notification=messaging.AndroidNotification(
-            title=title,
-            body=body,
-            channel_id="announcements",
-            sound="default",
-        ),
+        payload = build_announcement_push_payload(exam)
+        title = title or payload["title"]
+        body = body or payload["body"]
+    else:
+        from content.tg_exam.announcements import build_announcement_push_payload
+
+        payload = build_announcement_push_payload(exam)
+        payload["title"] = title
+        payload["body"] = body
+
+    data = _tg_exam_push_data(
+        push_type="tg_exam",
+        exam=exam,
+        payload=payload,
     )
+    android = _tg_exam_android_config(title=title, body=body)
     note = messaging.Notification(title=title, body=body)
 
     topic = getattr(settings, "FCM_ANNOUNCEMENT_TOPIC", "kpss_duyuru") or "kpss_duyuru"

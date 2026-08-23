@@ -88,7 +88,7 @@ class AppShellTopBar extends StatelessWidget {
                     else
                       PremiumHeaderButton(
                         isPremium: premium,
-                        onTap: premium ? null : onPremiumTap,
+                        onTap: onPremiumTap,
                       ),
                     const SizedBox(width: 8),
                     Material(

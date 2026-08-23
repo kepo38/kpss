@@ -1,6 +1,6 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-08-22  
+> **Son güncelleme:** 2026-08-23  
 > **Dart paketi:** `kpss_akademi`  
 > **Android applicationId (Play Store):** `com.hedefkamu.hedef_kamu`  
 > **Sürüm (mobil):** `1.0.1+3`  
@@ -23,6 +23,97 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+
+### 23 Ağustos 2026 — Google çözüm önizleme · günlük detaylı çözüm kotası · AI koç · yanlış defteri kapasitesi · TG analiz
+
+Bu tur: Google Docs’tan yapıştırılan çözüm metinlerinin panel/Telegram/uygulamada düzgün önizlenmesi; detaylı çözüm kotasının **günlük 5 ödüllü reklam** modeline geçmesi; Gelişim sekmesine AI koç + haftalık plan; yanlış defteri freemium kapasitesi; TG deneme sonuç analizi; Pro kilit overlay; panel soru teşhisi.
+
+#### Google Docs / Telegram çözüm metni önizlemesi
+
+Google Docs ve Telegram’dan kopyalanan çözümlerde satır kırılımları yutulur; `\(...\)`, `\vert{}`, `\begin{array}`, `1. Adım:` / `A Seçeneği:` yapışık gelir. Üç katmanlı pipeline (Flutter + panel JS + Python) ile normalize edilir.
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Yapışık satır onarımı** | `restoreCollapsedBreaks`: cümle sonu, `N. Adım:`, ardışık `\(...\)`, formül→metin (`$6$Sonucun`), `(Çift)Rakamları`, küme listesi (`Kendisi:` / `Rakamları toplamı:`) | `formatted_text.dart`, `math-render.js`, `rich_text_common.py` |
+| **Mutlak değer** | Google `\(\vert{}-3\vert{}\)` → `\lvert -3 \rvert`; sembol `\(\vert{}\)` → `\|` | `repairGoogleDocsVertBars` (Dart/JS/Python) |
+| **Tablo/array display** | `\(...\begin{array}...\)` otomatik `$$...$$` — inline tablo harf kayması (X/Y/Z yukarıda) giderildi | `normalizeLatex`, `richInline` + `.math-block` CSS |
+| **Adım başlıkları** | `1. Adım: …` → `**1. Adım: …**` madde listesi; numaralı bölüm gövdesi ayrılır | `structureSolutionOutline` / `_structure_preamble_lines` |
+| **Mantık çözümü A–E** | Yapışık `A) 3'ün sağında` / `❌B)` satırları; `Kural Özeti:` madde listesi | `formatted_text.dart`, `math-render.js`, `rich_text_common.py` |
+| **Kayıt yolu** | Panel yapıştır → `normalize_pasted_solution`; Telegram → `normalize_telegram_solution` | `rich_text_panel.py`, `rich_text_telegram.py` |
+| **Testler** | Mutlak değer A/B/C, ab iki basamaklı, XYZ toplama array örnekleri | `formatted_text_google_solution_test.dart`, `test_rich_text.py` |
+
+**Bilinen sınır:** Panel textarea’da `$...$` bloğu Enter ile ortadan bölünürse önizleme bozulabilir; formül satır içinde bölünmemeli.
+
+#### Detaylı çözüm — günlük 5 ödüllü reklam (6.+ Pro)
+
+Eski model (**test başına 4 ücretsiz**) kaldırıldı. Yeni model **cihaz geneli günlük kota**:
+
+| Kavram | Değer |
+|:---|:---|
+| Günlük hak | **5** farklı sorunun adım adım detaylı çözümü |
+| Her hak | ~30 sn **ödüllü reklam** (`solutionUnlockAdApproxSeconds`) |
+| 6.+ soru | Reklam yok → **Pro upsell** |
+| Aynı soru aynı gün | Tekrar **ücretsiz** (kota tüketmez) |
+| Premium / adFree / TG inceleme | Sınırsız |
+
+| Katman | Dosya | Rol |
+|:---|:---|:---|
+| Kalıcı kota | `daily_solution_quota_service.dart` | SharedPreferences: `daily_detailed_solution_day_v1` + soru ID listesi |
+| Oturum önbelleği | `ad_manager.dart` | `_unlockedSolutionIds`, `dailyDetailedSolutionsRemaining` |
+| UI | `quiz_screen.dart` | Önizleme her zaman; tam çözüm `_unlockFullSolution` → reklam veya Pro |
+| Sabitler | `ad_constants.dart` | `freeDetailedSolutionsPerDay = 5` |
+
+**Akış:** `ensureFreeSolutionUnlock` (bugün açılmış mı?) → kota dolu mu? → `requestSolutionUnlock` (reklam + `tryUnlock`) → tam çözüm.
+
+#### Reklam mimarisi ve UI düzeltmeleri
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Ana kabuk banner** | Alt menü üstü `ShellAdBannerSlot`; test oturumunda gizli | `shell_ad_banner_slot.dart`, `main_shell.dart`, `ad_manager.dart` |
+| **Pomodoro mola banner** | Mola ekranında altta banner (`focusBreakBannerAd`) | `focus_mode_screen.dart`, `ad_manager.dart` |
+| **Pro Üyelik butonu** | `ScaleButton` hit-test düzeltmesi; min 44×44 dokunma alanı | `scale_button.dart`, `premium_header_button.dart`, `app_shell_top_bar.dart` |
+| **Test bitiş sesi** | `test_complete.wav` | `answer_feedback_service.dart`, `assets/sounds/` |
+
+#### Gelişim — AI koç · haftalık plan · zayıf nokta telafisi
+
+| Özellik | Açıklama | Dosyalar | Erişim |
+|:---|:---|:---|:---|
+| **AI Koç kartı** | Kural tabanlı trend yorumu (son oturum zayıf ders/konu) | `ai_coach_service.dart`, `ai_coach_insight_card.dart`, `analytics_hub_screen.dart` | Ücretsiz |
+| **Haftalık çalışma planı** | 7 günlük rota; **bugün** ücretsiz, ileri günler Pro kilit | `weekly_study_plan_service.dart`, `weekly_study_plan_card.dart`, `ProFeatureLock` | Kısmi Pro |
+| **Zayıf nokta telafisi** | En çok yanlış 3 konudan 15 soruluk paket | `weak_point_remediation_service.dart`, `weak_point_remediation_card.dart` | Pro |
+| **Deneme içgörüsü** | Yayınevi denemesi kaydında geçen aya göre net farkı + konu önerisi | `exam_insight_service.dart`, `exam_insight_dialog.dart`, `add_exam_sheet.dart` | Ücretsiz |
+
+#### Yanlış defteri — arşiv kapasitesi ve oturum filtresi
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Freemium limit** | Ücretsiz **30** soru arşivi (`WrongNotebookConstants.freeArchiveLimit`) | `wrong_notebook_constants.dart`, `wrong_notebook_capacity.dart` |
+| **Kapasite kontrolü** | Test bitince yeni yanlışlar slot kadar eklenir; dolunca upsell banner | `content_bank_service.dart`, `wrong_notebook_capacity_banner.dart` |
+| **Oturum filtresi** | Defter listesinde oturum/tarih filtresi | `wrong_notebook_session_filter.dart`, `wrong_questions_screen.dart` |
+| **Pro kilit overlay** | Bulanık + kilit; tıklanınca `ProUpsellSheet` | `pro_feature_lock.dart` |
+
+#### TG deneme — analiz · duyuru · sonuç ekranı
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Anında özet** | Bitiş sonrası konu/ders kırılımı; Pro’da detaylı analiz kilitli | `tg_exam_analysis_helper.dart`, `tg_exam_instant_summary_screen.dart`, `tg_exam_result_screen.dart` |
+| **FCM duyuru görseli** | Push banner görseli | `tg_exam_push_banner.jpg`, `announcements.py`, `push.py` |
+| **Pro analiz kilidi** | Sonuç ekranında `ProFeatureLock` | `tg_exam_result_screen.dart` |
+
+#### Panel — soru teşhisi (diagnose)
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Teşhis komutu** | `public_id` ile C1/C2/C3/H1 bayrakları + kalıcı PNG envanteri | `question_diagnosis.py`, `diagnose_question.py` |
+| **Testler** | Teşhis birim testleri | `test_question_diagnosis.py`, `test_tg_exam_*.py` |
+
+#### Profil ve analitik genişlemesi
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Profil ekranı** | Genişletilmiş modül listesi, Gelişim/istatistik bağlantıları | `profile_screen.dart` |
+| **Analitik hub** | AI koç + haftalık plan entegrasyonu | `analytics_hub_screen.dart` |
+| **İstatistik** | Deneme kaydı sonrası insight diyalogu | `statistics_screen.dart`, `statistics_overview_tab.dart` |
 
 ### 22 Ağustos 2026 — Misafir↔Google aktarım · yanlış defteri · Telegram OCR
 
@@ -190,7 +281,7 @@ Bu tur: Pomodoro ortam sesleri yenilendi; çözüm reklam kotası; profil NEDEN 
 | **Odak süre** | Preset **yalnızca 20 / 40 / 60** (`dk80` yok); ortalanmış chip’ler; misafirde 40/60 Google kilidi | `PomodoroPreset`, `focus_mode_screen.dart` |
 | **Odak tam ekran** | Sol üst **DERS ÇALIŞIYORUM** + bugünkü çalışma chip’i; kullanıcı adı `FittedBox`; premium **kronometre** ikonu | `focus_mode_screen.dart` |
 | **Ortam UI** | «Ortam Sesi» başlık/alt yazı yok; Dalga/Kafe + ses seviyesi; tekrar dokununca sessiz | `focus_mode_screen.dart` |
-| **Çözüm reklam kotası** | Test başına ilk **4** tam/kısa çözüm ücretsiz (`freeSolutionsPerTest`); 5.+ her biri ödüllü; sıra bağımsız sayaç; ücretsiz haklar ad-unlock’tan ayrı | `ad_constants.dart`, `ad_manager.dart`, `quiz_screen.dart` |
+| **Çözüm reklam kotası** | ~~Test başına 4~~ → **Günde 5** farklı soru detaylı çözüm; her biri ödüllü reklam; 6.+ Pro; aynı soru aynı gün tekrar ücretsiz | `ad_constants.dart`, `daily_solution_quota_service.dart`, `ad_manager.dart`, `quiz_screen.dart` |
 | **NEDEN BİZ** | Profil hero paneli üst kenarında rozet; diyalog: HEDEF Kamu vs klasik kitap karşılaştırması (panel sırası: önce uygulama) | `why_us_comparison_card.dart`, `profile_screen.dart` |
 | **Yanlış defteri WhatsApp** | Google zorunlu; yalnızca filigranlı PNG kart (+ kısa yardım cümlesi); soru metni düz gitmez. Ücretsiz: **1/gün** (+ödüllü reklam); Premium: **3/gün**. Kota dolunca paylaşım yok | `wrong_notebook_share_service.dart`, `wrong_notebook_share_card.dart`, `ad_manager.dart`, `wrong_notebook_*_card.dart` |
 | **ScreenshotGate** | Paylaşım yakalama anında Android `FLAG_SECURE` geçici kapatılır (release’te capture kırılmaz); MethodChannel `hedef_kamu/screenshot_gate` | `screenshot_gate.dart`, `MainActivity.kt` |
@@ -542,7 +633,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Favoriler** | Soruyu favorilere ekleme (quiz içi kalp); **Favorilerim** sekmeli: Soru Favorileri + Özet Kartlar (Favori / Tekrar Et) | `favorite_heart_button.dart`, `favorites_service.dart`, `summary_card_progress_service.dart`, `favorites_screen.dart` | Ücretsiz |
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
 | **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; ücretsiz **5**, Premium **3** konu testi bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 / Premium + 3 |
-| **Çözüm kilidi** | Test başına ilk **4** tam/kısa çözüm ücretsiz; 5.+ her biri ödüllü reklam veya Premium; sıra bağımsız | `quiz_screen.dart`, `ad_manager.dart`, `ad_constants.dart` (`freeSolutionsPerTest`) | 4 ücretsiz / reklam / Premium |
+| **Çözüm kilidi** | Günde **5** farklı soru detaylı çözüm (her biri ~30 sn ödüllü reklam); 6.+ Pro; kısa önizleme her zaman; aynı soru aynı gün tekrar ücretsiz | `quiz_screen.dart`, `ad_manager.dart`, `daily_solution_quota_service.dart`, `ad_constants.dart` | 5/gün reklam / Pro |
 | **Ses ve titreşim** | Doğru/yanlış geri bildirimi | `lib/services/answer_feedback_service.dart` | Ücretsiz |
 | **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma; sonuç panelinde konu adı en üstte, motive mesajı, kazandığı XP ve seri; soru başı ortalama süre NET kutusunun üstünde | `lib/widgets/shareable_result_card.dart`, `lib/screens/quiz_screen.dart` | Ücretsiz |
 | **Filigran** | Marka filigranı ücretsiz ve Premium’da; haritalı/görselli soruda metnin yanında görselin üstüne de biner | `lib/widgets/watermark_widget.dart`, `question_stem_content.dart` | Tüm planlar |
@@ -550,7 +641,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Pro Üyelik üst bar CTA** | Kompakt pill (maskot yok); Ana/Dersler/Deneme sekmelerinde | `lib/widgets/premium_header_button.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
 | **Gelişim · ODAK CTA** | Gelişim sekmesi sağ üst: **mavi↔mor** gradient **ODAK** pill → `FocusModeScreen` | `app_shell_top_bar.dart`, `main_shell.dart` | Ücretsiz |
 
-**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
+**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. Google Docs yapıştırmada `restoreCollapsedBreaks` + `structureSolutionOutline` ile adım başlıkları, A–E denemeleri ve formül listeleri otomatik yapılandırılır (panel JS + Python + Flutter parity). `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
 
 **ÖSYM yazı standartları (`lib/theme/exam_typography.dart`):**
 

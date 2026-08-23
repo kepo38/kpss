@@ -13,6 +13,7 @@ import '../services/last_study_session_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/question_fetch_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/wrong_notebook_capacity_upsell.dart';
 import 'scale_button.dart';
 
 /// Son çalışma oturumuna dönen CTA — oturum yoksa gizlenir.
@@ -109,7 +110,7 @@ class ContinueStudyCard extends StatelessWidget {
       selectedAnswers: result.selectedAnswers,
       excludeQuestionIds: bank.statLockedWrongQuestionIds,
     );
-    await bank.recordAttempt(
+    final capacity = await bank.recordAttempt(
       TestAttemptModel(
         id: 'att_${DateTime.now().millisecondsSinceEpoch}',
         testId: testId,
@@ -131,6 +132,9 @@ class ContinueStudyCard extends StatelessWidget {
       wrong: result.wrong,
       duration: result.duration,
     );
+    if (context.mounted) {
+      await WrongNotebookCapacityUpsell.maybeShowAfterAdd(context, capacity);
+    }
   }
 
   @override

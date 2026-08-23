@@ -8,6 +8,7 @@ enum AdRewardKind {
   solutionUnlock,
   dailyTestBonus,
   wrongNotebookShare,
+  wrongNotebookBatchPractice,
   tgExamDetailedAnalysis,
 }
 
@@ -28,6 +29,8 @@ class AdService {
       AdRewardKind.dailyTestBonus => await ads.requestDailyTestBonus(),
       AdRewardKind.wrongNotebookShare =>
         await ads.requestWrongNotebookShareUnlock(),
+      AdRewardKind.wrongNotebookBatchPractice =>
+        await ads.requestWrongNotebookBatchPractice(),
       AdRewardKind.tgExamDetailedAnalysis =>
         await ads.requestTgExamAnalysisUnlock(examId ?? 0),
     };

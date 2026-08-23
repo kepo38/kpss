@@ -18,6 +18,7 @@ import '../widgets/account_link_card.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/exam_track_picker_sheet.dart';
 import '../widgets/notification_settings_section.dart';
+import '../widgets/scale_button.dart';
 import '../widgets/theme_preference_picker.dart';
 import '../widgets/why_us_comparison_card.dart';
 import 'announcements_screen.dart';
@@ -91,54 +92,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     final current = _user.isim;
-    final controller = TextEditingController(text: current);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppTheme.inkSoft,
-          title: const Text(
-            'Adını düzenle',
-            style: TextStyle(color: Colors.white, fontFamily: 'serif'),
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 160,
-            style: const TextStyle(color: Colors.white),
-            cursorColor: _cyan,
-            textInputAction: TextInputAction.done,
-            decoration: InputDecoration(
-              hintText: 'Görünen ad',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35)),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.2),
-                ),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: _cyan),
-              ),
-            ),
-            onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(
-                'İptal',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-              child: const Text('Kaydet', style: TextStyle(color: _cyan)),
-            ),
-          ],
-        );
-      },
+      barrierColor: const Color(0xCC070B14),
+      builder: (ctx) => _EditDisplayNameDialog(initialName: current),
     );
-    controller.dispose();
     if (newName == null || !mounted) return;
     if (newName.isEmpty || newName == current) return;
 
@@ -1114,34 +1072,146 @@ class _ProfileHero extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              InkWell(
-                                onTap: onEditName,
-                                borderRadius: BorderRadius.circular(8),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        displayName,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontFamily: 'serif',
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w700,
-                                          height: 1.05,
-                                          color: Colors.white,
+                              if (onEditName != null)
+                                Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: onEditName,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Ink(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Colors.white.withValues(alpha: 0.07),
+                                            neon.withValues(alpha: 0.08),
+                                            AppTheme.ink.withValues(alpha: 0.12),
+                                          ],
+                                        ),
+                                        border: Border.all(
+                                          color: neon.withValues(alpha: 0.42),
+                                          width: 1.1,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: neon.withValues(alpha: 0.12),
+                                            blurRadius: 14,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          10,
+                                          10,
+                                          10,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    displayName,
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontFamily: 'serif',
+                                                      fontSize: 22,
+                                                      fontWeight: FontWeight.w700,
+                                                      height: 1.08,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Adını düzenle',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      letterSpacing: 0.55,
+                                                      color: neon.withValues(
+                                                        alpha: 0.78,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Container(
+                                              width: 32,
+                                              height: 32,
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                  colors: user.isPremium
+                                                      ? const [
+                                                          Color(0xFFFFF6E4),
+                                                          Color(0xFFE8CF98),
+                                                          Color(0xFFC9A86C),
+                                                        ]
+                                                      : [
+                                                          neon.withValues(
+                                                            alpha: 0.35,
+                                                          ),
+                                                          neon.withValues(
+                                                            alpha: 0.18,
+                                                          ),
+                                                        ],
+                                                ),
+                                                border: Border.all(
+                                                  color: user.isPremium
+                                                      ? const Color(0xFFD4AF6A)
+                                                      : neon.withValues(
+                                                          alpha: 0.55,
+                                                        ),
+                                                  width: 0.8,
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: neon.withValues(
+                                                      alpha: 0.22,
+                                                    ),
+                                                    blurRadius: 8,
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Icon(
+                                                Icons.edit_rounded,
+                                                size: 15,
+                                                color: user.isPremium
+                                                    ? AppTheme.ink
+                                                    : Colors.white,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
-                                    if (onEditName != null)
-                                      Icon(
-                                        Icons.edit_rounded,
-                                        size: 17,
-                                        color: neon.withValues(alpha: 0.95),
-                                      ),
-                                  ],
+                                  ),
+                                )
+                              else
+                                Text(
+                                  displayName,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: 'serif',
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.05,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
                               const SizedBox(height: 4),
                               Text(
                                 email,
@@ -1748,4 +1818,306 @@ class _SignOutButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Premium görünen ad düzenleme kartı.
+class _EditDisplayNameDialog extends StatefulWidget {
+  final String initialName;
+
+  const _EditDisplayNameDialog({required this.initialName});
+
+  @override
+  State<_EditDisplayNameDialog> createState() => _EditDisplayNameDialogState();
+}
+
+class _EditDisplayNameDialogState extends State<_EditDisplayNameDialog>
+    with SingleTickerProviderStateMixin {
+  late final TextEditingController _controller;
+  late final AnimationController _shine;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+    _shine = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _shine.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() => Navigator.of(context).pop(_controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+      child: AnimatedBuilder(
+        animation: _shine,
+        builder: (context, _) {
+          final pulse = 0.55 + 0.45 * math.sin(_shine.value * math.pi * 2);
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color:
+                      AppTheme.champagne.withValues(alpha: 0.18 + 0.18 * pulse),
+                  blurRadius: 28 + 8 * pulse,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: CustomPaint(
+                painter: _EditNameGoldBorderPainter(progress: _shine.value),
+                child: Padding(
+                  padding: const EdgeInsets.all(1.6),
+                  child: Material(
+                    color: const Color(0xFF16110A),
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF1E293B),
+                            Color(0xFF121C2E),
+                            Color(0xFF0C1424),
+                          ],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        AppTheme.champagne
+                                            .withValues(alpha: 0.28),
+                                        AppTheme.champagne
+                                            .withValues(alpha: 0.08),
+                                      ],
+                                    ),
+                                    border: Border.all(
+                                      color: AppTheme.champagne
+                                          .withValues(alpha: 0.45),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.badge_outlined,
+                                    size: 20,
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.95),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Adını düzenle',
+                                        style: TextStyle(
+                                          fontFamily: 'serif',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFF6E7C3),
+                                          height: 1.15,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Profilde görünen adın',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          height: 1.35,
+                                          color: Color(0x99F6E7C3),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: _controller,
+                              autofocus: true,
+                              maxLength: 160,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              cursorColor: AppTheme.champagne,
+                              textInputAction: TextInputAction.done,
+                              decoration: InputDecoration(
+                                counterStyle: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.38),
+                                  fontSize: 11,
+                                ),
+                                hintText: 'Görünen ad',
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.35),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withValues(alpha: 0.05),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.28),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.72),
+                                    width: 1.4,
+                                  ),
+                                ),
+                              ),
+                              onSubmitted: (_) => _save(),
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor:
+                                          Colors.white.withValues(alpha: 0.55),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'İptal',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  flex: 2,
+                                  child: ScaleButton(
+                                    onPressed: _save,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 13,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFF8E7C0),
+                                            Color(0xFFE2C998),
+                                            Color(0xFFC9A86C),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppTheme.champagne
+                                                .withValues(alpha: 0.38),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Text(
+                                        'Kaydet',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14.5,
+                                          color: Color(0xFF1A140C),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EditNameGoldBorderPainter extends CustomPainter {
+  final double progress;
+
+  _EditNameGoldBorderPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(22));
+    final shader = SweepGradient(
+      startAngle: 0,
+      endAngle: math.pi * 2,
+      transform: GradientRotation(progress * math.pi * 2),
+      colors: const [
+        Color(0xFFF8E7C0),
+        Color(0xFF8A6B32),
+        Color(0xFFE2C998),
+        Color(0xFFC9A86C),
+        Color(0xFFF8E7C0),
+      ],
+    ).createShader(rect);
+    final paint = Paint()
+      ..shader = shader
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    canvas.drawRRect(rrect.deflate(0.9), paint);
+  }
+
+  @override
+  bool shouldRepaint(_EditNameGoldBorderPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

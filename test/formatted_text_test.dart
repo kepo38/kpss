@@ -790,4 +790,40 @@ void main() {
     expect(out, contains('- **B Seçeneği:**'));
     expect(out, contains('  - Dizilim 2 - 3 - 5 - 4 - 1'));
   });
+
+  test('structureSolutionOutline rebuilds Google HEL presence table', () {
+    const src =
+        '💡 Adım Adım Mantıksal ÇözümÖğretmenin seçtiği 3 harfin her bir '
+        'ismini tek bir şekilde (kesin olarak) belirleyebilmesi için, bu 3 '
+        'harfin isimlerdeki dağılımının (kümelenmesinin) her öğrenci için '
+        'tamamen benzersiz (farklı) olması gerekir.Öğrencilerimiz: AYNUR, '
+        'GÖZDE, HÜLYA, LEMAN, ZEHRASeçeneklerde yer alan H, E, L harflerinin '
+        'bu isimlerde bulunma durumlarını ("Var: 1", "Yok: 0") kodlayarak '
+        'bir tablo oluşturalım:ÖğrenciH HarfiE HarfiL HarfiOluşan Benzersiz '
+        'Kod (H, E, L)AYNURYok (0)Yok (0)Yok (0)000GÖZDEYok (0)Var (1)Yok (0)'
+        '010HÜLYAVar (1)Yok (0)Var (1)101LEMANYok (0)Var (1)Var (1)011ZEHRA'
+        'Var (1)Var (1)Yok (0)110Görüldüğü üzere, H, E, L harfleri seçildiğinde '
+        'her öğrenci için tamamen farklı bir kod kombinasyonu oluşmaktadır.';
+    final broken = FormattedText.restoreCollapsedBreaks(src);
+    expect(broken, contains('Çözüm\nÖğretmenin'));
+    expect(broken, contains('gerekir.\nÖğrencilerimiz:'));
+    expect(broken, contains('ZEHRA\nSeçeneklerde'));
+    expect(broken, contains('Öğrenci\nH Harfi'));
+    expect(broken, contains('AYNUR\nYok (0)'));
+    expect(broken, contains('000\nGÖZDE'));
+    expect(broken, contains('110\nGörüldüğü'));
+    expect(broken, isNot(contains('ÖğrenciH Harfi')));
+
+    final out = FormattedText.structureSolutionOutline(broken);
+    expect(out, contains('**💡 Adım Adım Mantıksal Çözüm**'));
+    expect(out, contains('**Harf kodu:**'));
+    expect(out, contains('- **AYNUR:** H yok, E yok, L yok → **000**'));
+    expect(out, contains('- **GÖZDE:** H yok, E var, L yok → **010**'));
+    expect(out, contains('- **HÜLYA:** H var, E yok, L var → **101**'));
+    expect(out, contains('- **LEMAN:** H yok, E var, L var → **011**'));
+    expect(out, contains('- **ZEHRA:** H var, E var, L yok → **110**'));
+    expect(out, isNot(contains('ÖğrenciH')));
+    final again = FormattedText.structureSolutionOutline(out);
+    expect('- **AYNUR:**'.allMatches(again).length, 1);
+  });
 }

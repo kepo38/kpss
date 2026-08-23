@@ -9,6 +9,8 @@ import '../models/pomodoro_session_model.dart';
 import 'gamification_service.dart';
 import 'notification_service.dart';
 
+typedef PomodoroBreakEndingCallback = void Function();
+
 typedef PomodoroSessionCompleteCallback = void Function({
   required bool endingBreak,
   required String title,
@@ -52,6 +54,7 @@ class PomodoroService extends ChangeNotifier {
   bool _ambientResumeBusy = false;
 
   PomodoroSessionCompleteCallback? onSessionCompleteUi;
+  PomodoroBreakEndingCallback? onBreakEndingBeforeChime;
 
   List<PomodoroSessionModel> get gecmis => List.unmodifiable(_gecmis);
   AmbientSound get selectedSound => _selectedSound;
@@ -233,6 +236,10 @@ class PomodoroService extends ChangeNotifier {
       GamificationService.instance.recordStudyMinutes(focusMinutes);
       // Odak turu bitti → Deep Work döngüsünü de kapat.
       await stopDeepWork();
+    }
+
+    if (endingBreak) {
+      onBreakEndingBeforeChime?.call();
     }
 
     unawaited(playCompletionChime());

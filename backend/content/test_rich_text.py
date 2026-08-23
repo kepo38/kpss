@@ -208,6 +208,129 @@ class RichTextNormalizationTests(SimpleTestCase):
             self.assertIn("- **A Seçeneği:**", out)
             self.assertIn("- **B Seçeneği:**", out)
 
+    def test_structure_solution_outline_hel_presence_table_paste(self):
+        from content.rich_text_common import (
+            restore_collapsed_breaks,
+            structure_solution_outline,
+        )
+
+        src = (
+            "💡 Adım Adım Mantıksal ÇözümÖğretmenin seçtiği 3 harfin her bir "
+            "ismini tek bir şekilde (kesin olarak) belirleyebilmesi için, bu 3 "
+            "harfin isimlerdeki dağılımının (kümelenmesinin) her öğrenci için "
+            "tamamen benzersiz (farklı) olması gerekir.Öğrencilerimiz: AYNUR, "
+            "GÖZDE, HÜLYA, LEMAN, ZEHRASeçeneklerde yer alan H, E, L harflerinin "
+            'bu isimlerde bulunma durumlarını ("Var: 1", "Yok: 0") kodlayarak '
+            "bir tablo oluşturalım:ÖğrenciH HarfiE HarfiL HarfiOluşan Benzersiz "
+            "Kod (H, E, L)AYNURYok (0)Yok (0)Yok (0)000GÖZDEYok (0)Var (1)Yok (0)"
+            "010HÜLYAVar (1)Yok (0)Var (1)101LEMANYok (0)Var (1)Var (1)011ZEHRA"
+            "Var (1)Var (1)Yok (0)110Görüldüğü üzere, H, E, L harfleri seçildiğinde "
+            "her öğrenci için tamamen farklı bir kod kombinasyonu oluşmaktadır."
+        )
+        broken = restore_collapsed_breaks(src)
+        self.assertIn("Çözüm\nÖğretmenin", broken)
+        self.assertIn("gerekir.\nÖğrencilerimiz:", broken)
+        self.assertIn("ZEHRA\nSeçeneklerde", broken)
+        self.assertIn("Öğrenci\nH Harfi", broken)
+        self.assertIn("AYNUR\nYok (0)", broken)
+        self.assertIn("000\nGÖZDE", broken)
+        self.assertIn("110\nGörüldüğü", broken)
+        self.assertNotIn("ÖğrenciH Harfi", broken)
+
+        outlined = structure_solution_outline(broken)
+        self.assertIn("**💡 Adım Adım Mantıksal Çözüm**", outlined)
+        self.assertIn("**Harf kodu:**", outlined)
+        self.assertIn("- **AYNUR:** H yok, E yok, L yok → **000**", outlined)
+        self.assertIn("- **GÖZDE:** H yok, E var, L yok → **010**", outlined)
+        self.assertIn("- **HÜLYA:** H var, E yok, L var → **101**", outlined)
+        self.assertIn("- **LEMAN:** H yok, E var, L var → **011**", outlined)
+        self.assertIn("- **ZEHRA:** H var, E var, L yok → **110**", outlined)
+        self.assertNotIn("ÖğrenciH", outlined)
+        again = structure_solution_outline(outlined)
+        self.assertEqual(again.count("- **AYNUR:**"), 1)
+
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**Harf kodu:**", out)
+            self.assertIn("- **ZEHRA:** H var, E var, L yok → **110**", out)
+
+    def test_structure_solution_outline_ab_two_digit_paste(self):
+        from content.rich_text_common import structure_solution_outline
+
+        src = (
+            r"Adım Adım Çözüm:İki basamaklı sayımız \(ab\) olsun. Soruda verilen şartlar şunlardır:"
+            r"Rakamlar sıfırdan farklı (\(a \neq 0, b \neq 0\))"
+            r"Rakamlar birbirinden farklı (\(a \neq b\))"
+            r'Son maddede "onlar basamağındaki rakamın birler basamağındaki rakama oranı" bir doğal sayı belirtmektedir. '
+            r"Yani \(\frac{a}{b}\) bir tam sayıdır (\(a\), \(b\)'nin katıdır)."
+            r"Elde edilen 5 sayıdan 4'ü çift, 1'i tek sayıdır."
+            r"Kağıda yazılan 5 sayıyı formülleştirelim:"
+            r"Kendisi: \(10a + b\)"
+            r"Rakamları toplamı: \(a + b\)"
+            r"Rakamları çarpımı: \(a \times b\)"
+            r"Rakamları farkının mutlak değeri: \(\vert{}a - b\vert{}\)"
+            r"Rakamların oranı: \(\frac{a}{b}\)"
+            r"1. Tek/Çift Analizi Yaparak Sayıyı Bulma:"
+            r"\(a \times b\) (Rakamlar Çarpımı): Elde edilen 5 sayıdan sadece 1 tanesi tek olduğuna göre, "
+            r"bu çarpımın çift olması şarttır."
+            r"Şimdi \(\frac{a}{b}\) oranının bir doğal sayı olmasını ve rakamların durumlarını inceleyelim. "
+            r"Sayımızın \(62\) olduğunu varsayıp test edelim (\(a=6, b=2\)):"
+            r"Kendisi: \(62\) (Çift)"
+            r"Rakamları toplamı: \(6 + 2 = 8\) (Çift)"
+            r"Rakamları çarpımı: \(6 \times 2 = 12\) (Çift)"
+            r"Rakamları farkı: \(\vert{}6 - 2\vert{} = 4\) (Çift)"
+            r"Rakamları oranı: \(\frac{6}{2} = 3\) (Tek)"
+            r"Görüldüğü gibi \(62\) sayısı için elde edilen değerlerden 4 tanesi çift (62, 8, 12, 4) "
+            r"ve tam olarak 1 tanesi tek (3) çıkmaktadır."
+            r"2. Kağıttaki Sayıların Toplamını Hesaplama:"
+            r"Bulduğumuz bu 5 doğal sayıyı toplayalım:"
+            r"\(62 + 8 + 12 + 4 + 3 = \mathbf{105}\)"
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**Adım Adım Çözüm:**", out)
+            self.assertIn("- Rakamlar sıfırdan farklı", out)
+            self.assertIn("- Kendisi: $10a + b$", out)
+            self.assertIn("- Rakamları toplamı: $a + b$", out)
+            self.assertIn(r"\lvert a - b \rvert", out)
+            self.assertIn("**1. Tek/Çift Analizi Yaparak Sayıyı Bulma:**", out)
+            self.assertIn("**2. Kağıttaki Sayıların Toplamını Hesaplama:**", out)
+            self.assertIn("- Kendisi: $62$ (Çift)", out)
+            self.assertIn("(Tek)", out)
+            self.assertIn("Görüldüğü gibi", out)
+            self.assertLess(out.index("(Tek)"), out.index("Görüldüğü gibi"))
+            self.assertIn(r"\mathbf{105}", out)
+            again = structure_solution_outline(out)
+            self.assertEqual(again.count("- Kendisi: $10a + b$"), 1)
+
+    def test_structure_solution_outline_xyz_addition_paste(self):
+        src = (
+            r"1. Adım: Toplama İşlemini Alt Alta Yazalım"
+            r"\(\begin{array}{r@{\quad }c@{\quad }c@{\quad }c}"
+            r"5&2&A&\\ +&B&4&3\\ \hline X&Y&Z&\end{array}\)"
+            r"Elde edilen \(XYZ\) üç basamaklı sayısının tüm rakamları birbirinden farklı tek sayılar "
+            r"(\(1, 3, 5, 7, 9\)) olmak zorundadır."
+            r"2. Adım: Onlar Basamağını İnceleyelim"
+            r"Onlar basamağındaki işlem: \(2 + 4 = 6\)"
+            r"Sonucun tek sayı olması gerektiği için, birler basamağından onlar basamağına kesinlikle 1 elde gelmiştir."
+            r"Bu durumda onlar basamağının yeni sonucu: \(2 + 4 + 1 = \mathbf{7}\) olur."
+            r"Böylece ortadaki rakamı bulduk: \(Y = 7\)."
+            r"3. Adım: Birler Basamağından Elde Gelmesini Sağlayalım"
+            r"Birler basamağındaki işlem: \(A + 3\)"
+            r"5. Adım: Sonuç ve Kontrol"
+            r"Sayıları yerine yazalım: \(528 + 443 = \mathbf{971}\)"
+            r"Doğru Seçenek: D"
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**1. Adım: Toplama İşlemini Alt Alta Yazalım**", out)
+            self.assertIn("**2. Adım: Onlar Basamağını İnceleyelim**", out)
+            self.assertIn("**3. Adım: Birler Basamağından Elde Gelmesini Sağlayalım**", out)
+            self.assertIn("**5. Adım: Sonuç ve Kontrol**", out)
+            self.assertIn(r"\begin{array}", out)
+            self.assertIn("$$", out)
+            self.assertIn("\nElde edilen", out)
+            self.assertIn("\nSonucun tek", out)
+            self.assertIn("\nBu durumda", out)
+            self.assertIn(r"\mathbf{971}", out)
+
 
 class TelegramSolutionNormalizationIntegrationTests(TestCase):
     def setUp(self):

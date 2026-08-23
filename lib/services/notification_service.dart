@@ -37,6 +37,7 @@ class NotificationService {
 
   bool _initialized = false;
   bool _listeningProgress = false;
+  bool _canUseExactAlarms = false;
 
   static const int weeklySummaryId = 1000;
   static const int premiumSavingsNotificationId = 1001;
@@ -73,7 +74,7 @@ class NotificationService {
 
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.requestNotificationsPermission();
+    await _ensureAndroidReady(androidPlugin);
 
     _initialized = true;
     if (!_listeningProgress) {
@@ -94,12 +95,39 @@ class NotificationService {
 
   /// Açılış ve öne gelince zamanlanmış bildirimleri yeniler.
   Future<void> ensureScheduled() async {
+    if (!_initialized) {
+      await initialize();
+    }
     if (!_initialized) return;
+
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await _ensureAndroidReady(androidPlugin);
+
     await scheduleWeeklySummary();
     await scheduleMorningMotivation();
     await scheduleEveningFomo();
     await scheduleExamReminderIfEnabled();
   }
+
+  Future<void> _ensureAndroidReady(
+    AndroidFlutterLocalNotificationsPlugin? androidPlugin,
+  ) async {
+    if (androidPlugin == null) return;
+
+    await androidPlugin.requestNotificationsPermission();
+
+    var canExact = await androidPlugin.canScheduleExactNotifications();
+    if (canExact != true) {
+      await androidPlugin.requestExactAlarmsPermission();
+      canExact = await androidPlugin.canScheduleExactNotifications();
+    }
+    _canUseExactAlarms = canExact == true;
+  }
+
+  AndroidScheduleMode get _dailyScheduleMode => _canUseExactAlarms
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
 
   Future<bool> isExamReminderEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -137,13 +165,16 @@ class NotificationService {
           priority: Priority.defaultPriority,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
   }
 
-  bool _pref(NotificationKind kind) =>
-      NotificationPreferenceService.instance.isEnabled(kind);
+  bool _pref(NotificationKind kind) {
+    final prefs = NotificationPreferenceService.instance;
+    if (!prefs.isInitialized) return true;
+    return prefs.isEnabled(kind);
+  }
 
   void _onNotificationTap(NotificationResponse response) {
     final payload = response.payload;
@@ -182,7 +213,7 @@ class NotificationService {
           priority: Priority.defaultPriority,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
   }
@@ -368,7 +399,7 @@ class NotificationService {
           priority: Priority.high,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
       matchDateTimeComponents: DateTimeComponents.time,
       payload: payload,
     );
@@ -413,7 +444,7 @@ class NotificationService {
       body,
       _nextDailyAt(hour: DailyMissionCopy.eveningHour),
       details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
       payload: payload,
     );
   }

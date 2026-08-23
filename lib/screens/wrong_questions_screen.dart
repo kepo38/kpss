@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
+import '../models/wrong_notebook_session_filter.dart';
 import '../services/ad_manager.dart';
+import '../services/ad_service.dart';
 import '../services/auth_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
@@ -15,15 +17,20 @@ import '../services/kpss_preference_service.dart';
 import '../services/manual_question_service.dart';
 import '../services/wrong_notebook_share_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/wrong_notebook_capacity_upsell.dart';
 import '../widgets/account_link_card.dart';
 import '../widgets/app_back_button.dart';
+import '../constants/wrong_notebook_constants.dart';
+import '../widgets/pro_feature_lock.dart';
 import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/question_stem_content.dart';
+import '../widgets/wrong_notebook/wrong_notebook_capacity_banner.dart';
 import '../widgets/wrong_notebook/wrong_notebook_empty_state.dart';
 import '../widgets/wrong_notebook/wrong_notebook_header.dart';
 import '../widgets/wrong_notebook/wrong_notebook_practice_bar.dart';
 import '../widgets/wrong_notebook/wrong_notebook_question_card.dart';
 import '../widgets/wrong_notebook/wrong_notebook_remove_toast.dart';
+import '../widgets/wrong_notebook/wrong_notebook_session_banner.dart';
 import '../widgets/wrong_notebook/wrong_notebook_stats_row.dart';
 import '../widgets/wrong_notebook/wrong_notebook_subject_filter.dart';
 import 'quiz_screen.dart';
@@ -32,7 +39,10 @@ import 'wrong_notebook_manual_screen.dart';
 
 /// Konu testlerinde yanlış yapılan sorular; kullanıcı istediğini kaldırabilir.
 class WrongQuestionsScreen extends StatefulWidget {
-  const WrongQuestionsScreen({super.key});
+  /// Az önce biten testten gelindiyse yalnızca o oturumdaki yanlışlar.
+  final WrongNotebookSessionFilter? sessionFilter;
+
+  const WrongQuestionsScreen({super.key, this.sessionFilter});
 
   @override
   State<WrongQuestionsScreen> createState() => _WrongQuestionsScreenState();
@@ -42,10 +52,12 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   String? _subjectFilter;
   bool _hydrating = false;
   String? _similarLoadingId;
+  WrongNotebookSessionFilter? _activeSessionFilter;
 
   @override
   void initState() {
     super.initState();
+    _activeSessionFilter = widget.sessionFilter;
     FavoritesService.instance.initialize();
     unawaited(ManualQuestionService.instance.initialize());
     unawaited(_hydrateMissingBodies());
@@ -80,12 +92,15 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
   Future<void> _afterQuiz(QuizResult? result) async {
     if (result == null || !result.completed) return;
-    await ContentBankService.instance.updateAnswerOutcomes(
+    final capacity = await ContentBankService.instance.updateAnswerOutcomes(
       wrongQuestionIds: result.wrongQuestionIds,
       correctQuestionIds: result.correctQuestionIds,
       questionIds: result.questionIds,
       selectedAnswers: result.selectedAnswers,
     );
+    if (mounted) {
+      await WrongNotebookCapacityUpsell.maybeShowAfterAdd(context, capacity);
+    }
   }
 
   Future<void> _toggleFavorite(String questionId) async {
@@ -244,17 +259,6 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Bu yanlış sorunun metnine en yakın yayınlanmış '
-                      'sorular vektör benzerliği ile sıralanır. Yanlış '
-                      'sorusunun kendisi açılmaz; pratik için ayrı bir set gelir.',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        height: 1.4,
-                        color: Colors.white.withValues(alpha: 0.62),
-                      ),
-                    ),
                     const SizedBox(height: 18),
                     Row(
                       children: [
@@ -325,6 +329,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
         builder: (_) => QuizScreen(
           title: 'Benzer sorular',
           questions: similar,
+          hideQuestionCounter: true,
         ),
       ),
     );
@@ -339,13 +344,28 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
       final ok = await AccountLinkCard.prompt(
         context,
         title: 'Giriş yap',
-        subtitle: 'Tüm yanlışları çözmek için Google hesabını bağla.',
+        subtitle: 'Eksiklerini kapatmak için Google hesabını bağla.',
       );
       if (!ok || !mounted) return;
       await AuthService.instance.relayUserScopedServices(
         previousUserId: previousUserId,
       );
       if (!mounted) return;
+    }
+    final earned = await AdService.showRewardedAd(
+      kind: AdRewardKind.wrongNotebookBatchPractice,
+    );
+    if (!mounted) return;
+    if (!earned) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Reklam yüklenemedi veya izlenmedi. Eksiklerini kapatmak için '
+            'kısa bir reklam izlemen gerekiyor.',
+          ),
+        ),
+      );
+      return;
     }
     AdManager.instance.skipNextPageTransition();
     final result = await Navigator.of(context).push<QuizResult>(
@@ -389,6 +409,21 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     return sorted.map((e) => (e.key, e.value)).toList();
   }
 
+  List<QuestionModel> _sourceQuestions(ContentBankService bank) {
+    final session = _activeSessionFilter;
+    if (session != null) {
+      if (session.prefetchedQuestions.isNotEmpty) {
+        final byId = {for (final q in session.prefetchedQuestions) q.id: q};
+        return session.questionIds
+            .map((id) => byId[id])
+            .whereType<QuestionModel>()
+            .toList();
+      }
+      return bank.questionsByIds(session.questionIds);
+    }
+    return bank.questionsByIds(bank.wrongQuestionIds.toList());
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -405,8 +440,11 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
         final manual = ManualQuestionService.instance.items;
         final kpssType = KpssPreferenceService.instance.kpssType;
         final guestLocked = !AuthService.instance.hasPermanentAccount;
-        final allQuestions =
-            bank.questionsByIds(bank.wrongQuestionIds.toList());
+        final isPremium = PremiumService.instance.isPremium;
+        final archiveAtLimit = bank.isWrongNotebookAtFreeLimit;
+        final archivedCount = bank.wrongNotebookArchivedCount;
+        final archiveLimit = bank.wrongNotebookFreeLimit;
+        final allQuestions = _sourceQuestions(bank);
         final testWrongCount = allQuestions.length;
         final subjects = _subjectSummary(allQuestions);
         final questions = _filteredQuestions(bank, allQuestions);
@@ -496,15 +534,30 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      WrongNotebookStatsRow(
+                      if (_activeSessionFilter != null)
+                        WrongNotebookSessionBanner(
+                          title: _activeSessionFilter!.sessionTitle,
+                          onViewAll: () =>
+                              setState(() => _activeSessionFilter = null),
+                        ),
+                      if (_activeSessionFilter == null && archiveAtLimit)
+                        WrongNotebookCapacityBanner(
+                          currentCount: archivedCount,
+                          limit: archiveLimit,
+                        ),
+                      if (_activeSessionFilter == null)
+                        WrongNotebookStatsRow(
                         questionCount: testWrongCount,
                         subjectCount: subjects.length,
                         topSubject:
                             subjects.isNotEmpty ? subjects.first.$1 : null,
                         topSubjectCount:
                             subjects.isNotEmpty ? subjects.first.$2 : null,
-                      ),
-                      WrongNotebookBookMistakesButton(
+                        archiveLimit: isPremium ? null : archiveLimit,
+                        archivedCount: isPremium ? null : archivedCount,
+                        ),
+                      if (_activeSessionFilter == null)
+                        WrongNotebookBookMistakesButton(
                         count: manual.length,
                         onTap: () {
                           Navigator.of(context).push(
@@ -516,12 +569,17 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                         },
                       ),
                       if (allQuestions.isNotEmpty)
-                        WrongNotebookSubjectFilter(
-                          subjects: subjects,
-                          totalCount: allQuestions.length,
-                          selectedSubject: _subjectFilter,
-                          onChanged: (value) =>
-                              setState(() => _subjectFilter = value),
+                        ProFeatureLock(
+                          locked: !isPremium && archiveAtLimit,
+                          upsellTitle: 'YANLIŞ DEFTERİ',
+                          upsellSubtitle: WrongNotebookConstants.proUpsellSubtitle,
+                          child: WrongNotebookSubjectFilter(
+                            subjects: subjects,
+                            totalCount: allQuestions.length,
+                            selectedSubject: _subjectFilter,
+                            onChanged: (value) =>
+                                setState(() => _subjectFilter = value),
+                          ),
                         ),
                       Expanded(
                         child: Builder(

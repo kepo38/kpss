@@ -4,9 +4,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../../constants/brand_constants.dart';
 import '../../models/pomodoro_session_model.dart';
+import '../../services/ad_manager.dart';
 import '../../services/auth_service.dart';
 import '../../services/pomodoro_service.dart';
 import '../../theme/app_theme.dart';
@@ -38,6 +40,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   bool _fullscreen = false;
   bool _deepWorkBusy = false;
   bool _ambientBusy = false;
+  bool _wasBreak = false;
 
   bool get _isGoogleUser => _auth.hasPermanentAccount;
 
@@ -64,10 +67,22 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     _pomodoro.addListener(_onPomodoroChanged);
     _auth.addListener(_onAuthChanged);
     _pomodoro.onSessionCompleteUi = _showSessionCompleteSnack;
+    _pomodoro.onBreakEndingBeforeChime =
+        AdManager.instance.suppressInterstitialForFocusChime;
+    AdManager.instance.setFocusScreenOpen(true);
+    _wasBreak = _pomodoro.isBreak;
+    if (_wasBreak) {
+      AdManager.instance.setFocusBreakMode(true);
+    }
     _enforceGuestLimits();
   }
 
   void _onPomodoroChanged() {
+    final isBreak = _pomodoro.isBreak;
+    if (isBreak != _wasBreak) {
+      AdManager.instance.setFocusBreakMode(isBreak);
+      _wasBreak = isBreak;
+    }
     if (mounted) setState(() {});
   }
 
@@ -135,6 +150,11 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     if (_pomodoro.onSessionCompleteUi == _showSessionCompleteSnack) {
       _pomodoro.onSessionCompleteUi = null;
     }
+    if (_pomodoro.onBreakEndingBeforeChime ==
+        AdManager.instance.suppressInterstitialForFocusChime) {
+      _pomodoro.onBreakEndingBeforeChime = null;
+    }
+    AdManager.instance.setFocusScreenOpen(false);
     // Timer + Deep Work serviste kalır — geri gelince / testlerde müzik sürer.
     super.dispose();
   }
@@ -257,6 +277,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                     ),
                   ),
                 ),
+                if (_pomodoro.isBreak) const _FocusBreakBannerSlot(),
               ],
             ),
           ),
@@ -872,7 +893,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                     Positioned(
                       left: 0,
                       right: 0,
-                      bottom: 40,
+                      bottom: _pomodoro.isBreak ? 108 : 40,
                       child: Center(
                         child: ScaleButton(
                           onPressed: () => unawaited(
@@ -907,6 +928,13 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                         ),
                       ),
                     ),
+                    if (_pomodoro.isBreak)
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _FocusBreakBannerSlot(),
+                      ),
                   ],
                 );
               },
@@ -1313,4 +1341,46 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(covariant _RingPainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.progressColor != progressColor;
+}
+
+/// Pomodoro mola ekranı — altta küçük AdMob banner.
+class _FocusBreakBannerSlot extends StatelessWidget {
+  const _FocusBreakBannerSlot();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AdManager.instance,
+      builder: (context, _) {
+        final bannerAd = AdManager.instance.focusBreakBannerAd;
+        if (bannerAd == null) return const SizedBox.shrink();
+
+        final height = bannerAd.size.height.toDouble();
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: _Neon.base.withValues(alpha: 0.92),
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+              child: SizedBox(
+                width: double.infinity,
+                height: height,
+                child: Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: AdWidget(ad: bannerAd),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

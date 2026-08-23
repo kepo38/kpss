@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
+import '../../models/exam_insight.dart';
+import '../../widgets/exam_insight_dialog.dart';
 import '../../widgets/exam_premium_shell.dart';
 import '../../widgets/puan_hesaplama_button.dart';
 import '../../widgets/statistics_exams_tab.dart';
@@ -38,16 +40,17 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Future<void> _openAddExam() async {
-    final saved = await showModalBottomSheet<bool>(
+    final result = await showModalBottomSheet<ExamSaveResult?>(
       context: context,
       isScrollControlled: true,
       builder: (_) => const AddExamSheet(),
     );
-    if (!mounted) return;
-    if (saved == true) {
-      setState(() {});
-      NotificationService.instance.refreshWeeklySummaryContent();
+    if (!mounted || result == null) return;
+    setState(() {});
+    if (result.insight != null) {
+      await showExamInsightDialog(context, result.insight!);
     }
+    NotificationService.instance.refreshWeeklySummaryContent();
   }
 
   @override

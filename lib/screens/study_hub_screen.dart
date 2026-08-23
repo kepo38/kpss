@@ -609,7 +609,7 @@ class _SoruHeader extends StatelessWidget {
                   builder: (context, premium, _) {
                     return _HeaderChip(
                       isPremium: premium,
-                      onPremiumTap: premium ? null : onPremiumTap,
+                      onPremiumTap: onPremiumTap,
                       onMoreTap: onMoreTap,
                     );
                   },
@@ -621,37 +621,38 @@ class _SoruHeader extends StatelessWidget {
           ValueListenableBuilder<KpssType>(
             valueListenable: selectedType,
             builder: (context, type, _) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const ExamFocusPanel(
-                    light: true,
-                  ),
-                  DailyMiniExamCard(kpssType: type),
-                  const SizedBox(height: 10),
-                  DailyMissionCenter(
-                    kpssType: type,
-                    onSubjectTap: (subject) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => SubjectTopicsScreen(
-                            kpssType: type,
-                            subject: subject,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: isPremium,
-                    builder: (context, premium, _) {
-                      return SavingsInsightBanner(
+              return ValueListenableBuilder<bool>(
+                valueListenable: isPremium,
+                builder: (context, premium, _) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const ExamFocusPanel(
+                        light: true,
+                      ),
+                      DailyMiniExamCard(kpssType: type),
+                      const SizedBox(height: 10),
+                      DailyMissionCenter(
+                        kpssType: type,
+                        isPremium: premium,
+                        onSubjectTap: (subject) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => SubjectTopicsScreen(
+                                kpssType: type,
+                                subject: subject,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      SavingsInsightBanner(
                         isPremium: premium,
                         onPremiumTap: onPremiumTap,
-                      );
-                    },
-                  ),
-                ],
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),

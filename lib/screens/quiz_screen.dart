@@ -4,7 +4,6 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/tg_exam_constants.dart';
@@ -12,6 +11,7 @@ import '../layout/app_breakpoints.dart';
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
+import '../services/ad_constants.dart';
 import '../services/ad_service.dart';
 import '../services/answer_feedback_service.dart';
 import '../services/app_config_service.dart';
@@ -32,6 +32,8 @@ import '../services/question_view_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/exam_typography.dart';
 import '../utils/solution_preview.dart';
+import '../utils/wrong_notebook_session_navigation.dart';
+import '../models/wrong_notebook_session_filter.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/embossed_app_bar_title.dart';
@@ -51,6 +53,7 @@ import '../widgets/quiz_zoom_viewport.dart';
 import '../widgets/quiz_question_note_card.dart';
 import '../widgets/quiz_take_note_button.dart';
 import '../widgets/quiz_wrong_notebook_banner.dart';
+import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/shareable_result_card.dart';
 /// Test / soru çözme ekranı — süre, navigator, favori.
 class QuizScreen extends StatefulWidget {
@@ -68,6 +71,9 @@ class QuizScreen extends StatefulWidget {
 
   /// Defter pratiği gibi oturumlarda «defterde kayıtlı» uyarısını basma.
   final bool suppressWrongNotebookHint;
+
+  /// Benzer soru seti gibi oturumlarda üstte Soru X/Y gösterme.
+  final bool hideQuestionCounter;
 
   /// Günün Denemesi gibi tanıtım oturumları — çözüm/banner/bitiş reklamı yok.
   final bool adFreeExperience;
@@ -94,6 +100,7 @@ class QuizScreen extends StatefulWidget {
     this.skipResultDialog = false,
     this.fromWrongNotebook = false,
     this.suppressWrongNotebookHint = false,
+    this.hideQuestionCounter = false,
     this.adFreeExperience = false,
     this.dailyMiniRankingMode = false,
     this.tgExamMode = false,
@@ -996,12 +1003,24 @@ class _QuizScreenState extends State<QuizScreen>
           ),
           const SizedBox(height: 20),
           if (_showingSolution)
-            _SolutionPanel(
-              question: _currentQuestion,
-              selectedAnswer: _selectedAnswer,
-              showFullSolution: _isSolutionFullyUnlocked,
-              unlocking: _solutionUnlocking,
-              onUnlockFull: _unlockFullSolution,
+            ListenableBuilder(
+              listenable: AdManager.instance,
+              builder: (context, _) {
+                return _SolutionPanel(
+                  question: _currentQuestion,
+                  selectedAnswer: _selectedAnswer,
+                  showFullSolution: _isSolutionFullyUnlocked,
+                  unlocking: _solutionUnlocking,
+                  dailyRemaining: AdManager.instance.dailyDetailedSolutionsRemaining,
+                  proGateRequired: AdManager.instance
+                          .isDailyDetailedSolutionLimitReached &&
+                      !_isSolutionFullyUnlocked &&
+                      !PremiumService.instance.isPremium &&
+                      !widget.adFreeExperience &&
+                      !widget.tgExamSolutionReview,
+                  onUnlockFull: _unlockFullSolution,
+                );
+              },
             )
           else ...[
             ..._matchingOptionHeaders(_currentQuestion),
@@ -1389,7 +1408,11 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Future<void> _requestSolution() async {
-    AdManager.instance.ensureFreeSolutionUnlock(_currentQuestion.id);
+    if (widget.adFreeExperience || widget.tgExamSolutionReview) {
+      AdManager.instance.grantSessionSolutionUnlock(_currentQuestion.id);
+    } else {
+      await AdManager.instance.ensureFreeSolutionUnlock(_currentQuestion.id);
+    }
     if (!mounted) return;
     setState(() => _showingSolution = true);
   }
@@ -1406,26 +1429,62 @@ class _QuizScreenState extends State<QuizScreen>
       return;
     }
 
-    setState(() => _solutionUnlocking = true);
-    final success = await AdService.showRewardedAd(
-      kind: AdRewardKind.solutionUnlock,
-      questionId: _currentQuestion.id,
-    );
+    if (widget.adFreeExperience || widget.tgExamSolutionReview) {
+      AdManager.instance.grantSessionSolutionUnlock(_currentQuestion.id);
+      setState(() => _showingSolution = true);
+      return;
+    }
 
+    if (PremiumService.instance.isPremium) {
+      AdManager.instance.grantSessionSolutionUnlock(_currentQuestion.id);
+      setState(() => _showingSolution = true);
+      return;
+    }
+
+    if (await AdManager.instance.ensureFreeSolutionUnlock(_currentQuestion.id)) {
+      if (!mounted) return;
+      setState(() => _showingSolution = true);
+      return;
+    }
+
+    if (AdManager.instance.isDailyDetailedSolutionLimitReached) {
+      if (!mounted) return;
+      await ProUpsellSheet.show(
+        context,
+        emoji: '📖',
+        title: 'DETAYLI ÇÖZÜM',
+        subtitle:
+            'Günde ${AdConstants.freeDetailedSolutionsPerDay} detaylı çözüm '
+            'hakkın doldu. Sınırsız adım adım çözüm için Pro Üye ol',
+        cta: 'Pro Üye ol',
+      );
+      if (!mounted) return;
+      if (PremiumService.instance.isPremium) {
+        AdManager.instance.grantSessionSolutionUnlock(_currentQuestion.id);
+        setState(() => _showingSolution = true);
+      }
+      return;
+    }
+
+    setState(() => _solutionUnlocking = true);
+    final success = await AdManager.instance.requestSolutionUnlock(
+      _currentQuestion.id,
+    );
     if (!mounted) return;
     setState(() => _solutionUnlocking = false);
 
     if (success) {
       setState(() => _showingSolution = true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Reklam yüklenemedi veya izlenmedi. Önizleme açık kaldı.',
-          ),
-        ),
-      );
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Reklam yüklenemedi veya izlenmedi. Önizleme açık kaldı.',
+        ),
+      ),
+    );
   }
 
   void _nextQuestion() {
@@ -1595,11 +1654,13 @@ class _QuizScreenState extends State<QuizScreen>
     }
   }
 
-  Future<void> _showResultDialog(QuizResult result) {
+  Future<bool> _showResultDialog(QuizResult result) {
+    unawaited(AnswerFeedbackService.instance.playTestComplete());
     final shareKey = GlobalKey();
     var sharing = false;
+    final showWrongReview = _canReviewSessionWrongs && result.wrong > 0;
 
-    return showDialog<void>(
+    return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
@@ -1724,8 +1785,23 @@ class _QuizScreenState extends State<QuizScreen>
                   label: Text(sharing ? 'Hazırlanıyor…' : 'Sonucu paylaş'),
                 ),
                 const SizedBox(height: 8),
+                if (showWrongReview) ...[
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _wrongRed,
+                      side: const BorderSide(color: _wrongRed, width: 2),
+                      minimumSize: const Size(double.infinity, 44),
+                    ),
+                    child: const Text(
+                      'Yanlışlarımı Gör',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext),
+                  onPressed: () => Navigator.pop(dialogContext, false),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.champagne,
                     foregroundColor: AppTheme.ink,
@@ -1738,6 +1814,25 @@ class _QuizScreenState extends State<QuizScreen>
           },
         );
       },
+    ).then((value) => value ?? false);
+  }
+
+  bool get _canReviewSessionWrongs =>
+      widget.resumeMeta != null &&
+      !widget.tgExamMode &&
+      !widget.dailyMiniRankingMode &&
+      !widget.adFreeExperience &&
+      !widget.fromWrongNotebook &&
+      !widget.suppressWrongNotebookHint;
+
+  WrongNotebookSessionFilter _buildWrongSessionFilter(QuizResult result) {
+    final meta = widget.resumeMeta!;
+    return WrongNotebookSessionFilter.fromTopicQuiz(
+      meta: meta,
+      fallbackTitle: widget.title,
+      wrongQuestionIds: result.wrongQuestionIds,
+      allQuestions: widget.questions,
+      testId: widget.statisticsTestId,
     );
   }
 
@@ -1763,12 +1858,20 @@ class _QuizScreenState extends State<QuizScreen>
     }
     if (!mounted) return;
 
+    var reviewWrongs = false;
     if (!widget.skipResultDialog) {
-      await _showResultDialog(result);
+      reviewWrongs = await _showResultDialog(result);
       if (!mounted) return;
     }
 
-    Navigator.of(context).pop(result);
+    final navigator = Navigator.of(context);
+    final sessionFilter =
+        reviewWrongs ? _buildWrongSessionFilter(result) : null;
+    navigator.pop(result);
+
+    if (sessionFilter != null) {
+      await openWrongNotebookSession(navigator, sessionFilter);
+    }
   }
 
   Widget _buildBottomActions() {
@@ -1939,22 +2042,6 @@ class _QuizScreenState extends State<QuizScreen>
                 ],
               ),
             ),
-            if (!_isFinishing)
-              ListenableBuilder(
-                listenable: Listenable.merge([
-                  AppConfigService.instance,
-                  AdManager.instance,
-                ]),
-                builder: (context, _) {
-                  final bannerAd = AdManager.instance.bannerAd;
-                  if (bannerAd == null) return const SizedBox.shrink();
-                  return SizedBox(
-                    width: double.infinity,
-                    height: bannerAd.size.height.toDouble(),
-                    child: AdWidget(ad: bannerAd),
-                  );
-                },
-              ),
           ],
         ),
         ),
@@ -1985,7 +2072,7 @@ class _QuizScreenState extends State<QuizScreen>
             Align(
               alignment: Alignment.centerLeft,
               child: Transform.translate(
-                offset: const Offset(-10, 0),
+                offset: const Offset(8, 0),
                 child: SizedBox(
                   width: (titleW * 0.4).clamp(96.0, 220.0),
                   child: EmbossedAppBarTitle(
@@ -1995,19 +2082,20 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
               ),
             ),
-          Transform.translate(
-            offset: Offset((actionsW - leadingW) / 2, 0),
-            child: Text(
-              'Soru ${_currentIndex + 1}/${widget.questions.length}',
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white.withValues(alpha: 0.92),
-                height: 1.15,
+          if (!widget.hideQuestionCounter)
+            Transform.translate(
+              offset: Offset((actionsW - leadingW) / 2, 0),
+              child: Text(
+                'Soru ${_currentIndex + 1}/${widget.questions.length}',
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.92),
+                  height: 1.15,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -2607,6 +2695,8 @@ class _SolutionPanel extends StatelessWidget {
   final String? selectedAnswer;
   final bool showFullSolution;
   final bool unlocking;
+  final int dailyRemaining;
+  final bool proGateRequired;
   final VoidCallback onUnlockFull;
 
   const _SolutionPanel({
@@ -2614,6 +2704,8 @@ class _SolutionPanel extends StatelessWidget {
     required this.selectedAnswer,
     required this.showFullSolution,
     required this.unlocking,
+    required this.dailyRemaining,
+    required this.proGateRequired,
     required this.onUnlockFull,
   });
 
@@ -2626,6 +2718,12 @@ class _SolutionPanel extends StatelessWidget {
         : null;
     final parts = splitSolutionPreview(question.cozumMetni);
     final showLockedTeaser = !showFullSolution && parts.hasLockedRemainder;
+    final lockMessage = proGateRequired
+        ? 'Günlük ${AdConstants.freeDetailedSolutionsPerDay} detaylı çözüm '
+            'hakkın doldu.\nSınırsız adım adım çözüm için Pro Üye ol'
+        : 'Bugün $dailyRemaining detaylı çözüm hakkın kaldı.\n'
+            '${AdConstants.solutionUnlockAdApproxSeconds} sn reklam izleyerek '
+            'devamını aç';
 
     return Container(
       width: double.infinity,
@@ -2718,8 +2816,7 @@ class _SolutionPanel extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Bu testte 4 ücretsiz tam çözüm hakkın bitti.\n'
-                            'Tam çözümü açmak için 30 sn reklam izle',
+                            lockMessage,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               height: 1.35,
@@ -2730,6 +2827,7 @@ class _SolutionPanel extends StatelessWidget {
                           const SizedBox(height: 12),
                           _FrostUnlockButton(
                             unlocking: unlocking,
+                            proGate: proGateRequired,
                             onPressed: unlocking ? null : onUnlockFull,
                           ),
                         ],
@@ -2784,8 +2882,7 @@ class _SolutionPanel extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Bu testte 4 ücretsiz tam çözüm hakkın bitti.\n'
-                            'Devamını görmek için 30 sn reklam izle',
+                            lockMessage,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               height: 1.35,
@@ -2796,6 +2893,7 @@ class _SolutionPanel extends StatelessWidget {
                           const SizedBox(height: 12),
                           _FrostUnlockButton(
                             unlocking: unlocking,
+                            proGate: proGateRequired,
                             onPressed: unlocking ? null : onUnlockFull,
                           ),
                         ],
@@ -2812,13 +2910,15 @@ class _SolutionPanel extends StatelessWidget {
   }
 }
 
-/// Frost overlay CTA — ink/champagne premium pill (watch ad → full solution).
+/// Frost overlay CTA — Pro veya tam çözüm kilidi.
 class _FrostUnlockButton extends StatelessWidget {
   final bool unlocking;
+  final bool proGate;
   final VoidCallback? onPressed;
 
   const _FrostUnlockButton({
     required this.unlocking,
+    required this.proGate,
     required this.onPressed,
   });
 
@@ -2883,40 +2983,19 @@ class _FrostUnlockButton extends StatelessWidget {
                       ),
                     )
                   else
-                    Container(
-                      width: 22,
-                      height: 22,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF2A3548),
-                            AppTheme.ink,
-                          ],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.ink.withValues(alpha: 0.25),
-                            blurRadius: 3,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        size: 14,
-                        color: AppTheme.champagneLight,
-                      ),
+                    Icon(
+                      proGate ? Icons.lock_rounded : Icons.play_circle_outline,
+                      size: 18,
+                      color: AppTheme.ink,
                     ),
                   const SizedBox(width: 10),
                   Flexible(
                     child: Text(
                       unlocking
-                          ? 'Reklam yükleniyor…'
-                          : 'Reklam izle — tam çözümü aç',
+                          ? (proGate ? 'Açılıyor…' : 'Reklam yükleniyor…')
+                          : proGate
+                              ? 'Pro ile tam çözümü aç'
+                              : 'Reklam izle — tam çözümü aç',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'serif',

@@ -11,6 +11,10 @@ from content.models import TgExam
 # Başlangıç saatinden kaç saat önce FCM gider.
 TG_EXAM_ANNOUNCEMENT_LEAD = timedelta(hours=2)
 
+TG_EXAM_PUSH_CHANNEL = "tg_exams"
+TG_EXAM_PUSH_COLOR = "#C41E3A"
+TG_EXAM_DURATION_MINUTES = 130
+
 _TR_MONTHS = (
     "",
     "Ocak",
@@ -39,16 +43,54 @@ def format_tr_exam_moment(dt) -> str:
     return f"{local.day} {month} · {local.strftime('%H:%M')}"
 
 
-def build_announcement_push_copy(exam: TgExam) -> tuple[str, str]:
-    """(title, body) — FCM duyuru metni."""
-    title = "Türkiye Geneli Deneme"
-    exam_title = (exam.title or "").strip() or "TG Denemesi"
+def _exam_title(exam: TgExam) -> str:
+    return (exam.title or "").strip() or "TG Denemesi"
+
+
+def _metrics_label(exam: TgExam) -> str:
+    count = exam.question_count or 120
+    duration = exam.duration_minutes or TG_EXAM_DURATION_MINUTES
+    return f"{count} soru · {duration} dk · Eş zamanlı"
+
+
+def build_announcement_push_payload(exam: TgExam) -> dict[str, str]:
+    """Premium TG duyuru metni — kısa başlık + genişletilebilir satırlar."""
+    exam_title = _exam_title(exam)
     when_label = format_tr_exam_moment(exam.start_at)
-    body = (
-        f"「{exam_title}」2 saat içinde başlıyor ({when_label}). "
-        f"Sıra sende — şimdi katıl, yerini ayırt!"
-    )
-    return title, body
+    metrics = _metrics_label(exam)
+    return {
+        "title": exam_title,
+        "body": f"2 saat sonra başlıyor · {when_label} · Yerini ayırt",
+        "headline": "Türkiye Geneli Deneme",
+        "exam_title": exam_title,
+        "starts_at_label": when_label,
+        "metrics_label": metrics,
+        "cta_hint": "Denemeye git →",
+    }
+
+
+def build_announcement_push_copy(exam: TgExam) -> tuple[str, str]:
+    """(title, body) — FCM notification alanları."""
+    payload = build_announcement_push_payload(exam)
+    return payload["title"], payload["body"]
+
+
+def build_results_push_payload(exam: TgExam) -> dict[str, str]:
+    exam_title = _exam_title(exam)
+    return {
+        "title": f"Sonuçların hazır · {exam_title}",
+        "body": "Türkiye Geneli sıralaman açıklandı · Sıralamayı gör →",
+        "headline": "Türkiye Geneli Deneme",
+        "exam_title": exam_title,
+        "starts_at_label": "",
+        "metrics_label": "Detaylı analiz ve çözümler seni bekliyor",
+        "cta_hint": "Sonuçları gör →",
+    }
+
+
+def build_results_push_copy(exam: TgExam) -> tuple[str, str]:
+    payload = build_results_push_payload(exam)
+    return payload["title"], payload["body"]
 
 
 def send_scheduled_tg_exam_announcement(
@@ -80,8 +122,7 @@ def send_scheduled_tg_exam_announcement(
 
     from content.push import send_tg_exam_announcement_push
 
-    title, body = build_announcement_push_copy(exam)
-    result = send_tg_exam_announcement_push(exam, title=title, body=body)
+    result = send_tg_exam_announcement_push(exam)
     exam.announcement_push_sent_at = now
     exam.announcement_push_success_count = result.success
     exam.announcement_push_fail_count = result.failure

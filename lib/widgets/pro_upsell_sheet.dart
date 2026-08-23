@@ -10,18 +10,39 @@ import 'scale_button.dart';
 class ProUpsellSheet {
   ProUpsellSheet._();
 
-  static Future<void> show(BuildContext context) {
+  static Future<void> show(
+    BuildContext context, {
+    String emoji = '👯',
+    String title = 'BENZER SORULAR',
+    String subtitle = 'Yanlışlarını daha iyi analiz et',
+    String cta = 'Pro Üyeliğe Geç',
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (sheetContext) => const _ProUpsellBody(),
+      builder: (sheetContext) => _ProUpsellBody(
+        emoji: emoji,
+        title: title,
+        subtitle: subtitle,
+        cta: cta,
+      ),
     );
   }
 }
 
 class _ProUpsellBody extends StatefulWidget {
-  const _ProUpsellBody();
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final String cta;
+
+  const _ProUpsellBody({
+    this.emoji = '👯',
+    this.title = 'BENZER SORULAR',
+    this.subtitle = 'Yanlışlarını daha iyi analiz et',
+    this.cta = 'Pro Üyeliğe Geç',
+  });
 
   @override
   State<_ProUpsellBody> createState() => _ProUpsellBodyState();
@@ -119,12 +140,12 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text('👯', style: TextStyle(fontSize: 36, height: 1)),
+                  Text(widget.emoji, style: const TextStyle(fontSize: 36, height: 1)),
                   const SizedBox(height: 10),
-                  const Text(
-                    'BENZER SORULAR',
+                  Text(
+                    widget.title,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontFamily: 'serif',
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
@@ -133,7 +154,7 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Yanlışlarını daha iyi analiz et',
+                    widget.subtitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14.5,
@@ -165,9 +186,9 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                           ),
                         ],
                       ),
-                      child: const Text(
-                        'Pro Üyeliğe Geç',
-                        style: TextStyle(
+                      child: Text(
+                        widget.cta,
+                        style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 15.5,
                           color: Color(0xFF1A140C),

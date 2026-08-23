@@ -8,7 +8,12 @@ import '../services/favorites_service.dart';
 import '../services/notes_service.dart';
 import '../services/performance_summary_service.dart';
 import '../services/question_fetch_service.dart';
+import '../services/ai_coach_service.dart';
+import '../services/weekly_study_plan_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ai_coach_insight_card.dart';
+import '../widgets/weekly_study_plan_card.dart';
+import '../widgets/weak_point_remediation_card.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/account_link_card.dart';
 import '../widgets/analytics_study_vault.dart';
@@ -25,11 +30,13 @@ import 'wrong_questions_screen.dart';
 class AnalyticsHubScreen extends StatefulWidget {
   final KpssType kpssType;
   final bool embedded;
+  final bool isPremium;
 
   const AnalyticsHubScreen({
     super.key,
     required this.kpssType,
     this.embedded = false,
+    this.isPremium = false,
   });
 
   @override
@@ -69,6 +76,10 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
         final wrongCount = ContentBankService.instance.wrongQuestionCount;
         final favCount = FavoritesService.instance.count;
         final notesCount = NotesService.instance.count;
+        final coachInsight =
+            AiCoachService.instance.buildTopicTestInsight(widget.kpssType);
+        final weeklyPlan =
+            WeeklyStudyPlanService.instance.buildPlan(widget.kpssType);
 
         return Scaffold(
           backgroundColor: AppTheme.page(context),
@@ -107,6 +118,21 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
               ),
               children: [
                 _HeroSummary(overall: overall),
+                const SizedBox(height: 20),
+                AiCoachInsightCard(
+                  insight: coachInsight,
+                  isPremium: widget.isPremium,
+                ),
+                const SizedBox(height: 20),
+                WeeklyStudyPlanCard(
+                  days: weeklyPlan,
+                  isPremium: widget.isPremium,
+                ),
+                const SizedBox(height: 20),
+                WeakPointRemediationCard(
+                  kpssType: widget.kpssType,
+                  isPremium: widget.isPremium,
+                ),
                 const AccountLinkCard(
                   margin: EdgeInsets.only(top: 12),
                 ),

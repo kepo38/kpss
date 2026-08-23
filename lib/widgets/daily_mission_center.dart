@@ -6,6 +6,7 @@ import '../data/kpss_curriculum.dart';
 import '../services/content_bank_service.dart';
 import '../theme/app_theme.dart';
 import 'countdown_widget.dart';
+import 'weekly_study_plan_card.dart';
 
 /// Günlük görev dersleri (Güncel Bilgiler hariç).
 const _missionSubjectIds = [
@@ -20,11 +21,16 @@ const _missionSubjectIds = [
 class DailyMissionCenter extends StatefulWidget {
   final KpssType kpssType;
   final ValueChanged<KpssSubject>? onSubjectTap;
+  final bool isPremium;
+
+  /// Ücretsiz kullanıcıya gösterilecek görev satırı sayısı.
+  static const freeVisibleCount = 2;
 
   const DailyMissionCenter({
     super.key,
     required this.kpssType,
     this.onSubjectTap,
+    this.isPremium = false,
   });
 
   @override
@@ -99,6 +105,11 @@ class _DailyMissionCenterState extends State<DailyMissionCenter>
         .length;
     final total = subjects.length;
     final progress = total == 0 ? 0.0 : doneCount / total;
+    final visibleSubjects = widget.isPremium
+        ? subjects
+        : subjects.take(DailyMissionCenter.freeVisibleCount).toList();
+    final hiddenCount =
+        widget.isPremium ? 0 : subjects.length - visibleSubjects.length;
 
     return Container(
       width: double.infinity,
@@ -179,18 +190,24 @@ class _DailyMissionCenterState extends State<DailyMissionCenter>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var i = 0; i < subjects.length; i++) ...[
+                      for (var i = 0; i < visibleSubjects.length; i++) ...[
                         if (i > 0) const SizedBox(height: 10),
                         _SubjectMissionRow(
-                          subject: subjects[i],
+                          subject: visibleSubjects[i],
                           completed: bank.dailyCompletedTestsForSubject(
                                 widget.kpssType,
-                                subjects[i].id,
+                                visibleSubjects[i].id,
                               ) >
                               0,
-                          remainingQuota: _remainingQuota(bank, subjects[i].id),
-                          onTap: () => widget.onSubjectTap?.call(subjects[i]),
+                          remainingQuota:
+                              _remainingQuota(bank, visibleSubjects[i].id),
+                          onTap: () =>
+                              widget.onSubjectTap?.call(visibleSubjects[i]),
                         ),
+                      ],
+                      if (hiddenCount > 0) ...[
+                        const SizedBox(height: 10),
+                        DailyMissionProTeaser(hiddenCount: hiddenCount),
                       ],
                     ],
                   ),

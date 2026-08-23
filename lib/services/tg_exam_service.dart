@@ -20,6 +20,20 @@ class TgExamSubmitResult {
   bool get ok => exam != null;
 }
 
+class TgExamQuestionsResult {
+  final List<QuestionModel> questions;
+  final TgExamQuestionsPayload? meta;
+  final String? error;
+
+  const TgExamQuestionsResult({
+    this.questions = const [],
+    this.meta,
+    this.error,
+  });
+
+  bool get ok => questions.isNotEmpty;
+}
+
 /// Türkiye Geneli denemeler — liste, oturum, gönderim.
 class TgExamService extends ChangeNotifier {
   TgExamService._();
@@ -65,6 +79,19 @@ class TgExamService extends ChangeNotifier {
       if (exam.id == id) return exam;
     }
     return null;
+  }
+
+  /// Kullanıcının o an açık tuttuğu TG deneme ekranı — aynı denemenin
+  /// duyuru bildirimi ön planda tekrar gösterilmesin.
+  int? _visibleExamId;
+  int? get visibleExamId => _visibleExamId;
+
+  void setVisibleExam(int id) {
+    _visibleExamId = id;
+  }
+
+  void clearVisibleExam(int id) {
+    if (_visibleExamId == id) _visibleExamId = null;
   }
 
   Future<void> refresh() async {
@@ -126,8 +153,7 @@ class TgExamService extends ChangeNotifier {
     }
   }
 
-  Future<({List<QuestionModel> questions, TgExamQuestionsPayload meta})?>
-      fetchQuestions(int examId) async {
+  Future<TgExamQuestionsResult> fetchQuestions(int examId) async {
     try {
       final response = await http
           .get(
@@ -135,7 +161,11 @@ class TgExamService extends ChangeNotifier {
             headers: AuthService.instance.authHeaders,
           )
           .timeout(const Duration(seconds: 20));
-      if (response.statusCode != 200) return null;
+      if (response.statusCode != 200) {
+        return TgExamQuestionsResult(
+          error: _questionsErrorMessage(response.statusCode, response.bodyBytes),
+        );
+      }
       final body =
           jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       final meta = TgExamQuestionsPayload.fromJson(body);
@@ -143,7 +173,7 @@ class TgExamService extends ChangeNotifier {
         body['questions'],
       );
       if (parsed.isNotEmpty) {
-        return (
+        return TgExamQuestionsResult(
           questions: QuestionModel.forTgExamDisplayList(parsed),
           meta: meta,
         );
@@ -152,15 +182,44 @@ class TgExamService extends ChangeNotifier {
         final fetched = await QuestionFetchService.instance.fetchByIds(
           meta.questionIds,
         );
-        return (
-          questions: QuestionModel.forTgExamDisplayList(fetched),
-          meta: meta,
-        );
+        if (fetched.isNotEmpty) {
+          return TgExamQuestionsResult(
+            questions: QuestionModel.forTgExamDisplayList(fetched),
+            meta: meta,
+          );
+        }
       }
-      return (questions: const <QuestionModel>[], meta: meta);
+      return const TgExamQuestionsResult(
+        error: 'Deneme soruları sunucudan alınamadı veya yayında değil.',
+      );
     } catch (e) {
       debugPrint('TgExamService.fetchQuestions: $e');
-      return null;
+      return const TgExamQuestionsResult(
+        error: 'Bağlantı hatası — sorular yüklenemedi. Tekrar deneyin.',
+      );
+    }
+  }
+
+  String _questionsErrorMessage(int statusCode, List<int> bodyBytes) {
+    String detail = '';
+    try {
+      final decoded = jsonDecode(utf8.decode(bodyBytes));
+      if (decoded is Map && decoded['detail'] != null) {
+        detail = '${decoded['detail']}'.trim();
+      }
+    } catch (_) {
+      // ignore
+    }
+    if (detail.isNotEmpty) return detail;
+    switch (statusCode) {
+      case 401:
+        return 'Oturum gerekli. Çıkış yapıp Google ile tekrar giriş yapın.';
+      case 403:
+        return 'Deneme katılım süresi sona erdi, henüz başlamadı veya Google girişi gerekli.';
+      case 409:
+        return 'Deneme zaten gönderildi veya sorular henüz tanımlanmadı.';
+      default:
+        return 'Sorular yüklenemedi (HTTP $statusCode).';
     }
   }
 

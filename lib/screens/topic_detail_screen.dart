@@ -17,6 +17,7 @@ import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
 import '../services/gamification_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/wrong_notebook_capacity_upsell.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/daily_test_quota_dialog.dart';
@@ -405,7 +406,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
         selectedAnswers: result.selectedAnswers,
         excludeQuestionIds: _bank.statLockedWrongQuestionIds,
       );
-      await _bank.recordAttempt(
+      final capacity = await _bank.recordAttempt(
         TestAttemptModel(
           id: 'att_${DateTime.now().millisecondsSinceEpoch}',
           testId: test.id,
@@ -430,6 +431,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
         ),
       );
       if (!mounted) return;
+      await WrongNotebookCapacityUpsell.maybeShowAfterAdd(context, capacity);
       setState(() {});
     } catch (e, st) {
       debugPrint('_startTest error: $e\n$st');

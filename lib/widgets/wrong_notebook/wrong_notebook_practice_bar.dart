@@ -65,7 +65,7 @@ class WrongNotebookPracticeBar extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Tüm yanlışları çöz ($questionCount)',
+                      'Eksiklerimi Kapat ($questionCount)',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14.5,

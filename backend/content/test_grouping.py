@@ -10,6 +10,16 @@ from django.db.models import Count
 from .models import Question, Topic, TopicTest
 
 
+def order_questions_by_public_ids(
+    questions: list[Question] | Iterable[Question],
+    question_ids: list[str],
+) -> list[Question]:
+    """Deneme / paket sırasını koruyarak olay gruplarını bitişik tut."""
+    by_id = {q.public_id: q for q in questions}
+    ordered = [by_id[pid] for pid in question_ids if pid in by_id]
+    return order_questions_keeping_scenarios(ordered)
+
+
 def order_questions_keeping_scenarios(
     questions: list[Question],
 ) -> list[Question]:

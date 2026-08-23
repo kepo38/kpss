@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from .auth import get_user_from_request
 from .models import Question, TgExam, TgExamAttempt
 from .serializers import QuestionSerializer
-from .test_grouping import order_questions_keeping_scenarios
+from .test_grouping import order_questions_by_public_ids
 from .tg_exam import (
     VALID_KPSS_TYPES,
     exam_to_dict,
@@ -109,7 +109,7 @@ class TgExamQuestionsView(APIView):
             public_id__in=question_ids,
             is_published=True,
         ).select_related("topic", "topic__subject", "scenario")
-        ordered = order_questions_keeping_scenarios(qs, question_ids)
+        ordered = order_questions_by_public_ids(list(qs), question_ids)
         data = QuestionSerializer(ordered, many=True, context={"request": request}).data
         return Response(
             {

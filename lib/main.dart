@@ -327,10 +327,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
     // Ağ / SDK — ana sayfadan sonra, birbirini bekletmeden
     unawaited(_safeInit(() => AdManager.instance.initialize(), 'ads'));
-    unawaited(
-        _safeInit(() => PlayBillingService.instance.initialize(), 'billing'));
-    unawaited(
-        _safeInit(() => NotificationService.instance.initialize(), 'notif'));
+    unawaited(_safeInit(() => PlayBillingService.instance.initialize(), 'billing'));
+    await _safeInit(() => NotificationService.instance.initialize(), 'notif');
     unawaited(
         _safeInit(() => PushNotificationService.instance.initialize(), 'push'));
     unawaited(_syncContentInBackground());

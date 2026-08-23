@@ -8,6 +8,8 @@ import '../screens/tg_exam/exam_welcome_screen.dart';
 import '../screens/tg_exam/tg_exam_instant_summary_screen.dart';
 import '../screens/tg_exam/tg_exam_result_screen.dart';
 import '../services/kpss_preference_service.dart';
+import '../services/play_billing_service.dart';
+import '../services/premium_service.dart';
 import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
 import 'exam_premium_shell.dart';
@@ -196,11 +198,21 @@ class _TgExamCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: PlayBillingService.instance.premiumNotifier,
+      builder: (context, _, __) => _buildCard(context),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
     final attempt = exam.myAttempt;
     final rank = attempt?.ranking;
     final participants = exam.participantCount;
-    final showRank =
-        exam.canAccessDetailedAnalysis && rank != null && participants > 0;
+    final isPremium = PremiumService.instance.isPremium;
+    final showRank = exam.canAccessDetailedAnalysis &&
+        isPremium &&
+        rank != null &&
+        participants > 0;
     final waitingResults = exam.isScoreCalculatedWaitingResults;
     final net = attempt?.net ?? 0;
     final showBadge = showLiveBadge && _isLiveNow && !exam.hasSubmittedAttempt;
@@ -322,7 +334,7 @@ class _TgExamCard extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: () => _openAnalysis(context),
                       icon: const Icon(Icons.analytics_outlined, size: 18),
-                      label: const Text('Detaylı Analiz · Reklam'),
+                      label: const Text('Detaylı Analiz · Pro'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.champagne,
                         foregroundColor: AppTheme.ink,

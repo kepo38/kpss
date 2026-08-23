@@ -8,17 +8,19 @@ import 'ad_constants.dart';
 import 'ad_free_campaign_service.dart';
 import 'app_config_service.dart';
 import 'app_preferences.dart';
+import 'daily_solution_quota_service.dart';
 
 /// Reklam ve adil fiyatlandırma mimarisi.
 ///
 /// Kurallar:
+/// - Ana kabukta (alt menü üstü) küçük banner — test/deneme ekranında YOK
+/// - Pomodoro mola ekranında altta küçük banner
 /// - Test/ders ortasında interstitial YOK
-/// - Test ekranında yalnızca altta küçük banner
 /// - Her 3 sayfa geçişinde bir kapatılabilir interstitial
-/// - Ödüllü video ile çözüm kilidi (testte ilk 4 ücretsiz; 5.+ her biri reklam)
+/// - Günde 5 detaylı çözüm (ödüllü reklam); 6.+ Pro yönlendirme
 /// - isPremium == true → tüm reklamlar bypass
 /// - 12 saat kampanya → yalnızca banner; çözüm/kota/interstitial durur
-/// - Panel `bannerAdsEnabled=false` → yalnızca quiz banner kapalı
+/// - Panel `bannerAdsEnabled=false` → shell banner kapalı
 class AdManager extends ChangeNotifier {
   AdManager._();
   static final AdManager instance = AdManager._();
@@ -29,19 +31,41 @@ class AdManager extends ChangeNotifier {
   bool _skipNextPageTransition = false;
   int _pageTransitionCount = 0;
   bool _sdkReady = false;
+  bool _focusScreenOpen = false;
+  bool _focusBreakActive = false;
+  DateTime? _interstitialSuppressedUntil;
 
-  BannerAd? _bannerAd;
+  BannerAd? _shellBannerAd;
+  BannerAd? _focusBreakBannerAd;
   InterstitialAd? _interstitialAd;
   RewardedAd? _rewardedAd;
 
-  /// Test oturumu boyunca açılan tam çözüm soru ID'leri (ücretsiz veya reklam).
+  /// Oturum önbelleği — bugün açılmış detaylı çözüm soru ID'leri.
   final Set<String> _unlockedSolutionIds = {};
 
   /// TG detaylı analiz — oturum boyunca reklamla açılan deneme id'leri.
   final Set<int> _unlockedTgAnalysisIds = {};
 
-  /// Bu turda kalan ücretsiz tam çözüm hakkı (reklam sonrası yenilenir).
-  int _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
+  int _dailyDetailedSolutionsRemaining =
+      AdConstants.freeDetailedSolutionsPerDay;
+
+  /// Bugün kalan ücretsiz detaylı çözüm hakkı.
+  int get dailyDetailedSolutionsRemaining {
+    if (_isPremium || _adFreeTestSession) {
+      return AdConstants.freeDetailedSolutionsPerDay;
+    }
+    return _dailyDetailedSolutionsRemaining < 0
+        ? 0
+        : _dailyDetailedSolutionsRemaining;
+  }
+
+  bool get isDailyDetailedSolutionLimitReached =>
+      !_isPremium &&
+      !_adFreeTestSession &&
+      dailyDetailedSolutionsRemaining <= 0;
+
+  /// @deprecated [dailyDetailedSolutionsRemaining] kullanın.
+  int get freeSolutionUnlocksRemaining => dailyDetailedSolutionsRemaining;
 
   bool get isPremium => _isPremium;
   bool get isSdkReady => _sdkReady || _bypassAllAds;
@@ -51,14 +75,30 @@ class AdManager extends ChangeNotifier {
   bool get _panelBannersOff => !AppConfigService.instance.bannerAdsEnabled;
   bool get _suppressBanners =>
       _bypassAllAds ||
+      _isInTestSession ||
       AdFreeCampaignService.instance.isAdFreeActive ||
       _panelBannersOff;
-  BannerAd? get bannerAd => _suppressBanners ? null : _bannerAd;
+
+  /// Ana kabuk banner — test/deneme oturumunda null.
+  BannerAd? get shellBannerAd => _suppressBanners ? null : _shellBannerAd;
+
+  /// Pomodoro mola ekranı — odak modu + mola aktifken altta banner.
+  BannerAd? get focusBreakBannerAd {
+    if (_suppressBanners || !_focusScreenOpen || !_focusBreakActive) {
+      return null;
+    }
+    return _focusBreakBannerAd;
+  }
+
+  /// Geriye dönük uyumluluk (quiz artık banner göstermez).
+  BannerAd? get bannerAd => shellBannerAd;
 
   void setPremium(bool value) {
     _isPremium = value;
     if (value) {
       _disposeAllAds();
+    } else {
+      ensureShellBanner();
     }
     notifyListeners();
   }
@@ -74,7 +114,11 @@ class AdManager extends ChangeNotifier {
       _sdkReady = true;
       _loadInterstitial();
       _loadRewarded();
-      _retryBannerIfInTestSession();
+      ensureShellBanner();
+      if (_focusBreakActive && _focusScreenOpen) {
+        _loadFocusBreakBanner();
+      }
+      unawaited(_refreshDailySolutionRemaining());
     } catch (e, st) {
       _sdkReady = false;
       debugPrint('AdManager initialize failed: $e\n$st');
@@ -87,34 +131,88 @@ class AdManager extends ChangeNotifier {
     _skipNextPageTransition = true;
   }
 
-  /// Test oturumu başladığında çağrılır — interstitial devre dışı kalır.
-  /// [adFreeExperience]: çözüm kilidi, banner ve bitiş reklamı yok (Günün Denemesi).
+  /// Odak modu açıkken geçiş reklamı gösterme.
+  void setFocusScreenOpen(bool open) {
+    if (_focusScreenOpen == open) return;
+    _focusScreenOpen = open;
+    if (!open) {
+      setFocusBreakMode(false);
+    }
+  }
+
+  /// Mola modu — alt banner göster (odak modu açıkken).
+  void setFocusBreakMode(bool active) {
+    if (_focusBreakActive == active) return;
+    _focusBreakActive = active;
+    if (active) {
+      _loadFocusBreakBanner();
+    } else {
+      _disposeFocusBreakBanner();
+    }
+  }
+
+  /// Mola bitiş zilinden hemen önce/sonra geçiş reklamı çıkmasın.
+  void suppressInterstitialForFocusChime() {
+    _skipNextPageTransition = true;
+    _interstitialSuppressedUntil =
+        DateTime.now().add(const Duration(seconds: 12));
+  }
+
+  bool get _interstitialBlocked {
+    if (_focusScreenOpen) return true;
+    final until = _interstitialSuppressedUntil;
+    if (until != null && DateTime.now().isBefore(until)) return true;
+    return false;
+  }
+
+  /// Test oturumu başladığında çağrılır — interstitial devre dışı, banner gizlenir.
+  /// [adFreeExperience]: çözüm kilidi ve bitiş reklamı yok (Günün Denemesi).
   void startTestSession({bool adFreeExperience = false}) {
     _isInTestSession = true;
     _adFreeTestSession = adFreeExperience;
     _unlockedSolutionIds.clear();
-    _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
-    // Panel banner bayrağı bir sonraki teste yansısın.
-    unawaited(_startTestSessionAds(adFreeExperience: adFreeExperience));
-  }
-
-  Future<void> _startTestSessionAds({required bool adFreeExperience}) async {
-    await AppConfigService.instance.refresh();
-    if (!_isInTestSession) return;
-    if (_suppressBanners || adFreeExperience || _adFreeTestSession) {
-      _disposeBanner();
-      notifyListeners();
-      return;
-    }
-    _loadBanner();
+    unawaited(_hydrateDailySolutionUnlocks());
+    unawaited(_refreshPanelFlagsForTest());
     notifyListeners();
   }
 
-  /// SDK geç hazır olduysa (telefonda hızlı test açılışı) banner'ı tekrar dene.
-  void _retryBannerIfInTestSession() {
-    if (!_isInTestSession || _adFreeTestSession || _suppressBanners) return;
-    if (_bannerAd != null) return;
-    _loadBanner();
+  Future<void> _hydrateDailySolutionUnlocks() async {
+    if (_isPremium || _adFreeTestSession) {
+      _dailyDetailedSolutionsRemaining =
+          AdConstants.freeDetailedSolutionsPerDay;
+      return;
+    }
+    final ids =
+        await DailySolutionQuotaService.instance.unlockedQuestionIdsToday();
+    _unlockedSolutionIds.addAll(ids);
+    await _refreshDailySolutionRemaining();
+    if (_isInTestSession) notifyListeners();
+  }
+
+  Future<void> _refreshDailySolutionRemaining() async {
+    if (_isPremium || _adFreeTestSession) {
+      _dailyDetailedSolutionsRemaining =
+          AdConstants.freeDetailedSolutionsPerDay;
+      return;
+    }
+    _dailyDetailedSolutionsRemaining =
+        await DailySolutionQuotaService.instance.remainingToday();
+  }
+
+  Future<void> _refreshPanelFlagsForTest() async {
+    await AppConfigService.instance.refresh();
+    if (!_isInTestSession) return;
+    notifyListeners();
+  }
+
+  /// Ana kabuk görünürken banner yükle/yenile.
+  void ensureShellBanner() {
+    if (_suppressBanners || !_sdkReady) {
+      _disposeShellBanner();
+      return;
+    }
+    if (_shellBannerAd != null) return;
+    _loadShellBanner();
   }
 
   /// Test oturumu bittiğinde çağrılır.
@@ -122,13 +220,16 @@ class AdManager extends ChangeNotifier {
     _isInTestSession = false;
     _adFreeTestSession = false;
     _unlockedSolutionIds.clear();
-    _freeSolutionCredits = AdConstants.freeSolutionsPerTest;
-    _disposeBanner();
+    unawaited(_refreshDailySolutionRemaining());
+    ensureShellBanner();
+    notifyListeners();
   }
 
   /// Sayfa geçişlerinde sayaç — her 3'te bir interstitial.
   Future<void> onPageTransition({VoidCallback? onAdDismissed}) async {
-    if (_bypassAllAds || _isInTestSession || !_sdkReady) return;
+    if (_bypassAllAds || _isInTestSession || _interstitialBlocked || !_sdkReady) {
+      return;
+    }
 
     if (_skipNextPageTransition) {
       _skipNextPageTransition = false;
@@ -152,52 +253,74 @@ class AdManager extends ChangeNotifier {
 
     await AdFreeCampaignService.instance.onRewardedAdCompleted();
     if (AdFreeCampaignService.instance.isAdFreeActive) {
-      _disposeBanner();
+      _disposeShellBanner();
       notifyListeners();
     }
     return true;
   }
 
-  /// Detaylı çözüm kilidi — testte ilk [AdConstants.freeSolutionsPerTest]
-  /// ücretsiz; 5. ve sonrası her tam çözüm için ödüllü reklam.
-  /// Açılanlar oturum boyunca önbellekte; sıra karışık da sayılır.
+  /// Detaylı çözüm — günde [AdConstants.freeDetailedSolutionsPerDay] ödüllü reklam;
+  /// kotası dolunca Pro gerekir.
   Future<bool> requestSolutionUnlock(String questionId) async {
-    if (ensureFreeSolutionUnlock(questionId)) return true;
-
-    final earned = await _showRewardedVideo();
-    if (earned) {
-      _unlockedSolutionIds.add(questionId);
-    }
-    return earned;
-  }
-
-  /// Kota varsa reklam olmadan tam çözümü açar. Zaten açıksa true.
-  bool ensureFreeSolutionUnlock(String questionId) {
     if (questionId.isEmpty) return false;
     if (_isPremium || _adFreeTestSession) {
       _unlockedSolutionIds.add(questionId);
       return true;
     }
     if (_unlockedSolutionIds.contains(questionId)) return true;
-    if (_freeSolutionCredits > 0) {
+
+    if (await DailySolutionQuotaService.instance.isUnlockedToday(questionId)) {
       _unlockedSolutionIds.add(questionId);
-      _freeSolutionCredits--;
+      return true;
+    }
+
+    if (isDailyDetailedSolutionLimitReached) return false;
+
+    final earned = await _showRewardedVideo();
+    if (!earned) return false;
+
+    final granted =
+        await DailySolutionQuotaService.instance.tryUnlock(questionId);
+    if (granted) {
+      _unlockedSolutionIds.add(questionId);
+    }
+    await _refreshDailySolutionRemaining();
+    notifyListeners();
+    return granted;
+  }
+
+  /// Bugün zaten açılmış veya premium oturum — reklamsız yeniden açar.
+  Future<bool> ensureFreeSolutionUnlock(String questionId) async {
+    if (questionId.isEmpty) return false;
+    if (_isPremium || _adFreeTestSession) {
+      _unlockedSolutionIds.add(questionId);
+      return true;
+    }
+    if (_unlockedSolutionIds.contains(questionId)) return true;
+
+    if (await DailySolutionQuotaService.instance.isUnlockedToday(questionId)) {
+      _unlockedSolutionIds.add(questionId);
       return true;
     }
     return false;
   }
 
-  /// Bu testte kalan ücretsiz tam çözüm hakkı (reklamla açılanlar düşmez).
-  int get freeSolutionUnlocksRemaining {
-    if (_isPremium || _adFreeTestSession) {
-      return AdConstants.freeSolutionsPerTest;
-    }
-    return _freeSolutionCredits < 0 ? 0 : _freeSolutionCredits;
+  /// Reklam/kota bypass oturumları (TG çözüm inceleme, tanıtım testi).
+  void grantSessionSolutionUnlock(String questionId) {
+    if (questionId.isEmpty) return;
+    _unlockedSolutionIds.add(questionId);
+    notifyListeners();
   }
 
   /// Günlük test hakkı bittiğinde +1 test için ödüllü video (~30 sn).
   Future<bool> requestDailyTestBonus() async {
     if (_bypassAllAds) return false;
+    return _showRewardedVideo();
+  }
+
+  /// Yanlış defteri — tüm eksikleri kapat quiz'i (Premium ücretsiz).
+  Future<bool> requestWrongNotebookBatchPractice() async {
+    if (_bypassAllAds) return true;
     return _showRewardedVideo();
   }
 
@@ -405,24 +528,24 @@ class AdManager extends ChangeNotifier {
     );
   }
 
-  void _loadBanner() {
+  void _loadShellBanner() {
     if (_suppressBanners || !_sdkReady) {
-      _disposeBanner();
+      _disposeShellBanner();
       return;
     }
     try {
-      _bannerAd?.dispose();
-      _bannerAd = BannerAd(
+      _shellBannerAd?.dispose();
+      _shellBannerAd = BannerAd(
         adUnitId: AdConstants.bannerAdUnitId,
         size: AdSize.banner,
         request: const AdRequest(),
         listener: BannerAdListener(
           onAdLoaded: (_) => notifyListeners(),
           onAdFailedToLoad: (ad, error) {
-            debugPrint('BannerAd failed to load: $error');
+            debugPrint('Shell banner failed to load: $error');
             ad.dispose();
-            if (identical(_bannerAd, ad)) {
-              _bannerAd = null;
+            if (identical(_shellBannerAd, ad)) {
+              _shellBannerAd = null;
             }
             notifyListeners();
           },
@@ -430,8 +553,38 @@ class AdManager extends ChangeNotifier {
       )..load();
       notifyListeners();
     } catch (e, st) {
-      debugPrint('BannerAd load failed: $e\n$st');
-      _bannerAd = null;
+      debugPrint('Shell banner load failed: $e\n$st');
+      _shellBannerAd = null;
+    }
+  }
+
+  void _loadFocusBreakBanner() {
+    if (_suppressBanners || !_sdkReady || !_focusScreenOpen || !_focusBreakActive) {
+      _disposeFocusBreakBanner();
+      return;
+    }
+    if (_focusBreakBannerAd != null) return;
+    try {
+      _focusBreakBannerAd = BannerAd(
+        adUnitId: AdConstants.bannerAdUnitId,
+        size: AdSize.banner,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdLoaded: (_) => notifyListeners(),
+          onAdFailedToLoad: (ad, error) {
+            debugPrint('Focus break banner failed to load: $error');
+            ad.dispose();
+            if (identical(_focusBreakBannerAd, ad)) {
+              _focusBreakBannerAd = null;
+            }
+            notifyListeners();
+          },
+        ),
+      )..load();
+      notifyListeners();
+    } catch (e, st) {
+      debugPrint('Focus break banner load failed: $e\n$st');
+      _focusBreakBannerAd = null;
     }
   }
 
@@ -507,14 +660,21 @@ class AdManager extends ChangeNotifier {
     }
   }
 
-  void _disposeBanner() {
-    _bannerAd?.dispose();
-    _bannerAd = null;
+  void _disposeShellBanner() {
+    _shellBannerAd?.dispose();
+    _shellBannerAd = null;
+    notifyListeners();
+  }
+
+  void _disposeFocusBreakBanner() {
+    _focusBreakBannerAd?.dispose();
+    _focusBreakBannerAd = null;
     notifyListeners();
   }
 
   void _disposeAllAds() {
-    _disposeBanner();
+    _disposeShellBanner();
+    _disposeFocusBreakBanner();
     _interstitialAd?.dispose();
     _interstitialAd = null;
     _rewardedAd?.dispose();

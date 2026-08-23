@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import '../widgets/formatted_text.dart';
+
 /// Çözüm metninin ücretsiz önizleme ve kilitli devam bölümleri.
 class SolutionPreviewParts {
   final String preview;
@@ -20,7 +22,7 @@ SolutionPreviewParts splitSolutionPreview(
   int maxPreviewChars = 280,
   double maxPreviewFraction = 0.33,
 }) {
-  final normalized = text.replaceAll('\r\n', '\n').trim();
+  final normalized = FormattedText.normalizeForSolutionDisplay(text).trim();
   if (normalized.isEmpty) {
     return const SolutionPreviewParts(
       preview: '',

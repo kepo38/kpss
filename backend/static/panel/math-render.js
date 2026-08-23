@@ -7,6 +7,9 @@
     if (/\n/.test(cleaned)) {
       cleaned = cleaned.replace(/\s*\n\s*/g, " ").trim();
     }
+    if (/\\begin\{(?:array|matrix|pmatrix|cases)\}/.test(cleaned)) {
+      return "$$" + cleaned + "$$";
+    }
     return "$" + cleaned + "$";
   }
 
@@ -22,8 +25,20 @@
   }
 
   /** JSON/OCR: \\frac → form-feed+rac; önizlemede geri yamala. */
+  function repairGoogleDocsVertBars(text) {
+    var src = String(text || "");
+    src = src.replace(/\\\(\s*\\vert\{\}\s*\\\)/g, "|");
+    src = src.replace(/\(\\vert\{\}\)/g, "|");
+    src = src.replace(/\\vert\{\}([^\\]*?)\\vert\{\}/g, function (_, inner) {
+      var body = String(inner || "").trim();
+      return body ? "\\lvert " + body + " \\rvert" : "\\vert";
+    });
+    return src;
+  }
+
   function repairLatexEscapes(text) {
-    var src = String(text || "")
+    var src = repairGoogleDocsVertBars(
+      String(text || "")
       .replace(/\x0crac/g, "\\frac")
       .replace(/\x08eta/g, "\\beta")
       .replace(/\x08egin/g, "\\begin")
@@ -34,7 +49,8 @@
       .replace(/\x0dight/g, "\\right")
       .replace(/\x0aeq/g, "\\neq")
       .replace(/\$rac\{/g, "$\\frac{")
-      .replace(/\$sqrt\{/g, "$\\sqrt{");
+      .replace(/\$sqrt\{/g, "$\\sqrt{")
+    );
     if (src.indexOf("frac") !== -1 && src.indexOf("\\frac") === -1) {
       src = src.replace(/(^|[^\\A-Za-z])frac\{/g, "$1\\frac{");
     }
@@ -132,12 +148,39 @@
     src = src.replace(/;(?!\n)(?=§§M|[\$A-ZÇĞİÖŞÜÂÎÛ])/g, ";\n");
     // Google mantık çözümü: A Seçeneği: / B Seçeneği:
     src = src.replace(/(?<!\n)(?=[A-E]\s+Seçeneği\s*:)/gi, "\n");
+    src = src.replace(/(Adım Adım Çözüm:)(?!\n)(?=\S)/gi, "$1\n");
+    src = src.replace(/(şunlardır:)(?!\n)(?=Rakamlar)/gi, "$1\n");
+    src = src.replace(/(§§M\d+§§\))(?!\n)(?=[A-ZÇĞİÖŞÜ])/g, "$1\n");
+    src = src.replace(/(§§M\d+§§)(?=§§M\d+§§)/g, "$1\n");
+    src = src.replace(/(§§M\d+§§)(?!\n)(?=[A-ZÇĞİÖŞÜ])/g, "$1\n");
+    src = src.replace(/(?<=[a-zçğıöşüâîû])(?=§§M)/g, "\n");
+    src = src.replace(
+      /(§§M\d+§§)(?!\n)(?=(?:Rakamlar|Kendisi|Son maddede|Elde edilen|Kağıda|Şimdi |Bulduğumuz|Görüldüğü|Now:|Çarpım ))/gi,
+      "$1\n"
+    );
+    src = src.replace(/(?<!\n)(?=\d+\.\s+(?:Tek\/|Kağıttaki))/gi, "\n");
+    src = src.replace(
+      /(?<!\n)(?=[A-E]\)\s+(?:\d|[\u0027\u2019]|[A-Za-zÇĞİÖŞÜçğıöşü]))/g,
+      "\n"
+    );
+    src = src.replace(/([❌✅])(?!\n)(?=[A-E]\))/g, "$1\n");
+    src = src.replace(/(olsaydı:)(?!\n)(?=[\$\\\(])/gi, "$1\n");
+    src = src.replace(
+      /(?<!\n)(?=(?:Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı|oranı))\s*:)/gi,
+      "\n"
+    );
+    src = src.replace(/(\((?:Çift|Tek)\))(?!\n)(?=Rakamlar)/gi, "$1\n");
+    src = src.replace(/(\(Tek\))(?!\n)(?=Görüldüğü)/gi, "$1\n");
+    src = src.replace(/(\d+\.\s+[^:]+:)(\s*)(?=\\\(|\$|§§M)/g, "$1\n");
+    src = src.replace(/([a-zçğıöşüâîû]:)(?!\n)(?=\$)/gi, "$1\n");
+    src = src.replace(/(\$)(?!\n)(?=[A-ZÇĞİÖŞÜ])/g, "$1\n");
     src = src.replace(/([.!?])(?!\n)(?=\d+\s)/g, "$1\n");
     // camelCase: GösterimKitabın — 5A/pH/iPhone bölünmez (rich_text_common.py ile aynı)
     src = src.replace(
       /(?<=[a-zçğıöşüâîû]{2})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])/g,
       "\n"
     );
+    src = restoreCollapsedPresenceTable(src);
     src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
     src = src.replace(/(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)/g, "$1\n");
     // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
@@ -159,6 +202,120 @@
     return src.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
   }
 
+  var PRESENCE_CELL_RE = /^(Yok|Var)\s*\(\s*[01]\s*\)$/i;
+  var ALLCAPS_NAME_RE = /^[A-ZÇĞİÖŞÜÂÎÛ]{3,}$/;
+  var BIN_CODE_RE = /^[01]{3}$/;
+
+  function restoreCollapsedPresenceTable(src) {
+    if (!src) return src;
+    src = src.replace(/(Öğrenci)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)/gi, "$1\n");
+    src = src.replace(/(Harfi)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)/g, "$1\n");
+    src = src.replace(/(Harfi)(?=Oluşan\s+Benzersiz)/g, "$1\n");
+    src = src.replace(/(?<!\n)(?=Oluşan Benzersiz)/g, "\n");
+    src = src.replace(/(\))(?=[A-ZÇĞİÖŞÜÂÎÛ]{3,})/g, ")\n");
+    src = src.replace(
+      /(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=(?:Yok|Var)\s*\(\s*[01]\s*\))/g,
+      "\n"
+    );
+    src = src.replace(/(\(\s*[01]\s*\))(?=(?:Yok|Var)\s*\()/g, "$1\n");
+    src = src.replace(/(\(\s*[01]\s*\))(?=[01]{3}(?:[A-ZÇĞİÖŞÜÂÎÛ]|$))/g, "$1\n");
+    src = src.replace(/([01]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
+    src = src.replace(
+      /(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû]{3,})/g,
+      "\n"
+    );
+    return src;
+  }
+
+  function formatPresenceTable(text) {
+    var lines = String(text || "").split("\n");
+    var start = -1;
+    var i;
+    for (i = 0; i < lines.length; i++) {
+      var probe = lines[i].trim();
+      if (probe === "Öğrenci" || /\bHarfi\b/.test(probe) || probe.indexOf("Benzersiz Kod") !== -1) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return text;
+
+    var headers = [];
+    i = start;
+    while (i < lines.length) {
+      var s = lines[i].trim();
+      if (!s) {
+        i += 1;
+        continue;
+      }
+      if (ALLCAPS_NAME_RE.test(s) || PRESENCE_CELL_RE.test(s)) break;
+      var gluedHeader = s.match(/^(Öğrenci)\s*([A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)$/i);
+      if (gluedHeader) {
+        headers.push(gluedHeader[1], gluedHeader[2]);
+        i += 1;
+        continue;
+      }
+      headers.push(s);
+      i += 1;
+    }
+    var letterHeaders = [];
+    for (var h = 0; h < headers.length; h++) {
+      var header = headers[h];
+      if (header.toLocaleLowerCase("tr-TR") === "öğrenci" || /kod/i.test(header)) {
+        continue;
+      }
+      letterHeaders.push(header.replace(/\s*Harfi\s*$/i, "").trim());
+    }
+    var rows = [];
+    while (i < lines.length) {
+      s = lines[i].trim();
+      if (!s) {
+        i += 1;
+        continue;
+      }
+      if (!ALLCAPS_NAME_RE.test(s)) break;
+      var name = s;
+      i += 1;
+      var cells = [];
+      var code = "";
+      while (i < lines.length) {
+        var t = lines[i].trim();
+        if (PRESENCE_CELL_RE.test(t)) {
+          cells.push(t);
+          i += 1;
+        } else if (BIN_CODE_RE.test(t)) {
+          code = t;
+          i += 1;
+          break;
+        } else {
+          break;
+        }
+      }
+      if (!cells.length) break;
+      rows.push({ name: name, cells: cells, code: code });
+    }
+    if (rows.length < 2) return text;
+
+    var block = ["**Harf kodu:**"];
+    for (var r = 0; r < rows.length; r++) {
+      var bits = [];
+      for (var c = 0; c < rows[r].cells.length; c++) {
+        var label = c < letterHeaders.length ? letterHeaders[c] : String.fromCharCode(72 + c);
+        var kind = /^var/i.test(rows[r].cells[c]) ? "var" : "yok";
+        bits.push(label + " " + kind);
+      }
+      var tail = rows[r].code ? " → **" + rows[r].code + "**" : "";
+      block.push("- **" + rows[r].name + ":** " + bits.join(", ") + tail);
+    }
+    var before = lines.slice(0, start).join("\n").replace(/\s+$/, "");
+    var after = lines.slice(i).join("\n").replace(/^\s+/, "");
+    var parts = [];
+    if (before) parts.push(before);
+    parts.push(block.join("\n"));
+    if (after) parts.push(after);
+    return parts.join("\n\n");
+  }
+
   var OPTION_HEADER_RE =
     /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+([A-ZÇĞİÖŞÜÂÎÛİ][A-ZÇĞİÖŞÜÂÎÛİa-zçğıöşüâîû]*)\s*:?(?:\*\*)?\s*$/;
   var OPTION_SECENEGI_INLINE_RE =
@@ -168,6 +325,13 @@
   var BULLET_STRIP_RE = /^(\s*)[-•*◦○–—]\s+/;
   var KURAL_OZETI_RE = /^Kural\s+Özeti\s*:?\s*$/i;
   var RESULT_TAIL_RE = /(→\s*)(🧍\s*)?(Oturuyor|AYAKTA)\.?\s*$/i;
+  var FORMULA_LIST_LABEL_RE =
+    /^(Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı(?:nın mutlak değeri)?|oranı))\s*:\s*.+/i;
+  var NUMBERED_SECTION_RE = /^\d+\.\s+.+\S/;
+  var NUMBERED_SECTION_TITLE_RE = /^(\d+\.\s+[^:]+:)([\s\S]*)$/;
+  var STEP_HEADER_RE = /^\d+\.\s+Adım:/i;
+  var CONDITION_BULLET_RE = /^(?:Rakamlar\s|Son maddede)/i;
+  var ADIM_ADIM_HEADER_RE = /^(.*?Adım Adım Çözüm:)\s*(.*)$/i;
 
   function isOptionHeaderLine(line) {
     var s = String(line || "").trim();
@@ -234,7 +398,56 @@
           line.indexOf("Adım Adım") !== -1 ||
           line.indexOf("Adim Adim") !== -1)
       ) {
+        var hdr = line.match(ADIM_ADIM_HEADER_RE);
+        if (hdr && line.indexOf("Adım Adım") !== -1) {
+          out.push("**" + hdr[1].trim() + "**");
+          out.push("");
+          var rest = String(hdr[2] || "").trim();
+          if (rest) out.push(rest);
+          i += 1;
+          continue;
+        }
         out.push("**" + stripOuterBold(line) + "**");
+        out.push("");
+        i += 1;
+        continue;
+      }
+      if (FORMULA_LIST_LABEL_RE.test(line)) {
+        while (i < lines.length && FORMULA_LIST_LABEL_RE.test(String(lines[i] || "").trim())) {
+          out.push("- " + String(lines[i] || "").trim());
+          i += 1;
+        }
+        out.push("");
+        continue;
+      }
+      if (CONDITION_BULLET_RE.test(line)) {
+        while (i < lines.length && CONDITION_BULLET_RE.test(String(lines[i] || "").trim())) {
+          out.push("- " + String(lines[i] || "").trim());
+          i += 1;
+        }
+        out.push("");
+        continue;
+      }
+      if (STEP_HEADER_RE.test(line)) {
+        var stepCore = line.trim();
+        if (/^\*\*[\s\S]+\*\*$/.test(stepCore)) {
+          out.push(stepCore);
+        } else {
+          out.push("**" + stepCore + "**");
+        }
+        out.push("");
+        i += 1;
+        continue;
+      }
+      if (NUMBERED_SECTION_RE.test(line)) {
+        var section = line.match(NUMBERED_SECTION_TITLE_RE);
+        if (section && String(section[2] || "").trim()) {
+          out.push("**" + section[1].trim() + "**");
+          out.push("");
+          out.push(String(section[2]).trim());
+        } else {
+          out.push("**" + line + "**");
+        }
         out.push("");
         i += 1;
         continue;
@@ -275,6 +488,7 @@
       .replace(/\r/g, "\n")
       .trim();
     if (!src) return src;
+    src = formatPresenceTable(src);
     var lines = src.split("\n");
     var optionIdxs = [];
     for (var i = 0; i < lines.length; i++) {
@@ -282,7 +496,10 @@
         optionIdxs.push(i);
       }
     }
-    if (optionIdxs.length < 2) return src;
+    if (optionIdxs.length < 2) {
+      var preambleOnly = structurePreambleLines(lines);
+      return preambleOnly.length ? preambleOnly.join("\n").replace(/^\s+|\s+$/g, "") : src;
+    }
 
     var out = structurePreambleLines(lines.slice(0, optionIdxs[0]));
     if (out.length && out[out.length - 1] !== "") out.push("");
@@ -542,6 +759,10 @@
     return forceDisplaySizeAll(replaceHlineWithColoredRule(String(tex || "")));
   }
 
+  function needsDisplayMathBlock(tex) {
+    return /\\begin\{(?:array|matrix|pmatrix|cases)\}/.test(tex) || /\\hline/.test(tex);
+  }
+
   function renderMath(tex, displayMode) {
     var body = prepareTex(tex);
     if (!body) return "";
@@ -592,7 +813,13 @@
     while ((m = re.exec(src)) !== null) {
       out += mdInline(src.slice(last, m.index));
       var tex = m[1] || m[2] || m[3] || m[4] || "";
-      out += renderMath(tex, !!(m[1] || m[3]));
+      var display = !!(m[1] || m[3]) || needsDisplayMathBlock(tex);
+      if (display && !(m[1] || m[3])) {
+        out +=
+          '<span class="math-block">' + renderMath(tex, true) + "</span>";
+      } else {
+        out += renderMath(tex, display);
+      }
       last = m.index + m[0].length;
     }
     out += mdInline(src.slice(last));
