@@ -149,8 +149,6 @@ class _MainShellState extends State<MainShell> {
       backgroundColor: AppTheme.page(context),
       body: Stack(
         children: [
-          WrongNotebookPromoBubble(homeVisible: _index == 0),
-          TgExamPromoBubble(subjectsTabVisible: _index == 1),
           Column(
             children: [
               AppShellTopBar(
@@ -211,6 +209,9 @@ class _MainShellState extends State<MainShell> {
               const ShellAdBannerSlot(),
             ],
           ),
+          // Balonlar içerik katmanının üstünde — dokunma ve görünürlük için.
+          WrongNotebookPromoBubble(homeVisible: _index == 0),
+          TgExamPromoBubble(subjectsTabVisible: _index == 1),
         ],
       ),
       bottomNavigationBar: _PremiumBottomBar(

@@ -13,7 +13,6 @@ import '../services/weekly_study_plan_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ai_coach_insight_card.dart';
 import '../widgets/weekly_study_plan_card.dart';
-import '../widgets/weak_point_remediation_card.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/account_link_card.dart';
 import '../widgets/analytics_study_vault.dart';
@@ -121,11 +120,6 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                 const SizedBox(height: 20),
                 WeeklyStudyPlanCard(
                   days: weeklyPlan,
-                  isPremium: widget.isPremium,
-                ),
-                const SizedBox(height: 20),
-                WeakPointRemediationCard(
-                  kpssType: widget.kpssType,
                   isPremium: widget.isPremium,
                 ),
                 const AccountLinkCard(

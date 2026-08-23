@@ -102,9 +102,43 @@ class FormattedText extends StatelessWidget {
   /// çoklu whitespace'i tek boşluğa indirger; `$$…$$` ve madde satırları korunur.
   static String prepareExamJustifyText(String input) {
     if (input.isEmpty) return input;
-    return examFormat(normalizeMarkup(input))
+    return examFormat(normalizeMarkup(joinOrphanRomanNumeralLines(input)))
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .trim();
+  }
+
+  /// `I.Fidan,` gibi yapışık Romen etiketlerini `I. Fidan,` biçimine çevirir.
+  static String glueRomanNumeralLabels(String input) {
+    if (input.isEmpty) return input;
+    return input.replaceAllMapped(
+      RegExp(r'\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
+      (m) => '${m.group(1)!}. ',
+    );
+  }
+
+  /// OCR'da ayrı satıra düşen `I.` + `Fidan,` gibi Romen madde parçalarını birleştirir.
+  static String joinOrphanRomanNumeralLines(String input) {
+    if (input.isEmpty) return input;
+    final lines = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    final out = <String>[];
+    final orphanRoman = RegExp(r'^(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s*$');
+
+    for (var i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trim();
+      if (orphanRoman.hasMatch(trimmed) && i + 1 < lines.length) {
+        final next = lines[i + 1].trim();
+        if (next.isNotEmpty &&
+            !orphanRoman.hasMatch(next) &&
+            !RegExp(r'^(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
+                .hasMatch(next)) {
+          out.add('$trimmed $next');
+          i += 1;
+          continue;
+        }
+      }
+      out.add(lines[i]);
+    }
+    return out.join('\n');
   }
 
   static bool usesDisplayMath(String tex) {
@@ -146,6 +180,33 @@ class FormattedText extends StatelessWidget {
         color: base.color,
         fontStyle: FontStyle.normal,
       ),
+    );
+  }
+
+  /// Soru kökü / şık: satır yüksekliği alt/üst indeksleri kesmesin.
+  static const TextHeightBehavior examTextHeightBehavior = TextHeightBehavior(
+    applyHeightToFirstAscent: true,
+    applyHeightToLastDescent: true,
+  );
+
+  static StrutStyle examStrutStyle(TextStyle base) {
+    final size = base.fontSize ?? 16;
+    final lineHeight = base.height ?? 1.35;
+    return StrutStyle(
+      fontFamily: base.fontFamily,
+      fontFamilyFallback: base.fontFamilyFallback,
+      fontSize: size,
+      height: lineHeight * 1.12,
+      forceStrutHeight: true,
+      leadingDistribution: TextLeadingDistribution.even,
+    );
+  }
+
+  /// Çözüm outline pipeline'ı soru/şık metnine uygulanmaz.
+  static String prepareExamDisplayText(String input) {
+    if (input.isEmpty) return input;
+    return normalizeLatex(
+      examFormat(normalizeMarkup(joinOrphanRomanNumeralLines(input))),
     );
   }
 
@@ -693,7 +754,7 @@ class FormattedText extends StatelessWidget {
   /// Çözüm metni — markup + LaTeX + satır kırılımları (madde yapısı hariç).
   static String normalizeForSolutionDisplay(String input) {
     if (input.isEmpty) return input;
-    var text = normalizeMarkup(input);
+    var text = normalizeMarkup(joinOrphanRomanNumeralLines(input));
     text = mergeSplitInlineDollarMath(text);
     text = normalizeLatex(text);
     return restoreCollapsedBreaks(text);
@@ -896,6 +957,7 @@ class FormattedText extends StatelessWidget {
         return '§§K${mdHolders.length - 1}§§';
       },
     );
+    src = glueRomanNumeralLabels(src);
     src = src.replaceAllMapped(
       RegExp(r'([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
       (m) => '${m.group(1)}\n',
@@ -1559,11 +1621,15 @@ class FormattedText extends StatelessWidget {
     final base = style ?? DefaultTextStyle.of(context).style;
     final String laidOut;
     if (preserveLineBreaks) {
-      laidOut = prepareSolutionText(data);
+      laidOut = examLayout && examWrap
+          ? prepareExamDisplayText(data)
+          : prepareSolutionText(data);
     } else {
       var text = normalizeMarkup(data);
       text = normalizeLatex(examFormat(text));
-      laidOut = structureSolutionOutline(restoreCollapsedBreaks(text));
+      laidOut = examLayout && examWrap
+          ? text
+          : structureSolutionOutline(restoreCollapsedBreaks(text));
     }
     final useExamLayout = examLayout || preserveLineBreaks;
 
@@ -1703,13 +1769,11 @@ class FormattedText extends StatelessWidget {
               usesDisplayMath(raw);
           spans.add(
             WidgetSpan(
-              // Display kesirler (x/y, kök…) cümle içinde baseline ile zıplar;
-              // middle ile gövde satırına oturur.
-              alignment: display
-                  ? PlaceholderAlignment.middle
-                  : PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: buildMathWidget(raw, base: base, display: display),
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: display ? 2 : 1),
+                child: buildMathWidget(raw, base: base, display: display),
+              ),
             ),
           );
         }
@@ -2022,6 +2086,8 @@ class _WrappedExamLine extends StatelessWidget {
       textAlign: textAlign ?? TextAlign.start,
       softWrap: true,
       textWidthBasis: TextWidthBasis.parent,
+      strutStyle: FormattedText.examStrutStyle(base),
+      textHeightBehavior: FormattedText.examTextHeightBehavior,
     );
   }
 }
@@ -2172,6 +2238,7 @@ class _DocumentText extends StatelessWidget {
     );
     final children = <Widget>[];
     final softBuf = StringBuffer();
+    var firstSoftParagraph = true;
 
     void flushSoftParagraph() {
       final joined = softBuf
@@ -2182,10 +2249,14 @@ class _DocumentText extends StatelessWidget {
       if (joined.isEmpty) return;
       children.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 6),
+          padding: EdgeInsets.only(
+            top: examWrap && firstSoftParagraph ? 4 : 0,
+            bottom: 6,
+          ),
           child: _lineWidget(joined),
         ),
       );
+      firstSoftParagraph = false;
     }
 
     bool isHardBreakLine(String trimmed) {

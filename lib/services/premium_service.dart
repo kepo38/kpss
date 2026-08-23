@@ -60,7 +60,7 @@ class PremiumService {
       iconName: 'repeat',
       title: 'Akıllı Tekrar',
       description:
-          'Yanlış defteri ve zayıf konulardan günlük SRS oturumu başlat.',
+          'Yanlış defteri, telafi konuları ve zayıf konulardan günlük SRS oturumu.',
     ),
     PremiumFeature(
       iconName: 'similar',

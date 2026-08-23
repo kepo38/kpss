@@ -6,9 +6,10 @@ import random
 from dataclasses import dataclass, field
 from typing import Any
 
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from content.models import Question, Subject
+from content.osym_exam_order import OSYM_FULL_EXAM
 
 from .cooldown import (
     COOLDOWN_DIFFICULTIES,
@@ -30,6 +31,8 @@ ExamGeneratorError = TgExamGeneratorError
 class _PickSlot:
     subject_slugs: list[str]
     subtopic: str = ""
+    topic_slugs: list[str] = field(default_factory=list)
+    scenario_group: bool = False
     count: int = 1
 
 
@@ -136,9 +139,30 @@ class TgExamGeneratorService:
         return sum(slot.count for slot in self._build_pick_plans())
 
     def _build_pick_plans(self) -> list[_PickSlot]:
+        if self._uses_osym_order():
+            return self._build_osym_pick_plans()
         plans: list[_PickSlot] = []
         for key, spec in self.distribution.items():
             plans.extend(self._plans_for_entry(key, spec))
+        return plans
+
+    def _uses_osym_order(self) -> bool:
+        return self.distribution == DEFAULT_TG_EXAM_DISTRIBUTION
+
+    def _build_osym_pick_plans(self) -> list[_PickSlot]:
+        """ÖSYM konu sırasına göre 120 soruluk plan."""
+        plans: list[_PickSlot] = []
+        for slot in OSYM_FULL_EXAM:
+            slugs = self._resolve_subject_slugs(slot.subject_key, None)
+            plans.append(
+                _PickSlot(
+                    subject_slugs=slugs,
+                    subtopic=slot.subtopic,
+                    topic_slugs=list(slot.topic_slugs),
+                    scenario_group=slot.scenario_group,
+                    count=slot.count,
+                )
+            )
         return plans
 
     def _plans_for_entry(self, key: str, spec: Any) -> list[_PickSlot]:
@@ -235,20 +259,33 @@ class TgExamGeneratorService:
             topic__subject__slug__in=plan.subject_slugs,
         ).exclude(public_id__in=state.used_public_ids)
 
+        if plan.topic_slugs:
+            base_qs = base_qs.filter(topic__slug__in=plan.topic_slugs)
+
         if plan.subtopic:
             base_qs = base_qs.filter(subtopic__iexact=plan.subtopic)
 
-        label = plan.subtopic or "/".join(plan.subject_slugs)
+        label = (
+            "/".join(plan.topic_slugs)
+            if plan.topic_slugs
+            else plan.subtopic or "/".join(plan.subject_slugs)
+        )
         picked: list[Question] = []
         pool: list[Question] = []
 
         for relax in range(state.cooldown_relax, -1, -1):
             qs = self._apply_cooldown(base_qs, relax_to=relax)
-            pool = list(qs.select_related("topic", "topic__subject"))
-            if len(pool) >= plan.count:
-                self.rng.shuffle(pool)
-                picked = pool[: plan.count]
-                break
+            if plan.scenario_group:
+                picked = self._pick_scenario_group(qs, plan.count)
+                if len(picked) >= plan.count:
+                    break
+                pool = list(qs.select_related("topic", "topic__subject", "scenario"))
+            else:
+                pool = list(qs.select_related("topic", "topic__subject", "scenario"))
+                if len(pool) >= plan.count:
+                    self.rng.shuffle(pool)
+                    picked = pool[: plan.count]
+                    break
 
         if len(picked) < plan.count:
             raise TgExamGeneratorError(
@@ -259,6 +296,27 @@ class TgExamGeneratorService:
 
         state.used_public_ids.update(q.public_id for q in picked)
         return picked
+
+    def _pick_scenario_group(self, qs, count: int) -> list[Question]:
+        """Sözel mantık: aynı olay grubundan ardışık sorular."""
+        scenario_ids = list(
+            qs.filter(scenario_id__isnull=False)
+            .values("scenario_id")
+            .annotate(total=Count("id"))
+            .filter(total__gte=count)
+            .values_list("scenario_id", flat=True)
+        )
+        if not scenario_ids:
+            return []
+        chosen_id = self.rng.choice(scenario_ids)
+        group = list(
+            qs.filter(scenario_id=chosen_id)
+            .select_related("topic", "topic__subject", "scenario")
+            .order_by("scenario_order", "id")
+        )
+        if len(group) < count:
+            return []
+        return group[:count]
 
 
 ExamGeneratorService = TgExamGeneratorService

@@ -826,4 +826,78 @@ void main() {
     final again = FormattedText.structureSolutionOutline(out);
     expect('- **AYNUR:**'.allMatches(again).length, 1);
   });
+
+  test('joinOrphanRomanNumeralLines merges split list markers', () {
+    const src = 'Buna göre\nI.\nFidan,\nII. Gamze,\nIII. Işıl';
+    final out = FormattedText.joinOrphanRomanNumeralLines(src);
+    expect(out, contains('I. Fidan,'));
+    expect(out, isNot(contains('I.\nFidan')));
+  });
+
+  test('restoreCollapsedBreaks keeps glued roman I.Fidan on one line', () {
+    const src = 'Buna göre\nI.Fidan,\nII. Gamze,\nIII. Işıl';
+    final out = FormattedText.restoreCollapsedBreaks(src);
+    expect(out, contains('I. Fidan,'));
+    expect(out, isNot(contains('I.\nFidan')));
+  });
+
+  test('glueRomanNumeralLabels inserts space after roman dot', () {
+    expect(
+      FormattedText.glueRomanNumeralLabels('I.Fidan, II.Gamze'),
+      'I. Fidan, II. Gamze',
+    );
+  });
+
+  test('prepareExamDisplayText preserves inline subscript math', () {
+    const raw =
+        r'kenarları $k_A$, $k_B$ ve $k_C$ birim; $k_A < k_B < k_C$ olduğuna göre';
+    final out = FormattedText.prepareExamDisplayText(
+      FormattedText.prepareExamJustifyText(
+        FormattedText.wrapBareLatex(raw),
+      ),
+    );
+    expect(out, contains(r'$k_A$'));
+    expect(out, contains(r'$k_B$'));
+    expect(out, contains(r'$k_A < k_B < k_C$'));
+    expect(out, isNot(RegExp(r'\n\$k')));
+  });
+
+  test('prepareExamDisplayText skips solution outline splits', () {
+    const raw = r'$k_A \cdot u_A = 48$';
+    final outlined = FormattedText.prepareSolutionText(raw);
+    final exam = FormattedText.prepareExamDisplayText(
+      FormattedText.prepareExamJustifyText(
+        FormattedText.wrapBareLatex(raw),
+      ),
+    );
+    expect(exam, contains(r'$k_A'));
+    expect(outlined.split('\n').length, greaterThanOrEqualTo(exam.split('\n').length));
+  });
+
+  testWidgets('exam wrap renders subscript math without raw dollar text', (tester) async {
+    const stem =
+        r'Kenarlar $k_A$, $k_B$ ve $k_C$ birim; $k_A < k_B < k_C$ olduğuna göre';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: FormattedText(
+              FormattedText.prepareExamJustifyText(
+                FormattedText.wrapBareLatex(stem),
+              ),
+              preserveLineBreaks: true,
+              examLayout: true,
+              examWrap: true,
+              style: ExamTypography.body(color: Colors.white, fontSize: 18),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Math), findsWidgets);
+    expect(find.textContaining(r'$k_A$'), findsNothing);
+  });
 }

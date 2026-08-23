@@ -145,6 +145,12 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertNotIn("i\nPhone", out)
         self.assertNotIn("3\nD", out)
 
+    def test_restore_keeps_glued_roman_numeral_labels(self):
+        src = "Buna göre\nI.Fidan,\nII. Gamze,\nIII. Işıl"
+        out = restore_collapsed_breaks(src)
+        self.assertIn("I. Fidan,", out)
+        self.assertNotIn("I.\nFidan", out)
+
     def test_telegram_pipeline_preserves_inline_math(self):
         src = r"Sonuç \(300 \times \frac{3}{5} = \mathbf{180}\) sayfa."
         out = normalize_telegram_solution(src)

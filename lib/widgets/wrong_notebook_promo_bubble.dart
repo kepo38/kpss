@@ -111,7 +111,7 @@ class _WrongNotebookPromoBubbleState extends State<WrongNotebookPromoBubble> {
         final hasGoogle = auth.isSignedIn && !auth.isAnonymous;
         final bank = ContentBankService.instance;
         final hasCompletedTest = bank.hasCompletedAnyTest;
-        final hasWrongQuestions = bank.wrongQuestionCount > 0;
+        final hasWrongQuestions = bank.archivedWrongQuestionCount > 0;
         if (!widget.homeVisible ||
             !cfg.showWrongNotebookBubble ||
             !_ratioLoaded ||

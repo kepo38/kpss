@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/tg_exam_constants.dart';
+import '../theme/tg_exam_theme.dart';
 import '../layout/app_breakpoints.dart';
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
@@ -40,6 +41,7 @@ import '../widgets/embossed_app_bar_title.dart';
 import '../widgets/favorite_heart_button.dart';
 import '../widgets/cached_remote_image.dart';
 import '../widgets/exam_text/exam_option_view.dart';
+import '../widgets/exam_text/exam_scenario_passage_view.dart';
 import '../widgets/exam_text/exam_solution_view.dart';
 import '../widgets/exam_text/option_column_layout.dart';
 import '../widgets/formatted_text.dart';
@@ -47,6 +49,7 @@ import '../widgets/question_error_report_button.dart';
 import '../widgets/question_rating_bar.dart';
 import '../widgets/osym_badge.dart';
 import '../widgets/question_stem_content.dart';
+import '../widgets/tg_exam/tg_section_filter_toggle.dart';
 import '../widgets/quiz_drawing_overlay.dart';
 import '../widgets/quiz_zoom_daily_hint.dart';
 import '../widgets/quiz_zoom_viewport.dart';
@@ -152,7 +155,9 @@ class _QuizScreenState extends State<QuizScreen>
   Timer? _wrongNotebookHintDelayTimer;
   static const _maxStrokesPerQuestion = 80;
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _chipScrollController = ScrollController();
   final TransformationController _contentZoom = TransformationController();
+  TgSectionFilter _tgSectionFilter = TgSectionFilter.all;
 
   late final AnimationController _flashCtrl;
   late final Animation<double> _flashOpacity;
@@ -162,8 +167,39 @@ class _QuizScreenState extends State<QuizScreen>
   static const _wrongRed = Color(0xFFF87171);
   static const _answeredWrongBurgundy = Color(0xFF9F1239);
   static const _quizContentPaddingLeft = 20.0;
-  static const _quizContentPaddingTop = 8.0;
+  static const _quizContentPaddingTop = 18.0;
   static const _previousBlue = Color(0xFF60A5FA);
+
+  bool get _tgLiveExam =>
+      widget.tgExamMode && !widget.tgExamSolutionReview;
+
+  Color get _quizAccent =>
+      _tgLiveExam ? TgExamTheme.crimsonBright : AppTheme.champagne;
+
+  Color get _quizAccentLight =>
+      _tgLiveExam ? TgExamTheme.accentLight : AppTheme.champagneLight;
+
+  Color get _quizInk => _tgLiveExam ? TgExamTheme.ink : AppTheme.ink;
+
+  Color get _quizInkSoft => _tgLiveExam ? TgExamTheme.inkSoft : AppTheme.inkSoft;
+
+  List<int> _visibleQuestionIndices() {
+    final total = widget.questions.length;
+    if (!_tgLiveExam) {
+      return List.generate(total, (i) => i);
+    }
+    switch (_tgSectionFilter) {
+      case TgSectionFilter.gy:
+        final end = TgExamConstants.gyQuestionCount.clamp(0, total);
+        return List.generate(end, (i) => i);
+      case TgSectionFilter.gk:
+        final start = TgExamConstants.gkStartIndex.clamp(0, total);
+        if (start >= total) return const [];
+        return List.generate(total - start, (i) => i + start);
+      case TgSectionFilter.all:
+        return List.generate(total, (i) => i);
+    }
+  }
 
   @override
   void initState() {
@@ -236,6 +272,7 @@ class _QuizScreenState extends State<QuizScreen>
     }
     ContentBankService.instance.addListener(_onContentBankUpdated);
     unawaited(_bootstrapWrongNotebookHint());
+    _resetScrollToTop();
   }
 
   Future<void> _bootstrapWrongNotebookHint() async {
@@ -270,6 +307,7 @@ class _QuizScreenState extends State<QuizScreen>
     _durationNotifier.dispose();
     _flashCtrl.dispose();
     _scrollController.dispose();
+    _chipScrollController.dispose();
     _contentZoom.dispose();
     AdManager.instance.endTestSession();
     super.dispose();
@@ -1500,6 +1538,7 @@ class _QuizScreenState extends State<QuizScreen>
         _showingSolution = widget.tgExamSolutionReview;
         _solutionUnlocking = false;
         _drawingEnabled = false;
+        _contentZoom.value = Matrix4.identity();
         _resetRatingState();
         _resetErrorReportState();
         _syncTimerForCurrentQuestion();
@@ -1884,17 +1923,17 @@ class _QuizScreenState extends State<QuizScreen>
     ButtonStyle navOutlineStyle({required bool enabled}) =>
         OutlinedButton.styleFrom(
           foregroundColor: enabled
-              ? AppTheme.champagneLight
+              ? _quizAccentLight
               : Colors.white.withValues(alpha: 0.28),
           disabledForegroundColor: Colors.white.withValues(alpha: 0.28),
           minimumSize: const Size(0, 48),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           side: BorderSide(
-            color: AppTheme.champagne.withValues(alpha: enabled ? 0.42 : 0.14),
+            color: _quizAccent.withValues(alpha: enabled ? 0.42 : 0.14),
           ),
           backgroundColor: enabled
-              ? AppTheme.champagne.withValues(alpha: 0.08)
+              ? _quizAccent.withValues(alpha: 0.08)
               : Colors.white.withValues(alpha: 0.02),
           textStyle: const TextStyle(
             fontFamily: 'serif',
@@ -1933,21 +1972,21 @@ class _QuizScreenState extends State<QuizScreen>
     return SafeArea(
       top: false,
       child: Material(
-        color: AppTheme.inkSoft,
+        color: _quizInkSoft,
         elevation: 0,
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: AppTheme.champagne.withValues(alpha: 0.22),
+                color: _quizAccent.withValues(alpha: 0.22),
               ),
             ),
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                AppTheme.inkSoft,
-                AppTheme.ink,
+                _quizInkSoft,
+                _quizInk,
               ],
             ),
           ),
@@ -2002,12 +2041,12 @@ class _QuizScreenState extends State<QuizScreen>
                                     : _nextQuestion)
                                 : null,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.champagne,
-                              foregroundColor: AppTheme.ink,
+                              backgroundColor: _quizAccent,
+                              foregroundColor: _quizInk,
                               disabledBackgroundColor:
-                                  AppTheme.champagne.withValues(alpha: 0.35),
+                                  _quizAccent.withValues(alpha: 0.35),
                               disabledForegroundColor:
-                                  AppTheme.ink.withValues(alpha: 0.45),
+                                  _quizInk.withValues(alpha: 0.45),
                               minimumSize: const Size(0, 48),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               padding: const EdgeInsets.symmetric(
@@ -2084,7 +2123,7 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
               ),
             ),
-          if (!widget.hideQuestionCounter)
+          if (!widget.hideQuestionCounter && !_tgLiveExam)
             Transform.translate(
               offset: Offset((actionsW - leadingW) / 2, 0),
               child: Text(
@@ -2137,15 +2176,15 @@ class _QuizScreenState extends State<QuizScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: AppTheme.ink,
+        backgroundColor: _quizInk,
         appBar: AppBar(
-          backgroundColor: AppTheme.inkSoft,
+          backgroundColor: _quizInkSoft,
           foregroundColor: Colors.white,
           centerTitle: false,
           titleSpacing: 0,
           leadingWidth: 56,
           leading: AppBackButton.onDark(
-            accent: AppTheme.champagne,
+            accent: _quizAccent,
             onPressed: () async {
             if (widget.fromWrongNotebook) {
               _exitWrongNotebook();
@@ -2278,6 +2317,21 @@ class _QuizScreenState extends State<QuizScreen>
                       difficultyLabel: _difficultyLabel(),
                       difficultyOnRight: widget.fromWrongNotebook,
                       attemptLabel: _viewLabelForCurrent(),
+                      timerAccent: _quizAccent,
+                      accentLineColors: _tgLiveExam
+                          ? TgExamTheme.accentLineGradient
+                          : const [
+                              AppTheme.champagne,
+                              AppTheme.neonEdge,
+                              AppTheme.champagneLight,
+                            ],
+                      center: _tgLiveExam
+                          ? TgSectionFilterToggle(
+                              selected: _tgSectionFilter,
+                              onChanged: (next) =>
+                                  setState(() => _tgSectionFilter = next),
+                            )
+                          : null,
                       leading: widget.fromWrongNotebook
                           ? QuizTakeNoteButton(
                               hasNote: QuestionNoteService.instance
@@ -2292,11 +2346,13 @@ class _QuizScreenState extends State<QuizScreen>
                   SizedBox(
                     height: 40,
                     child: ListView.separated(
+                      controller: _chipScrollController,
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: widget.questions.length,
+                      itemCount: _visibleQuestionIndices().length,
                       separatorBuilder: (_, __) => const SizedBox(width: 6),
-                      itemBuilder: (context, i) {
+                      itemBuilder: (context, listIndex) {
+                        final i = _visibleQuestionIndices()[listIndex];
                         final selectedAnswer =
                             i == _currentIndex ? _selectedAnswer : _answers[i];
                         final answered = selectedAnswer != null;
@@ -2311,14 +2367,14 @@ class _QuizScreenState extends State<QuizScreen>
                                 !widget.tgExamSolutionReview
                             ? (
                                 fill: answered
-                                    ? AppTheme.champagne.withValues(
+                                    ? _quizAccent.withValues(
                                         alpha: active ? 0.38 : 0.22,
                                       )
                                     : (active
                                         ? Colors.white.withValues(alpha: 0.1)
                                         : Colors.transparent),
                                 border: answered
-                                    ? AppTheme.champagne
+                                    ? _quizAccent
                                     : Colors.white.withValues(
                                         alpha: active ? 1 : 0.82,
                                       ),
@@ -2341,18 +2397,18 @@ class _QuizScreenState extends State<QuizScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: active
-                                  ? AppTheme.champagne.withValues(alpha: 0.22)
+                                  ? _quizAccent.withValues(alpha: 0.22)
                                   : chip.fill,
                               border: Border.all(
                                 color: active
-                                    ? AppTheme.champagneLight
+                                    ? _quizAccentLight
                                     : chip.border,
                                 width: active ? 1.6 : 1,
                               ),
                               boxShadow: active
                                   ? [
                                       BoxShadow(
-                                        color: AppTheme.champagne
+                                        color: _quizAccent
                                             .withValues(alpha: 0.22),
                                         blurRadius: 8,
                                       ),
@@ -2366,7 +2422,7 @@ class _QuizScreenState extends State<QuizScreen>
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color: active
-                                    ? AppTheme.champagneLight
+                                    ? _quizAccentLight
                                     : chip.text,
                               ),
                             ),
@@ -2382,7 +2438,7 @@ class _QuizScreenState extends State<QuizScreen>
                       runSpacing: 6,
                       children: widget.tgExamMode && !widget.tgExamSolutionReview
                           ? [
-                              _legendDot(AppTheme.champagne, 'İşaretli'),
+                              _legendDot(_quizAccent, 'İşaretli'),
                               _legendDot(Colors.white, 'Boş'),
                             ]
                           : [
@@ -2637,17 +2693,7 @@ class _ScenarioPassageCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          FormattedText(
-            question.scenarioStem!,
-            preserveLineBreaks: true,
-            paragraphLayout: true,
-            textAlign: TextAlign.start,
-            style: ExamTypography.body(
-              color: Colors.white,
-              fontSize: 15,
-              height: 1.5,
-            ),
-          ),
+          ExamScenarioPassageView(text: question.scenarioStem!),
         ],
       ),
     );

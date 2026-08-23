@@ -14,7 +14,20 @@ class WeakPointRemediationService {
 
   static const packSize = 15;
 
-  List<WeakTopicStat> topWeakTopics(KpssType type, {int limit = 3}) {
+  List<WeakTopicStat> topWeakTopics(
+    KpssType type, {
+    int limit = 3,
+    String? subjectId,
+  }) {
+    if (subjectId != null) {
+      final match = PerformanceSummaryService.instance
+          .subjectBreakdown(type)
+          .where((s) => s.subjectId == subjectId)
+          .toList();
+      if (match.isEmpty) return const [];
+      return match.first.topWeakTopics.take(limit).toList();
+    }
+
     final all = <WeakTopicStat>[];
     for (final s in PerformanceSummaryService.instance.subjectBreakdown(type)) {
       all.addAll(s.topWeakTopics);
@@ -23,8 +36,12 @@ class WeakPointRemediationService {
     return all.take(limit).toList();
   }
 
-  Future<List<QuestionModel>> fetchRemediationPack(KpssType type) async {
-    final weak = topWeakTopics(type);
+  /// En çok yanlış 3 konudan telafi soru kimlikleri (Akıllı Tekrar havuzu).
+  List<String> remediationQuestionIds(
+    KpssType type, {
+    String? subjectId,
+  }) {
+    final weak = topWeakTopics(type, subjectId: subjectId);
     if (weak.isEmpty) return const [];
 
     final bank = ContentBankService.instance;
@@ -38,6 +55,7 @@ class WeakPointRemediationService {
 
     final fromBank = <String>[];
     for (final subject in KpssCurriculum.subjectsFor(type)) {
+      if (subjectId != null && subject.id != subjectId) continue;
       for (final topic in subject.topics) {
         if (!topicNames.contains(topic.name)) continue;
         for (final test in bank.testsForTopic(type, topic.id)) {
@@ -46,11 +64,18 @@ class WeakPointRemediationService {
       }
     }
 
-    final ids = <String>{...fromWrong, ...fromBank}.take(packSize).toList();
+    return <String>{...fromWrong, ...fromBank}.take(packSize).toList();
+  }
+
+  Future<List<QuestionModel>> fetchRemediationPack(
+    KpssType type, {
+    String? subjectId,
+  }) async {
+    final ids = remediationQuestionIds(type, subjectId: subjectId);
     if (ids.isEmpty) return const [];
 
     final fetched = await QuestionFetchService.instance.fetchByIds(ids);
     if (fetched.isNotEmpty) return fetched;
-    return bank.questionsByIds(ids);
+    return ContentBankService.instance.questionsByIds(ids);
   }
 }

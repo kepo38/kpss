@@ -1264,6 +1264,9 @@ class ContentBankService extends ChangeNotifier {
       .where((id) => !_sampleSeedQuestionIds.contains(id))
       .length;
 
+  /// Defterde kayıtlı yanlış sayısı (gövde henüz indirilmemiş olsa da).
+  int get archivedWrongQuestionCount => _archivedWrongQuestionCount;
+
   WrongNotebookCapacityResult _capWrongIdsForArchive(
     Iterable<String> candidateIds,
   ) {

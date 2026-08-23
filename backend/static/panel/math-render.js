@@ -164,6 +164,7 @@
     );
     var mdHolders = [];
     src = protectMarkdownSpans(src, mdHolders);
+    src = src.replace(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1. ");
     src = src.replace(/([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
     src = src.replace(/:(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, ":\n");
     src = src.replace(/([.!?])(?!\n)(?=\d+\.\s)/g, "$1\n");

@@ -506,6 +506,11 @@ def restore_collapsed_breaks(text: str) -> str:
     src = _protect_math_spans(src, math_holders)
     md_holders: list[str] = []
     src = _protect_markdown_spans(src, md_holders)
+    src = re.sub(
+        r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])",
+        r"\1. ",
+        src,
+    )
     # Cümle sonu → büyük harf / numaralı madde
     src = re.sub(r"([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", r"\1\n", src)
     src = re.sub(r":(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", ":\n", src)

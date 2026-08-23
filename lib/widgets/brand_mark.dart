@@ -112,8 +112,11 @@ class QuizHeaderStrip extends StatelessWidget {
   final String? difficultyLabel;
   final String? attemptLabel;
   final Widget? leading;
+  final Widget? center;
   final bool showTimer;
   final bool difficultyOnRight;
+  final Color timerAccent;
+  final List<Color> accentLineColors;
 
   const QuizHeaderStrip({
     super.key,
@@ -127,8 +130,15 @@ class QuizHeaderStrip extends StatelessWidget {
     this.difficultyLabel,
     this.attemptLabel,
     this.leading,
+    this.center,
     this.showTimer = true,
     this.difficultyOnRight = false,
+    this.timerAccent = AppTheme.champagne,
+    this.accentLineColors = const [
+      AppTheme.champagne,
+      AppTheme.neonEdge,
+      AppTheme.champagneLight,
+    ],
   });
 
   static const _lineHeight = 2.5;
@@ -166,7 +176,7 @@ class QuizHeaderStrip extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).width < 360;
     final badgeHeight = compact ? 44.0 : 52.0;
     final timeColor = urgent ? Colors.redAccent : Colors.white;
-    final iconColor = urgent ? Colors.redAccent : AppTheme.champagne;
+    final iconColor = urgent ? Colors.redAccent : timerAccent;
 
     final chipsColumn = Column(
       mainAxisSize: MainAxisSize.min,
@@ -295,13 +305,15 @@ class QuizHeaderStrip extends StatelessWidget {
                   OsymBadge(
                     height: badgeHeight,
                     variant: OsymBadgeVariant.premium,
-                  ),
+                  )
+                else if (center != null)
+                  center!,
               ],
             ),
           ),
         ),
         const SizedBox(height: 8),
-        const _AccentLine(height: _lineHeight),
+        _AccentLine(height: _lineHeight, colors: accentLineColors),
       ],
     );
   }
@@ -454,22 +466,17 @@ class QuizBrandBridge extends StatelessWidget {
 
 class _AccentLine extends StatelessWidget {
   final double height;
+  final List<Color> colors;
 
-  const _AccentLine({required this.height});
+  const _AccentLine({required this.height, required this.colors});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: height,
       width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.champagne,
-            AppTheme.neonEdge,
-            AppTheme.champagneLight,
-          ],
-        ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: colors),
       ),
     );
   }

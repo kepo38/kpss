@@ -25,7 +25,7 @@ class TgExamPromoBubble extends StatefulWidget {
 class _TgExamPromoBubbleState extends State<TgExamPromoBubble> {
   static const _kYRatio = 'tg_exam_bubble_y_ratio_v1';
   /// v2: önceki kapatmalar (yanlışlıkla X) demo denemesini gizlemesin.
-  static const _kHiddenExamId = 'tg_exam_bubble_hidden_id_v2';
+  static const _kHiddenExamId = 'tg_exam_bubble_hidden_id_v3';
 
   final GlobalKey _balloonKey = GlobalKey();
   double _yRatio = 0.42;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/theme/exam_typography.dart';
+import 'package:kpss_akademi/widgets/exam_text/exam_scenario_passage_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_option_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_solution_view.dart';
 import 'package:kpss_akademi/widgets/exam_text/exam_stem_view.dart';
@@ -252,5 +253,31 @@ void main() {
     expect(find.textContaining(r'\hline'), findsNothing);
     expect(find.textContaining(r'$A + B + C$'), findsNothing);
     expect(textContainingPlain('kaçtır'), findsOneWidget);
+  });
+
+  testWidgets('exam scenario passage wraps long text without FittedBox shrink',
+      (tester) async {
+    const passage =
+        'Bir oyun parkında Fidan, Gamze, Işıl, Kerem ve Levent adlı '
+        'beş çocuk farklı oyuncaklarda oynamaktadır.\n'
+        '- Her çocuk yalnız bir oyuncakta oynamıştır.\n'
+        '- Fidan tahterevallide oynamamıştır.\n'
+        '- Gamze ile Kerem aynı oyuncakta oynamamıştır.';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: ExamScenarioPassageView(text: passage),
+          ),
+        ),
+      ),
+    );
+
+    expect(textContainingPlain('Fidan'), findsWidgets);
+    expect(textContainingPlain('Her çocuk'), findsOneWidget);
+    expect(find.byType(FittedBox), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

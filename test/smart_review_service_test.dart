@@ -37,23 +37,26 @@ void main() {
     expect(grown.intervalDays, 30);
   });
 
-  test('selection prioritizes wrong ids then weak topics up to target', () {
+  test('selection prioritizes wrong ids then remediation then weak topics', () {
     final selected = SmartReviewLogic.selectQuestionIds(
       wrongQuestionIds: ['w1', 'w2', 'w3'],
+      remediationQuestionIds: ['r1', 'r2'],
       weakTopicQuestionIds: ['a1', 'a2', 'a3', 'a4', 'w2'],
       schedules: const {},
       now: now,
-      target: 5,
+      target: 6,
       daySeed: 42,
     );
-    expect(selected.length, 5);
+    expect(selected.length, 6);
     expect(selected.toSet().intersection({'w1', 'w2', 'w3'}).length, 3);
-    expect(selected.where((id) => id.startsWith('a')).length, 2);
+    expect(selected.contains('r1'), isTrue);
+    expect(selected.where((id) => id.startsWith('a')).length, 1);
   });
 
   test('due wrong questions come before not-due ones', () {
     final selected = SmartReviewLogic.selectQuestionIds(
       wrongQuestionIds: ['later', 'due'],
+      remediationQuestionIds: const [],
       weakTopicQuestionIds: const [],
       schedules: {
         'later': ReviewSchedule(
@@ -76,17 +79,18 @@ void main() {
     expect(SmartReviewService.dailyTarget, 15);
   });
 
-  test('selection never invents ids outside wrongs+weak pool', () {
-    final pool = {'w1', 'w2', 'a1'};
+  test('selection never invents ids outside wrongs+remediation+weak pool', () {
+    final pool = {'w1', 'w2', 'a1', 'r1'};
     final selected = SmartReviewLogic.selectQuestionIds(
       wrongQuestionIds: ['w1', 'w2'],
+      remediationQuestionIds: ['r1'],
       weakTopicQuestionIds: ['a1'],
       schedules: const {},
       now: now,
       target: 15,
       daySeed: 99,
     );
-    expect(selected.length, 3);
+    expect(selected.length, 4);
     expect(selected.toSet().difference(pool), isEmpty);
   });
 
@@ -94,6 +98,7 @@ void main() {
   test('selection stops at available pool size when pool < target', () {
     final selected = SmartReviewLogic.selectQuestionIds(
       wrongQuestionIds: ['w1'],
+      remediationQuestionIds: const [],
       weakTopicQuestionIds: ['a1', 'a2'],
       schedules: const {},
       now: now,

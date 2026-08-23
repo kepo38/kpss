@@ -14,7 +14,8 @@ class AppConfigService extends ChangeNotifier {
   static final AppConfigService instance = AppConfigService._();
 
   bool _loaded = false;
-  bool _wrongNotebookBubbleEnabled = false;
+  /// Panel varsayılanı açık; API yüklenene kadar balon görünsün (banner ile aynı mantık).
+  bool _wrongNotebookBubbleEnabled = true;
   String _wrongNotebookBubbleLabel = 'YANLIŞ DEFTERİM';
   /// API gelmezse / yüklenmeden önce banner açık (mevcut davranış).
   bool _bannerAdsEnabled = true;
@@ -78,8 +79,10 @@ class AppConfigService extends ChangeNotifier {
       if (res.statusCode != 200) return;
       final map = jsonDecode(utf8.decode(res.bodyBytes));
       if (map is! Map) return;
-      _wrongNotebookBubbleEnabled =
-          map['wrongNotebookBubbleEnabled'] == true;
+      if (map.containsKey('wrongNotebookBubbleEnabled')) {
+        _wrongNotebookBubbleEnabled =
+            map['wrongNotebookBubbleEnabled'] == true;
+      }
       final label = map['wrongNotebookBubbleLabel']?.toString().trim();
       if (label != null && label.isNotEmpty) {
         _wrongNotebookBubbleLabel = label;

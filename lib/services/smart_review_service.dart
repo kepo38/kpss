@@ -6,9 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/kpss_curriculum.dart';
 import '../models/question_model.dart';
+import '../models/subject_performance.dart';
 import '../widgets/countdown_widget.dart';
 import 'content_bank_service.dart';
+import 'performance_summary_service.dart';
 import 'question_fetch_service.dart';
+import 'weak_point_remediation_service.dart';
 
 /// Günlük spaced-repetition seti.
 /// Öncelik: yanlış defteri (vadesi gelen önce) → %60 altı zayıf konular → SRS erteleme (oturum sonrası).
@@ -72,9 +75,12 @@ class SmartReviewService extends ChangeNotifier {
     }
 
     final weakTopics = _weakTopics(type, bank, subjectId: subjectId);
-    // Adımlar 1–2: yanlışlar (vade önce) → zayıf konular. Adım 3 (SRS) scheduleAfter*.
+    final remediationIds = WeakPointRemediationService.instance
+        .remediationQuestionIds(type, subjectId: subjectId);
+    // Adımlar 1–3: yanlışlar → telafi (top 3 zayıf konu) → düşük başarı konuları.
     final selected = SmartReviewLogic.selectQuestionIds(
       wrongQuestionIds: wrongIds,
+      remediationQuestionIds: remediationIds,
       weakTopicQuestionIds: [
         for (final w in weakTopics) ...w.questionIds,
       ],
@@ -113,12 +119,12 @@ class SmartReviewService extends ChangeNotifier {
     if (_packIds.isNotEmpty &&
         _packDay == SmartReviewLogic.dayKey(DateTime.now()) &&
         _packType == type.name) {
-      return '${_packIds.length} soru · yanlış + zayıf konular';
+      return '${_packIds.length} soru · yanlış + telafi + zayıf konular';
     }
     if (wrong == 0 && weak == 0) {
       return 'Önce konu testi çöz, sonra akıllı tekrar gelsin';
     }
-    return 'Yanlış + düşük başarı · günlük $dailyTarget soru';
+    return 'Yanlış + telafi + düşük başarı · günlük $dailyTarget soru';
   }
 
   bool hasMaterial(KpssType type, {String? subjectId}) {
@@ -185,6 +191,10 @@ class SmartReviewService extends ChangeNotifier {
       }
     }
     final weak = _weakTopics(type, bank, subjectId: subjectId);
+    final topWeak = WeakPointRemediationService.instance.topWeakTopics(
+      type,
+      subjectId: subjectId,
+    );
     return SmartReviewPack(
       dayKey: _packDay ?? SmartReviewLogic.dayKey(DateTime.now()),
       kpssType: type,
@@ -193,6 +203,7 @@ class SmartReviewService extends ChangeNotifier {
       completed: _packCompleted,
       wrongCount: wrongIds.length,
       weakTopicCount: weak.length,
+      topWeakTopics: topWeak,
     );
   }
 
@@ -304,6 +315,7 @@ class SmartReviewPack {
   final bool completed;
   final int wrongCount;
   final int weakTopicCount;
+  final List<WeakTopicStat> topWeakTopics;
 
   const SmartReviewPack({
     required this.dayKey,
@@ -313,6 +325,7 @@ class SmartReviewPack {
     required this.completed,
     required this.wrongCount,
     required this.weakTopicCount,
+    this.topWeakTopics = const [],
   });
 
   int get size => questionIds.length;
@@ -377,10 +390,11 @@ abstract final class SmartReviewLogic {
     );
   }
 
-  /// Yanlışlar (vadesi gelen önce) → zayıf konu soruları → hedefe kadar.
-  /// Adım 3 (SRS erteleme) [scheduleAfterWrong] / [scheduleAfterCorrect] ile oturum sonrası.
+  /// Yanlışlar (vadesi gelen önce) → telafi (top 3 zayıf konu) → zayıf konu soruları.
+  /// Adım 4 (SRS erteleme) [scheduleAfterWrong] / [scheduleAfterCorrect] ile oturum sonrası.
   static List<String> selectQuestionIds({
     required List<String> wrongQuestionIds,
+    required List<String> remediationQuestionIds,
     required List<String> weakTopicQuestionIds,
     required Map<String, ReviewSchedule> schedules,
     required DateTime now,
@@ -411,6 +425,7 @@ abstract final class SmartReviewLogic {
     }
 
     takeFrom(wrongQuestionIds, dueOnly: false);
+    takeFrom(remediationQuestionIds, dueOnly: false);
     takeFrom(weakTopicQuestionIds, dueOnly: true);
     if (selected.length < target) {
       takeFrom(weakTopicQuestionIds, dueOnly: false);

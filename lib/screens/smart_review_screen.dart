@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/kpss_curriculum.dart';
 import '../models/quiz_result.dart';
+import '../models/subject_performance.dart';
 import '../services/ad_manager.dart';
 import '../services/premium_service.dart';
 import '../services/smart_review_service.dart';
@@ -208,10 +209,11 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                               pack.completed
                                   ? 'Bugünkü tekrarı tamamladın. Yarın yeni set hazır.'
                                   : subjectName != null
-                                      ? '$subjectName · yanlış defteri ve düşük '
-                                          'başarı konularından seçilmiş '
+                                      ? '$subjectName · yanlış defteri, telafi '
+                                          've düşük başarı konularından '
                                           '${pack.size} soru.'
-                                      : 'Yanlış defteri ve düşük başarı konularından '
+                                      : 'Yanlış defteri, en çok yanlış yaptığın konular '
+                                          've düşük başarı konularından '
                                           'seçilmiş ${pack.size} soru.',
                               style: TextStyle(
                                 height: 1.4,
@@ -237,6 +239,21 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                                 ),
                               ],
                             ),
+                            if (pack.topWeakTopics.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Telafi odaklı konular',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: Color(0xFFFF8A96),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              for (final topic in pack.topWeakTopics)
+                                _TopWeakTopicRow(stat: topic),
+                            ],
                           ],
                         ),
                       ),
@@ -258,10 +275,15 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                       const _HowRow(
                         index: '2',
                         text:
-                            'Başarı oranı %60 altındaki konulardan sorular eklenir.',
+                            'En çok yanlış yaptığın 3 konudan telafi soruları eklenir.',
                       ),
                       const _HowRow(
                         index: '3',
+                        text:
+                            'Başarı oranı %60 altındaki konulardan sorular tamamlanır.',
+                      ),
+                      const _HowRow(
+                        index: '4',
                         text:
                             'Doğru bildiklerin ertelenir; yanlışlar yarın tekrar gelir.',
                       ),
@@ -556,6 +578,50 @@ class _HowRow extends StatelessWidget {
                 height: 1.35,
                 color: AppTheme.slate.withValues(alpha: 0.9),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TopWeakTopicRow extends StatelessWidget {
+  final WeakTopicStat stat;
+
+  const _TopWeakTopicRow({required this.stat});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF87171),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              stat.topicName,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+          ),
+          Text(
+            '${stat.wrongCount} yanlış',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFF87171).withValues(alpha: 0.92),
             ),
           ),
         ],

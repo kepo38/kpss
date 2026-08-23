@@ -126,7 +126,7 @@ class _QuizZoomViewportState extends State<QuizZoomViewport>
             transformationController: _controller,
             // Viewport’a sığdır → içteki ScrollView düzgün kayar.
             constrained: true,
-            clipBehavior: Clip.hardEdge,
+            clipBehavior: Clip.none,
             minScale: widget.minScale,
             maxScale: widget.maxScale,
             // 1×’te pan kapalı → dikey kaydırma ScrollView’da kalır.

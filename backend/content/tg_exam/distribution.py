@@ -1,4 +1,8 @@
-"""TG deneme soru dağılım şeması (120 soru)."""
+"""TG deneme soru dağılım şeması (120 soru).
+
+Not: TgExamGeneratorService varsayılan olarak osym_exam_order.OSYM_FULL_EXAM
+konu sırasını kullanır; bu sözlük panel özet / geriye uyum içindir.
+"""
 
 from __future__ import annotations
 
