@@ -179,22 +179,68 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
       previousUserId: previousUserId,
     );
     if (!mounted) return;
-    await _openQuestion(this.context, question.id);
+    await _openQuestion(this.context, question: question);
   }
 
-  Future<void> _openQuestion(BuildContext context, String questionId) async {
+  QuestionModel? _resolveWrongQuestion(
+    String questionId, {
+    QuestionModel? preferred,
+  }) {
+    if (preferred != null && preferred.id == questionId) return preferred;
+    final bank = ContentBankService.instance;
+    final fromBank = bank.questionById(questionId);
+    if (fromBank != null) return fromBank;
+    final session = _activeSessionFilter;
+    if (session == null) return null;
+    for (final q in session.prefetchedQuestions) {
+      if (q.id == questionId) return q;
+    }
+    return null;
+  }
+
+  Future<void> _openQuestion(
+    BuildContext context, {
+    String? questionId,
+    QuestionModel? question,
+  }) async {
+    final id = question?.id ?? questionId;
+    if (id == null || id.isEmpty) return;
+
     final bank = ContentBankService.instance;
     await bank.initialize();
-    final question = bank.questionById(questionId);
-    if (!mounted || question == null) return;
+    var resolved = _resolveWrongQuestion(id, preferred: question);
+    if (resolved == null) {
+      try {
+        await QuestionFetchService.instance.fetchByIds([id]);
+        resolved = bank.questionById(id);
+      } catch (e, st) {
+        debugPrint('Wrong notebook open fetch error: $e\n$st');
+      }
+    }
+    if (!mounted) return;
+    if (resolved == null) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        const SnackBar(
+          content: Text('Soru açılamadı. Bağlantını kontrol edip tekrar dene.'),
+        ),
+      );
+      return;
+    }
+
+    // Oturum prefetch'inden gelen gövdeyi bankaya al — sonraki açılışlar için.
+    bank.mergeSessionQuestions([resolved]);
+    final openQuestion = resolved;
 
     AdManager.instance.skipNextPageTransition();
-    final storedAnswer = bank.wrongSelectionFor(question.id);
-    final result = await Navigator.of(context).push<QuizResult>(
+    final storedAnswer = bank.wrongSelectionFor(openQuestion.id);
+    final nav = Navigator.of(this.context);
+    final result = await nav.push<QuizResult>(
       MaterialPageRoute<QuizResult>(
         builder: (_) => QuizScreen(
-          title: question.konuAdi.isNotEmpty ? question.konuAdi : 'Yanlış soru',
-          questions: [question],
+          title: openQuestion.konuAdi.isNotEmpty
+              ? openQuestion.konuAdi
+              : 'Yanlış soru',
+          questions: [openQuestion],
           fromWrongNotebook: true,
           skipResultDialog: true,
           initialAnswers: storedAnswer != null ? [storedAnswer] : null,
@@ -700,7 +746,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                                   onSimilar: () =>
                                       _openSimilar(context, q),
                                   onTap: () =>
-                                      _openQuestion(context, q.id),
+                                      _openQuestion(context, question: q),
                                   onShare: () {
                                     unawaited(
                                       WrongNotebookShareService.instance

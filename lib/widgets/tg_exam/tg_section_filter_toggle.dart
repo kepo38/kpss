@@ -24,15 +24,15 @@ class TgSectionFilterToggle extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: Colors.black.withValues(alpha: 0.42),
+        color: Colors.black.withValues(alpha: 0.35),
         border: Border.all(
-          color: TgExamTheme.crimson.withValues(alpha: 0.55),
+          color: TgExamTheme.accent.withValues(alpha: 0.45),
         ),
         boxShadow: [
           BoxShadow(
-            color: TgExamTheme.crimson.withValues(alpha: 0.22),
-            blurRadius: 14,
-            offset: const Offset(0, 3),
+            color: TgExamTheme.accent.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -49,7 +49,7 @@ class TgSectionFilterToggle extends StatelessWidget {
             Container(
               width: 1,
               height: 30,
-              color: TgExamTheme.crimson.withValues(alpha: 0.35),
+              color: TgExamTheme.accent.withValues(alpha: 0.28),
             ),
             _Segment(
               label: 'GK',
@@ -78,7 +78,7 @@ class _Segment extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected
-          ? TgExamTheme.crimsonBright.withValues(alpha: 0.92)
+          ? TgExamTheme.accent.withValues(alpha: 0.92)
           : Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -92,8 +92,8 @@ class _Segment extends StatelessWidget {
               fontWeight: FontWeight.w800,
               letterSpacing: 1.1,
               color: selected
-                  ? Colors.white
-                  : TgExamTheme.roseGlow.withValues(alpha: 0.88),
+                  ? TgExamTheme.ink
+                  : TgExamTheme.accentLight.withValues(alpha: 0.88),
             ),
           ),
         ),

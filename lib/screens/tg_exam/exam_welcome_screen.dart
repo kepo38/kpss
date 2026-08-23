@@ -12,6 +12,7 @@ import '../../screens/tg_exam/tg_exam_instant_summary_screen.dart';
 import '../../services/tg_exam_service.dart';
 import '../../widgets/app_back_button.dart';
 import '../../widgets/tg_exam_gates.dart';
+import '../../theme/tg_exam_theme.dart';
 
 /// TG deneme karşılama ekranı — bildirim deeplink veya liste tıklaması.
 class ExamWelcomeScreen extends StatefulWidget {
@@ -80,6 +81,34 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     if (exam == null || _starting) return;
     if (!await TgExamGates.requireGoogleAccount(context)) return;
     if (!mounted) return;
+
+    final shouldResume = resume || exam.hasOpenAttempt;
+    if (!exam.canEnterLiveExam) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            exam.hasOpenAttempt
+                ? 'Deneme süren doldu. Sonuçlar açıklanınca bildirileceksin.'
+                : 'Deneme katılım süresi sona erdi.',
+          ),
+          backgroundColor: TgExamTheme.accentDeep,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final timeLimit = exam.tgQuizTimeLimitMinutes();
+    if (timeLimit <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Deneme süren doldu.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() => _starting = true);
     final payload = await TgExamService.instance.fetchQuestions(exam.id);
     if (!mounted) return;
@@ -90,7 +119,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
           content: Text(
             payload.error ?? 'Sorular yüklenemedi. Deneme aktif mi?',
           ),
-          backgroundColor: _TgWelcomeTheme.crimsonDeep,
+          backgroundColor: TgExamTheme.accentDeep,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -101,11 +130,12 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     }
 
     final questionIds = payload.questions.map((q) => q.id).toList();
-    final initialAnswers = resume
+    final initialAnswers = shouldResume
         ? TgExamService.instance.initialAnswersFor(exam, questionIds)
         : List<String?>.filled(payload.questions.length, null);
-    final initialIndex = resume ? (exam.myAttempt?.currentIndex ?? 0) : 0;
-    final initialElapsed = resume
+    final initialIndex =
+        shouldResume ? (exam.myAttempt?.currentIndex ?? 0) : 0;
+    final initialElapsed = shouldResume
         ? Duration(seconds: exam.myAttempt?.elapsedSeconds ?? 0)
         : Duration.zero;
 
@@ -114,7 +144,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
         builder: (_) => QuizScreen(
           title: exam.title,
           questions: payload.questions,
-          timeLimitMinutes: exam.effectiveCountdownMinutes(),
+          timeLimitMinutes: timeLimit,
           initialIndex: initialIndex.clamp(0, payload.questions.length - 1),
           initialAnswers: initialAnswers,
           initialElapsed: initialElapsed,
@@ -161,7 +191,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
           SnackBar(
             content: Text(submitted.error!),
             duration: const Duration(seconds: 6),
-            backgroundColor: _TgWelcomeTheme.crimsonDeep,
+            backgroundColor: TgExamTheme.accentDeep,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -189,13 +219,13 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: _TgWelcomeTheme.ink,
+      backgroundColor: TgExamTheme.ink,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         foregroundColor: Colors.white,
-        leading: AppBackButton.onDark(accent: Colors.white),
+        leading: AppBackButton.onDark(accent: TgExamTheme.accentLight),
         title: Text(
           'Türkiye Geneli Deneme',
           style: TextStyle(
@@ -279,22 +309,31 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
             icon: Icons.play_circle_outline_rounded,
             label: 'Başlangıç',
             value: dateFmt.format(exam.startAt),
-            accent: _TgWelcomeTheme.crimsonBright,
+            accent: TgExamTheme.accentLight,
           ),
           const SizedBox(height: 10),
           _InfoCard(
             icon: Icons.flag_outlined,
             label: 'Bitiş',
             value: dateFmt.format(exam.endAt),
-            accent: const Color(0xFFFFB4B4),
+            accent: TgExamTheme.accent,
           ),
+          if (exam.hasOpenAttempt && exam.canEnterLiveExam) ...[
+            const SizedBox(height: 10),
+            _InfoCard(
+              icon: Icons.hourglass_bottom_outlined,
+              label: 'Kalan süren',
+              value: _formatRemaining(exam.tgQuizRemainingTime()),
+              accent: TgExamTheme.accentLight,
+            ),
+          ],
           const SizedBox(height: 10),
           _InfoCard(
             icon: Icons.menu_book_outlined,
             label: 'Kapsam',
             value:
                 '${exam.questionCount} Soru · ${TgExamConstants.examDurationMinutes} Dakika',
-            accent: Colors.white,
+            accent: Colors.white.withValues(alpha: 0.92),
           ),
           const SizedBox(height: 28),
           _PrimaryAction(
@@ -306,7 +345,11 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            'Türkiye genelinde eş zamanlı deneme · sonuçlar açıklandığında sıralama görünür.',
+            exam.hasOpenAttempt
+                ? 'Denemeden çıksan bile kişisel sayacın bitene kadar kaldığın '
+                    'yerden devam edebilirsin.'
+                : 'Türkiye genelinde eş zamanlı deneme · sonuçlar açıklandığında '
+                    'sıralama görünür.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
@@ -317,6 +360,14 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
         ],
       ),
     );
+  }
+
+  String _formatRemaining(Duration d) {
+    if (d <= Duration.zero) return 'Süre doldu';
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h > 0) return '$h sa $m dk';
+    return '$m dk';
   }
 
   double _progressValue(TgExamModel exam) {
@@ -330,15 +381,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
   }
 }
 
-/// TG karşılama ekranı — kırmızı / beyaz premium palet.
-abstract final class _TgWelcomeTheme {
-  static const ink = Color(0xFF12080C);
-  static const crimsonDeep = Color(0xFF6B0F1A);
-  static const crimson = Color(0xFF9B1B2E);
-  static const crimsonBright = Color(0xFFC41E3A);
-  static const roseGlow = Color(0xFFFF6B7A);
-}
-
+/// TG karşılama — lacivert / şampanya palet (`TgExamTheme`).
 class _TgStatusMeta {
   final String label;
   final Color bg;
@@ -407,17 +450,7 @@ class _TgWelcomeBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF1F0A10),
-            Color(0xFF8B1538),
-            Color(0xFF5C1024),
-            Color(0xFF12080C),
-          ],
-          stops: [0.0, 0.38, 0.72, 1.0],
-        ),
+        gradient: TgExamTheme.welcomeBackdropGradient,
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -449,7 +482,7 @@ class _TgWelcomeBackdrop extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    _TgWelcomeTheme.roseGlow.withValues(alpha: 0.18),
+                    TgExamTheme.roseGlow.withValues(alpha: 0.18),
                     Colors.transparent,
                   ],
                 ),
@@ -511,7 +544,7 @@ class _TgHeroBadge extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: const BoxDecoration(
-                  color: _TgWelcomeTheme.crimsonBright,
+                  color: TgExamTheme.crimsonBright,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -522,7 +555,7 @@ class _TgHeroBadge extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.6,
-                  color: _TgWelcomeTheme.crimsonDeep,
+                  color: TgExamTheme.crimsonDeep,
                 ),
               ),
             ],
@@ -755,7 +788,7 @@ class _InfoCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Icon(icon, color: _TgWelcomeTheme.crimsonDeep, size: 21),
+                child: Icon(icon, color: TgExamTheme.crimsonDeep, size: 21),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -817,6 +850,13 @@ class _PrimaryAction extends StatelessWidget {
           label: 'Deneme Başlama Zamanı: ${dateFmt.format(exam.startAt)}',
         );
       case TgExamStatus.active:
+        if (exam.hasOpenAttempt) {
+          return _GradientButton(
+            label: 'Denemeye Devam Et',
+            loading: starting,
+            onPressed: onResume,
+          );
+        }
         return _GradientButton(
           label: 'BAŞLA',
           loading: starting,
@@ -885,31 +925,21 @@ class _GradientButton extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         gradient: isPrimary
-            ? const LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Color(0xFFFFFFFF),
-                  Color(0xFFFFF0F2),
-                  Color(0xFFFFD4DA),
-                ],
-              )
+            ? TgExamTheme.primaryButtonGradient
             : null,
         color: isPrimary ? null : Colors.transparent,
         border: isPrimary
             ? null
-            : Border.all(color: Colors.white.withValues(alpha: 0.55), width: 1.5),
+            : Border.all(
+                color: TgExamTheme.accent.withValues(alpha: 0.55),
+                width: 1.5,
+              ),
         boxShadow: isPrimary
             ? [
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.28),
-                  blurRadius: 22,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: _TgWelcomeTheme.crimson.withValues(alpha: 0.35),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
+                  color: TgExamTheme.accent.withValues(alpha: 0.35),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
               ]
             : null,
@@ -929,8 +959,8 @@ class _GradientButton extends StatelessWidget {
                       child: CircularProgressIndicator(
                         strokeWidth: 2.5,
                         color: isPrimary
-                            ? _TgWelcomeTheme.crimsonDeep
-                            : Colors.white,
+                            ? TgExamTheme.ink
+                            : TgExamTheme.accentLight,
                       ),
                     )
                   : Text(
@@ -940,8 +970,8 @@ class _GradientButton extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         letterSpacing: isPrimary ? 1.4 : 0.6,
                         color: isPrimary
-                            ? _TgWelcomeTheme.crimsonDeep
-                            : Colors.white,
+                            ? TgExamTheme.ink
+                            : TgExamTheme.accentLight,
                       ),
                     ),
             ),
@@ -1015,7 +1045,7 @@ class _ErrorState extends StatelessWidget {
               onPressed: () => unawaited(onRetry()),
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: _TgWelcomeTheme.crimsonDeep,
+                foregroundColor: TgExamTheme.crimsonDeep,
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

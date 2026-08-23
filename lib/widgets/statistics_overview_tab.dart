@@ -9,9 +9,7 @@ import '../services/play_billing_service.dart';
 import '../services/practice_exam_service.dart';
 import '../services/premium_service.dart';
 import '../services/tg_exam_service.dart';
-import '../services/ai_coach_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/ai_coach_insight_card.dart';
 import '../widgets/pro_feature_lock.dart';
 import 'exam_premium_shell.dart';
 import 'net_development_chart.dart';
@@ -53,11 +51,6 @@ class StatisticsOverviewTab extends StatelessWidget {
               _WeeklySummaryCard(
                 summary: summary,
                 dueCount: ContentBankService.instance.wrongQuestionCount,
-              ),
-              const SizedBox(height: 22),
-              AiCoachInsightCard(
-                insight: AiCoachService.instance.buildExamTrendInsight(),
-                isPremium: isPremium,
               ),
               const SizedBox(height: 22),
               const ExamPremiumSectionLabel(

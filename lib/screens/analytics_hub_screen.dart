@@ -76,7 +76,8 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
         final favCount = FavoritesService.instance.count;
         final notesCount = NotesService.instance.count;
         final coachInsight =
-            AiCoachService.instance.buildTopicTestInsight(widget.kpssType);
+            AiCoachService.instance.buildTopicTestInsight(widget.kpssType) ??
+            AiCoachService.instance.buildExamTrendInsight();
         final weeklyPlan =
             WeeklyStudyPlanService.instance.buildPlan(widget.kpssType);
 
@@ -122,10 +123,7 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   days: weeklyPlan,
                   isPremium: widget.isPremium,
                 ),
-                const AccountLinkCard(
-                  margin: EdgeInsets.only(top: 12),
-                ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 AnalyticsStudyVault(
                   wrongCount: wrongCount,
                   favoriteCount: favCount,
@@ -162,10 +160,13 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   subjects: subjects,
                   kpssType: widget.kpssType,
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 AiCoachInsightCard(
                   insight: coachInsight,
                   isPremium: widget.isPremium,
+                ),
+                const AccountLinkCard(
+                  margin: EdgeInsets.only(top: 20),
                 ),
               ],
             ),

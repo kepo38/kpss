@@ -150,6 +150,52 @@ class TgExamModel {
 
   bool get hasSubmittedAttempt => myAttempt?.isSubmitted == true;
 
+  bool get hasOpenAttempt =>
+      myAttempt != null && !myAttempt!.isSubmitted;
+
+  int get sessionDurationMinutes => durationMinutes > 0
+      ? durationMinutes
+      : TgExamConstants.examDurationMinutes;
+
+  /// Kişisel sayaçta kalan süre (çıkıp geri gelene kadar duraklar).
+  Duration tgQuizRemainingTime({DateTime? now}) {
+    if (!hasOpenAttempt) {
+      return effectiveCountdownLimit(now: now);
+    }
+    final t = now ?? DateTime.now();
+    final sessionCap = Duration(minutes: sessionDurationMinutes);
+    final elapsed = Duration(seconds: myAttempt!.elapsedSeconds);
+    final personalLeft = sessionCap - elapsed;
+    if (personalLeft <= Duration.zero) return Duration.zero;
+    if (!t.isBefore(endAt)) return Duration.zero;
+    final untilEnd = endAt.difference(t);
+    if (untilEnd <= Duration.zero) return Duration.zero;
+    return personalLeft < untilEnd ? personalLeft : untilEnd;
+  }
+
+  /// QuizScreen geri sayım limiti — devam ederken kalan süreye göre.
+  int tgQuizTimeLimitMinutes({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    if (hasOpenAttempt) {
+      final remaining = tgQuizRemainingTime(now: t);
+      if (remaining <= Duration.zero) return 0;
+      final elapsed = Duration(seconds: myAttempt!.elapsedSeconds);
+      final total = elapsed + remaining;
+      final minutes = (total.inSeconds / 60).ceil();
+      return minutes.clamp(1, sessionDurationMinutes);
+    }
+    return effectiveCountdownMinutes(now: t);
+  }
+
+  /// Deneme penceresi açıkken tekrar giriş (sayaç bitene / gönderilene kadar).
+  bool get canEnterLiveExam {
+    if (hasSubmittedAttempt || isResultsPublished) return false;
+    final now = DateTime.now();
+    if (now.isBefore(startAt) || !now.isBefore(endAt)) return false;
+    if (!hasOpenAttempt) return true;
+    return tgQuizRemainingTime(now: now) > Duration.zero;
+  }
+
   /// Türkiye geneli deneme penceresi hâlâ açık (bitiş saatine kadar).
   bool get isExamWindowOpen => DateTime.now().isBefore(endAt);
 

@@ -252,6 +252,15 @@ class TgExamService extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 12));
       if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final body = jsonDecode(utf8.decode(response.bodyBytes))
+              as Map<String, dynamic>;
+          final model = TgExamModel.fromJson(body);
+          _upsertLocal(model);
+          notifyListeners();
+        } catch (e) {
+          debugPrint('TgExamService.saveProgress parse: $e');
+        }
         return true;
       }
       debugPrint(

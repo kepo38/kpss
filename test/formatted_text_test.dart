@@ -884,6 +884,31 @@ void main() {
     expect(prepared, contains('Sonuç:\n'));
   });
 
+  test('inline cdot math span uses alphabetic baseline alignment', () {
+    const style = TextStyle(fontSize: 18, height: 1.5);
+    final spans = FormattedText.parseSpans(
+      r'Tablodaki verilere göre $x \cdot y$ çarpımı kaçtır?',
+      style,
+    );
+
+    WidgetSpan? mathSpan;
+    void walk(InlineSpan span) {
+      if (span is WidgetSpan) {
+        mathSpan ??= span;
+      } else if (span is TextSpan) {
+        span.children?.forEach(walk);
+      }
+    }
+    for (final span in spans) {
+      walk(span);
+    }
+
+    expect(mathSpan, isNotNull);
+    expect(mathSpan!.alignment, PlaceholderAlignment.baseline);
+    expect(mathSpan!.baseline, TextBaseline.alphabetic);
+    expect(FormattedText.usesDisplayMath(r'x \cdot y'), isFalse);
+  });
+
   test('prepareExamDisplayText preserves inline subscript math', () {
     const raw =
         r'kenarları $k_A$, $k_B$ ve $k_C$ birim; $k_A < k_B < k_C$ olduğuna göre';

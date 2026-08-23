@@ -33,6 +33,7 @@ import '../services/question_view_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/exam_typography.dart';
 import '../utils/solution_preview.dart';
+import '../utils/tg_exam_subject_filter.dart';
 import '../utils/wrong_notebook_session_navigation.dart';
 import '../models/wrong_notebook_session_filter.dart';
 import '../widgets/app_back_button.dart';
@@ -50,6 +51,7 @@ import '../widgets/question_rating_bar.dart';
 import '../widgets/osym_badge.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/tg_exam/tg_section_filter_toggle.dart';
+import '../widgets/tg_exam/tg_subject_filter_bar.dart';
 import '../widgets/quiz_drawing_overlay.dart';
 import '../widgets/quiz_zoom_daily_hint.dart';
 import '../widgets/quiz_zoom_viewport.dart';
@@ -158,6 +160,7 @@ class _QuizScreenState extends State<QuizScreen>
   final ScrollController _chipScrollController = ScrollController();
   final TransformationController _contentZoom = TransformationController();
   TgSectionFilter _tgSectionFilter = TgSectionFilter.all;
+  String? _tgSubjectKey;
 
   late final AnimationController _flashCtrl;
   late final Animation<double> _flashOpacity;
@@ -184,21 +187,60 @@ class _QuizScreenState extends State<QuizScreen>
   Color get _quizInkSoft => _tgLiveExam ? TgExamTheme.inkSoft : AppTheme.inkSoft;
 
   List<int> _visibleQuestionIndices() {
-    final total = widget.questions.length;
     if (!_tgLiveExam) {
-      return List.generate(total, (i) => i);
+      return List.generate(widget.questions.length, (i) => i);
     }
-    switch (_tgSectionFilter) {
-      case TgSectionFilter.gy:
-        final end = TgExamConstants.gyQuestionCount.clamp(0, total);
-        return List.generate(end, (i) => i);
-      case TgSectionFilter.gk:
-        final start = TgExamConstants.gkStartIndex.clamp(0, total);
-        if (start >= total) return const [];
-        return List.generate(total - start, (i) => i + start);
-      case TgSectionFilter.all:
-        return List.generate(total, (i) => i);
+    return tgVisibleQuestionIndices(
+      questions: widget.questions,
+      section: _tgSectionFilter,
+      subjectKey: _tgSubjectKey,
+    );
+  }
+
+  void _onTgSectionChanged(TgSectionFilter next) {
+    setState(() {
+      _tgSectionFilter = next;
+      _tgSubjectKey = null;
+    });
+    _syncCurrentToVisibleFilter();
+  }
+
+  void _onTgSubjectChanged(String? next) {
+    setState(() => _tgSubjectKey = next);
+    _syncCurrentToVisibleFilter();
+  }
+
+  void _syncCurrentToVisibleFilter() {
+    final visible = _visibleQuestionIndices();
+    if (visible.isEmpty) return;
+    if (!visible.contains(_currentIndex)) {
+      _goTo(visible.first);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollChipIntoView(_currentIndex);
+      });
     }
+  }
+
+  void _scrollChipIntoView(int questionIndex) {
+    if (!_chipScrollController.hasClients) return;
+    final visible = _visibleQuestionIndices();
+    final listIndex = visible.indexOf(questionIndex);
+    if (listIndex < 0) return;
+    const chipWidth = 34.0;
+    const separator = 6.0;
+    const horizontalPadding = 16.0;
+    final itemStride = chipWidth + separator;
+    final viewport = _chipScrollController.position.viewportDimension;
+    final targetCenter =
+        horizontalPadding + listIndex * itemStride + chipWidth / 2;
+    final offset =
+        (targetCenter - viewport / 2).clamp(0.0, _chipScrollController.position.maxScrollExtent);
+    _chipScrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -732,7 +774,8 @@ class _QuizScreenState extends State<QuizScreen>
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),
           content: Text(
-            'İlerlemeniz kaydedilir. Daha sonra kaldığınız yerden devam edebilirsiniz.',
+            'İlerlemen kaydedilir. Kişisel sayacın duraklar; sayaç bitene kadar '
+            'kaldığın yerden devam edebilirsin.',
             style: TextStyle(
               height: 1.45,
               color: Colors.white.withValues(alpha: 0.78),
@@ -1899,6 +1942,12 @@ class _QuizScreenState extends State<QuizScreen>
         reviewWrongs ? _buildWrongSessionFilter(result) : null;
 
     if (sessionFilter != null) {
+      final wrongModels = widget.questions
+          .where((q) => result.wrongQuestionIds.contains(q.id))
+          .toList();
+      if (wrongModels.isNotEmpty) {
+        ContentBankService.instance.mergeSessionQuestions(wrongModels);
+      }
       await ContentBankService.instance.updateAnswerOutcomes(
         wrongQuestionIds: result.wrongQuestionIds,
         correctQuestionIds: result.correctQuestionIds,
@@ -2115,11 +2164,21 @@ class _QuizScreenState extends State<QuizScreen>
               child: Transform.translate(
                 offset: const Offset(8, 0),
                 child: SizedBox(
-                  width: (titleW * 0.4).clamp(96.0, 220.0),
-                  child: EmbossedAppBarTitle(
-                    testTitle,
-                    alignLeft: true,
-                  ),
+                  width: titleW.clamp(120.0, 800.0),
+                  child: _tgLiveExam
+                      ? FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: EmbossedAppBarTitle(
+                            testTitle,
+                            alignLeft: true,
+                            fontSize: 14,
+                          ),
+                        )
+                      : EmbossedAppBarTitle(
+                          testTitle,
+                          alignLeft: true,
+                        ),
                 ),
               ),
             ),
@@ -2328,8 +2387,7 @@ class _QuizScreenState extends State<QuizScreen>
                       center: _tgLiveExam
                           ? TgSectionFilterToggle(
                               selected: _tgSectionFilter,
-                              onChanged: (next) =>
-                                  setState(() => _tgSectionFilter = next),
+                              onChanged: _onTgSectionChanged,
                             )
                           : null,
                       leading: widget.fromWrongNotebook
@@ -2343,6 +2401,16 @@ class _QuizScreenState extends State<QuizScreen>
                   },
                 ),
                 if (!widget.fromWrongNotebook) ...[
+                  if (_tgLiveExam && _tgSectionFilter != TgSectionFilter.all)
+                    TgSubjectFilterBar(
+                      section: _tgSectionFilter,
+                      selectedSubjectKey: _tgSubjectKey,
+                      subjectCounts: tgSubjectCountsInSection(
+                        questions: widget.questions,
+                        section: _tgSectionFilter,
+                      ),
+                      onChanged: _onTgSubjectChanged,
+                    ),
                   SizedBox(
                     height: 40,
                     child: ListView.separated(

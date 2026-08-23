@@ -72,23 +72,18 @@ class _WeeklyStudyPlanCardState extends State<WeeklyStudyPlanCard>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _PlanSectionHeader(
-          weekProgress: weekProgress,
-          totalTasks: totalTasks,
-          dynamicHint: dynamicHint,
-          pulse: _pulseController,
-        ),
-        const SizedBox(height: 12),
-        _DynamicEngineStrip(
-          weakCount: weakCount,
-          subjectCount: subjectCount,
-          weekProgress: weekProgress,
-          pulse: _pulseController,
-        ),
-        const SizedBox(height: 14),
         _PremiumPlanShell(
           child: Column(
             children: [
+              _CompactPlanHeader(
+                weekProgress: weekProgress,
+                totalTasks: totalTasks,
+                dynamicHint: dynamicHint,
+                weakCount: weakCount,
+                subjectCount: subjectCount,
+                pulse: _pulseController,
+              ),
+              const SizedBox(height: 12),
               _WeekTimeline(
                 days: days,
                 selectedIndex: _selectedIndex,
@@ -96,7 +91,7 @@ class _WeeklyStudyPlanCardState extends State<WeeklyStudyPlanCard>
                 weekProgress: weekProgress,
                 onSelect: _selectDay,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 280),
                 switchInCurve: Curves.easeOutCubic,
@@ -170,16 +165,21 @@ class _WeeklyStudyPlanCardState extends State<WeeklyStudyPlanCard>
   }
 }
 
-class _PlanSectionHeader extends StatelessWidget {
+/// Başlık + performans özeti tek satırda; kart dışına taşmaz.
+class _CompactPlanHeader extends StatelessWidget {
   final double weekProgress;
   final int totalTasks;
   final String dynamicHint;
+  final int weakCount;
+  final int subjectCount;
   final Animation<double> pulse;
 
-  const _PlanSectionHeader({
+  const _CompactPlanHeader({
     required this.weekProgress,
     required this.totalTasks,
     required this.dynamicHint,
+    required this.weakCount,
+    required this.subjectCount,
     required this.pulse,
   });
 
@@ -292,6 +292,22 @@ class _PlanSectionHeader extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            _EngineChip(
+              icon: Icons.track_changes_rounded,
+              label: weakCount > 0 ? '$weakCount telafi' : 'Telafi yok',
+              accent: weakCount > 0 ? const Color(0xFFF87171) : null,
+            ),
+            _EngineChip(
+              icon: Icons.menu_book_rounded,
+              label: '$subjectCount ders',
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -351,76 +367,6 @@ class _LiveBadge extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _DynamicEngineStrip extends StatelessWidget {
-  final int weakCount;
-  final int subjectCount;
-  final double weekProgress;
-  final Animation<double> pulse;
-
-  const _DynamicEngineStrip({
-    required this.weakCount,
-    required this.subjectCount,
-    required this.weekProgress,
-    required this.pulse,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.champagne.withValues(alpha: 0.07),
-            AppTheme.champagne.withValues(alpha: 0.02),
-          ],
-        ),
-        border: Border.all(color: AppTheme.champagne.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        children: [
-          AnimatedBuilder(
-            animation: pulse,
-            builder: (context, _) {
-              return Icon(
-                Icons.auto_graph_rounded,
-                size: 18,
-                color: Color.lerp(
-                  AppTheme.champagne.withValues(alpha: 0.75),
-                  AppTheme.champagne,
-                  pulse.value,
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Performans motoru aktif',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.onPage(context).withValues(alpha: 0.82),
-              ),
-            ),
-          ),
-          _EngineChip(
-            icon: Icons.track_changes_rounded,
-            label: weakCount > 0 ? '$weakCount telafi' : 'Telafi yok',
-            accent: weakCount > 0 ? const Color(0xFFF87171) : null,
-          ),
-          const SizedBox(width: 6),
-          _EngineChip(
-            icon: Icons.menu_book_rounded,
-            label: '$subjectCount ders',
-          ),
-        ],
-      ),
     );
   }
 }
@@ -571,7 +517,7 @@ class _WeekTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 82,
+      height: 70,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -776,6 +722,10 @@ class _SelectedDayPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const maxVisibleTasks = 3;
+    final visibleTasks = day.tasks.take(maxVisibleTasks).toList();
+    final hiddenCount = day.tasks.length - visibleTasks.length;
+
     final content = Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -924,16 +874,29 @@ class _SelectedDayPanel extends StatelessWidget {
                     taskCount: day.tasks.length,
                     dark: day.isToday,
                   ),
-                  const SizedBox(height: 12),
-                  for (var i = 0; i < day.tasks.length; i++) ...[
+                  const SizedBox(height: 10),
+                  for (var i = 0; i < visibleTasks.length; i++) ...[
                     _AnimatedTaskTile(
                       key: ValueKey('${day.date}-$i'),
-                      task: day.tasks[i],
+                      task: visibleTasks[i],
                       index: i + 1,
                       dark: day.isToday,
                       delayMs: i * 45,
                     ),
-                    if (i < day.tasks.length - 1) const SizedBox(height: 8),
+                    if (i < visibleTasks.length - 1) const SizedBox(height: 8),
+                  ],
+                  if (hiddenCount > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '+$hiddenCount görev daha',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: day.isToday
+                            ? Colors.white.withValues(alpha: 0.55)
+                            : AppTheme.mutedOnPage(context),
+                      ),
+                    ),
                   ],
                 ],
               ),

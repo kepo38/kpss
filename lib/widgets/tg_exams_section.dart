@@ -216,10 +216,7 @@ class _TgExamCard extends StatelessWidget {
     final waitingResults = exam.isScoreCalculatedWaitingResults;
     final net = attempt?.net ?? 0;
     final showBadge = showLiveBadge && _isLiveNow && !exam.hasSubmittedAttempt;
-    final canEnter = !exam.hasSubmittedAttempt &&
-        (exam.status == TgExamStatus.active ||
-            exam.status == TgExamStatus.inProgress ||
-            _isLiveNow);
+    final canEnter = exam.canEnterLiveExam;
     final meta = _metaLine(exam, participants);
 
     return Padding(
@@ -349,7 +346,7 @@ class _TgExamCard extends StatelessWidget {
                 onPressed: () => _openWelcome(context),
                 icon: const Icon(Icons.play_arrow_rounded, size: 20),
                 label: Text(
-                  exam.status == TgExamStatus.inProgress
+                  exam.hasOpenAttempt
                       ? 'Devam Et'
                       : 'Denemeye Başla',
                 ),

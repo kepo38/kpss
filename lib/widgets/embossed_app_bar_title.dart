@@ -8,6 +8,7 @@ class EmbossedAppBarTitle extends StatelessWidget {
   final int maxLines;
   final TextOverflow overflow;
   final bool alignLeft;
+  final double fontSize;
 
   const EmbossedAppBarTitle(
     this.title, {
@@ -15,15 +16,16 @@ class EmbossedAppBarTitle extends StatelessWidget {
     this.maxLines = 1,
     this.overflow = TextOverflow.ellipsis,
     this.alignLeft = false,
+    this.fontSize = 21,
   });
 
-  static const _baseStyle = TextStyle(
-    fontFamily: 'serif',
-    fontWeight: FontWeight.w800,
-    fontSize: 21,
-    letterSpacing: 0.35,
-    height: 1.05,
-  );
+  TextStyle get _baseStyle => TextStyle(
+        fontFamily: 'serif',
+        fontWeight: FontWeight.w800,
+        fontSize: fontSize,
+        letterSpacing: 0.35,
+        height: 1.05,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -69,14 +71,14 @@ class EmbossedAppBarTitle extends StatelessWidget {
           ).createShader(bounds),
           child: layer(
             title,
-            const TextStyle(
+            TextStyle(
               fontFamily: 'serif',
               fontWeight: FontWeight.w800,
-              fontSize: 21,
+              fontSize: fontSize,
               letterSpacing: 0.35,
               height: 1.05,
               color: Colors.white,
-              shadows: [
+              shadows: const [
                 Shadow(
                   color: Color(0xCCFFF5DC),
                   offset: Offset(0, -1),

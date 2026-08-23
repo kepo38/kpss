@@ -1816,9 +1816,13 @@ class FormattedText extends StatelessWidget {
               usesDisplayMath(raw);
           spans.add(
             WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
+              // Display kesir/kök: middle; cümle içi $x \cdot y$: alphabetic baseline.
+              alignment: display
+                  ? PlaceholderAlignment.middle
+                  : PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: display ? 2 : 1),
+                padding: EdgeInsets.symmetric(vertical: display ? 2 : 0),
                 child: buildMathWidget(raw, base: base, display: display),
               ),
             ),
@@ -2170,7 +2174,8 @@ class _ExamLine extends StatelessWidget {
 
         final row = Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: children,
         );
 

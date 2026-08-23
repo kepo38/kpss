@@ -1,10 +1,6 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-08-23  
-> **Dart paketi:** `kpss_akademi`  
-> **Android applicationId (Play Store):** `com.hedefkamu.hedef_kamu`  
-> **Sürüm (mobil):** `1.0.1+3`  
-> **Stack:** Flutter mobil + Django REST API + içerik paneli (`/panel/`) + Unfold admin (`/admin/`)
+> **Son güncelleme:** 2026-08-23 (gece turu)
 
 Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kaynakta toplar. Yeni özellik eklendiğinde, mevcut bir özellik değiştirildiğinde veya kaldırıldığında **aynı PR/commit ile güncellenmelidir**.
 
@@ -23,6 +19,73 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 **Referans dosyalar:** `lib/screens/`, `lib/services/`, `lib/widgets/`, `backend/content/`
 
+> **Dart paketi:** `kpss_akademi` · **Android applicationId:** `com.hedefkamu.hedef_kamu` · **Sürüm:** `1.0.1+3` · **Stack:** Flutter + Django REST + panel (`/panel/`)
+
+### 23 Ağustos 2026 (gece) — TG ders filtresi · koçluk konumu · yanlış defteri · inline math · TG tema
+
+Bu tur: TG canlı denemede **GY/GK + ders pill** navigasyonu; TG **çık-gir kişisel sayaç** ve lacivert/şampanya tema; **HEDEF KAMU KOÇLUK** yalnızca Gelişim sekmesinde; Gelişim layout düzeni; yanlış defterinden oturum sonrası soru açma; inline `$…$` baseline hizası; Google yapıştırma tarih/etiket kuralları (commit `64e087d` ile birlikte).
+
+#### Google Docs çözüm yapıştırma — tarih ve etiket koruması
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Tarih koruması** | `DD.MM.YYYY` satır ortasında bölünmez | `formatted_text.dart`, `math-render.js`, `rich_text_common.py` |
+| **Yapışık tarih** | `Adımları10.06.2024` → satır kırığı; cümle sonu + tarih ayrılır | `restoreCollapsedBreaks` (Dart/JS/Python) |
+| **Çözüm etiketleri** | `Sonu:`, `Ayrımı:`, `Sonuç:`, `Başlangıcı ve Ayrımı:`, `Değerinin Bulunması:` öncesi/sonrası satır kırığı | üç katman |
+| **Formül sonrası bölüm** | `bulunur.$…$ Değerinin Bulunması:` ayrılır | `formatted_text.dart` |
+| **solutionMode** | Çözüm metni soru outline pipeline’ına düşmez | `exam_solution_view.dart`, `formatted_text.dart` |
+| **Testler** | Yumurta çözümü yapıştırma + tarih senaryoları | `formatted_text_test.dart`, `test_rich_text.py` |
+
+#### Soru metni — inline math baseline
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Satır içi formül hizası** | `$x \cdot y$` gibi inline math `PlaceholderAlignment.baseline` + `alphabeticBaseline` ile metin satırına oturur (üst simge gibi yükselme giderildi) | `formatted_text.dart`, `_ExamLine` |
+| **Test** | `inline cdot math span uses alphabetic baseline alignment` | `formatted_text_test.dart` |
+
+#### Gelişim sekmesi — layout · haftalık plan · HEDEF KAMU KOÇLUK
+
+**Sekme sırası (yukarıdan aşağı):**
+
+1. Başarı özeti (hero)
+2. Haftalık çalışma planı (kompakt)
+3. Yanlış · Favoriler · Notlarım (`AnalyticsStudyVault`)
+4. DERSLER — yatay kaydırmalı ders kartları + nokta göstergesi
+5. **HEDEF KAMU KOÇLUK** (`AiCoachInsightCard`)
+6. Google hesap bağlama kartı
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Koçluk konumu** | AI koç kartı **yalnızca Gelişim** sekmesinde; Deneme → Genel Bakış’tan kaldırıldı | `analytics_hub_screen.dart`, `statistics_overview_tab.dart` |
+| **Birleşik içgörü** | Önce konu testi zayıf ders/konu; veri yoksa deneme trendi (`buildExamTrendInsight`) | `ai_coach_service.dart`, `analytics_hub_screen.dart` |
+| **Koç erişimi** | `ProFeatureLock` — Premium olmayan kullanıcıda bulanık + upsell | `ai_coach_insight_card.dart` |
+| **Haftalık plan kompakt** | Başlık + motor şeridi tek kart içinde; gün panelinde en fazla 3 görev + «+N görev daha» | `weekly_study_plan_card.dart` |
+| **Zayıf nokta kartı** | Gelişim’deki ayrı `WeakPointRemediationCard` kaldırıldı; telafi mantığı Akıllı Tekrar servisinde | `weak_point_remediation_service.dart`, `smart_review_service.dart` |
+
+#### Yanlış defteri — oturum sonrası soru açma
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Sonuç → yanlış defteri** | Test bitince «Yanlışlarıma git» çalışır | `quiz_screen.dart` |
+| **Oturum prefetch** | Sonuç ekranından gelen yanlış soru gövdeleri bankaya merge edilir | `quiz_screen.dart`, `content_bank_service.dart` |
+| **Karttan açma** | `_resolveWrongQuestion`: bank → oturum prefetch → API fetch; başarısızsa snackbar | `wrong_questions_screen.dart` |
+| **Tam model geçişi** | Kart tıklamasında `QuestionModel` doğrudan `_openQuestion`’a verilir | `wrong_questions_screen.dart` |
+
+#### TG deneme — ders filtresi · re-entry · tema
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **GY / GK toggle** | Üst şeritte GY (1–60) / GK (61–120); tekrar tıklayınca tüm sorular | `tg_section_filter_toggle.dart`, `quiz_screen.dart` |
+| **Ders pill filtresi** | GY → Türkçe / Matematik; GK → Tarih / Coğrafya / Vatandaşlık / Güncel; soru numaralarının üstünde ortalanmış premium bar | `tg_subject_filter_bar.dart`, `tg_exam_subject_filter.dart` |
+| **ÖSYM sıra eşlemesi** | `dersAdi` yoksa indeks: 30+30+27+18+9+6 | `tgSubjectKeyByIndex`, `TgExamConstants` |
+| **Chip kaydırma** | Filtre değişince aktif chip görünür alana animasyonla gelir | `_scrollChipIntoView` |
+| **Kişisel sayaç** | Çıkıp geri gelince kalan süre duraklar; `canEnterLiveExam`, `hasOpenAttempt`, `tgQuizRemainingTime` | `tg_exam_models.dart`, `exam_welcome_screen.dart` |
+| **Devam Et** | Açık attempt varken karşılama + liste kartında «Denemeye Devam Et» | `tg_exams_section.dart`, `exam_welcome_screen.dart` |
+| **Progress upsert** | `saveProgress` yanıtından yerel exam modeli güncellenir | `tg_exam_service.dart` |
+| **Tema** | Kırmızı/crimson yerine uygulama lacivert + şampanya (`TgExamTheme`) | `tg_exam_theme.dart`, `tg_section_filter_toggle.dart` |
+| **AppBar başlık** | TG deneme adı tek satır; `FittedBox` + 14pt | `embossed_app_bar_title.dart`, `quiz_screen.dart` |
+| **Çıkış diyalogu** | «Kişisel sayacın duraklar; sayaç bitene kadar devam edebilirsin» metni | `quiz_screen.dart` |
+| **Testler** | Model re-entry + subject filter birim testleri | `tg_exam_model_test.dart`, `tg_exam_subject_filter_test.dart` |
 
 ### 23 Ağustos 2026 — Google çözüm önizleme · günlük detaylı çözüm kotası · AI koç · yanlış defteri kapasitesi · TG analiz
 
@@ -78,9 +141,9 @@ Eski model (**test başına 4 ücretsiz**) kaldırıldı. Yeni model **cihaz gen
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |:---|:---|:---|:---|
-| **AI Koç kartı** | Kural tabanlı trend yorumu (son oturum zayıf ders/konu) | `ai_coach_service.dart`, `ai_coach_insight_card.dart`, `analytics_hub_screen.dart` | Ücretsiz |
-| **Haftalık çalışma planı** | 7 günlük rota; **bugün** ücretsiz, ileri günler Pro kilit | `weekly_study_plan_service.dart`, `weekly_study_plan_card.dart`, `ProFeatureLock` | Kısmi Pro |
-| **Zayıf nokta telafisi** | En çok yanlış 3 konudan 15 soruluk paket | `weak_point_remediation_service.dart`, `weak_point_remediation_card.dart` | Pro |
+| **HEDEF KAMU KOÇLUK** | Kural tabanlı kişisel yorum; konu testi zayıf ders/konu + deneme trendi fallback; **yalnızca Gelişim sekmesinde** (DERSLER altında) | `ai_coach_service.dart`, `ai_coach_insight_card.dart`, `analytics_hub_screen.dart` | **Premium** (`ProFeatureLock`) |
+| **Haftalık çalışma planı** | 7 günlük rota; kompakt kart; **bugün** ücretsiz, ileri günler Pro kilit | `weekly_study_plan_service.dart`, `weekly_study_plan_card.dart`, `ProFeatureLock` | Kısmi Pro |
+| **Zayıf nokta telafisi** | En çok yanlış 3 konudan 15 soruluk paket — **Gelişim kartı kaldırıldı**; mantık Akıllı Tekrar’da | `weak_point_remediation_service.dart`, `smart_review_service.dart` | Pro |
 | **Deneme içgörüsü** | Yayınevi denemesi kaydında geçen aya göre net farkı + konu önerisi | `exam_insight_service.dart`, `exam_insight_dialog.dart`, `add_exam_sheet.dart` | Ücretsiz |
 
 #### Yanlış defteri — arşiv kapasitesi ve oturum filtresi
@@ -112,8 +175,8 @@ Eski model (**test başına 4 ücretsiz**) kaldırıldı. Yeni model **cihaz gen
 | Alan | Ne yapıldı | Dosyalar |
 |:---|:---|:---|
 | **Profil ekranı** | Genişletilmiş modül listesi, Gelişim/istatistik bağlantıları | `profile_screen.dart` |
-| **Analitik hub** | AI koç + haftalık plan entegrasyonu | `analytics_hub_screen.dart` |
-| **İstatistik** | Deneme kaydı sonrası insight diyalogu | `statistics_screen.dart`, `statistics_overview_tab.dart` |
+| **Analitik hub** | AI koç + haftalık plan + vault + ders carousel sıralaması | `analytics_hub_screen.dart` |
+| **İstatistik** | Deneme kaydı sonrası insight diyalogu; **Genel Bakış’ta AI koç yok** | `statistics_screen.dart`, `statistics_overview_tab.dart` |
 
 ### 22 Ağustos 2026 — Misafir↔Google aktarım · yanlış defteri · Telegram OCR
 
@@ -604,7 +667,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (kırık beyaz zemin, siyah yazı) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler sekmesi** | 2 sütunlu ders ızgarası (daha alçak kartlar); kartta soru sayısı + ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Özel Testler** | Dersler altında 3D `ÖZEL TESTLER`; kategoriler: **HARİTALARLA COĞRAFYA**, **TARİH KRONOLOJİ**, **PADİŞAHLAR VE ANTLAŞMALAR**, **ÇELDİRİCİSİ GÜÇLÜ**; bayrak + keyword ile 20’lik sanal testler | `special_tests_entry.dart`, `special_tests_screen.dart`, `special_map_geography_screen.dart`, `backend/content/special_tests.py`, `special_question_tags.py` | Ücretsiz; ilgili ders günlük kotası |
-| **Gelişim sekmesi** | Genel doğruluk (yalnızca **konu testleri**; günün mini denemesi 20 sorusu sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz |
+| **Gelişim sekmesi** | Genel doğruluk (yalnızca **konu testleri**; günün mini denemesi 20 sorusu sayılmaz), haftalık plan, yanlış/favori/not kasası, yatay kaydırmalı ders kartları, **HEDEF KAMU KOÇLUK**; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz (+ koç Premium) |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
 | **Konu detayı** | İstatistik, özet kart destesi, test listesi; bitirilen testte **BAŞLA** yanında yeşil ✓ | `topic_detail_screen.dart`, `topic_summary_swipe_deck.dart` | Günlük kota |
 | **Ders okuyucu** | Konuya özel bilgi kartları (markdown / zengin metin) | `lib/screens/lesson_reader_screen.dart` | Ücretsiz |
@@ -641,7 +704,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Pro Üyelik üst bar CTA** | Kompakt pill (maskot yok); Ana/Dersler/Deneme sekmelerinde | `lib/widgets/premium_header_button.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
 | **Gelişim · ODAK CTA** | Gelişim sekmesi sağ üst: **mavi↔mor** gradient **ODAK** pill → `FocusModeScreen` | `app_shell_top_bar.dart`, `main_shell.dart` | Ücretsiz |
 
-**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur. Google Docs yapıştırmada `restoreCollapsedBreaks` + `structureSolutionOutline` ile adım başlıkları, A–E denemeleri ve formül listeleri otomatik yapılandırılır (panel JS + Python + Flutter parity). `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
+**Biçimlendirme (soru metni):** Panelde `**kalın**`, `__altı__`, `{green}`/`{red}`/`{blue}`, `$...$` / `$$...$$` LaTeX. Mobilde `FormattedText` + `preserveLineBreaks` ile satır kırılımları korunur; display math (`\begin{array}`, `\frac` vb.) korunur; **inline math** metin satırına baseline hizalı. Google Docs yapıştırmada `restoreCollapsedBreaks` + `structureSolutionOutline` ile adım başlıkları, A–E denemeleri, formül listeleri ve **tarih/etiket koruması** (`Sonu:`, `Ayrımı:`, `DD.MM.YYYY`) otomatik yapılandırılır (panel JS + Python + Flutter parity). `\hline` çıkarma çizgisi metin renginde `\rule` satırına dönüştürülür; soru kökünde metin ve formül aynı punto kullanır.
 
 **ÖSYM yazı standartları (`lib/theme/exam_typography.dart`):**
 
@@ -673,7 +736,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
 | **Akıllı tekrar** | Ders filtresi; set yanlış defteri + %60 altı konular; «AKILLI TEKRARI BAŞLAT» → `PremiumGate.requirePremium` (PRO rozeti + kilit ikonu); ekranı görmek ücretsiz, **oturumu başlatmak Premium** | `lib/screens/smart_review_screen.dart`, `lib/services/smart_review_service.dart`, `premium_gate.dart` | **Premium** (başlat) |
-| **Yanlış defteri** | Konu testlerinden yanlışlar; kullanıcı başına yerel; karttan kaldır; inceleme (**Çıkış**, **testte işaretlenen yanlış şık** kırmızı / doğru yeşil, **Not Al**). **Tüm yanlışları çöz** quiz başlığı boş (AppBar’da YANLIŞLARIM yok). Normal testte «Daha önce» toast. **Akıllı Tekrar** pill (başlat Premium). **Kitaptaki Yanlışlarım:** manuel foto; **1. foto ücretsiz**, **2.+** Pro değilse ödüllü reklam; **kalem/annotate ücretsiz**. Misafir: metin buzlu → Google’da tam aktarım (`relayUserScopedServices`) | `wrong_questions_screen.dart`, `wrong_notebook_manual_screen.dart`, `content_bank_service.dart`, `auth_service.dart`, `wrong_notebook/*`, `quiz_wrong_notebook_banner.dart` | Liste/annotate **ücretsiz**; benzer **Premium**; ekstra foto **reklam veya Premium** |
+| **Yanlış defteri** | Konu testlerinden yanlışlar; kullanıcı başına yerel; karttan kaldır; inceleme (**Çıkış**, **testte işaretlenen yanlış şık** kırmızı / doğru yeşil, **Not Al**). Oturum sonrası «Yanlışlarıma git» → karttan soru açma (prefetch + API fallback). **Tüm yanlışları çöz** quiz başlığı boş (AppBar’da YANLIŞLARIM yok). Normal testte «Daha önce» toast. **Akıllı Tekrar** pill (başlat Premium). **Kitaptaki Yanlışlarım:** manuel foto; **1. foto ücretsiz**, **2.+** Pro değilse ödüllü reklam; **kalem/annotate ücretsiz**. Misafir: metin buzlu → Google’da tam aktarım (`relayUserScopedServices`) | `wrong_questions_screen.dart`, `wrong_notebook_manual_screen.dart`, `content_bank_service.dart`, `auth_service.dart`, `wrong_notebook/*`, `quiz_wrong_notebook_banner.dart`, `quiz_screen.dart` | Liste/annotate **ücretsiz**; benzer **Premium**; ekstra foto **reklam veya Premium** |
 | **Benzer sorular** | Embedding tabanlı benzer set; kaynak + %88+ aynı kök hariç; ücretsizde `ProUpsellSheet` | `wrong_questions_screen.dart`, `pro_upsell_sheet.dart`, `embeddings.py` | **Premium** |
 | **Boş kasa CTA** | Yanlış yokken 3 adımlı boş durum; şampanya etiket «Yanlış defteriyle deneme oluşturabilirsin»; ana CTA «Derslerden test çöz» | `lib/widgets/wrong_notebook/wrong_notebook_empty_state.dart` | Ücretsiz |
 
@@ -683,7 +746,8 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), yatay kaydırmalı ders kartları + nokta göstergesi, çalışma kasası; **Puan Hesaplama yok**; üst barda **ODAK · Pomodoro** CTA | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart`, `app_shell_top_bar.dart` | Ücretsiz |
+| **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), haftalık plan, çalışma kasası, yatay kaydırmalı ders kartları + nokta göstergesi, **HEDEF KAMU KOÇLUK** (DERSLER altında); **Puan Hesaplama yok**; üst barda **ODAK · Pomodoro** CTA | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart`, `app_shell_top_bar.dart`, `ai_coach_insight_card.dart` | Ücretsiz (+ koç **Premium**) |
+| **HEDEF KAMU KOÇLUK** | Premium koç kartı: konu testi + deneme trendi birleşik içgörü; Deneme sekmesinde **gösterilmez** | `ai_coach_insight_card.dart`, `analytics_hub_screen.dart` | **Premium** |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
 | **Favorilerim** | Soru favorileri + özet kartlar (Favori / Tekrar Et); özet karta tıklanınca tam ekran kart görüntüleyici; soru orijinal test bağlamında açılır | `favorites_screen.dart`, `topic_summary_swipe_deck.dart` (`SummaryCardFace.showViewer`), `summary_card_progress_service.dart` | Ücretsiz |
@@ -699,7 +763,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 | **Deneme sekmesi** | AppBar’da **PUAN HESAPLAMA**; FAB ile deneme ekleme; **TG Denemelerim** (Aktif/Geçmiş) | `statistics_screen.dart`, `tg_exams_section.dart`, `puan_hesaplama_button.dart` | **Ücretsiz** |
 | **Stüdyo · Deneme Analizi** | Aynı `StatisticsScreen`; `onNavigate` (PremiumGate yok) | `home_tools_module_list.dart` | **Ücretsiz** |
 | **Puan Hesaplama** | GY/GK net ve puan; etiketler **GY-Net** / **GK-Net** | `lib/screens/puan_hesaplama_screen.dart` | Ücretsiz |
-| **Genel bakış** | Haftalık özet, net gelişim grafiği, GK/GY ayrımı | `lib/widgets/statistics_overview_tab.dart`, `lib/widgets/net_development_chart.dart` | Ücretsiz |
+| **Genel bakış** | Haftalık özet, net gelişim grafiği, GK/GY ayrımı (**AI koç bu sekmede yok — yalnızca Gelişim**) | `lib/widgets/statistics_overview_tab.dart`, `lib/widgets/net_development_chart.dart` | Ücretsiz |
 | **Yayınevleri** | Yayınevine göre performans karşılaştırma | `lib/widgets/statistics_publishers_tab.dart` | Ücretsiz |
 | **Denemeler listesi** | Manuel deneme ekleme / silme | `lib/widgets/statistics_exams_tab.dart` | Ücretsiz |
 | **Deneme ekleme** | GK/GY ders bazlı doğru/yanlış/boş → net hesabı | `lib/screens/premium/add_exam_sheet.dart`, `lib/services/practice_exam_service.dart` | Ücretsiz |
@@ -1234,19 +1298,20 @@ Aylık **Türkiye Geneli** deneme sistemi. Normal **konu testleri** (`TopicTest`
 |---|---|---|---|
 | **Deneme sekmesi — TG listesi** | «TG Denemelerim»: **Aktif Denemeler** (sonuçlar henüz açılmamış) ve **Geçmiş Denemeler** (sonuçlar yayımlandı) | `tg_exams_section.dart` | 🟢 KPSS tipine göre filtre |
 | **Yayında rozeti** | `start_at ≤ now < end_at` iken kartta **Yayında** | `tg_exams_section.dart` | 🟢 |
-| **Karşılama ekranı** | Bildirim deeplink veya listeden; özet, **Başla** / **Devam et** / **Sonuçlar** | `exam_welcome_screen.dart` | 🔵 Google (soru çekme) |
-| **130 dk geri sayım** | **2 saat 10 dakika** geriye sayım; cevap sonrası süre durmaz | `tg_exam_constants.dart`, `quiz_screen.dart` | 🟢 Oturumda reklamsız |
+| **Karşılama ekranı** | Bildirim deeplink veya listeden; özet, **Başla** / **Devam Et** / **Sonuçlar**; açık attempt + kişisel süre kaldıysa otomatik devam | `exam_welcome_screen.dart` | 🔵 Google (soru çekme) |
+| **130 dk geri sayım** | **2 saat 10 dakika** geriye sayım; çıkıp geri gelince **kişisel sayaç duraklar** (`tgQuizRemainingTime`) | `tg_exam_constants.dart`, `tg_exam_models.dart`, `quiz_screen.dart` | 🟢 Oturumda reklamsız |
+| **GY / GK + ders filtresi** | Üst şerit GY/GK; altında ders pill’leri (TR/Mat veya Tarih/Coğ/Vat/Güncel); soru chip listesi filtrelenir | `tg_section_filter_toggle.dart`, `tg_subject_filter_bar.dart`, `tg_exam_subject_filter.dart`, `quiz_screen.dart` | 🟢 |
 | **Son 10 dk uyarı** | Kalan ≤10 dk: bir kez uyarı sesi + sayaç urgent mod | `answer_feedback_service.dart` | 🟢 |
 | **Süre bitince otomatik bitir** | Sayaç 0 → otomatik gönderim; diyalog yok | `quiz_screen.dart` | 🟢 |
 | **Reklamsız oturum** | Banner, bitiş interstitial, çözüm kilidi yok | `exam_welcome_screen.dart`, `ad_manager.dart` | 🟢 |
 | **ÖSYM rozeti gizli** | Havuz sorularında TG quiz’te «ÖSYM SORDU» gösterilmez | `quiz_screen.dart`, API strip | 🟢 |
 | **Çözüm inceleme** | Sonuç sonrası tüm şıklar + çözümler; süre yok | `tg_exam_result_screen.dart` | 🟢 Sonuç açıkken |
-| **İlerleme / devam** | Cevaplar + süre sunucuda; yarım oturum devam | `tg_exam_service.dart` | 🔵 Google |
+| **İlerleme / devam** | Cevaplar + süre sunucuda; yarım oturum devam; `saveProgress` yanıtı yerel listeyi günceller | `tg_exam_service.dart`, `tg_exam_models.dart` | 🔵 Google |
 | **Anlık özet** | Gönderim sonrası net, doğru/yanlış/boş | `tg_exam_instant_summary_screen.dart` | 🟢 |
 | **Sonuç detayı** | Türkiye geneli sıra, ders net dağılımı, çözüm inceleme | `tg_exam_result_screen.dart` | 🟢 |
 | **Push deeplink** | `tg_exam` → karşılama; `tg_exam_results` → sonuç | `app_navigator.dart`, `push.py` | 🟢 |
 
-**TG quiz farkları:** başarı yüzdesi / görüntülenme yok; şık seçince anında kayıt; chip altın/beyaz; **Tamamla** düğmesi; `statisticsTestId` yok.
+**TG quiz farkları:** başarı yüzdesi / görüntülenme yok; şık seçince anında kayıt; chip altın/beyaz; GY/GK + ders pill navigasyonu; AppBar başlık tek satır 14pt; lacivert/şampanya tema; **Tamamla** düğmesi; `statisticsTestId` yok.
 
 ### TG — Soru üretimi ve cooldown
 
