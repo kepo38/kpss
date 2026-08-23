@@ -28,6 +28,7 @@ from .announcements import (
     send_scheduled_tg_exam_announcement,
 )
 from .ranking import (
+    auto_submit_open_attempts,
     finalize_due_tg_exams,
     publish_exam_results,
     refresh_exam_rankings,
@@ -49,6 +50,7 @@ __all__ = [
     "TG_EXAM_ANNOUNCEMENT_LEAD",
     "announcement_push_due_at",
     "attempt_to_dict",
+    "auto_submit_open_attempts",
     "build_announcement_push_copy",
     "cooldown_excluded_public_ids",
     "dispatch_due_tg_exam_announcements",

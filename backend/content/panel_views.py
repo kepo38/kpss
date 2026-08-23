@@ -47,7 +47,7 @@ from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
-from .svg_sanitize import extract_svg, is_safe_svg
+from .svg_sanitize import sanitize_figure_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
     content_fingerprint,
@@ -64,7 +64,7 @@ from .osym_cikmis import (
     osym_cikmis_suggestions,
     record_osym_cikmis_oneri,
 )
-from .rich_text import normalize_pasted_solution
+from .rich_text_panel import normalize_pasted_solution
 from .panel_context import (
     mark_question_error_reports_reviewed,
     pending_error_report_count,
@@ -269,6 +269,12 @@ def _question_from_draft(draft: dict) -> types.SimpleNamespace:
         option_c=draft.get("option_c", ""),
         option_d=draft.get("option_d", ""),
         option_e=draft.get("option_e", ""),
+        options_are_images=bool(draft.get("options_are_images")),
+        option_a_image=None,
+        option_b_image=None,
+        option_c_image=None,
+        option_d_image=None,
+        option_e_image=None,
         correct_option=draft.get("correct_option", "A") or "A",
         solution=draft.get("solution", ""),
         figure_svg=draft.get("figure_svg", ""),
@@ -282,16 +288,82 @@ def _question_from_draft(draft: dict) -> types.SimpleNamespace:
     )
 
 
+def _apply_option_images_from_request(question: Question, request: HttpRequest) -> None:
+    """Görsel şık checkbox + A–E ImageField yükleme / temizleme."""
+    from .option_image_crop import VISUAL_OPTION_PLACEHOLDER, data_url_to_bytes
+
+    visual = request.POST.get("options_are_images") == "on"
+    question.options_are_images = visual
+    for letter in "ABCDE":
+        key = letter.lower()
+        field_name = f"option_{key}_image"
+        clear = request.POST.get(f"clear_{field_name}") == "on"
+        uploaded = request.FILES.get(field_name)
+        data_url = (request.POST.get(f"{field_name}_data") or "").strip()
+        current = getattr(question, field_name)
+        if clear:
+            if current:
+                try:
+                    current.delete(save=False)
+                except Exception:  # noqa: BLE001
+                    pass
+            setattr(question, field_name, None)
+            continue
+        payload = None
+        filename = ""
+        if uploaded:
+            payload = uploaded
+            filename = f"opt_{letter}_{question.public_id}_{uploaded.name}"
+        else:
+            raw = data_url_to_bytes(data_url) if data_url else None
+            if raw:
+                payload = ContentFile(raw)
+                filename = f"opt_{letter}_{question.public_id}.png"
+        if payload is None:
+            continue
+        if current:
+            try:
+                current.delete(save=False)
+            except Exception:  # noqa: BLE001
+                pass
+        getattr(question, field_name).save(filename, payload, save=False)
+    if visual:
+        for attr in ("option_a", "option_b", "option_c", "option_d", "option_e"):
+            if not (getattr(question, attr) or "").strip():
+                setattr(question, attr, VISUAL_OPTION_PLACEHOLDER)
+    else:
+        for letter in "ABCDE":
+            field_name = f"option_{letter.lower()}_image"
+            current = getattr(question, field_name)
+            if current and request.POST.get(f"clear_{field_name}") != "on":
+                # Görsel mod kapalıysa mevcut crop'ları silmeyiz; yalnızca bayrak kapanır.
+                pass
+
+
 def _discard_question_image(question: Question) -> None:
-    """Soru görselini diskten sil — OCR sonrası yer kaplamasın."""
-    if question.image:
+    """Soru görselini diskten sil — OCR / Telegram tarama fotoğrafı kalmasın."""
+    if not question.image:
+        return
+    try:
         question.image.delete(save=False)
-        question.image = None
+    except Exception:  # noqa: BLE001 — dosya yoksa yine alanı temizle
+        pass
+    question.image = None
+
+
+def _discard_solution_image(question: Question) -> None:
+    """Çözüm görselini diskten sil."""
+    if not question.solution_image:
+        return
+    try:
+        question.solution_image.delete(save=False)
+    except Exception:  # noqa: BLE001
+        pass
+    question.solution_image = None
 
 
 def _sanitize_figure_svg(raw: str) -> str:
-    code = extract_svg(raw or "")
-    return code if is_safe_svg(code) else ""
+    return sanitize_figure_svg(raw)
 
 
 @login_required
@@ -743,8 +815,13 @@ def panel_pending_question_reject(
         is_published=False,
     )
     public_id = question.public_id
+    # Model.delete görseli de siler; önce açıkça boşalt (orphan media olmasın).
+    _discard_question_image(question)
     question.delete()
-    messages.success(request, f"{public_id} reddedildi ve silindi.")
+    messages.success(
+        request,
+        f"{public_id} reddedildi; kayıt ve kaynak görsel sunucudan silindi.",
+    )
     next_url = request.POST.get("next") or reverse("panel_pending_questions")
     return redirect(next_url)
 
@@ -1182,6 +1259,10 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             else OcrIngestLog.STATUS_SUCCESS
         ),
     )
+    from .option_image_crop import crops_to_data_urls
+
+    option_crops = getattr(result, "option_image_bytes", None) or {}
+    options_visual = bool(getattr(result, "options_visual", False) and option_crops)
     payload = {
         "ok": result.ok,
         "stem": result.stem,
@@ -1201,6 +1282,13 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         "image_phash": img_phash,
         "content_hash": c_hash,
         "duplicate": duplicate_payload(dup, match) if dup else None,
+        "optionsVisual": options_visual,
+        "options_are_images": options_visual,
+        "optionImageDataUrls": crops_to_data_urls(option_crops) if options_visual else {},
+        "optionBoxes": {
+            k: list(v)
+            for k, v in (getattr(result, "option_boxes", None) or {}).items()
+        },
     }
     return JsonResponse(
         payload,
@@ -1438,6 +1526,50 @@ def panel_topic_capacity(request: HttpRequest, topic_id: int) -> HttpResponse:
     return redirect("panel_topic", topic_id=topic.id, tab="tests")
 
 
+def _build_question_list_blocks(questions_qs):
+    """Olay grubu sorularını liste ekranında görsel bloklar halinde grupla."""
+    questions = list(questions_qs)
+    by_scenario: dict[int, list] = {}
+    standalone: list = []
+    for q in questions:
+        if q.scenario_id:
+            by_scenario.setdefault(q.scenario_id, []).append(q)
+        else:
+            standalone.append(q)
+
+    blocks: list[dict] = []
+    if by_scenario:
+        scenario_ids = list(by_scenario.keys())
+        totals = dict(
+            QuestionScenario.objects.filter(pk__in=scenario_ids)
+            .annotate(cnt=Count("questions"))
+            .values_list("id", "cnt")
+        )
+        scenarios = QuestionScenario.objects.filter(pk__in=scenario_ids).order_by(
+            "sort_order", "id"
+        )
+        for scenario in scenarios:
+            group = sorted(
+                by_scenario[scenario.id],
+                key=lambda q: (q.scenario_order, q.id),
+            )
+            total = totals.get(scenario.id, len(group))
+            blocks.append(
+                {
+                    "type": "scenario",
+                    "scenario": scenario,
+                    "questions": group,
+                    "shown_count": len(group),
+                    "total_count": total,
+                }
+            )
+
+    for q in sorted(standalone, key=lambda q: q.updated_at, reverse=True):
+        blocks.append({"type": "single", "question": q})
+
+    return blocks
+
+
 @login_required
 @staff_required
 def panel_topic(
@@ -1451,7 +1583,9 @@ def panel_topic(
 
     lessons = topic.lessons.order_by("sort_order", "id")
     summary_cards = topic.summary_cards.order_by("sort_order", "id")
-    questions = topic.questions.select_related("scenario").order_by("-updated_at")
+    questions = topic.questions.select_related("scenario").prefetch_related(
+        "tests"
+    ).order_by("-updated_at")
     if tab == "tests":
         from .test_grouping import merge_duplicate_titled_tests
         from .topic_slots import ensure_topic_test_slots
@@ -1462,7 +1596,24 @@ def panel_topic(
     scenarios = topic.question_scenarios.annotate(
         question_count=Count("questions")
     ).order_by("sort_order", "id")
+
+    selected_test_id = (request.GET.get("test_id") or "").strip()
+    selected_test = None
+    questions_filter_label = "Tümü"
+    if tab == "questions" and selected_test_id:
+        if selected_test_id == "none":
+            questions = questions.filter(tests__isnull=True)
+            questions_filter_label = "Teste atanmamış"
+        elif selected_test_id.isdigit():
+            selected_test = topic.tests.filter(pk=int(selected_test_id)).first()
+            if selected_test is not None:
+                questions = questions.filter(tests=selected_test).distinct()
+                questions_filter_label = selected_test.title
+
     questions_published_count = questions.filter(is_published=True).count()
+    question_blocks = (
+        _build_question_list_blocks(questions) if tab == "questions" else []
+    )
 
     return render(
         request,
@@ -1474,9 +1625,13 @@ def panel_topic(
             "lessons": lessons,
             "summary_cards": summary_cards,
             "questions": questions,
+            "question_blocks": question_blocks,
             "questions_published_count": questions_published_count,
             "tests": tests,
             "scenarios": scenarios,
+            "selected_test": selected_test,
+            "selected_test_id": selected_test_id,
+            "questions_filter_label": questions_filter_label,
             "page_title": topic.name,
         },
     )
@@ -1700,6 +1855,9 @@ def panel_scenario_edit(
         messages.success(request, "Olay grubu kaydedildi.")
         return redirect("panel_topic", topic_id=topic.id, tab="scenarios")
 
+    linked_question_count = (
+        scenario.questions.count() if scenario is not None else 0
+    )
     return render(
         request,
         "panel/scenario_form.html",
@@ -1707,6 +1865,7 @@ def panel_scenario_edit(
             "topic": topic,
             "subject": topic.subject,
             "scenario": scenario,
+            "linked_question_count": linked_question_count,
             "page_title": "Olay grubu" if scenario else "Yeni olay grubu",
         },
     )
@@ -1917,7 +2076,9 @@ def panel_question_edit(
                 save=False,
             )
         else:
+            # OCR alanı name="image" — asla kalıcı saklanmaz (yalnızca stem_image veya keep).
             stem_image = request.FILES.get("stem_image")
+            keep_existing = request.POST.get("keep_image") == "1"
             if stem_image:
                 _discard_question_image(question)
                 question.image.save(
@@ -1925,9 +2086,24 @@ def panel_question_edit(
                     stem_image,
                     save=False,
                 )
-            elif not request.POST.get("keep_image"):
+            elif not keep_existing:
+                # «Mevcut görseli koru» yoksa Telegram/OCR fotoğrafı diskten silinir.
+                # Geometri için figure_svg (vektör) yeterli; tarama PNG'si tutulmaz.
                 _discard_question_image(question)
 
+        solution_image = request.FILES.get("solution_image")
+        keep_solution_image = request.POST.get("keep_solution_image") == "1"
+        if solution_image:
+            _discard_solution_image(question)
+            question.solution_image.save(
+                f"solution_{question.public_id}_{solution_image.name}",
+                solution_image,
+                save=False,
+            )
+        elif not keep_solution_image:
+            _discard_solution_image(question)
+
+        _apply_option_images_from_request(question, request)
         _apply_question_scenario(question, target_topic, request.POST)
         question.save()
         if question.osym_sordu and question.osym_cikmis_adi:
@@ -2024,6 +2200,10 @@ def panel_question_edit(
             "question": question,
             "test_dd": test_dd,
             "scenarios": scenarios,
+            "scenarios_json": [
+                {"id": s.id, "title": s.title, "stem": s.stem}
+                for s in scenarios
+            ],
             "current_test": current_test,
             "topic_subtopics_json": topic_subtopics,
             "map_markers_json": list(question.map_markers or [])
@@ -2079,6 +2259,57 @@ def _copy_question_image(source: Question, dest: Question) -> None:
     )
 
 
+def _copy_option_images(source: Question, dest: Question) -> None:
+    """Kaynak sorunun A–E şık görsellerini yeni kayda kopyala."""
+    for letter in "ABCDE":
+        field_name = f"option_{letter.lower()}_image"
+        src_field = getattr(source, field_name)
+        if not src_field:
+            continue
+        try:
+            src_field.open("rb")
+            data = src_field.read()
+        except Exception:  # noqa: BLE001
+            continue
+        finally:
+            try:
+                src_field.close()
+            except Exception:  # noqa: BLE001
+                pass
+        if not data:
+            continue
+        name = src_field.name.rsplit("/", 1)[-1]
+        getattr(dest, field_name).save(
+            f"copy_{dest.public_id}_{name}",
+            ContentFile(data),
+            save=False,
+        )
+
+
+def _copy_solution_image(source: Question, dest: Question) -> None:
+    """Kaynak sorunun çözüm görselini yeni kayda kopyala."""
+    if not source.solution_image:
+        return
+    try:
+        source.solution_image.open("rb")
+        data = source.solution_image.read()
+    except Exception:  # noqa: BLE001
+        return
+    finally:
+        try:
+            source.solution_image.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if not data:
+        return
+    name = source.solution_image.name.rsplit("/", 1)[-1]
+    dest.solution_image.save(
+        f"copy_{dest.public_id}_{name}",
+        ContentFile(data),
+        save=False,
+    )
+
+
 @login_required
 @staff_required
 @require_POST
@@ -2100,6 +2331,7 @@ def panel_question_copy(
         option_c=source.option_c,
         option_d=source.option_d,
         option_e=source.option_e,
+        options_are_images=source.options_are_images,
         option_table=source.option_table,
         correct_option=source.correct_option,
         solution=source.solution,
@@ -2117,6 +2349,8 @@ def panel_question_copy(
         scenario_order=(source.scenario_order + 1) if source.scenario_id else 0,
     )
     _copy_question_image(source, copy)
+    _copy_option_images(source, copy)
+    _copy_solution_image(source, copy)
     copy.save()
     refresh_question_embedding(copy)
     test = assign_question_to_test(copy, source.topic, "auto")

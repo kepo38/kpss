@@ -448,17 +448,15 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     required int totalSummaryCount,
     required int lessonCount,
   }) {
+    // Yalnızca dolu kart sayısı — boş yuvalar (5 slot) kullanıcıya 6 gibi görünmesin.
     if (readySummaryCount > 0) {
-      if (totalSummaryCount > readySummaryCount) {
-        return '$readySummaryCount/$totalSummaryCount özet kart · kaydırarak çalış';
-      }
       return '$readySummaryCount özet kart · kaydırarak çalış';
     }
     if (lessonCount > 0) {
       return '$lessonCount bilgi kartı';
     }
     if (totalSummaryCount > 0) {
-      return '$totalSummaryCount kart · henüz hazır değil';
+      return 'Özet kartlar henüz hazır değil';
     }
     return null;
   }
@@ -677,14 +675,41 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 11,
-        letterSpacing: 2.2,
-        fontWeight: FontWeight.w600,
-        color: AppTheme.champagne,
+    final line = Expanded(
+      child: Container(
+        height: 1,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.champagne.withValues(alpha: 0),
+              AppTheme.champagne.withValues(alpha: 0.55),
+              AppTheme.champagne.withValues(alpha: 0),
+            ],
+          ),
+        ),
       ),
+    );
+
+    return Row(
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'serif',
+              fontSize: 13,
+              letterSpacing: 3.4,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.champagne,
+              height: 1.1,
+            ),
+          ),
+        ),
+        line,
+      ],
     );
   }
 }
@@ -729,86 +754,186 @@ class _TestRow extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1 : 0.62,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 2),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: enabled
+                ? AppTheme.champagne.withValues(alpha: 0.28)
+                : Colors.white.withValues(alpha: 0.08),
           ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: enabled
+                ? [
+                    AppTheme.champagne.withValues(alpha: 0.10),
+                    Colors.white.withValues(alpha: 0.04),
+                    AppTheme.inkSoft.withValues(alpha: 0.55),
+                  ]
+                : [
+                    Colors.white.withValues(alpha: 0.03),
+                    Colors.white.withValues(alpha: 0.015),
+                  ],
+          ),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.08),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        test.title,
-                        style: TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
+                      Flexible(
+                        child: Text(
+                          test.title,
+                          style: TextStyle(
+                            fontFamily: 'serif',
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: titleColor,
+                          ),
                         ),
                       ),
-                      if (metaParts.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          metaParts.join(' · '),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withValues(
-                              alpha: enabled ? 0.45 : 0.28,
-                            ),
+                      if (stats.attemptCount > 0) ...[
+                        const SizedBox(width: 8),
+                        Semantics(
+                          label: '${test.title} tamamlandı',
+                          child: const Icon(
+                            Icons.check_circle_rounded,
+                            size: 20,
+                            color: Color(0xFF22C55E),
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                if (stats.attemptCount > 0) ...[
-                  Semantics(
-                    label: '${test.title} tamamlandı',
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      size: 22,
-                      color: Color(0xFF22C55E),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                SizedBox(
-                  width: 72,
-                  height: 36,
-                  child: TextButton(
-                    onPressed: enabled && !busy ? onStart : null,
-                    style: TextButton.styleFrom(
-                      foregroundColor: enabled
-                          ? AppTheme.neonEdge
-                          : Colors.white.withValues(alpha: 0.28),
-                    ),
-                    child: busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppTheme.neonEdge,
-                            ),
-                          )
-                        : Text(enabled ? 'BAŞLA' : 'PASİF'),
-                  ),
+                const SizedBox(width: 12),
+                _PremiumStartButton(
+                  enabled: enabled,
+                  busy: busy,
+                  onPressed: enabled && !busy ? onStart : null,
                 ),
               ],
             ),
+            if (metaParts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                metaParts.join(' · '),
+                style: TextStyle(
+                  fontSize: 12,
+                  letterSpacing: 0.15,
+                  color: Colors.white.withValues(
+                    alpha: enabled ? 0.48 : 0.28,
+                  ),
+                ),
+              ),
+            ],
             if (enabled && quotaHint) ...[
               const SizedBox(height: 10),
               _DailyQuotaBanner(canWatchAdForBonus: canWatchAdForBonus),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Test satırı — başlıkla aynı hizada, champagne premium CTA.
+class _PremiumStartButton extends StatelessWidget {
+  final bool enabled;
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  const _PremiumStartButton({
+    required this.enabled,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = enabled ? 'Başla' : 'Pasif';
+    final borderColor = enabled
+        ? AppTheme.champagne.withValues(alpha: 0.7)
+        : Colors.white.withValues(alpha: 0.12);
+    final labelColor = enabled
+        ? AppTheme.champagneLight
+        : Colors.white.withValues(alpha: 0.32);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(22),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.18),
+        highlightColor: AppTheme.champagne.withValues(alpha: 0.08),
+        child: Ink(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: borderColor, width: 1.1),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: enabled
+                  ? [
+                      AppTheme.champagne.withValues(alpha: 0.28),
+                      AppTheme.champagne.withValues(alpha: 0.08),
+                      Colors.white.withValues(alpha: 0.04),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: 0.04),
+                      Colors.white.withValues(alpha: 0.02),
+                    ],
+            ),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: AppTheme.champagne.withValues(alpha: 0.18),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: busy
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.champagneLight,
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      height: 1,
+                      color: labelColor,
+                    ),
+                  ),
+          ),
         ),
       ),
     );

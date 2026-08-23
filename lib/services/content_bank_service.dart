@@ -831,7 +831,10 @@ class ContentBankService extends ChangeNotifier {
   }
 
   List<TopicSummaryCardModel> summaryCardsForTopic(String topicId) {
-    return _summaryCards.where((c) => c.topicId == topicId).toList()
+    // Boş slot kartları (yalnızca başlık) sayılmasın / desteye girmesin.
+    return _summaryCards
+        .where((c) => c.topicId == topicId && c.hasContent)
+        .toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   }
 
@@ -917,16 +920,23 @@ class ContentBankService extends ChangeNotifier {
     }
     _notifyProgress();
     unawaited(UserSavingsInsightService.instance.handleTestCompleted());
+    if (AuthService.instance.hasPermanentAccount &&
+        countsTowardErrorReportQuota(attempt)) {
+      unawaited(
+        QuestionAttemptService.instance.markTestCompleted(attempt.testId),
+      );
+    }
   }
 
   /// Tasarruf hesabı ve istatistikler için salt okunur deneme listesi.
   List<TestAttemptModel> get allAttempts => List.unmodifiable(_attempts);
 
-  /// Tamamlanan farklı konu testi sayısı (mini deneme hariç; sunucu ile aynı mantık).
+  /// Tamamlanan farklı konu testi sayısı (hata bildirimi / sunucu kotası ile aynı).
+  /// Mini deneme ve özel testler (`special_*`) sayılmaz — sunucuda TopicTest değil.
   int get completedTopicTestCount {
     final testIds = <String>{};
     for (final attempt in _attempts) {
-      if (countsTowardDailyHomework(attempt)) {
+      if (countsTowardErrorReportQuota(attempt)) {
         testIds.add(attempt.testId);
       }
     }
@@ -938,7 +948,7 @@ class ContentBankService extends ChangeNotifier {
     if (!AuthService.instance.hasPermanentAccount) return;
     final testIds = <String>{};
     for (final attempt in _attempts) {
-      if (countsTowardDailyHomework(attempt)) {
+      if (countsTowardErrorReportQuota(attempt)) {
         testIds.add(attempt.testId);
       }
     }
@@ -951,6 +961,16 @@ class ContentBankService extends ChangeNotifier {
   @visibleForTesting
   static bool countsTowardDailyHomework(TestAttemptModel attempt) {
     return !attempt.testId.startsWith(DailyMiniExamConstants.testIdPrefix);
+  }
+
+  /// Hata bildirimi kotası: yalnızca sunucuya yazılabilen konu testleri.
+  @visibleForTesting
+  static bool countsTowardErrorReportQuota(TestAttemptModel attempt) {
+    final id = attempt.testId;
+    if (id.isEmpty) return false;
+    if (id.startsWith(DailyMiniExamConstants.testIdPrefix)) return false;
+    if (id.startsWith('special_')) return false;
+    return true;
   }
 
   /// Bugün (yerel saat) bu derste tamamlanan konu testi sayısı.

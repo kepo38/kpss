@@ -73,6 +73,23 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertEqual(opts["C"], "15")
         self.assertEqual(opts["E"], "21")
 
+    def test_options_visual_payload_keys(self):
+        from content.ocr_gemini import _payload_option_boxes, _payload_options_visual
+
+        self.assertTrue(_payload_options_visual({"optionsVisual": True}))
+        self.assertTrue(_payload_options_visual({"gorisel_siklar": "true"}))
+        self.assertFalse(_payload_options_visual({"gorisel_siklar": False}))
+        boxes = _payload_option_boxes(
+            {
+                "optionBoxes": {
+                    "A": [0.1, 0.5, 0.15, 0.3],
+                    "E": [0.8, 0.5, 0.15, 0.3],
+                }
+            }
+        )
+        self.assertEqual(set(boxes.keys()), {"A", "E"})
+        self.assertAlmostEqual(boxes["A"][0], 0.1)
+
     def test_strip_osym_watermark(self):
         from content.ocr import _strip_watermarks
 

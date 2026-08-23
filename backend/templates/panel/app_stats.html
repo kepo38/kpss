@@ -4,7 +4,7 @@
   <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Uygulama durumu</div>
   <h1>Uygulama durumu</h1>
   <p class="lead">
-    Kurulum (cihaz), şu an uygulamada olanlar ve premium özeti.
+    Benzersiz kullanıcı, FCM jetonları, canlı oturum ve premium özeti.
     Canlı sayım son {{ active_window_minutes }} dakikadaki aktiviteye göre hesaplanır.
     Sayfa ~30 sn’de bir yenilenir.
   </p>
@@ -14,9 +14,21 @@
 
 <div class="app-stats-grid">
   <article class="app-stat-card app-stat-card--install">
-    <p class="app-stat-label">Kurulu cihaz</p>
-    <p class="app-stat-value">{{ stats.install_devices }}</p>
-    <p class="app-stat-hint">Aktif FCM jetonu olan telefon/tablet (bildirim açmış kurulumlar).</p>
+    <p class="app-stat-label">Benzersiz kullanıcı (FCM)</p>
+    <p class="app-stat-value">{{ stats.unique_token_users }}</p>
+    <p class="app-stat-hint">
+      En az bir aktif jetonu hesaba bağlı kullanıcı.
+      Yetim jeton: {{ stats.orphan_tokens }}
+    </p>
+  </article>
+
+  <article class="app-stat-card app-stat-card--install">
+    <p class="app-stat-label">Son görülen jeton</p>
+    <p class="app-stat-value">{{ stats.tokens_seen_24h }}</p>
+    <p class="app-stat-hint">
+      Son 24 saatte görülen aktif FCM jetonu.
+      Toplam aktif jeton: {{ stats.install_devices }}
+    </p>
   </article>
 
   <article class="app-stat-card app-stat-card--live">
@@ -53,8 +65,10 @@
 <div class="panel-card" style="margin-top:18px;">
   <h2 style="margin-top:0;">Nasıl okunur?</h2>
   <ul class="app-stats-notes">
-    <li><strong>Kurulu cihaz</strong> — Push jetonu kaydı olan cihaz sayısıdır; bildirim izni vermeyen kurulumlar burada görünmeyebilir.</li>
-    <li><strong>Şu an aktif</strong> — Uygulamayı açık tutup sunucuya istek atan (soru, profil, paket vb.) kullanıcılar.</li>
+    <li><strong>Benzersiz kullanıcı (FCM)</strong> — Bildirim jetonunu Google/misafir hesaba bağlamış farklı kişi sayısı. Aynı kişinin eski jetonları burayı şişirmez.</li>
+    <li><strong>Son görülen jeton</strong> — Son 24 saatte sunucuya görünen aktif FCM kaydı. Toplam aktif jeton yeniden kurulum / jeton yenileme ile daha yüksek olabilir.</li>
+    <li><strong>Yetim jeton</strong> — Hesaba bağlanmamış (giriş yapmamış) kurulumlar.</li>
+    <li><strong>Şu an aktif</strong> — Uygulamayı açık tutup sunucuya istek atan oturumlar.</li>
     <li><strong>Premium</strong> — Süresi dolmamış veya süresiz premium hesaplar.</li>
   </ul>
   <p class="media-hint" style="margin-bottom:0;">

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from .embeddings import refresh_question_embedding
 from .models import Question, TelegramBotSession
-from .rich_text import normalize_pasted_solution
+from .rich_text_telegram import normalize_telegram_solution
 
 _YES = frozenset({"evet", "e", "yes", "y"})
 _NO = frozenset({"hayır", "hayir", "h", "no", "n"})
@@ -96,10 +96,28 @@ def try_handle_conversation(
         return None
 
     if cancel:
-        clear_session(telegram_user_id)
+        photo_message_id = session.source_message_id
+        question = session.question
+        # Taslak Telegram sorusunu sil — panele düşmesin.
+        discarded = False
+        if (
+            question is not None
+            and not question.is_published
+            and question.submission_source == Question.SUBMISSION_SOURCE_TELEGRAM
+        ):
+            question.delete()
+            discarded = True
+        else:
+            clear_session(telegram_user_id)
+        if discarded:
+            return ConversationReply(
+                "İptal edildi.\n"
+                "Fotoğraf silindi; soru sunucuya / panele gönderilmedi.",
+                delete_photo_message_id=photo_message_id,
+            )
         return ConversationReply(
-            "Çözüm adımı iptal edildi.\n"
-            "Soru panele düştü — Onay bekleyen sorular listesinde."
+            "Çözüm adımı iptal edildi.",
+            delete_photo_message_id=photo_message_id,
         )
 
     normalized = text.strip().lower()
@@ -123,7 +141,7 @@ def try_handle_conversation(
         return ConversationReply("Lütfen Evet veya Hayır düğmesine basın (iptal: /iptal).")
 
     if session.step == TelegramBotSession.STEP_SOLUTION_TEXT:
-        solution = normalize_pasted_solution(text, entities=entities)
+        solution = normalize_telegram_solution(text, entities=entities)
         if not solution:
             return ConversationReply(
                 "Boş metin — çözümü yapıştırın veya /iptal ile vazgeçin."

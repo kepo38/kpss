@@ -132,8 +132,9 @@ if not defined LAN_IP (
   goto :fail
 )
 set "API_BASE=http://!LAN_IP!:8000"
+set "API_MODE=LAN"
 echo [OK] LAN_IP=!LAN_IP!
-echo [OK] API_BASE=!API_BASE!
+echo [OK] API_BASE=!API_BASE! (cihaz baglaninca USB reverse denenir)
 
 echo.
 echo   [ADIM] Django 127.0.0.1:8000 saglik kontrolu...
@@ -226,8 +227,8 @@ echo         Windows Guvenlik Duvari - Python inbound 8000 / ozel ag izni verin.
 echo.
 echo  ------------------------------------------------------------
 echo   Panel:        http://127.0.0.1:8000/panel/
-echo   Telefon API:  !API_BASE!
-echo   dart-define:  KPSS_API_BASE=!API_BASE!
+echo   LAN yedek:    !API_BASE!
+echo   Not: Cihaz baglaninca USB reverse ile 127.0.0.1:8000 tercih edilir.
 echo  ------------------------------------------------------------
 echo.
 
@@ -281,6 +282,31 @@ goto :fail
 
 :have_device
 echo [OK] Cihaz: !DEVICE_ID!
+echo.
+echo   [ADIM] USB port yonlendirme (adb reverse tcp:8000)...
+set "ADB_EXE="
+where adb >nul 2>&1
+if not errorlevel 1 set "ADB_EXE=adb"
+if not defined ADB_EXE if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" set "ADB_EXE=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"
+if defined ADB_EXE (
+  "!ADB_EXE!" -s !DEVICE_ID! reverse --remove tcp:8000 >nul 2>&1
+  "!ADB_EXE!" -s !DEVICE_ID! reverse tcp:8000 tcp:8000
+  if not errorlevel 1 (
+    set "API_BASE=http://127.0.0.1:8000"
+    set "API_MODE=USB"
+    echo [OK] USB reverse aktif - telefon Django'yu 127.0.0.1:8000 uzerinden gorur
+    echo      (Wi-Fi kapali / farkli ag olsa da calisir)
+  ) else (
+    echo [UYARI] adb reverse basarisiz - LAN API kullanilacak: !API_BASE!
+    echo         Telefon PC ile AYNI Wi-Fi'de olmali.
+  )
+) else (
+  echo [UYARI] adb bulunamadi - LAN API: !API_BASE!
+  echo         Telefon PC ile AYNI Wi-Fi'de olmali.
+)
+echo [OK] API_MODE=!API_MODE!  KPSS_API_BASE=!API_BASE!
+echo   Teşhis: uygulama logu documents/logs/api-diag.log
+echo   Cekmek icin: adb exec-out run-as ... veya Android/data altindan paylas
 echo.
 echo   [ADIM] flutter pub get...
 flutter pub get

@@ -83,7 +83,7 @@
         <img src="{{ question.image.url }}" alt="Mevcut soru görseli" style="max-width:240px;border-radius:6px;margin-top:6px;">
         <label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;">
           <input type="checkbox" name="keep_image" value="1">
-          Mevcut görseli koru
+          Mevcut görseli koru (işaretlemezsen kaydet/yayınla ile silinir)
         </label>
       </div>
       {% endif %}
@@ -106,9 +106,9 @@
         <img src="{{ question.image.url }}" alt="Mevcut soru görseli">
       </div>
       {% if question.figure_svg %}
-      <p class="media-hint">Geometri şekli SVG olarak kayıtlı; uygulamada vektörel gösterilir.</p>
+      <p class="media-hint">Geometri şekli SVG (vektör) olarak kayıtlı. Kaynak fotoğraf «Mevcut görseli koru» işaretli değilse kaydet/yayınla ile diskten silinir — SVG içine gömülmez.</p>
       {% else %}
-      <p class="media-hint">Bu kayıtta eski görsel var; kaydedince silinecek.</p>
+      <p class="media-hint">Bu kayıtta tarama görseli var; «Mevcut görseli koru» işaretlemezseniz kaydet/yayınla veya reddet ile sunucudan silinir.</p>
       {% endif %}
       {% endif %}
       <label class="file-pick">
@@ -145,21 +145,7 @@
       </select>
     </label>
     <div class="option-table-head" id="option-table-head" hidden></div>
-    <label>A
-      <input type="text" name="option_a" required value="{{ question.option_a|default:'' }}" class="js-rich">
-    </label>
-    <label>B
-      <input type="text" name="option_b" required value="{{ question.option_b|default:'' }}" class="js-rich">
-    </label>
-    <label>C
-      <input type="text" name="option_c" required value="{{ question.option_c|default:'' }}" class="js-rich">
-    </label>
-    <label>D
-      <input type="text" name="option_d" required value="{{ question.option_d|default:'' }}" class="js-rich">
-    </label>
-    <label>E
-      <input type="text" name="option_e" required value="{{ question.option_e|default:'' }}" class="js-rich">
-    </label>
+    {% include "panel/partials/question_options_fields.html" %}
     <label>Doğru cevap
       <select name="correct_option">
         {% for c in "ABCDE" %}
@@ -181,7 +167,7 @@
     </label>
 
     <label>Olay grubu
-      <select name="scenario_id">
+      <select name="scenario_id" id="scenario-select">
         <option value="" {% if not question.scenario_id %}selected{% endif %}>Grup yok</option>
         {% for scenario in scenarios %}
         <option value="{{ scenario.id }}" {% if question.scenario_id == scenario.id %}selected{% endif %}>
@@ -195,9 +181,27 @@
     </label>
 
     <label>Çözüm
-      <textarea class="js-rich" name="solution" placeholder="Gemini sohbetinden çözümü kopyala-yapıştır.">{{ question.solution|default:'' }}</textarea>
+      <textarea class="js-rich" name="solution" id="question-solution" placeholder="Gemini sohbetinden çözümü kopyala-yapıştır.">{{ question.solution|default:'' }}</textarea>
       <span class="hint">Çözüm için Gemini kullanın: sohbetten kopyala → buraya yapıştır. \( ... \) otomatik $...$ olur.</span>
     </label>
+    <div class="solution-image-section">
+      <label>Çözüm görseli (isteğe bağlı)
+        <input type="file" name="solution_image" id="solution-image-input" accept="image/png,image/jpeg,image/webp,image/gif">
+        <span class="hint">Çözüm metninin altında uygulamada gösterilir — şema, tablo veya adım görseli ekleyebilirsiniz.</span>
+      </label>
+      {% if question and question.solution_image %}
+      <div class="solution-image-preview">
+        <img src="{{ question.solution_image.url }}" alt="Mevcut çözüm görseli" id="solution-existing-thumb" style="max-width:240px;border-radius:6px;margin-top:6px;">
+        <label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;">
+          <input type="checkbox" name="keep_solution_image" value="1" checked>
+          Mevcut çözüm görselini koru (işaretlemezsen kaydet ile silinir)
+        </label>
+      </div>
+      {% endif %}
+      <div class="media-preview" id="solution-image-preview" hidden>
+        <img alt="Çözüm görseli önizleme" id="solution-image-preview-img">
+      </div>
+    </div>
     <label class="check">
       <input type="checkbox" name="osym_sordu" id="osym-sordu" {% if question.osym_sordu %}checked{% endif %}>
       ÖSYM sordu <span style="opacity:.7;font-weight:400">(uygulamada sorunun sağ üstünde ÖSYM rozeti)</span>
@@ -210,7 +214,7 @@
           id="osym-cikmis-adi"
           maxlength="200"
           list="osym-cikmis-suggestions"
-          placeholder="örn. 2025 KPSS Lisans · Genel Yetenek - Genel Kültür"
+          placeholder="örn. 2025 KPSS Lisans"
           value="{{ question.osym_cikmis_adi|default:'' }}"
           {% if question.osym_sordu %}required{% endif %}
         >
@@ -220,7 +224,7 @@
         <option value="{{ label }}"></option>
         {% endfor %}
       </datalist>
-      <span class="hint">Yalnızca panelde görünür; testlerde normal ÖSYM rozeti kalır. Arşiv yöneticisinde gruplanması için «Yıl Sınav · Oturum» biçimini kullanın; isteğe bağlı « · Soru 12» eklenebilir. <a href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a></span>
+      <span class="hint">Yalnızca panelde görünür; testlerde normal ÖSYM rozeti kalır. Arşiv için «2025 KPSS Lisans» yeterli (GYGK yazmaya gerek yok); isteğe bağlı « · Soru 12». <a href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a></span>
     </div>
     <fieldset style="border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:12px 14px;margin:0 0 8px;">
       <legend style="padding:0 6px;font-size:.9rem;opacity:.9;">Özel test etiketleri</legend>
@@ -279,6 +283,10 @@
           <span class="meta">Soru 1 · önizleme</span>
         </div>
         <div class="quiz-mock-body">
+          <div class="quiz-mock-scenario" id="pv-scenario-card" hidden>
+            <p class="quiz-mock-scenario-title" id="pv-scenario-title">Olay</p>
+            <div class="quiz-mock-scenario-stem" id="pv-scenario-stem"></div>
+          </div>
           <div class="quiz-mock-stem-wrap">
             <img class="quiz-mock-osym" id="pv-osym" src="{% static 'panel/osym-sordu-badge.png' %}" alt="ÖSYM sordu" hidden>
             <div class="quiz-mock-stem is-empty" id="pv-stem"><p>Soru metni buraya…</p></div>
@@ -297,6 +305,7 @@
           </div>
           <div class="quiz-mock-solution" id="pv-solution">
             <p class="title">Çözüm</p>
+            <img class="quiz-mock-solution-img" id="pv-solution-img" alt="" hidden>
             <div class="body cozum-metni-alani" id="pv-solution-body"></div>
           </div>
         </div>
@@ -312,8 +321,10 @@
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=2"></script>
       <script src="{% static 'panel/map-question-editor.js' %}?v=16"></script>
+<script src="{% static 'panel/question-options.js' %}?v=4"></script>
 <script src="{% static 'panel/option-table.js' %}?v=8"></script>
-<script src="{% static 'panel/question-preview.js' %}?v=6"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=12"></script>
+{{ scenarios_json|json_script:"question-scenarios-data" }}
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {
@@ -449,22 +460,36 @@
     });
   }
 
-  function fill(data) {
+  async function fill(data) {
     const stem = document.querySelector('[name=stem]');
     const stemText = data.stem || data.soru_metni || '';
     if (stem && stemText) {
       stem.value = stemText;
       stem.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    const isVisual = !!(data.optionsVisual || data.options_are_images);
     const map = { A: 'option_a', B: 'option_b', C: 'option_c', D: 'option_d', E: 'option_e' };
     const opts = data.options || data.siklar || {};
-    Object.keys(map).forEach(function (k) {
-      const field = document.querySelector('[name=' + map[k] + ']');
-      if (field && opts[k]) {
-        field.value = opts[k];
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    });
+    if (!isVisual) {
+      Object.keys(map).forEach(function (k) {
+        const field = document.querySelector('[name=' + map[k] + ']');
+        if (field && opts[k]) {
+          field.value = opts[k];
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    }
+    if (window.KpssQuestionOptions && window.KpssQuestionOptions.applyOcrVisualOptions) {
+      await window.KpssQuestionOptions.applyOcrVisualOptions(data);
+    } else if (isVisual) {
+      Object.keys(map).forEach(function (k) {
+        const field = document.querySelector('[name=' + map[k] + ']');
+        if (field && opts[k]) {
+          field.value = opts[k];
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    }
     const svgField = document.querySelector('[name=figure_svg]');
     const fig = data.sekil_kodu || data.figure_svg || data.figure_tikz || '';
     if (svgField && fig) {
@@ -538,7 +563,7 @@
         status.textContent = data.error || 'Okunamadı.';
         showDuplicate(data.duplicate || null);
       } else {
-        fill(data);
+        await fill(data);
         if (!hasOcrContent(data)) {
           status.style.color = '#f87171';
           status.textContent = data.error || 'Metin okunamadı — görseli veya API anahtarını kontrol edin.';

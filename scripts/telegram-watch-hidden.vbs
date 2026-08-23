@@ -1,7 +1,7 @@
 ' HEDEF Kamu — Telegram WATCH arka planda (pencere yok)
 Option Explicit
 
-Dim fso, sh, scriptDir, root, bat
+Dim fso, sh, scriptDir, root, bat, cmd
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set sh = CreateObject("WScript.Shell")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
@@ -13,4 +13,7 @@ If Not fso.FileExists(bat) Then
   WScript.Quit 1
 End If
 
-sh.Run """" & bat & """ /auto __hidden__", 0, False
+sh.CurrentDirectory = root
+' cmd /c ile argumanlar net gecsin (/auto __hidden__)
+cmd = "cmd.exe /c call """ & bat & """ /auto __hidden__"
+sh.Run cmd, 0, False

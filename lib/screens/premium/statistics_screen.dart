@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/exam_premium_shell.dart';
+import '../../widgets/puan_hesaplama_button.dart';
 import '../../widgets/statistics_exams_tab.dart';
 import '../../widgets/statistics_overview_tab.dart';
 import '../../widgets/statistics_publishers_tab.dart';
@@ -25,7 +27,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // Denemeler alt sekmesi — Puan Hesaplama AppBar'da sabit.
+    _tabController = TabController(length: 3, vsync: this, initialIndex: 2);
   }
 
   @override
@@ -59,10 +62,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         foregroundColor: embedded ? AppTheme.ink : null,
         leading: embedded ? null : const AppBackButton(),
         automaticallyImplyLeading: !embedded,
-        centerTitle: embedded,
-        title: embedded ? const Text('Denemeler') : const Text('Deneme İstatistiklerim'),
+        centerTitle: true,
+        title: embedded
+            ? const SizedBox(
+                width: 220,
+                child: PuanHesaplamaButton(compact: true),
+              )
+            : const Text('Deneme İstatistiklerim'),
         titleSpacing: embedded ? 0 : null,
-        toolbarHeight: embedded ? 52 : null,
+        toolbarHeight: embedded ? 56 : null,
         bottom: TabBar(
           controller: _tabController,
           labelColor: embedded ? AppTheme.ink : null,
@@ -77,20 +85,22 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         ),
         actions: const [],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                StatisticsOverviewTab(onRefresh: () => setState(() {})),
-                StatisticsPublishersTab(onFilter: () => setState(() {})),
-                StatisticsExamsTab(onRefresh: () => setState(() {})),
-              ],
+      body: ExamPremiumBackground(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  StatisticsOverviewTab(onRefresh: () => setState(() {})),
+                  StatisticsPublishersTab(onFilter: () => setState(() {})),
+                  StatisticsExamsTab(onRefresh: () => setState(() {})),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddExam,

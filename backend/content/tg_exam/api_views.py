@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.response import Response
@@ -49,12 +50,17 @@ class TgExamListView(APIView):
 
     def get(self, request):
         _run_tg_exam_background_tasks(send_push=True)
-        kpss_type = (request.query_params.get("kpss_type") or "lisans").strip()
-        if kpss_type not in VALID_KPSS_TYPES:
+        # Türkiye Geneli: yayınlı tüm denemeler — uygulama KPSS tipinden bağımsız.
+        # ?kpss_type=… hâlâ kabul edilir (geriye uyum) ama listeyi daraltmaz.
+        raw_type = (request.query_params.get("kpss_type") or "").strip()
+        if raw_type and raw_type != "all" and raw_type not in VALID_KPSS_TYPES:
             return Response({"detail": "Geçersiz kpss_type."}, status=400)
 
         user = get_user_from_request(request)
-        exams = TgExam.objects.filter(is_published=True, kpss_type=kpss_type)
+        exams = TgExam.objects.filter(is_published=True).order_by(
+            "-start_at",
+            "-id",
+        )
         attempts_by_exam: dict[int, TgExamAttempt] = {}
         if user is not None:
             attempts = TgExamAttempt.objects.filter(user=user, exam__in=exams)
@@ -154,10 +160,6 @@ class TgExamProgressView(APIView):
         if now < exam.start_at or now >= exam.end_at:
             return Response({"detail": "Deneme aktif değil."}, status=403)
 
-        attempt = TgExamAttempt.objects.filter(user=user, exam=exam).first()
-        if attempt is not None and attempt.is_submitted:
-            return Response({"detail": "Deneme zaten gönderildi."}, status=409)
-
         raw_answers = request.data.get("answers") or {}
         if not isinstance(raw_answers, dict):
             return Response({"detail": "answers nesne olmalı."}, status=400)
@@ -173,21 +175,51 @@ class TgExamProgressView(APIView):
             or 0
         )
 
-        if attempt is None:
-            attempt = TgExamAttempt.objects.create(
-                user=user,
-                exam=exam,
-                answers=raw_answers,
-                current_index=max(0, current_index),
-                elapsed_seconds=max(0, elapsed),
+        with transaction.atomic():
+            attempt = (
+                TgExamAttempt.objects.select_for_update()
+                .filter(user=user, exam=exam)
+                .first()
             )
-        else:
-            attempt.answers = raw_answers
-            attempt.current_index = max(0, current_index)
-            attempt.elapsed_seconds = max(0, elapsed)
-            attempt.save(
-                update_fields=["answers", "current_index", "elapsed_seconds"]
-            )
+            if attempt is not None and attempt.is_submitted:
+                return Response({"detail": "Deneme zaten gönderildi."}, status=409)
+
+            if attempt is None:
+                try:
+                    attempt = TgExamAttempt.objects.create(
+                        user=user,
+                        exam=exam,
+                        answers=raw_answers,
+                        current_index=max(0, current_index),
+                        elapsed_seconds=max(0, elapsed),
+                    )
+                except IntegrityError:
+                    attempt = (
+                        TgExamAttempt.objects.select_for_update()
+                        .get(user=user, exam=exam)
+                    )
+                    if attempt.is_submitted:
+                        return Response(
+                            {"detail": "Deneme zaten gönderildi."},
+                            status=409,
+                        )
+                    attempt.answers = raw_answers
+                    attempt.current_index = max(0, current_index)
+                    attempt.elapsed_seconds = max(0, elapsed)
+                    attempt.save(
+                        update_fields=[
+                            "answers",
+                            "current_index",
+                            "elapsed_seconds",
+                        ]
+                    )
+            else:
+                attempt.answers = raw_answers
+                attempt.current_index = max(0, current_index)
+                attempt.elapsed_seconds = max(0, elapsed)
+                attempt.save(
+                    update_fields=["answers", "current_index", "elapsed_seconds"]
+                )
 
         return Response(exam_to_dict(exam, attempt=attempt))
 
@@ -211,10 +243,6 @@ class TgExamSubmitView(APIView):
                 status=403,
             )
 
-        attempt = TgExamAttempt.objects.filter(user=user, exam=exam).first()
-        if attempt is not None and attempt.is_submitted:
-            return Response(exam_to_dict(exam, attempt=attempt), status=200)
-
         raw_answers = request.data.get("answers") or {}
         if not isinstance(raw_answers, dict):
             return Response({"detail": "answers nesne olmalı."}, status=400)
@@ -222,7 +250,7 @@ class TgExamSubmitView(APIView):
         duration = int(
             request.data.get("duration_seconds")
             or request.data.get("durationSeconds")
-            or (attempt.elapsed_seconds if attempt else 0)
+            or 0
         )
         question_ids = list(exam.question_ids or [])
         correct, wrong, blank, graded, subject_nets = grade_attempt(
@@ -230,19 +258,31 @@ class TgExamSubmitView(APIView):
         )
         net = kpss_net(correct, wrong)
 
-        if attempt is None:
-            attempt = TgExamAttempt(user=user, exam=exam)
+        with transaction.atomic():
+            attempt = (
+                TgExamAttempt.objects.select_for_update()
+                .filter(user=user, exam=exam)
+                .first()
+            )
+            if attempt is not None and attempt.is_submitted:
+                return Response(exam_to_dict(exam, attempt=attempt), status=200)
 
-        attempt.answers = graded
-        attempt.correct = correct
-        attempt.wrong = wrong
-        attempt.blank = blank
-        attempt.net = net
-        attempt.subject_nets = subject_nets
-        attempt.duration_seconds = max(0, duration)
-        attempt.is_submitted = True
-        attempt.submitted_at = now
-        attempt.save()
+            if duration <= 0 and attempt is not None:
+                duration = attempt.elapsed_seconds
+
+            if attempt is None:
+                attempt = TgExamAttempt(user=user, exam=exam)
+
+            attempt.answers = graded
+            attempt.correct = correct
+            attempt.wrong = wrong
+            attempt.blank = blank
+            attempt.net = net
+            attempt.subject_nets = subject_nets
+            attempt.duration_seconds = max(0, duration)
+            attempt.is_submitted = True
+            attempt.submitted_at = now
+            attempt.save()
 
         refresh_exam_rankings(exam.pk)
         attempt.refresh_from_db()

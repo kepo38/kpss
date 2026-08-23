@@ -110,13 +110,7 @@ class ContentPackView(APIView):
             .select_related("topic")
             .order_by("sort_order", "id")
         )
-        summary_cards = (
-            TopicSummaryCard.objects.filter(
-                is_published=True, topic__is_active=True
-            )
-            .select_related("topic", "topic__subject")
-            .order_by("sort_order", "id")
-        )
+        summary_cards = TopicSummaryCard.for_mobile_pack()
 
         payload = {
             "version": get_content_version(),
@@ -154,13 +148,7 @@ class ContentCatalogView(APIView):
             .select_related("topic")
             .order_by("sort_order", "id")
         )
-        summary_cards = (
-            TopicSummaryCard.objects.filter(
-                is_published=True, topic__is_active=True
-            )
-            .select_related("topic", "topic__subject")
-            .order_by("sort_order", "id")
-        )
+        summary_cards = TopicSummaryCard.for_mobile_pack()
         payload = {
             "version": get_content_version(),
             "generatedAt": timezone.now(),
@@ -326,6 +314,24 @@ class SimilarQuestionsView(APIView):
         )
 
 
+# Mobil katalog aynı TopicTest'i lisans / ön lisans / ortaöğretim için
+# `public_id_lisans` diye klonlar. API hâlâ ham public_id bekler.
+_CATALOG_TEST_ID_SUFFIXES = (
+    "_lisans",
+    "_onLisans",
+    "_onlisans",
+    "_ortaogretim",
+)
+
+
+def resolve_catalog_test_id(test_id: str) -> str:
+    raw = (test_id or "").strip()
+    for suffix in _CATALOG_TEST_ID_SUFFIXES:
+        if raw.endswith(suffix) and len(raw) > len(suffix):
+            return raw[: -len(suffix)]
+    return raw
+
+
 class TestQuestionsView(APIView):
     """Tek testin sorularını anlık döner — mobil test başlangıcında."""
 
@@ -335,7 +341,7 @@ class TestQuestionsView(APIView):
     def get(self, request, test_id: str):
         test = get_object_or_404(
             TopicTest,
-            public_id=test_id,
+            public_id=resolve_catalog_test_id(test_id),
             is_published=True,
             topic__is_active=True,
         )
@@ -492,7 +498,7 @@ class TestAttemptView(APIView):
             TopicTest.objects.select_related("topic__subject").prefetch_related(
                 "questions"
             ),
-            public_id=test_id,
+            public_id=resolve_catalog_test_id(test_id),
             is_published=True,
             topic__is_active=True,
         )
@@ -527,9 +533,11 @@ class TestAttemptView(APIView):
                     ignored += 1
 
         quota = None
-        if request.data.get("completed") is True and len(questions) > 0:
+        # completed=True ise cevap olmasa da tamamlama kaydı yaz (hata bildirimi kotası).
+        if request.data.get("completed") is True:
             TopicTestCompletion.objects.get_or_create(user=user, topic_test=test)
-            if not user.premium_active:
+            # Cevapsız senkron kotayı yakmasın; hak yalnızca gerçek denemede gider.
+            if not user.premium_active and raw_answers:
                 subject_slug = test.topic.subject.slug
                 quota = _consume_daily_subject_free(user, subject_slug)
 
@@ -770,7 +778,12 @@ def _min_tests_for_error_report(user) -> int:
 
 def _user_completed_topic_test_count(user, min_required: int | None = None) -> int:
     needed = min_required if min_required is not None else _min_tests_for_error_report(user)
-    explicit = TopicTestCompletion.objects.filter(user=user).count()
+    explicit_ids = set(
+        TopicTestCompletion.objects.filter(user=user).values_list(
+            "topic_test_id", flat=True
+        )
+    )
+    explicit = len(explicit_ids)
     if explicit >= needed:
         return explicit
 
@@ -780,6 +793,8 @@ def _user_completed_topic_test_count(user, min_required: int | None = None) -> i
         topic__is_active=True,
     ).prefetch_related("questions")
     for test in tests:
+        if test.pk in explicit_ids:
+            continue
         question_pks = [
             question.pk
             for question in test.questions.all()

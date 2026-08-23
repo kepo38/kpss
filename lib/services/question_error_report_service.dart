@@ -80,10 +80,19 @@ class QuestionErrorReportService {
   static String testsRequiredWarning({
     required int completed,
     int? required,
+    int? localCompleted,
   }) {
     final need = required ?? minCompletedTests;
-    return 'En az $need test bitirdikten sonra hata bildirimi yapabilirsiniz. '
+    final base =
+        'En az $need test bitirdikten sonra hata bildirimi yapabilirsiniz. '
         '(Tamamlanan: $completed/$need)';
+    if (localCompleted != null &&
+        localCompleted > completed &&
+        localCompleted >= need) {
+      return '$base Cihazda $localCompleted test görünüyor; '
+          'sunucuya yazılamadı. İnterneti kontrol edip tekrar deneyin.';
+    }
+    return base;
   }
 
   final Map<String, QuestionErrorReportState> _cache = {};
@@ -196,29 +205,23 @@ class QuestionErrorReportService {
       throw QuestionErrorReportException(message);
     }
     if (response.statusCode == 403) {
-      var completed = ContentBankService.instance.completedTopicTestCount;
+      final local = ContentBankService.instance.completedTopicTestCount;
+      var completed = local;
       var required = minTestsRequiredNow;
-      var message = testsRequiredWarning(
-        completed: completed,
-        required: required,
-      );
       try {
         final body = jsonDecode(utf8.decode(response.bodyBytes));
         if (body is Map) {
-          if (body['detail'] != null) {
-            message = body['detail'].toString();
-          }
           completed = (body['testsCompleted'] as num?)?.toInt() ?? completed;
           required = (body['minTestsRequired'] as num?)?.toInt() ?? required;
-          if (body['detail'] == null) {
-            message = testsRequiredWarning(
-              completed: completed,
-              required: required,
-            );
-          }
         }
       } catch (_) {}
-      throw QuestionErrorReportException(message);
+      throw QuestionErrorReportException(
+        testsRequiredWarning(
+          completed: completed,
+          required: required,
+          localCompleted: local,
+        ),
+      );
     }
     if (response.statusCode == 401) {
       throw const QuestionErrorReportException(

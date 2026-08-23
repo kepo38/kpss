@@ -32,6 +32,17 @@ class AppLiveStatsTests(TestCase):
             token="fcm-device-1",
             platform="android",
             is_active=True,
+            last_seen_at=now,
+        )
+        old = DeviceToken.objects.create(
+            user=premium,
+            token="fcm-device-2-old",
+            platform="android",
+            is_active=True,
+        )
+        # auto_now=True overrides create kwargs; force an old timestamp.
+        DeviceToken.objects.filter(pk=old.pk).update(
+            last_seen_at=now - timedelta(days=3)
         )
         DeviceToken.objects.create(
             token="fcm-orphan-1",
@@ -41,7 +52,10 @@ class AppLiveStatsTests(TestCase):
         )
 
         stats = collect_app_live_stats()
-        self.assertEqual(stats.install_devices, 2)
+        self.assertEqual(stats.install_devices, 3)
+        self.assertEqual(stats.unique_token_users, 1)
+        self.assertEqual(stats.orphan_tokens, 1)
+        self.assertEqual(stats.tokens_seen_24h, 2)
         self.assertEqual(stats.total_users, 2)
         self.assertEqual(stats.account_users, 1)
         self.assertEqual(stats.guest_users, 1)

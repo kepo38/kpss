@@ -21,13 +21,12 @@ from .question_fingerprint import (
     stem_fingerprint,
 )
 from .special_question_tags import apply_auto_tags
-from .svg_sanitize import extract_svg, is_safe_svg
+from .svg_sanitize import sanitize_figure_svg
 from .topic_classifier import classify_topic_from_ocr
 
 
 def _sanitize_figure_svg(raw: str) -> str:
-    code = extract_svg(raw or "")
-    return code if is_safe_svg(code) else ""
+    return sanitize_figure_svg(raw)
 
 
 def _detect_formula_missing(stem: str, options: dict[str, str], raw_text: str) -> bool:
@@ -280,11 +279,47 @@ def ingest_question_from_image(
         telegram_file_unique_id=(telegram_file_unique_id or "").strip(),
     )
     apply_auto_tags(question, only_raise=False)
+    options_visual = bool(getattr(ocr, "options_visual", False))
+    option_crops = getattr(ocr, "option_image_bytes", None) or {}
+    if options_visual and option_crops:
+        from .option_image_crop import VISUAL_OPTION_PLACEHOLDER
+
+        question.options_are_images = True
+        for letter in "ABCDE":
+            if not (getattr(question, f"option_{letter.lower()}") or "").strip():
+                setattr(question, f"option_{letter.lower()}", VISUAL_OPTION_PLACEHOLDER)
     if hasattr(image, "seek"):
         image.seek(0)
     image_bytes = image.read()
-    question.image.save(filename, ContentFile(image_bytes), save=False)
+    # Görsel şıklı sorularda tam sayfa OCR görseli uygulamaya gitmesin;
+    # Telegram onayında kırpılmış şıklar yeterli.
+    if not (options_visual and option_crops):
+        question.image.save(filename, ContentFile(image_bytes), save=False)
     question.save()
+    if options_visual and option_crops:
+        for letter, data in option_crops.items():
+            if letter not in "ABCDE" or not data:
+                continue
+            field_name = f"option_{letter.lower()}_image"
+            getattr(question, field_name).save(
+                f"opt_{letter}_{question.public_id}.png",
+                ContentFile(data),
+                save=False,
+            )
+        question.save(update_fields=[
+            "option_a_image",
+            "option_b_image",
+            "option_c_image",
+            "option_d_image",
+            "option_e_image",
+            "options_are_images",
+            "option_a",
+            "option_b",
+            "option_c",
+            "option_d",
+            "option_e",
+            "updated_at",
+        ])
     refresh_question_embedding(question)
 
     partial = not ocr.ok or not any(

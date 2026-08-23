@@ -135,6 +135,52 @@ class QuestionErrorReportApiTests(TestCase):
         self.assertEqual(response.json()["minTestsRequired"], 5)
         self.assertEqual(QuestionErrorReport.objects.count(), 0)
 
+    def test_catalog_suffixed_test_id_writes_completion(self):
+        """Mobil `public_id_lisans` ile POST yine TopicTestCompletion yazar."""
+        test = TopicTest.objects.create(
+            public_id="tt_suffix_1",
+            topic=self.topic,
+            title="Suffix",
+            is_published=True,
+        )
+        response = self.client.post(
+            "/api/v1/tests/tt_suffix_1_lisans/attempt/",
+            data={"answers": {}, "completed": True},
+            content_type="application/json",
+            **self.auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            TopicTestCompletion.objects.filter(
+                user=self.user, topic_test=test
+            ).exists()
+        )
+
+    def test_completion_only_attempt_counts_toward_error_report(self):
+        """Cevapsız completed=True senkronu TopicTestCompletion yazar."""
+        for index in range(5):
+            test = TopicTest.objects.create(
+                public_id=f"tt_sync_{index}",
+                topic=self.topic,
+                title=f"Sync {index}",
+                is_published=True,
+            )
+            response = self.client.post(
+                f"/api/v1/tests/{test.public_id}/attempt/",
+                data={"answers": {}, "completed": True},
+                content_type="application/json",
+                **self.auth(),
+            )
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            TopicTestCompletion.objects.filter(user=self.user).count(), 5
+        )
+        response = self.client.get(self.url(), **self.auth())
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["testsCompleted"], 5)
+        self.assertTrue(body["testsRequirementMet"])
+
 
 class QuestionErrorReportPanelTests(TestCase):
     def setUp(self):
@@ -195,7 +241,7 @@ class QuestionErrorReportPanelTests(TestCase):
         self._report("open", index=1)
         self.client.force_login(self.staff)
         response = self.client.get(reverse("panel_home"))
-        self.assertContains(response, 'nav-pending-count"> (1)</span>')
+        self.assertContains(response, 'nav-pending-count">1</span>')
 
     def test_panel_error_reports_page_shows_pending_count(self):
         self._report("open", index=1)

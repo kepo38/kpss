@@ -105,8 +105,8 @@ class _FocusModeScreenState extends State<FocusModeScreen>
     required String body,
   }) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppTheme.inkSoft,
         content: Text(
@@ -365,7 +365,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
         ),
         if (!_isGoogleUser) ...[
           const SizedBox(height: 8),
-          Text(
+            Text(
             'Misafir · en fazla 20 dk · Google ile daha uzun süre',
             textAlign: TextAlign.center,
             style: GoogleFonts.manrope(
@@ -387,7 +387,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
           child: Text(
             'Sıfırla',
             style: GoogleFonts.manrope(
-              fontSize: 12,
+                fontSize: 12,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.3,
             ),
@@ -471,14 +471,14 @@ class _FocusModeScreenState extends State<FocusModeScreen>
   Widget _buildAmbientButtons() {
     return Column(
       children: [
-        Wrap(
+            Wrap(
           alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
+              spacing: 8,
+              runSpacing: 8,
           children: AmbientSound.values
               .where((s) => s != AmbientSound.sessiz)
               .map((s) {
-            final selected = _pomodoro.selectedSound == s;
+                final selected = _pomodoro.selectedSound == s;
             final playing = selected && _pomodoro.ambientPlaying;
             return Opacity(
               opacity: _ambientBusy ? 0.55 : 1,
@@ -548,38 +548,38 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                   ),
                 ),
               ),
-            );
-          }).toList(),
-        ),
-        if (_pomodoro.selectedSound != AmbientSound.sessiz) ...[
-          const SizedBox(height: 12),
-          Row(
-            children: [
+                );
+              }).toList(),
+            ),
+            if (_pomodoro.selectedSound != AmbientSound.sessiz) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
               Icon(
                 Icons.volume_down_rounded,
                 size: 18,
                 color: Colors.white.withValues(alpha: 0.45),
               ),
-              Expanded(
+                  Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: _Neon.cyan,
                     inactiveTrackColor: Colors.white.withValues(alpha: 0.12),
                     thumbColor: _Neon.cyan,
                   ),
-                  child: Slider(
-                    value: _pomodoro.ambientVolume,
+                    child: Slider(
+                      value: _pomodoro.ambientVolume,
                     min: 0.12,
                     max: 0.9,
                     divisions: 16,
-                    onChanged: _ambientBusy
-                        ? null
-                        : (v) {
-                            setState(() {});
-                            unawaited(_pomodoro.setAmbientVolume(v));
-                          },
+                      onChanged: _ambientBusy
+                          ? null
+                          : (v) {
+                              setState(() {});
+                              unawaited(_pomodoro.setAmbientVolume(v));
+                            },
+                    ),
                   ),
-                ),
               ),
               Icon(
                 Icons.volume_up_rounded,
@@ -636,7 +636,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
             ],
           ),
           child: Row(
-            children: [
+              children: [
               Container(
                 width: 40,
                 height: 40,
@@ -676,10 +676,10 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: _Neon.cyan.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
+              ],
+            ),
               ),
               Icon(
                 playing
@@ -716,10 +716,10 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                       top: 10,
                       left: 20,
                       right: 72,
-                      child: Column(
+        child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
+          children: [
+            Text(
                             'DERS ÇALIŞIYORUM',
                             style: GoogleFonts.cormorantGaramond(
                               fontSize: 18,
@@ -780,8 +780,8 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                           Icons.fullscreen_exit_rounded,
                           color: Colors.white70,
                         ),
-                        onPressed: () => setState(() => _fullscreen = false),
-                      ),
+                  onPressed: () => setState(() => _fullscreen = false),
+                ),
                     ),
                     Positioned(
                       top: nameCenterY - 72,
@@ -900,7 +900,7 @@ class _FocusModeScreenState extends State<FocusModeScreen>
                               _pomodoro.isRunning
                                   ? Icons.pause_rounded
                                   : Icons.play_arrow_rounded,
-                              color: Colors.white,
+                    color: Colors.white,
                               size: 36,
                             ),
                           ),
@@ -1223,10 +1223,10 @@ class _PremiumTimerRing extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                 ],
-                Text(
-                  time,
+            Text(
+              time,
                   style: GoogleFonts.manrope(
-                    fontSize: 56,
+                fontSize: 56,
                     fontWeight: FontWeight.w300,
                     color: Colors.white,
                     letterSpacing: 1,

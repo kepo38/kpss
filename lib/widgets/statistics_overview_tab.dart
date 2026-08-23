@@ -8,6 +8,7 @@ import '../services/notification_service.dart';
 import '../services/practice_exam_service.dart';
 import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
+import 'exam_premium_shell.dart';
 import 'net_development_chart.dart';
 
 class StatisticsOverviewTab extends StatelessWidget {
@@ -31,45 +32,29 @@ class StatisticsOverviewTab extends StatelessWidget {
 
         return RefreshIndicator(
           onRefresh: () async => onRefresh(),
+          color: AppTheme.champagne,
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
             children: [
-              Text(
-                'Deneme İstatistiklerim',
-                style: GoogleFonts.inter(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                  color: AppTheme.lightPrimary,
-                ),
+              const ExamPremiumSectionLabel(
+                label: 'Genel Bakış',
+                subtitle: 'TG ve yayınevi denemelerinizin özeti',
               ),
               const SizedBox(height: 16),
               _WeeklySummaryCard(
                 summary: summary,
                 dueCount: ContentBankService.instance.wrongQuestionCount,
               ),
-              const SizedBox(height: 20),
-              Text(
-                'Genel Başarı Çizgisi',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.lightPrimary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'TG denemeleri ve yayınevi kayıtlarınız birlikte',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: AppTheme.slate.withValues(alpha: 0.75),
-                ),
+              const SizedBox(height: 22),
+              const ExamPremiumSectionLabel(
+                label: 'Genel Başarı Çizgisi',
+                subtitle: 'TG denemeleri ve yayınevi kayıtlarınız birlikte',
               ),
               const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: NetDevelopmentChart(points: livePoints),
-                ),
+              ExamPremiumCardShell(
+                accentBar: false,
+                padding: const EdgeInsets.all(14),
+                child: NetDevelopmentChart(points: livePoints),
               ),
               const SizedBox(height: 20),
               Row(
@@ -79,7 +64,6 @@ class StatisticsOverviewTab extends StatelessWidget {
                       title: 'Genel Yetenek',
                       net: gyValues.isEmpty ? 0 : gyValues.last,
                       icon: Icons.psychology_outlined,
-                      color: AppTheme.lightPrimary,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -88,22 +72,18 @@ class StatisticsOverviewTab extends StatelessWidget {
                       title: 'Genel Kültür',
                       net: gkValues.isEmpty ? 0 : gkValues.last,
                       icon: Icons.public_outlined,
-                      color: AppTheme.lightAccent,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
-              Text(
-                'Ders Bazlı Performans',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.lightPrimary,
-                ),
-              ),
+              const ExamPremiumSectionLabel(label: 'Ders Bazlı Performans'),
               const SizedBox(height: 12),
               ...service.aggregateBySubject.entries.map(
-                (entry) => _SubjectBar(ders: entry.key, sonuc: entry.value),
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _SubjectBar(ders: entry.key, sonuc: entry.value),
+                ),
               ),
             ],
           ),
@@ -164,80 +144,133 @@ class _WeeklySummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final change = summary.netDegisim;
     final changeText = '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}';
-    final changeColor = change >= 0 ? Colors.green : Colors.red;
-    return Card(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-          gradient: LinearGradient(
-            colors: [
-              AppTheme.lightPrimary,
-              AppTheme.lightPrimary.withValues(alpha: 0.85),
-            ],
+    final changeColor =
+        change >= 0 ? const Color(0xFF6EE7A8) : const Color(0xFFFF9B9B);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.champagne.withValues(alpha: 0.14),
+            blurRadius: 22,
+            offset: const Offset(0, 8),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.insights, color: AppTheme.lightAccent),
-                const SizedBox(width: 8),
-                Text(
-                  'Haftalık Özet',
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => _toggleExamReminder(context),
-                  tooltip: 'Pazar 10:00 deneme hatırlatıcısı',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
-                  icon: Icon(
-                    Icons.notifications_active_outlined,
-                    color: Colors.white.withValues(alpha: 0.85),
-                    size: 20,
-                  ),
-                ),
-              ],
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppTheme.champagne.withValues(alpha: 0.42),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _SummaryStat(value: '${summary.denemeSayisi}', label: 'Deneme'),
-                _SummaryStat(
-                  value: summary.ortalamaNet.toStringAsFixed(1),
-                  label: 'Ort. Net',
-                ),
-                _SummaryStat(
-                  value: changeText,
-                  label: 'Değişim',
-                  valueColor: changeColor,
-                ),
-                _SummaryStat(value: '$dueCount', label: 'Yanlış'),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF18263C),
+                AppTheme.inkSoft,
+                AppTheme.ink,
               ],
+              stops: [0, 0.45, 1],
             ),
-            if (summary.enGucluDers != '-') ...[
-              const SizedBox(height: 12),
-              Text(
-                'Güçlü: ${summary.enGucluDers} · Geliştir: '
-                '${summary.gelistirilmesiGerekenDers}',
-                style: GoogleFonts.inter(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontSize: 12,
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 3,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppTheme.champagneLight,
+                        AppTheme.champagne,
+                        Color(0xFFB8924A),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.insights_outlined,
+                          color: AppTheme.champagne,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Haftalık Özet',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => _toggleExamReminder(context),
+                          tooltip: 'Pazar 10:00 deneme hatırlatıcısı',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          icon: Icon(
+                            Icons.notifications_active_outlined,
+                            color: Colors.white.withValues(alpha: 0.85),
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _SummaryStat(value: '${summary.denemeSayisi}', label: 'Deneme'),
+                        _SummaryStat(
+                          value: summary.ortalamaNet.toStringAsFixed(1),
+                          label: 'Ort. Net',
+                        ),
+                        _SummaryStat(
+                          value: changeText,
+                          label: 'Değişim',
+                          valueColor: changeColor,
+                        ),
+                        _SummaryStat(value: '$dueCount', label: 'Yanlış'),
+                      ],
+                    ),
+                    if (summary.enGucluDers != '-') ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Güçlü: ${summary.enGucluDers} · Geliştir: '
+                        '${summary.gelistirilmesiGerekenDers}',
+                        style: GoogleFonts.inter(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -271,8 +304,9 @@ class _SummaryStat extends StatelessWidget {
           Text(
             label,
             style: GoogleFonts.inter(
-              color: AppTheme.lightAccent,
+              color: AppTheme.champagne.withValues(alpha: 0.9),
               fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -285,36 +319,48 @@ class _GkGyCard extends StatelessWidget {
   final String title;
   final double net;
   final IconData icon;
-  final Color color;
 
   const _GkGyCard({
     required this.title,
     required this.net,
     required this.icon,
-    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 8),
-            Text(title, style: GoogleFonts.inter(fontSize: 12)),
-            Text(
-              net.toStringAsFixed(1),
-              style: GoogleFonts.inter(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+    return ExamPremiumCardShell(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      child: Column(
+        children: [
+          Icon(icon, color: AppTheme.champagne, size: 22),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.mutedOnPage(context),
             ),
-            Text('net', style: GoogleFonts.inter(fontSize: 11)),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            net.toStringAsFixed(1),
+            style: GoogleFonts.inter(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.onPage(context),
+              letterSpacing: -0.5,
+            ),
+          ),
+          Text(
+            'net',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: AppTheme.champagne.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -337,43 +383,50 @@ class _SubjectBar extends StatelessWidget {
         ? const Color(0xFF2F9E6A)
         : AppTheme.champagne;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(ders, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                Text(
-                  '${avgNet.toStringAsFixed(1)} net',
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.champagne,
-                  ),
+    return ExamPremiumCardShell(
+      accentBar: false,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                ders,
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.onPage(context),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: fill,
-                backgroundColor: AppTheme.mist,
-                color: fillColor,
-                minHeight: 6,
               ),
+              Text(
+                '${avgNet.toStringAsFixed(1)} net',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.champagne,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: fill,
+              backgroundColor: AppTheme.hairline(context),
+              color: fillColor,
+              minHeight: 6,
             ),
-            const SizedBox(height: 4),
-            Text(
-              'D:${sonuc.dogru} Y:${sonuc.yanlis} B:${sonuc.bos}',
-              style: GoogleFonts.inter(fontSize: 11, color: Colors.grey),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'D:${sonuc.dogru} Y:${sonuc.yanlis} B:${sonuc.bos}',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: AppTheme.mutedOnPage(context),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

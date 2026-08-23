@@ -310,6 +310,8 @@ class QuizHeaderStrip extends StatelessWidget {
 class _SuccessRateMeter extends StatelessWidget {
   static const _successGreen = Color(0xFF34D399);
   static const _remainderRed = Color(0xFFF87171);
+  static const _height = 44.0;
+  static const _width = 5.0;
 
   final double rate;
 
@@ -318,11 +320,11 @@ class _SuccessRateMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clamped = rate.clamp(0.0, 1.0);
-    final successFlex = (clamped * 1000).round().clamp(0, 1000);
-    final remainderFlex = 1000 - successFlex;
+    // Alttan yeşil dolum: üstte kırmızı (kalan), altta yeşil (başarı).
 
     return Container(
-      width: 5,
+      width: _width,
+      height: _height,
       margin: const EdgeInsets.symmetric(vertical: 2),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(99),
@@ -337,19 +339,18 @@ class _SuccessRateMeter extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(99),
-        child: Column(
-          children: [
-            if (remainderFlex > 0)
-              Expanded(
-                flex: remainderFlex,
-                child: const ColoredBox(color: _remainderRed),
-              ),
-            if (successFlex > 0)
-              Expanded(
-                flex: successFlex,
-                child: const ColoredBox(color: _successGreen),
-              ),
-          ],
+        child: ColoredBox(
+          color: clamped <= 0 ? _remainderRed : _successGreen,
+          child: clamped <= 0 || clamped >= 1
+              ? null
+              : Align(
+                  alignment: Alignment.topCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: 1.0 - clamped,
+                    widthFactor: 1,
+                    child: const ColoredBox(color: _remainderRed),
+                  ),
+                ),
         ),
       ),
     );

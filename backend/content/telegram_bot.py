@@ -6,12 +6,12 @@ import io
 import json
 import logging
 import os
+import queue
 import ssl
 import threading
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,8 +46,18 @@ _inflight_keys: set[str] = set()
 _inflight_started: dict[str, float] = {}
 _INFLIGHT_TTL_SECONDS = 900
 
-_photo_executor: ThreadPoolExecutor | None = None
-_photo_executor_lock = threading.Lock()
+_photo_queue: queue.Queue[Any] | None = None
+_photo_workers_lock = threading.Lock()
+_photo_workers_started = False
+# Bu süreç uzun poll tutuyorsa getUpdates ile kuyruk peek yapma.
+_polling_in_this_process = False
+
+
+def set_polling_active(active: bool) -> None:
+    global _polling_in_this_process
+    _polling_in_this_process = bool(active)
+    if active:
+        ensure_photo_workers()
 
 _DRAIN_ERROR_LINE = (
     "Hata: {count} (fotoğraflar bot sohbetinde — TELEGRAM.bat'ı tekrar çalıştırın)"
@@ -173,6 +183,7 @@ def _try_delete_message(chat_id: int, message_id: int) -> bool:
         _post(
             "deleteMessage",
             {"chat_id": int(chat_id), "message_id": int(message_id)},
+            timeout=8,
         )
         _untrack_chat_message(int(chat_id), int(message_id))
         return True
@@ -189,6 +200,7 @@ def _purge_chat_messages(
     chat_id: int,
     *,
     extra_ids: list[int] | None = None,
+    max_delete: int = 80,
 ) -> tuple[int, int]:
     with _chat_messages_lock:
         _load_chat_messages()
@@ -198,17 +210,23 @@ def _purge_chat_messages(
         candidates.update(int(message_id) for message_id in extra_ids if message_id)
     candidates.update(_collect_known_chat_message_ids(int(chat_id)))
 
+    # En yeni mesajlardan başla; uzun silme WATCH'ı kilitlemesin.
+    ordered = sorted(candidates, reverse=True)[: max(1, max_delete)]
     deleted = 0
     failed = 0
-    for message_id in sorted(candidates, reverse=True):
+    for message_id in ordered:
         if _try_delete_message(int(chat_id), int(message_id)):
             deleted += 1
         else:
             failed += 1
-        time.sleep(0.04)
+        time.sleep(0.03)
 
+    leftover = candidates - set(ordered)
     with _chat_messages_lock:
-        _chat_message_ids[int(chat_id)] = []
+        if leftover:
+            _chat_message_ids[int(chat_id)] = sorted(leftover)[-_MAX_TRACKED_CHAT_MESSAGES:]
+        else:
+            _chat_message_ids[int(chat_id)] = []
         _save_chat_messages()
     return deleted, failed
 
@@ -236,9 +254,44 @@ def lock_file_path() -> Path:
     return Path(settings.BASE_DIR).parent / "telegram_bot.lock"
 
 
+def _pid_alive_windows(pid: int) -> bool:
+    """Windows'ta os.kill(pid, 0) TerminateProcess çağırır — süreci öldürür.
+
+    Bu yüzden yalnızca OpenProcess + WaitForSingleObject ile sorgula.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    SYNCHRONIZE = 0x00100000
+    WAIT_TIMEOUT = 0x00000102
+    ERROR_ACCESS_DENIED = 5
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not handle:
+        # Erişim reddi = süreç var ama başka kullanıcının; canlı say.
+        return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        try:
+            return _pid_alive_windows(pid)
+        except Exception:  # noqa: BLE001
+            logger.exception("PID kontrolü başarısız pid=%s", pid)
+            return False
     try:
         os.kill(pid, 0)
     except OSError:
@@ -310,25 +363,13 @@ def _prune_stale_inflight() -> None:
         _inflight_started.pop(key, None)
 
 
-def _get_photo_executor() -> ThreadPoolExecutor:
-    global _photo_executor
-    with _photo_executor_lock:
-        if _photo_executor is None:
-            workers = int(getattr(settings, "TELEGRAM_OCR_WORKERS", 2) or 2)
-            _photo_executor = ThreadPoolExecutor(
-                max_workers=max(1, workers),
-                thread_name_prefix="tg-ocr",
-            )
-        return _photo_executor
-
-
-def _submit_photo_work(work: Any) -> None:
-    """OCR'yi arka planda calistir; testlerde TELEGRAM_INLINE_PHOTOS=True."""
-    if getattr(settings, "TELEGRAM_INLINE_PHOTOS", False):
-        work()
-        return
-
-    def wrapped() -> None:
+def _photo_worker_loop() -> None:
+    assert _photo_queue is not None
+    while True:
+        work = _photo_queue.get()
+        if work is None:
+            _photo_queue.task_done()
+            break
         from django.db import close_old_connections
 
         close_old_connections()
@@ -338,8 +379,41 @@ def _submit_photo_work(work: Any) -> None:
             logger.exception("Telegram photo worker failed")
         finally:
             close_old_connections()
+            _photo_queue.task_done()
 
-    _get_photo_executor().submit(wrapped)
+
+def ensure_photo_workers() -> None:
+    """OCR worker'larını bot açılışında bir kez başlat (mesaj anında thread.start yok)."""
+    global _photo_queue, _photo_workers_started
+    with _photo_workers_lock:
+        if _photo_workers_started:
+            return
+        _photo_queue = queue.Queue()
+        workers = int(getattr(settings, "TELEGRAM_OCR_WORKERS", 2) or 2)
+        for index in range(max(1, workers)):
+            thread = threading.Thread(
+                target=_photo_worker_loop,
+                name=f"tg-ocr-{index}",
+                daemon=True,
+            )
+            thread.start()
+        _photo_workers_started = True
+
+
+def _submit_photo_work(work: Any) -> None:
+    """OCR/temizlik işini kuyruğa koy; testlerde TELEGRAM_INLINE_PHOTOS=True."""
+    if getattr(settings, "TELEGRAM_INLINE_PHOTOS", False):
+        work()
+        return
+    ensure_photo_workers()
+    assert _photo_queue is not None
+    _photo_queue.put(work)
+
+
+def _get_photo_executor():
+    """Geriye dönük — worker kuyruğunu başlatır."""
+    ensure_photo_workers()
+    return _photo_queue
 
 
 @contextmanager
@@ -416,7 +490,9 @@ def _api_url(method: str) -> str:
     return f"https://api.telegram.org/bot{token}/{method}"
 
 
-def _post(method: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _post(
+    method: str, payload: dict[str, Any], *, timeout: int = 60
+) -> dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         _api_url(method),
@@ -424,7 +500,7 @@ def _post(method: str, payload: dict[str, Any]) -> dict[str, Any]:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with _urlopen(req, timeout=60) as resp:
+    with _urlopen(req, timeout=timeout) as resp:
         body = json.loads(resp.read().decode("utf-8"))
     if not body.get("ok"):
         raise RuntimeError(body.get("description") or "Telegram API hatası")
@@ -531,25 +607,53 @@ def _handle_clear_chat(
         extra_ids.append(int(photo_message_id))
     if command_message_id:
         extra_ids.append(int(command_message_id))
-    deleted, failed = _purge_chat_messages(chat_id, extra_ids=extra_ids)
-    lines = [
-        "Sohbet temizlendi.",
-        f"Silinen mesaj: {deleted}",
-    ]
-    if failed:
-        lines.append(
-            f"Silinemeyen: {failed} (48 saatten eski veya zaten silinmiş olabilir)"
-        )
-    lines.extend(
-        [
-            "Bot arka planda dinlemeye devam ediyor — yeni fotoğraf gönderebilirsiniz.",
-            "",
-            "Not: Telegram menüsündeki 「Sohbeti Sil」 bunu yapmaz; "
-            "sohbeti tamamen siler. Temizlik için her zaman /sohbeti_sil kullanın.",
-        ]
+
+    # Hemen yanıtla — toplu silme WATCH poll döngüsünü kilitlemesin.
+    send_message(
+        chat_id,
+        "Sohbet temizleniyor…\n"
+        "Bot dinlemeye devam ediyor; yeni fotoğraf gönderebilirsiniz.",
     )
-    # Onay mesajı kalsın — kendini silince sohbet boşalıp “kapandı” gibi görünüyordu.
-    send_message(chat_id, "\n".join(lines))
+
+    def _purge_job() -> None:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        try:
+            deleted, failed = _purge_chat_messages(
+                chat_id, extra_ids=extra_ids, max_delete=80
+            )
+            lines = [
+                "Sohbet temizlendi.",
+                f"Silinen mesaj: {deleted}",
+            ]
+            if failed:
+                lines.append(
+                    f"Silinemeyen: {failed} "
+                    "(48 saatten eski veya zaten silinmiş olabilir)"
+                )
+            lines.extend(
+                [
+                    "",
+                    "Not: Telegram menüsündeki 「Sohbeti Sil」 bunu yapmaz; "
+                    "sohbeti tamamen siler. Temizlik için /sohbeti_sil kullanın.",
+                ]
+            )
+            send_message(chat_id, "\n".join(lines))
+        except Exception:
+            logger.exception("Telegram sohbet temizliği başarısız chat_id=%s", chat_id)
+            try:
+                send_message(
+                    chat_id,
+                    "Temizlik kısmen başarısız oldu; bot dinlemeye devam ediyor.",
+                )
+            except Exception:
+                pass
+        finally:
+            close_old_connections()
+
+    # Önceden açılmış OCR worker'larına koy — thread.start() anında kilitlenme olmasın.
+    _submit_photo_work(_purge_job)
     return "command"
 
 
@@ -560,7 +664,7 @@ def answer_callback_query(callback_query_id: str, *, text: str = "") -> None:
     if text:
         payload["text"] = text
     try:
-        _post("answerCallbackQuery", payload)
+        _post("answerCallbackQuery", payload, timeout=10)
     except Exception:
         logger.exception("Telegram answerCallbackQuery failed id=%s", callback_query_id)
 
@@ -653,8 +757,13 @@ def _download_file(file_id: str) -> tuple[bytes, str]:
 
 
 def peek_update_queue() -> tuple[int, int]:
-    """Bekleyen guncelleme sayisi (toplam, fotograf). Offset ilerlemez."""
+    """Bekleyen güncelleme sayısı (toplam, fotoğraf). Offset ilerlemez.
+
+    Watch süreci içinde çağrılırsa getUpdates çakışmasın diye (0, 0) döner.
+    """
     if not telegram_configured():
+        return 0, 0
+    if _polling_in_this_process:
         return 0, 0
     token = settings.TELEGRAM_BOT_TOKEN
     url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=0&limit=100"
@@ -676,7 +785,19 @@ def peek_update_queue() -> tuple[int, int]:
 
 def _status_text() -> str:
     pending = pending_telegram_question_count()
-    total, photos = peek_update_queue()
+    watching = telegram_lock_active()
+    # Watch açıkken ikinci getUpdates uzun poll'u keser / kilitlenmeye yol açar.
+    if watching and _polling_in_this_process:
+        total, photos = 0, 0
+        queue_note = "Telegram kuyruğu: dinleme açık — yeni mesajlar anında işlenir."
+    elif watching:
+        total, photos = 0, 0
+        queue_note = (
+            "Telegram kuyruğu: WATCH açık (anlık sayı için WATCH dışında /durum)."
+        )
+    else:
+        total, photos = peek_update_queue()
+        queue_note = ""
     wh = get_webhook_info()
     wh_url = (wh.get("url") or "").strip()
     lines = [
@@ -690,13 +811,15 @@ def _status_text() -> str:
             "Yerel aktarım için TELEGRAM.bat veya TELEGRAM-WATCH.bat çalıştırın "
             "(webhook otomatik kapatılır)."
         )
-    if telegram_lock_active():
+    if watching:
         lines.append("Aktarım: şu an çalışıyor (TELEGRAM.bat / WATCH açık).")
     elif not wh_url:
         lines.append(
             "Aktarım: kapalı — fotoğraf iletmek için TELEGRAM-WATCH.bat açık olmalı."
         )
-    if photos:
+    if queue_note:
+        lines.append(queue_note)
+    elif photos:
         lines.append(
             f"Telegram kuyruğu: {photos} fotoğraf "
             f"({total} mesaj) — TELEGRAM.bat ile işlenecek."
@@ -724,7 +847,7 @@ def register_bot_commands() -> None:
             "description": "Bot mesajlarını temizle (⋮ menüsündeki Sil değil!)",
         },
         {"command": "eski", "description": "Kaçan fotoğraflar rehberi"},
-        {"command": "iptal", "description": "Bekleyen çözüm adımını iptal"},
+        {"command": "iptal", "description": "Bekleyen soruyu iptal et (foto + kayıt silinir)"},
         {"command": "help", "description": "Yardım ve uyarılar"},
     ]
     try:
@@ -760,7 +883,7 @@ def _help_text() -> str:
         "/durum — panel + kuyruk özeti\n"
         "/eski — kaçan fotoğraflar için kısa rehber\n"
         "/sohbeti_sil — bot mesajlarını temizle (menüden Sil değil!)\n"
-        "/iptal — bekleyen çözüm adımını iptal"
+        "/iptal — bekleyen soruyu iptal et (foto + kayıt silinir)"
     )
 
 
@@ -858,6 +981,26 @@ def _duplicate_warning(
             "Tekrar iletmenize gerek yok."
         )
     return f"Bu fotoğraf zaten kayıtlı: {existing.public_id} ({status})."
+
+
+def _integrity_error_message(exc: Exception) -> str:
+    """IntegrityError'un gercek nedenine gore kullaniciya anlasilir mesaj."""
+    detail = str(exc)
+    lowered = detail.lower()
+    if "unique" in lowered or "duplicate key" in lowered:
+        return (
+            "Kaydedilemedi: kayıt çakışması (eşzamanlı yazma).\n"
+            "Birkaç saniye bekleyip tekrar gönderin.\n"
+            f"{_retry_hint()}"
+        )
+    if "not null constraint" in lowered or "no such column" in lowered:
+        return (
+            "Kaydedilemedi: bot süreci güncel veritabanı şemasıyla uyuşmuyor.\n"
+            f"Ayrıntı: {detail}\n"
+            "TELEGRAM-WATCH.bat'i kapatıp yeniden başlatın "
+            "(migration sonrası bot yeniden başlatılmalı)."
+        )
+    return f"Kaydedilemedi: veritabanı hatası.\n{detail}\n{_retry_hint()}"
 
 
 def _escape_html(text: str) -> str:
@@ -1059,12 +1202,13 @@ def _ingest_photo_worker(
                     allow_duplicate=True,
                     auto_classify_topic=not explicit_topic,
                 )
-            except IntegrityError:
+            except IntegrityError as exc:
                 logger.warning(
                     "Telegram ingest IntegrityError chat=%s msg=%s file_uid=%s",
                     chat_id,
                     message_id,
                     file_unique_id,
+                    exc_info=True,
                 )
                 existing, match = _find_existing_after_conflict(
                     chat_id=int(chat_id),
@@ -1080,12 +1224,7 @@ def _ingest_photo_worker(
                     )
                     delete_message(int(chat_id), message_id)
                     return "skipped"
-                send_message(
-                    chat_id,
-                    "Kaydedilemedi: kayıt çakışması (eşzamanlı yazma).\n"
-                    "Birkaç saniye bekleyip tekrar gönderin.\n"
-                    f"{_retry_hint()}",
-                )
+                send_message(chat_id, _integrity_error_message(exc))
                 return "error"
 
             if not result.ok or result.question is None:
@@ -1264,8 +1403,9 @@ def _handle_callback_query(callback: dict[str, Any]) -> HandleOutcome:
     if message_id:
         _track_chat_message(int(chat_id), message_id)
 
-    reply = try_handle_conversation_callback(data, int(user_id))
+    # Önce spinner'ı kapat — silme/OCR bekletmesin.
     answer_callback_query(callback_id)
+    reply = try_handle_conversation_callback(data, int(user_id))
     if reply is None:
         return "ignored"
 
@@ -1319,7 +1459,7 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
     if text.startswith("/iptal"):
         reply = try_handle_conversation(int(user_id), text, cancel=True)
         if reply is not None:
-            send_message(chat_id, reply.text)
+            _dispatch_conversation_reply(int(chat_id), reply)
         else:
             send_message(chat_id, "İptal edilecek bir adım yok.")
         return "command"

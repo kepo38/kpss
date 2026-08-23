@@ -10,6 +10,7 @@ import '../screens/tg_exam/tg_exam_result_screen.dart';
 import '../services/kpss_preference_service.dart';
 import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
+import 'exam_premium_shell.dart';
 import 'exam_section_header.dart';
 import 'tg_exam_gates.dart';
 
@@ -79,17 +80,47 @@ class _TgExamsSectionState extends State<TgExamsSection> {
                 )
               : null,
         ),
-        if (exams.isEmpty && !service.loading)
-          Text(
-            service.lastError ??
-                'Henüz Türkiye Geneli deneme yok. Yeni denemeler duyurulunca burada görünür.',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              height: 1.45,
-              color: AppTheme.mutedOnPage(context),
+        if (exams.isEmpty && !service.loading) ...[
+          ExamPremiumCardShell(
+            accentBar: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  service.lastError != null
+                      ? 'TG denemeleri yüklenemedi'
+                      : 'Henüz Türkiye Geneli deneme yok',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: AppTheme.onPage(context),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  service.lastError ??
+                      'Yeni denemeler duyurulunca burada görünür. '
+                      'Telefon USB + basla-telefon.bat ile API’ye bağlı olmalı.',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: AppTheme.mutedOnPage(context),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => unawaited(_refresh()),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Yeniden dene'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.champagne,
+                    foregroundColor: AppTheme.ink,
+                  ),
+                ),
+              ],
             ),
-          )
-        else ...[
+          ),
+        ] else ...[
           if (active.isNotEmpty) ...[
             const _SectionHeader(title: 'Aktif Denemeler'),
             const SizedBox(height: 8),
@@ -134,13 +165,16 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: GoogleFonts.inter(
-        fontSize: 14,
-        fontWeight: FontWeight.w700,
-        color: AppTheme.mutedOnPage(context),
-        letterSpacing: 0.2,
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.4,
+          color: AppTheme.champagne.withValues(alpha: 0.9),
+        ),
       ),
     );
   }
@@ -170,16 +204,15 @@ class _TgExamCard extends StatelessWidget {
     final waitingResults = exam.isScoreCalculatedWaitingResults;
     final net = attempt?.net ?? 0;
     final showBadge = showLiveBadge && _isLiveNow && !exam.hasSubmittedAttempt;
+    final canEnter = !exam.hasSubmittedAttempt &&
+        (exam.status == TgExamStatus.active ||
+            exam.status == TgExamStatus.inProgress ||
+            _isLiveNow);
+    final meta = _metaLine(exam, participants);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: AppTheme.surfaceCard(context),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-        side: BorderSide(color: AppTheme.champagne.withValues(alpha: 0.25)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ExamPremiumCardShell(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -202,8 +235,10 @@ class _TgExamCard extends StatelessWidget {
                             child: Text(
                               exam.title,
                               style: GoogleFonts.inter(
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w800,
                                 fontSize: 14,
+                                height: 1.25,
+                                color: AppTheme.onPage(context),
                               ),
                             ),
                           ),
@@ -220,19 +255,30 @@ class _TgExamCard extends StatelessWidget {
                           fontSize: 12,
                           fontWeight: waitingResults
                               ? FontWeight.w600
-                              : FontWeight.normal,
+                              : FontWeight.w500,
                           color: waitingResults
                               ? AppTheme.champagne
                               : AppTheme.mutedOnPage(context),
                         ),
                       ),
+                      if (meta.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          meta,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            height: 1.35,
+                            color: AppTheme.mutedOnPage(context),
+                          ),
+                        ),
+                      ],
                       if (showRank) ...[
                         const SizedBox(height: 4),
                         Text(
                           '$participants kişi içinde $rank. oldun',
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: AppTheme.champagne,
                           ),
                         ),
@@ -285,6 +331,22 @@ class _TgExamCard extends StatelessWidget {
                   ),
                 ],
               ),
+            ] else if (canEnter) ...[
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: () => _openWelcome(context),
+                icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                label: Text(
+                  exam.status == TgExamStatus.inProgress
+                      ? 'Devam Et'
+                      : 'Denemeye Başla',
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.champagne,
+                  foregroundColor: AppTheme.ink,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
             ] else if (!exam.hasSubmittedAttempt) ...[
               const SizedBox(height: 10),
               Align(
@@ -299,6 +361,20 @@ class _TgExamCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _metaLine(TgExamModel exam, int participants) {
+    final parts = <String>[];
+    final kpss = exam.kpssType.trim();
+    if (kpss.isNotEmpty) {
+      parts.add(kpss);
+    }
+    if (participants > 0) {
+      parts.add('$participants katılımcı');
+    }
+    parts.add('${exam.questionCount} soru');
+    parts.add('${exam.durationMinutes} dk');
+    return parts.join(' · ');
   }
 
   String _statusLabel(TgExamModel exam) {

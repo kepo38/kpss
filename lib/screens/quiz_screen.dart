@@ -36,6 +36,7 @@ import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/embossed_app_bar_title.dart';
 import '../widgets/favorite_heart_button.dart';
+import '../widgets/cached_remote_image.dart';
 import '../widgets/exam_text/exam_option_view.dart';
 import '../widgets/exam_text/exam_solution_view.dart';
 import '../widgets/exam_text/option_column_layout.dart';
@@ -75,7 +76,7 @@ class QuizScreen extends StatefulWidget {
   final bool tgExamSolutionReview;
   final int? tgExamId;
   final String? statisticsTestId;
-  final Future<void> Function({
+  final Future<bool> Function({
     required List<String?> answers,
     required int currentIndex,
     required Duration elapsed,
@@ -122,6 +123,7 @@ class _QuizScreenState extends State<QuizScreen>
   bool _timeUpHandled = false;
   bool _tgTenMinuteWarningPlayed = false;
   bool _isFinishing = false;
+  DateTime? _lastProgressErrorAt;
   QuestionRatingSummary? _ratingSummary;
   String? _ratingQuestionId;
   bool _ratingLoading = false;
@@ -269,13 +271,8 @@ class _QuizScreenState extends State<QuizScreen>
   Duration get _elapsedNow =>
       _timerPaused ? _frozenElapsed : DateTime.now().difference(_startedAt);
 
-  /// TG denemede sabit 130 dk geri sayım; diğer modlarda widget süresi.
-  int get _countdownLimitMinutes {
-    if (widget.tgExamMode && !widget.tgExamSolutionReview) {
-      return TgExamConstants.examDurationMinutes;
-    }
-    return widget.timeLimitMinutes;
-  }
+  /// Geri sayım süresi (dakika); TG dahil widget değerini kullanır.
+  int get _countdownLimitMinutes => widget.timeLimitMinutes;
 
   bool get _usesCountdown => _countdownLimitMinutes > 0;
 
@@ -368,10 +365,35 @@ class _QuizScreenState extends State<QuizScreen>
         elapsed: _elapsedNow,
       );
     }
-    await widget.onProgress?.call(
+    final progress = widget.onProgress;
+    if (progress == null) return;
+    final ok = await progress(
       answers: _answers,
       currentIndex: _currentIndex,
       elapsed: _elapsedNow,
+    );
+    if (!ok &&
+        widget.tgExamMode &&
+        !widget.tgExamSolutionReview &&
+        mounted) {
+      _maybeWarnProgressSaveFailed();
+    }
+  }
+
+  void _maybeWarnProgressSaveFailed() {
+    final now = DateTime.now();
+    final last = _lastProgressErrorAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 20)) {
+      return;
+    }
+    _lastProgressErrorAt = now;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'İlerleme kaydedilemedi. İnterneti kontrol edin — cevaplar kaybolabilir.',
+        ),
+        duration: Duration(seconds: 4),
+      ),
     );
   }
 
@@ -1004,6 +1026,7 @@ class _QuizScreenState extends State<QuizScreen>
                 return _OptionTile(
                   label: entry.key,
                   text: entry.value,
+                  imageUrl: _currentQuestion.optionImageUrlFor(entry.key),
                   forceColumns: OptionColumnLayout.forcedColumns(
                     _currentQuestion.optionTable,
                   ),
@@ -1220,12 +1243,14 @@ class _QuizScreenState extends State<QuizScreen>
       final state = await QuestionErrorReportService.instance.load(questionId);
       if (!mounted) return;
       if (!state.testsRequirementMet) {
+        final local = ContentBankService.instance.completedTopicTestCount;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               QuestionErrorReportService.testsRequiredWarning(
                 completed: state.testsCompleted,
                 required: state.minTestsRequired,
+                localCompleted: local,
               ),
             ),
           ),
@@ -1753,17 +1778,24 @@ class _QuizScreenState extends State<QuizScreen>
 
     ButtonStyle navOutlineStyle({required bool enabled}) =>
         OutlinedButton.styleFrom(
-          foregroundColor: Colors.white70,
+          foregroundColor: enabled
+              ? AppTheme.champagneLight
+              : Colors.white.withValues(alpha: 0.28),
           disabledForegroundColor: Colors.white.withValues(alpha: 0.28),
-          minimumSize: const Size(0, 46),
+          minimumSize: const Size(0, 48),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           side: BorderSide(
-            color: Colors.white.withValues(alpha: enabled ? 0.28 : 0.12),
+            color: AppTheme.champagne.withValues(alpha: enabled ? 0.42 : 0.14),
           ),
+          backgroundColor: enabled
+              ? AppTheme.champagne.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.02),
           textStyle: const TextStyle(
-            fontSize: 13,
+            fontFamily: 'serif',
+            fontSize: 14,
             fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
           ),
         );
 
@@ -1771,27 +1803,50 @@ class _QuizScreenState extends State<QuizScreen>
         (_showingSolution || (_selectedAnswer != null && !_isFinishing));
     ButtonStyle solutionStyle({required bool enabled}) =>
         OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.champagneLight,
+          foregroundColor: enabled
+              ? AppTheme.champagneLight
+              : AppTheme.champagneLight.withValues(alpha: 0.35),
           disabledForegroundColor:
               AppTheme.champagneLight.withValues(alpha: 0.35),
-          minimumSize: const Size(0, 46),
+          minimumSize: const Size(0, 48),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           side: BorderSide(
-            color: AppTheme.champagne.withValues(alpha: enabled ? 0.45 : 0.18),
+            color: AppTheme.champagne.withValues(alpha: enabled ? 0.62 : 0.18),
           ),
+          backgroundColor: enabled
+              ? AppTheme.champagne.withValues(alpha: 0.16)
+              : Colors.transparent,
           textStyle: const TextStyle(
-            fontSize: 13,
+            fontFamily: 'serif',
+            fontSize: 14,
             fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
           ),
         );
 
     return SafeArea(
       top: false,
       child: Material(
-        color: AppTheme.ink,
-        elevation: 8,
-        child: Column(
+        color: AppTheme.inkSoft,
+        elevation: 0,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: AppTheme.champagne.withValues(alpha: 0.22),
+              ),
+            ),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppTheme.inkSoft,
+                AppTheme.ink,
+              ],
+            ),
+          ),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
@@ -1848,15 +1903,17 @@ class _QuizScreenState extends State<QuizScreen>
                                   AppTheme.champagne.withValues(alpha: 0.35),
                               disabledForegroundColor:
                                   AppTheme.ink.withValues(alpha: 0.45),
-                              minimumSize: const Size(0, 46),
+                              minimumSize: const Size(0, 48),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 4,
                                 vertical: 12,
                               ),
                               textStyle: const TextStyle(
-                                fontSize: 13,
+                                fontFamily: 'serif',
+                                fontSize: 14,
                                 fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
                               ),
                             ),
                             child: Text(
@@ -1899,6 +1956,7 @@ class _QuizScreenState extends State<QuizScreen>
                 },
               ),
           ],
+        ),
         ),
       ),
     );
@@ -2187,23 +2245,39 @@ class _QuizScreenState extends State<QuizScreen>
                           onTap: () => _goTo(i),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 160),
-                            width: 32,
-                            height: 32,
+                            width: 34,
+                            height: 34,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: chip.fill,
+                              color: active
+                                  ? AppTheme.champagne.withValues(alpha: 0.22)
+                                  : chip.fill,
                               border: Border.all(
-                                color: chip.border,
-                                width: active ? 2 : 1,
+                                color: active
+                                    ? AppTheme.champagneLight
+                                    : chip.border,
+                                width: active ? 1.6 : 1,
                               ),
+                              boxShadow: active
+                                  ? [
+                                      BoxShadow(
+                                        color: AppTheme.champagne
+                                            .withValues(alpha: 0.22),
+                                        blurRadius: 8,
+                                      ),
+                                    ]
+                                  : null,
                             ),
                             child: Text(
                               '${i + 1}',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontFamily: 'serif',
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: chip.text,
+                                color: active
+                                    ? AppTheme.champagneLight
+                                    : chip.text,
                               ),
                             ),
                           ),
@@ -2492,6 +2566,42 @@ class _ScenarioPassageCard extends StatelessWidget {
 
 enum _OptionTone { correct, wrong }
 
+class _SolutionContentBlock extends StatelessWidget {
+  final String text;
+  final String? imageUrl;
+
+  const _SolutionContentBlock({
+    required this.text,
+    this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl?.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (url != null && url.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
+              child: CachedRemoteImage(
+                imageUrl: url,
+                fit: BoxFit.contain,
+                borderRadius: BorderRadius.circular(8),
+                semanticLabel: 'Çözüm görseli',
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        ExamSolutionView(text: text),
+      ],
+    );
+  }
+}
+
 class _SolutionPanel extends StatelessWidget {
   final QuestionModel question;
   final String? selectedAnswer;
@@ -2555,6 +2665,7 @@ class _SolutionPanel extends StatelessWidget {
               _AnswerChip(
                 label: 'Senin cevabın',
                 value: '$selectedAnswer) $userText',
+                imageUrl: question.optionImageUrlFor(selectedAnswer!),
                 accent: const Color(0xFFF87171),
               ),
               const SizedBox(height: 8),
@@ -2562,12 +2673,16 @@ class _SolutionPanel extends StatelessWidget {
             _AnswerChip(
               label: 'Doğru cevap',
               value: '$correctKey) $correctText',
+              imageUrl: question.optionImageUrlFor(correctKey),
               accent: const Color(0xFF34D399),
             ),
           ],
           const SizedBox(height: 16),
           if (showFullSolution)
-            ExamSolutionView(text: question.cozumMetni)
+            _SolutionContentBlock(
+              text: question.cozumMetni,
+              imageUrl: question.cozumImageUrl,
+            )
           else if (!parts.hasLockedRemainder) ...[
             // Kısa çözümlerde de kota sonrası reklam zorunlu — tam metin sızmaz.
             ClipRRect(
@@ -2578,7 +2693,10 @@ class _SolutionPanel extends StatelessWidget {
                     imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: Opacity(
                       opacity: 0.55,
-                      child: ExamSolutionView(text: question.cozumMetni),
+                      child: _SolutionContentBlock(
+                        text: question.cozumMetni,
+                        imageUrl: question.cozumImageUrl,
+                      ),
                     ),
                   ),
                   Positioned.fill(
@@ -2622,7 +2740,10 @@ class _SolutionPanel extends StatelessWidget {
               ),
             ),
           ] else ...[
-            ExamSolutionView(text: parts.preview),
+            _SolutionContentBlock(
+              text: parts.preview,
+              imageUrl: question.cozumImageUrl,
+            ),
             const SizedBox(height: 14),
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -2632,7 +2753,9 @@ class _SolutionPanel extends StatelessWidget {
                     imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: Opacity(
                       opacity: 0.55,
-                      child: ExamSolutionView(text: parts.remainder),
+                      child: _SolutionContentBlock(
+                        text: parts.remainder,
+                      ),
                     ),
                   ),
                   Positioned.fill(
@@ -2820,12 +2943,14 @@ class _FrostUnlockButton extends StatelessWidget {
 class _AnswerChip extends StatelessWidget {
   final String label;
   final String value;
+  final String? imageUrl;
   final Color accent;
 
   const _AnswerChip({
     required this.label,
     required this.value,
     required this.accent,
+    this.imageUrl,
   });
 
   @override
@@ -2850,7 +2975,10 @@ class _AnswerChip extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          ExamOptionView(text: FormattedText.stripMarkup(value)),
+          ExamOptionView(
+            text: FormattedText.stripMarkup(value),
+            imageUrl: imageUrl,
+          ),
         ],
       ),
     );
@@ -2860,6 +2988,7 @@ class _AnswerChip extends StatelessWidget {
 class _OptionTile extends StatelessWidget {
   final String label;
   final String text;
+  final String? imageUrl;
   final int? forceColumns;
   final bool isSelected;
   final _OptionTone? tone;
@@ -2871,6 +3000,7 @@ class _OptionTile extends StatelessWidget {
     required this.text,
     required this.isSelected,
     required this.onTap,
+    this.imageUrl,
     this.forceColumns,
     this.tone,
     this.percentage,
@@ -2882,7 +3012,8 @@ class _OptionTile extends StatelessWidget {
   static const _trailingSlotWidth = 36.0;
 
   bool get _mathStyle =>
-      forceColumns == null && ExamOptionView.isMathStyleOption(text);
+      forceColumns == null &&
+      ExamOptionView.isMathStyleOption(text, imageUrl: imageUrl);
 
   @override
   Widget build(BuildContext context) {
@@ -2935,6 +3066,12 @@ class _OptionTile extends StatelessWidget {
         glow = null;
     }
 
+    final hasOptionImage =
+        imageUrl != null && imageUrl!.trim().isNotEmpty;
+    final rowAlign = hasOptionImage
+        ? CrossAxisAlignment.start
+        : CrossAxisAlignment.center;
+
     return Padding(
       padding: EdgeInsets.only(
         bottom: _mathStyle
@@ -2967,31 +3104,49 @@ class _OptionTile extends StatelessWidget {
               boxShadow: glow,
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: rowAlign,
               children: [
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: badge,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: badgeText,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                SizedBox(
+                  width: kOptionBadgeLeadingWidth,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: hasOptionImage ? 2 : 0),
+                    child: Center(
+                      child: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: badge,
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            color: badgeText,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: ExamOptionView(
-                    text: text,
-                    forceColumns: forceColumns,
-                  ),
+                  child: _mathStyle
+                      ? Center(
+                          child: ExamOptionView(
+                            text: text,
+                            imageUrl: imageUrl,
+                            forceColumns: forceColumns,
+                          ),
+                        )
+                      : ExamOptionView(
+                          text: text,
+                          imageUrl: imageUrl,
+                          forceColumns: forceColumns,
+                        ),
                 ),
                 SizedBox(
                   width: _trailingSlotWidth,
                   child: Align(
-                    alignment: Alignment.centerRight,
+                    alignment: hasOptionImage
+                        ? Alignment.topRight
+                        : Alignment.centerRight,
                     child: tone == _OptionTone.correct
                         ? const Icon(
                             Icons.check_rounded,

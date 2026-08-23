@@ -11,7 +11,7 @@ from PIL import Image
 
 from .models import Question, Subject, Topic
 from .serializers import QuestionSerializer
-from .svg_sanitize import extract_svg, is_safe_svg
+from .svg_sanitize import extract_svg, is_safe_svg, sanitize_figure_svg, strip_raster_embeds
 
 
 TRIANGLE = (
@@ -49,6 +49,27 @@ class SvgExtractTests(SimpleTestCase):
 
     def test_accepts_triangle(self):
         self.assertTrue(is_safe_svg(TRIANGLE))
+
+    def test_strips_embedded_photo_keeps_vectors(self):
+        raw = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+            '<image href="data:image/png;base64,iVBORw0KGgo=" width="100" height="100"/>'
+            '<polygon points="10,90 90,90 10,10" fill="none" stroke="black"/>'
+            "</svg>"
+        )
+        cleaned = sanitize_figure_svg(raw)
+        self.assertIn("<polygon", cleaned)
+        self.assertNotIn("data:image", cleaned)
+        self.assertNotIn("<image", cleaned.lower())
+
+    def test_photo_only_svg_discarded(self):
+        raw = (
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<image href="data:image/png;base64,abc" width="10" height="10"/>'
+            "</svg>"
+        )
+        self.assertEqual(sanitize_figure_svg(raw), "")
+        self.assertEqual(strip_raster_embeds(raw).count("image"), 0)
 
 
 class FigureSvgPanelTests(TestCase):
@@ -117,6 +138,74 @@ class FigureSvgPanelTests(TestCase):
         question = Question.objects.get()
         self.assertIn("<svg", question.figure_svg)
         self.assertFalse(question.image)
+
+    def test_publish_without_keep_image_deletes_telegram_photo(self):
+        self.client.force_login(self.staff)
+        buf = BytesIO()
+        Image.new("RGB", (12, 12), "white").save(buf, format="PNG")
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_tg_photo",
+            stem="Telegram foto",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=False,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+            figure_svg=TRIANGLE,
+        )
+        question.image.save(
+            "tg_scan.png",
+            SimpleUploadedFile("tg_scan.png", buf.getvalue(), content_type="image/png"),
+            save=True,
+        )
+        image_name = question.image.name
+        storage = question.image.storage
+        self.assertTrue(storage.exists(image_name))
+
+        response = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{question.id}/",
+            self._payload(
+                figure_svg=TRIANGLE,
+                stem="Telegram foto",
+                is_published="on",
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        question.refresh_from_db()
+        self.assertTrue(question.is_published)
+        self.assertFalse(question.image)
+        self.assertFalse(storage.exists(image_name))
+
+    def test_keep_image_preserves_photo(self):
+        self.client.force_login(self.staff)
+        buf = BytesIO()
+        Image.new("RGB", (10, 10), "blue").save(buf, format="PNG")
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_keep_photo",
+            stem="Koru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=False,
+        )
+        question.image.save(
+            "keep.png",
+            SimpleUploadedFile("keep.png", buf.getvalue(), content_type="image/png"),
+            save=True,
+        )
+        response = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{question.id}/",
+            self._payload(stem="Koru", keep_image="1", is_published="on"),
+        )
+        self.assertEqual(response.status_code, 302)
+        question.refresh_from_db()
+        self.assertTrue(bool(question.image))
 
     def test_unsafe_svg_is_discarded(self):
         self.client.force_login(self.staff)

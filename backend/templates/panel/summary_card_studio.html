@@ -135,7 +135,8 @@
       </label>
 
       <label class="check">
-        <input type="checkbox" name="is_published" {% if card.is_published %}checked{% endif %}>
+        {# Boş yuva / yeni kart: gövde yazılınca yayına girsin diye ön işaretli. #}
+        <input type="checkbox" name="is_published" {% if card.is_published or not card.body %}checked{% endif %}>
         Yayında
       </label>
 

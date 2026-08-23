@@ -57,6 +57,42 @@ void main() {
       expect(points.last.gkNet, 40);
     });
 
+    test('maps turkce_anlam subject slugs to GY/GK nets', () {
+      final tg = [
+        TgExamModel(
+          id: 3,
+          title: 'TG Mart',
+          kpssType: 'lisans',
+          startAt: DateTime(2026, 3, 1),
+          endAt: DateTime(2026, 3, 10),
+          durationMinutes: 130,
+          questionCount: 120,
+          isResultsPublished: true,
+          status: TgExamStatus.results,
+          myAttempt: const TgExamAttemptModel(
+            isSubmitted: true,
+            net: 50,
+            subjectNets: {
+              'turkce_anlam': 10,
+              'turkce_dilbilgisi': 8,
+              'matematik': 12,
+              'tarih': 15,
+              'cografya': 5,
+            },
+          ),
+        ),
+      ];
+
+      final points = ExamTrendService.instance.buildUnifiedTrend(
+        practiceExams: const [],
+        tgExams: tg,
+      );
+
+      expect(points, hasLength(1));
+      expect(points.single.gyNet, 30);
+      expect(points.single.gkNet, 20);
+    });
+
     test('skips TG attempts that are not submitted', () {
       final tg = [
         TgExamModel(

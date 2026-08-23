@@ -11,9 +11,11 @@ import '../services/database_service.dart';
 import '../services/kpss_preference_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
+import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_shell_top_bar.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/tg_exam_promo_bubble.dart';
 import '../widgets/wrong_notebook_promo_bubble.dart';
 import 'analytics_hub_screen.dart';
 import 'home_screen.dart';
@@ -53,6 +55,12 @@ class _MainShellState extends State<MainShell> {
       Future<void>.delayed(const Duration(milliseconds: 400), () {
         unawaited(ContentBankService.instance.initialize());
       });
+      // TG listesi / baloncuk — Deneme sekmesine gelmeden önce hazır olsun.
+      unawaited(
+        TgExamService.instance.initialize(
+          kpssType: KpssPreferenceService.instance.kpssType,
+        ),
+      );
     });
   }
 
@@ -190,11 +198,21 @@ class _MainShellState extends State<MainShell> {
             ],
           ),
           WrongNotebookPromoBubble(homeVisible: _index == 0),
+          TgExamPromoBubble(subjectsTabVisible: _index == 1),
         ],
       ),
       bottomNavigationBar: _PremiumBottomBar(
         index: _index,
-        onChanged: (i) => setState(() => _index = i),
+        onChanged: (i) {
+          setState(() => _index = i);
+          if (i == 1 || i == 3) {
+            unawaited(
+              TgExamService.instance.initialize(
+                kpssType: KpssPreferenceService.instance.kpssType,
+              ),
+            );
+          }
+        },
         onProfileTap: _openProfile,
       ),
     );

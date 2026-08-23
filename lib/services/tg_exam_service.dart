@@ -11,6 +11,15 @@ import '../widgets/countdown_widget.dart';
 import 'auth_service.dart';
 import 'question_fetch_service.dart';
 
+class TgExamSubmitResult {
+  final TgExamModel? exam;
+  final String? error;
+
+  const TgExamSubmitResult({this.exam, this.error});
+
+  bool get ok => exam != null;
+}
+
 /// Türkiye Geneli denemeler — liste, oturum, gönderim.
 class TgExamService extends ChangeNotifier {
   TgExamService._();
@@ -28,6 +37,15 @@ class TgExamService extends ChangeNotifier {
   bool get loading => _loading;
   String? get lastError => _lastError;
 
+  /// Aktif penceredeki ilk yayınlı TG deneme (baloncuk / kısayol).
+  /// Kullanıcı zaten gönderdiyse gösterilmez.
+  TgExamModel? get liveExam {
+    for (final exam in _exams) {
+      if (exam.isLiveNow && !exam.hasSubmittedAttempt) return exam;
+    }
+    return null;
+  }
+
   Future<void> initialize({KpssType? kpssType}) async {
     if (kpssType != null) _kpssType = kpssType;
     _initialized = true;
@@ -36,9 +54,10 @@ class TgExamService extends ChangeNotifier {
   }
 
   Future<void> setKpssType(KpssType type) async {
-    if (_kpssType == type && _initialized) return;
+    if (_kpssType == type) return;
     _kpssType = type;
-    await refresh();
+    notifyListeners();
+    // TG listesi tüm tipleri gösterir; tip değişince yeniden çekmeye gerek yok.
   }
 
   TgExamModel? examById(int id) {
@@ -55,7 +74,8 @@ class TgExamService extends ChangeNotifier {
     try {
       final response = await http
           .get(
-            ApiConfig.tgExamsUri(kpssType: _kpssType.apiValue),
+            // KPSS tipinden bağımsız — tüm yayınlı TG denemeleri.
+            ApiConfig.tgExamsUri(),
             headers: AuthService.instance.authHeaders,
           )
           .timeout(const Duration(seconds: 15));
@@ -144,13 +164,13 @@ class TgExamService extends ChangeNotifier {
     }
   }
 
-  Future<void> saveProgress({
+  Future<bool> saveProgress({
     required int examId,
     required Map<String, String?> answers,
     required int currentIndex,
     required Duration elapsed,
   }) async {
-    if (!AuthService.instance.isSignedIn) return;
+    if (!AuthService.instance.isSignedIn) return false;
     final payload = <String, String>{};
     answers.forEach((key, value) {
       if (value != null && value.isNotEmpty) {
@@ -158,7 +178,7 @@ class TgExamService extends ChangeNotifier {
       }
     });
     try {
-      await http
+      final response = await http
           .post(
             ApiConfig.tgExamProgressUri(examId),
             headers: {
@@ -172,12 +192,20 @@ class TgExamService extends ChangeNotifier {
             }),
           )
           .timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
+      debugPrint(
+        'TgExamService.saveProgress: HTTP ${response.statusCode}',
+      );
+      return false;
     } catch (e) {
       debugPrint('TgExamService.saveProgress: $e');
+      return false;
     }
   }
 
-  Future<TgExamModel?> submit({
+  Future<TgExamSubmitResult> submit({
     required int examId,
     required List<QuestionModel> questions,
     required List<String?> answers,
@@ -210,12 +238,38 @@ class TgExamService extends ChangeNotifier {
         final model = TgExamModel.fromJson(body);
         _upsertLocal(model);
         notifyListeners();
-        return model;
+        return TgExamSubmitResult(exam: model);
       }
+      return TgExamSubmitResult(
+        error: _submitErrorMessage(response.statusCode, response.bodyBytes),
+      );
     } catch (e) {
       debugPrint('TgExamService.submit: $e');
+      return const TgExamSubmitResult(
+        error: 'Bağlantı hatası — cevaplar gönderilemedi. Tekrar deneyin.',
+      );
     }
-    return null;
+  }
+
+  String _submitErrorMessage(int statusCode, List<int> bodyBytes) {
+    String detail = '';
+    try {
+      final decoded = jsonDecode(utf8.decode(bodyBytes));
+      if (decoded is Map && decoded['detail'] != null) {
+        detail = '${decoded['detail']}'.trim();
+      }
+    } catch (_) {
+      // ignore
+    }
+    if (detail.isNotEmpty) return detail;
+    switch (statusCode) {
+      case 403:
+        return 'Deneme katılım süresi sona erdi veya henüz başlamadı.';
+      case 409:
+        return 'Deneme zaten gönderilmiş.';
+      default:
+        return 'Cevaplar gönderilemedi (HTTP $statusCode).';
+    }
   }
 
   List<String?> initialAnswersFor(TgExamModel exam, List<String> questionIds) {
@@ -257,7 +311,7 @@ extension on KpssType {
 }
 
 /// QuizScreen.onProgress için TG deneme kaydı.
-Future<void> tgExamOnProgress({
+Future<bool> tgExamOnProgress({
   required int examId,
   required List<QuestionModel> questions,
   required List<String?> answers,
@@ -268,7 +322,7 @@ Future<void> tgExamOnProgress({
   for (var i = 0; i < questions.length; i++) {
     map[questions[i].id] = answers[i];
   }
-  await TgExamService.instance.saveProgress(
+  return TgExamService.instance.saveProgress(
     examId: examId,
     answers: map,
     currentIndex: currentIndex,
@@ -276,7 +330,7 @@ Future<void> tgExamOnProgress({
   );
 }
 
-Future<TgExamModel?> submitTgExamFromQuiz({
+Future<TgExamSubmitResult> submitTgExamFromQuiz({
   required int examId,
   required QuizResult result,
   required List<QuestionModel> questions,

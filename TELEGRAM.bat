@@ -2,20 +2,21 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
+set "ROOT=%~dp0"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+set "LOCK=%ROOT%\telegram_bot.lock"
+set "SAFEDEL=%ROOT%\scripts\safe-del.bat"
 set "AUTO=0"
 if /i "%~1"=="/auto" set "AUTO=1"
 
 if "!AUTO!"=="1" (
   title HEDEF Kamu - Telegram (otomatik)
-  if not exist "%ROOT%\logs\" mkdir "%ROOT%\logs\" >nul 2>&1
-  echo.>> "%ROOT%\logs\telegram-auto.log"
-  echo ===== TELEGRAM.bat /auto %DATE% %TIME% =====>> "%ROOT%\logs\telegram-auto.log"
+  if not exist "%ROOT%\logs" mkdir "%ROOT%\logs" >nul 2>&1
+  >>"%ROOT%\logs\telegram-auto.log" echo(
+  >>"%ROOT%\logs\telegram-auto.log" echo ===== TELEGRAM.bat /auto %DATE% %TIME% =====
 ) else (
   title HEDEF Kamu - Telegram Soru Botu
 )
-
-set "ROOT=D:\HEDEFKAMU"
-set "LOCK=%ROOT%\telegram_bot.lock"
 
 if not exist "%ROOT%\backend\manage.py" (
   echo [HATA] Proje bulunamadi: %ROOT%\backend
@@ -30,19 +31,19 @@ if exist "%LOCK%" (
     tasklist /FI "PID eq !LOCKPID!" 2>nul | find "!LOCKPID!" >nul
     if not errorlevel 1 (
       if "!AUTO!"=="1" (
-        echo [BILGI] Telegram aktarimi zaten calisiyor ^(PID !LOCKPID!^).
+        echo [BILGI] Telegram aktarimi zaten calisiyor - PID !LOCKPID!
         exit /b 0
       )
-      echo.
-      echo [BILGI] TELEGRAM.bat zaten calisiyor ^(PID !LOCKPID!^).
+      echo(
+      echo [BILGI] TELEGRAM.bat zaten calisiyor - PID !LOCKPID!
       echo         Ikinci pencere acmayin; ilki bitene kadar bekleyin.
       echo         Telegram'dan /durum ile ozet alabilirsiniz.
-      echo.
+      echo(
       pause
       exit /b 1
     )
   )
-  del "%LOCK%" 2>nul
+  call "%SAFEDEL%" "%LOCK%"
 )
 
 cd /d "%ROOT%\backend"

@@ -219,12 +219,13 @@ class _DailyMiniExamCardState extends State<DailyMiniExamCard>
             required answers,
             required currentIndex,
             required elapsed,
-          }) {
-            return service.saveProgress(
+          }) async {
+            await service.saveProgress(
               answers: answers,
               currentIndex: currentIndex,
               elapsed: elapsed,
             );
+            return true;
           },
         ),
       ),

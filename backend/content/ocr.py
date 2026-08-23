@@ -1049,6 +1049,9 @@ class OcrQuestionResult:
     solution: str = ""
     topic_slug: str = ""
     subject_slug: str = ""
+    options_visual: bool = False
+    option_boxes: dict[str, tuple[float, float, float, float]] | None = None
+    option_image_bytes: dict[str, bytes] | None = None
 
 
 def _read_source_bytes(source: BinaryIO | bytes | Path | str) -> tuple[bytes, str]:

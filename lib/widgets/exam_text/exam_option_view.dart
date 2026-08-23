@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
+import '../cached_remote_image.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
 
@@ -14,11 +15,13 @@ const double kCompactOptionFontSize = 19;
 /// Eşleştirme satırında eşit sütun (yalnızca forceColumns).
 class ExamOptionView extends StatelessWidget {
   final String text;
+  final String? imageUrl;
   final int? forceColumns;
 
   const ExamOptionView({
     super.key,
     required this.text,
+    this.imageUrl,
     this.forceColumns,
   });
 
@@ -30,13 +33,23 @@ class ExamOptionView extends StatelessWidget {
   }
 
   /// Matematik / kısa sayısal şık — ortalı büyük punto.
-  static bool isMathStyleOption(String text) {
+  static bool isMathStyleOption(String text, {String? imageUrl}) {
+    if (imageUrl != null && imageUrl.trim().isNotEmpty) return false;
     if (isCompactOption(text)) return true;
     final visible = _visiblePlain(text);
     if (visible.isEmpty || visible.length > 56) return false;
     if (RegExp(r'^\d+$').hasMatch(visible)) return true;
+    if (_isShortNumericOption(visible)) return true;
     return RegExp(r'[√⁄÷×±^_=\\]|\\sqrt|\\frac|\\dfrac|\\tfrac')
         .hasMatch(visible);
+  }
+
+  /// `0,1` · `0.5` · `-3/4` gibi kısa sayısal şıklar.
+  static bool _isShortNumericOption(String visible) {
+    if (visible.length > 16) return false;
+    return RegExp(
+      r'^-?\d+(?:[.,]\d+)?(?:\s*/\s*-?\d+(?:[.,]\d+)?)?$',
+    ).hasMatch(visible);
   }
 
   static String _visiblePlain(String text) {
@@ -82,6 +95,23 @@ class ExamOptionView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final url = imageUrl?.trim();
+    if (url != null && url.isNotEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 120, maxWidth: 280),
+          child: CachedRemoteImage(
+            imageUrl: url,
+            fit: BoxFit.contain,
+            // Köşe yuvarlama opak zemini “kutu” gibi gösterir; şeffaf PNG için kapalı.
+            borderRadius: null,
+            semanticLabel: 'Şık görseli',
+          ),
+        ),
+      );
+    }
+
     final columns = forceColumns;
     if (columns != null && columns >= 2) {
       final cells = _forcedCells(columns);

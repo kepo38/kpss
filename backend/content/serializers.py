@@ -44,9 +44,12 @@ class QuestionSerializer(serializers.ModelSerializer):
     imageUrl = serializers.SerializerMethodField()
     sekilKodu = serializers.CharField(source="figure_svg", allow_blank=True)
     siklar = serializers.SerializerMethodField()
+    optionsAreImages = serializers.BooleanField(source="options_are_images")
+    optionImageUrls = serializers.SerializerMethodField()
     optionTable = serializers.CharField(source="option_table")
     dogruCevap = serializers.CharField(source="correct_option")
     cozumMetni = serializers.CharField(source="solution")
+    cozumImageUrl = serializers.SerializerMethodField()
     guncellenmeTarihi = serializers.DateTimeField(source="updated_at")
     osymSordu = serializers.BooleanField(source="osym_sordu")
     difficulty = serializers.CharField()
@@ -72,9 +75,12 @@ class QuestionSerializer(serializers.ModelSerializer):
             "imageUrl",
             "sekilKodu",
             "siklar",
+            "optionsAreImages",
+            "optionImageUrls",
             "optionTable",
             "dogruCevap",
             "cozumMetni",
+            "cozumImageUrl",
             "guncellenmeTarihi",
             "osymSordu",
             "difficulty",
@@ -94,10 +100,30 @@ class QuestionSerializer(serializers.ModelSerializer):
         return obj.options_map()
 
     def get_imageUrl(self, obj: Question) -> str | None:
-        request = self.context.get("request")
-        if not obj.image:
+        # Görsel şıklarda tam sayfa kaynağı gösterme (çift şık / A–E tekrarı).
+        if obj.options_are_images and any(
+            getattr(obj, f"option_{k}_image") for k in "abcde"
+        ):
             return None
-        url = obj.image.url
+        return self._absolute_media_url(obj.image, obj)
+
+    def get_optionImageUrls(self, obj: Question) -> dict[str, str | None]:
+        return {
+            "A": self._absolute_media_url(obj.option_a_image, obj),
+            "B": self._absolute_media_url(obj.option_b_image, obj),
+            "C": self._absolute_media_url(obj.option_c_image, obj),
+            "D": self._absolute_media_url(obj.option_d_image, obj),
+            "E": self._absolute_media_url(obj.option_e_image, obj),
+        }
+
+    def get_cozumImageUrl(self, obj: Question) -> str | None:
+        return self._absolute_media_url(obj.solution_image, obj)
+
+    def _absolute_media_url(self, field, obj: Question) -> str | None:
+        request = self.context.get("request")
+        if not field:
+            return None
+        url = field.url
         if request is not None:
             url = request.build_absolute_uri(url)
         ts = int(obj.updated_at.timestamp()) if obj.updated_at else 0
@@ -117,22 +143,19 @@ class QuestionSerializer(serializers.ModelSerializer):
     def get_ratingCount(self, obj: Question) -> int:
         return obj.ratings.count()
 
-    def _published_scenario(self, obj: Question):
-        scenario = getattr(obj, "scenario", None)
-        if scenario is None or not scenario.is_published:
-            return None
-        return scenario
+    def _attached_scenario(self, obj: Question):
+        return getattr(obj, "scenario", None)
 
     def get_scenarioId(self, obj: Question) -> str | None:
-        scenario = self._published_scenario(obj)
+        scenario = self._attached_scenario(obj)
         return str(scenario.id) if scenario is not None else None
 
     def get_scenarioTitle(self, obj: Question) -> str | None:
-        scenario = self._published_scenario(obj)
+        scenario = self._attached_scenario(obj)
         return scenario.title if scenario is not None else None
 
     def get_scenarioStem(self, obj: Question) -> str | None:
-        scenario = self._published_scenario(obj)
+        scenario = self._attached_scenario(obj)
         return scenario.stem if scenario is not None else None
 
 

@@ -50,3 +50,15 @@ class OsmArchiveLabelTests(SimpleTestCase):
 
     def test_ambiguous_kpss_short_label_stays(self):
         self.assertEqual(resolve_to_catalog_key("2026 KPSS"), "2026 KPSS")
+
+    def test_kpss_lisans_without_session_resolves(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2025 KPSS Lisans"),
+            "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
+        )
+
+    def test_kpss_lisans_gygk_alias_resolves(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2025 KPSS Lisans · GYGK"),
+            "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
+        )

@@ -29,12 +29,16 @@ class TgExamListView(APIView):
 
     def get(self, request):
         finalize_due_tg_exams(send_push=True)
-        kpss_type = (request.query_params.get("kpss_type") or "lisans").strip()
-        if kpss_type not in VALID_KPSS_TYPES:
+        # Türkiye Geneli: yayınlı tüm denemeler — uygulama KPSS tipinden bağımsız.
+        raw_type = (request.query_params.get("kpss_type") or "").strip()
+        if raw_type and raw_type != "all" and raw_type not in VALID_KPSS_TYPES:
             return Response({"detail": "Geçersiz kpss_type."}, status=400)
 
         user = get_user_from_request(request)
-        exams = TgExam.objects.filter(is_published=True, kpss_type=kpss_type)
+        exams = TgExam.objects.filter(is_published=True).order_by(
+            "-start_at",
+            "-id",
+        )
         attempts_by_exam: dict[int, TgExamAttempt] = {}
         if user is not None:
             attempts = TgExamAttempt.objects.filter(

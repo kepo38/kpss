@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,7 @@ from content.telegram_panel import telegram_question_ocr_flags
 from content.telegram_bot import (
     TelegramBotLockError,
     _allowed_user,
+    _pid_alive,
     _build_ingest_success_html,
     _format_elapsed,
     _resolve_topic,
@@ -486,10 +488,11 @@ class TelegramIngestTests(TestCase):
         TELEGRAM_ALLOWED_USER_IDS=[42],
         TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
     )
+    @patch("content.telegram_bot.telegram_lock_active", return_value=False)
     @patch("content.telegram_bot.send_message")
     @patch("content.telegram_bot._download_file")
     def test_invalid_topic_slug_rejects_without_ingest(
-        self, mock_download, mock_send
+        self, mock_download, mock_send, mock_lock_active
     ):
         outcome = handle_update(
             {
@@ -681,9 +684,64 @@ class TelegramIngestTests(TestCase):
         self.assertFalse(
             TelegramBotSession.objects.filter(telegram_user_id=42).exists()
         )
-        reply = mock_send.call_args[0][1]
-        self.assertIn("dinlemeye devam", reply.lower())
-        self.assertNotIn("kapan", reply.lower())
+        bodies = [call.args[1].lower() for call in mock_send.call_args_list]
+        self.assertTrue(
+            any("temizleniyor" in body or "dinlemeye devam" in body for body in bodies)
+        )
+        self.assertTrue(any("temizlendi" in body for body in bodies))
+        self.assertFalse(any("kapan" in body for body in bodies))
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+    )
+    @patch("content.telegram_bot.delete_message")
+    @patch("content.telegram_bot.send_message")
+    def test_iptal_deletes_photo_and_discards_pending_question(
+        self, mock_send, mock_delete
+    ):
+        from content.models import TelegramBotSession
+
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_iptal_1",
+            stem="İptal edilecek soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=False,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        )
+        TelegramBotSession.objects.create(
+            telegram_user_id=42,
+            chat_id=1001,
+            step=TelegramBotSession.STEP_SOLUTION_YES_NO,
+            question=question,
+            source_message_id=777,
+        )
+
+        outcome = handle_update(
+            {
+                "message": {
+                    "message_id": 900,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "text": "/iptal",
+                }
+            }
+        )
+
+        self.assertEqual(outcome, "command")
+        self.assertFalse(Question.objects.filter(public_id="q_iptal_1").exists())
+        self.assertFalse(
+            TelegramBotSession.objects.filter(telegram_user_id=42).exists()
+        )
+        mock_delete.assert_called_once_with(1001, 777)
+        body = mock_send.call_args[0][1].casefold()
+        self.assertIn("silindi", body)
+        self.assertIn("gönderilmedi", body)
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",
@@ -861,6 +919,50 @@ class PendingQuestionPanelTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Question.objects.filter(pk=self.question.id).exists())
+
+    def test_reject_deletes_media_file(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (8, 8), "red").save(buf, format="PNG")
+        self.question.image.save(
+            "reject_me.png",
+            SimpleUploadedFile(
+                "reject_me.png", buf.getvalue(), content_type="image/png"
+            ),
+            save=True,
+        )
+        image_name = self.question.image.name
+        storage = self.question.image.storage
+        self.assertTrue(storage.exists(image_name))
+
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse(
+                "panel_pending_question_reject",
+                kwargs={"question_id": self.question.id},
+            )
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Question.objects.filter(pk=self.question.id).exists())
+        self.assertFalse(storage.exists(image_name))
+
+
+class TelegramPidAliveTests(TestCase):
+    """Windows'ta os.kill(pid, 0) süreci öldürüyordu; sorgu zararsız olmalı."""
+
+    def test_own_pid_is_alive_and_process_survives(self):
+        self.assertTrue(_pid_alive(os.getpid()))
+        # Süreç sonlandırılmış olsaydı buradan sonrası çalışmazdı.
+        self.assertTrue(_pid_alive(os.getpid()))
+
+    def test_unused_pid_is_not_alive(self):
+        self.assertFalse(_pid_alive(0))
+        self.assertFalse(_pid_alive(-1))
+        self.assertFalse(_pid_alive(999999999))
 
 
 class TelegramLockTests(TestCase):

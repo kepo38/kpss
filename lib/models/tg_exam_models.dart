@@ -153,6 +153,36 @@ class TgExamModel {
   /// Türkiye geneli deneme penceresi hâlâ açık (bitiş saatine kadar).
   bool get isExamWindowOpen => DateTime.now().isBefore(endAt);
 
+  /// Yayınlanmış ve şu an çözülebilir pencere (start–end, sonuç ilan edilmeden).
+  bool get isLiveNow {
+    final now = DateTime.now();
+    return !isResultsPublished &&
+        !now.isBefore(startAt) &&
+        now.isBefore(endAt);
+  }
+
+  /// Oturum süresi ile deneme bitiş saati arasındaki kısa olan.
+  Duration effectiveCountdownLimit({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final sessionCap = Duration(
+      minutes: durationMinutes > 0
+          ? durationMinutes
+          : TgExamConstants.examDurationMinutes,
+    );
+    if (!t.isBefore(endAt)) return Duration.zero;
+    final untilEnd = endAt.difference(t);
+    if (untilEnd <= Duration.zero) return Duration.zero;
+    return untilEnd < sessionCap ? untilEnd : sessionCap;
+  }
+
+  /// Quiz geri sayımı — `endAt` penceresini aşmaz.
+  int effectiveCountdownMinutes({DateTime? now}) {
+    final limit = effectiveCountdownLimit(now: now);
+    if (limit <= Duration.zero) return 0;
+    final minutes = (limit.inSeconds / 60).ceil();
+    return minutes.clamp(1, TgExamConstants.examDurationMinutes);
+  }
+
   /// Soru çözümleri ve sıralama — sonuçlar otomatik yayınlanınca açılır.
   bool get canAccessSolutions =>
       hasSubmittedAttempt && isResultsPublished;

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
+import 'api_diag_log.dart';
 import 'auth_service.dart';
 import 'content_bank_isolate.dart';
 import 'content_bank_service.dart';
@@ -19,8 +20,10 @@ class ContentSyncService {
   Completer<bool>? _activeSync;
   DateTime? _lastSyncAt;
   String? _lastPackError;
+  String? _lastCatalogError;
 
   String? get lastPackError => _lastPackError;
+  String? get lastCatalogError => _lastCatalogError;
 
   /// Periyodik katalog kontrolü — varsayılan kapalı (pil/ağ tasarrufu).
   /// Gerekirse manuel veya push bildirimiyle tetiklenir.
@@ -165,15 +168,25 @@ class ContentSyncService {
 
     final completer = Completer<bool>();
     _activeSync = completer;
+    final sw = Stopwatch()..start();
+    final uri = ApiConfig.catalogUri();
     try {
       final response = await http
           .get(
-            ApiConfig.catalogUri(),
+            uri,
             headers: {'Accept': 'application/json'},
           )
           .timeout(timeout);
       if (response.statusCode != 200) {
-        debugPrint('Catalog sync HTTP ${response.statusCode}');
+        _lastCatalogError =
+            'Katalog HTTP ${response.statusCode} ($uri)';
+        await ApiDiagLog.record(
+          event: 'catalog',
+          ok: false,
+          statusCode: response.statusCode,
+          elapsedMs: sw.elapsedMilliseconds,
+          detail: _lastCatalogError,
+        );
         completer.complete(false);
         return false;
       }
@@ -183,13 +196,26 @@ class ContentSyncService {
       );
       await ContentBankService.instance.applyCatalogPack(body);
       _lastSyncAt = DateTime.now();
-      debugPrint(
-        'Catalog sync OK v${ContentBankService.instance.packVersion}',
+      _lastCatalogError = null;
+      await ApiDiagLog.record(
+        event: 'catalog',
+        ok: true,
+        statusCode: 200,
+        elapsedMs: sw.elapsedMilliseconds,
+        detail: 'v${ContentBankService.instance.packVersion} '
+            'bytes=${response.bodyBytes.length}',
       );
       completer.complete(true);
       return true;
     } catch (e) {
-      debugPrint('Catalog sync failed: $e');
+      _lastCatalogError = e.toString();
+      await ApiDiagLog.record(
+        event: 'catalog',
+        ok: false,
+        elapsedMs: sw.elapsedMilliseconds,
+        error: e,
+        detail: 'uri=$uri',
+      );
       completer.complete(false);
       return false;
     } finally {

@@ -9,9 +9,6 @@ class ExamTrendService {
   ExamTrendService._();
   static final ExamTrendService instance = ExamTrendService._();
 
-  static const _gySlugs = {'turkce', 'matematik'};
-  static const _gkSlugs = {'tarih', 'cografya', 'vatandaslik', 'guncel'};
-
   List<NetDevelopmentPoint> buildUnifiedTrend({
     List<PracticeExamModel>? practiceExams,
     List<TgExamModel>? tgExams,
@@ -66,16 +63,27 @@ class ExamTrendService {
     var hasGk = false;
     for (final entry in attempt.subjectNets.entries) {
       final slug = entry.key.toLowerCase();
-      if (_gySlugs.contains(slug)) {
+      if (_isGySubject(slug)) {
         gy += entry.value;
         hasGy = true;
-      } else if (_gkSlugs.contains(slug)) {
+      } else if (_isGkSubject(slug)) {
         gk += entry.value;
         hasGk = true;
       }
     }
     return (hasGy ? gy : null, hasGk ? gk : null);
   }
+
+  bool _isGySubject(String slug) =>
+      slug == 'matematik' || slug.startsWith('turkce');
+
+  bool _isGkSubject(String slug) => const {
+        'tarih',
+        'cografya',
+        'vatandaslik',
+        'guncel',
+        'guncel_bilgiler',
+      }.contains(slug);
 }
 
 class _TrendRow {

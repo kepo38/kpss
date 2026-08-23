@@ -134,7 +134,7 @@ class _QuestionErrorReportSheetBodyState
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
+                  color: AppTheme.champagne.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -144,9 +144,10 @@ class _QuestionErrorReportSheetBodyState
               'Hata bildir',
               style: TextStyle(
                 fontFamily: 'serif',
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                letterSpacing: 0.2,
+                color: AppTheme.champagneLight,
               ),
             ),
             const SizedBox(height: 6),

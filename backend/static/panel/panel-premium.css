@@ -585,6 +585,38 @@ details pre {
   padding: 5px 10px;
 }
 
+.question-test-filter {
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.question-test-filter select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
+.question-tests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.badge.test-link-badge {
+  background: rgba(201, 168, 108, 0.16);
+  color: #e8d5a8;
+  border: 1px solid rgba(201, 168, 108, 0.35);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  font-size: 11px;
+}
+
+.badge.test-link-badge:hover {
+  background: rgba(201, 168, 108, 0.28);
+}
+
 /* —— Forms —— */
 .form {
   gap: 18px;

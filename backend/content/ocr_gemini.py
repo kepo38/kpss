@@ -92,6 +92,19 @@ Kurallar:
   Örnek: {"A": "I ve II", "B": "I ve IV", "C": "II ve III", "D": "III ve V", "E": "IV ve V"}
 - Watermark (ÖSYM vb.) metne dahil etme.
 
+görsel_siklar (optionsVisual):
+- Şık gövdeleri metin değil grafik/şekil/mum/diyagram ise true yaz.
+- Metin şıklarda false yaz.
+- true ise siklar alanına kısa etiket koy: {"A":"Görsel şık","B":"Görsel şık",...}
+  Grafik açıklaması uydurma.
+
+sik_kutulari (optionBoxes):
+- görsel_siklar true ise her A–E için normalize bbox ver: [x, y, w, h] (0–1, tüm sayfa görseline göre).
+- x,y sol-üst; w,h genişlik/yükseklik. Harf etiketini (A)/B)…) ve grafik bloğunu kapsasın.
+- Kutular çakışmasın; her şık kendi dikdörtgeninde olsun.
+- Okuma sırası: üst satır soldan sağa, sonra alt satır (ör. A B C / D E). Harf anahtarı ile konum eşleşmeli.
+- Metin şıklarda boş obje {} yaz.
+
 ders_slug ve konu_slug:
 - Yalnızca panelde kayıtlı ders/konu listesinden seç (aşağıda verilir).
 - Listede olmayan slug uydurma; emin değilsen konu_slug boş bırak.
@@ -129,7 +142,9 @@ Geometri sorusu ise:
   "dogru_cevap": "...",
   "detayli_cozum": "...",
   "ders_slug": "tarih",
-  "konu_slug": "tarih_padisah_antlasma"
+  "konu_slug": "tarih_padisah_antlasma",
+  "gorisel_siklar": false,
+  "sik_kutulari": {}
 }
 """
 
@@ -349,6 +364,35 @@ def _payload_answer(data: dict[str, Any]) -> str:
             if ch in OPTION_KEYS:
                 return ch
     return ""
+
+
+def _payload_options_visual(data: dict[str, Any]) -> bool:
+    for key in ("gorisel_siklar", "optionsVisual", "options_visual", "goruntulu_siklar"):
+        val = data.get(key)
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str) and val.strip().lower() in {"true", "1", "evet", "yes"}:
+            return True
+        if isinstance(val, (int, float)) and int(val) == 1:
+            return True
+    return False
+
+
+def _payload_option_boxes(data: dict[str, Any]) -> dict[str, list[float]]:
+    raw = data.get("sik_kutulari") or data.get("optionBoxes") or data.get("option_boxes") or {}
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[float]] = {}
+    for key in OPTION_KEYS:
+        val = raw.get(key) or raw.get(key.lower())
+        if not isinstance(val, (list, tuple)) or len(val) < 4:
+            continue
+        try:
+            box = [float(val[0]), float(val[1]), float(val[2]), float(val[3])]
+        except (TypeError, ValueError):
+            continue
+        out[key] = box
+    return out
 
 
 def _payload_solution(data: dict[str, Any]) -> str:
@@ -686,6 +730,24 @@ def ocr_question_image_gemini(
     if not figure_svg and _likely_geometry_question(stem, options, stem):
         figure_svg = _fetch_geometry_svg(image_bytes, mime)
 
+    options_visual = _payload_options_visual(data)
+    from .option_image_crop import (
+        VISUAL_OPTION_PLACEHOLDER,
+        crop_option_images,
+        normalize_option_boxes,
+    )
+
+    option_boxes = normalize_option_boxes(_payload_option_boxes(data))
+    option_image_bytes: dict[str, bytes] = {}
+    if options_visual:
+        option_image_bytes = crop_option_images(image_bytes, option_boxes)
+        if option_image_bytes:
+            for key in OPTION_KEYS:
+                if not (options.get(key) or "").strip():
+                    options[key] = VISUAL_OPTION_PLACEHOLDER
+        else:
+            options_visual = False
+
     filled = sum(1 for v in options.values() if v)
     ok = bool(stem and filled >= 2)
     raw_text = json.dumps(
@@ -695,6 +757,10 @@ def ocr_question_image_gemini(
             "dogru_cevap": correct_option,
             "detayli_cozum": solution,
             "sekil_kodu": figure_svg,
+            "gorisel_siklar": options_visual,
+            "sik_kutulari": {
+                k: list(v) for k, v in (option_boxes or {}).items()
+            },
         },
         ensure_ascii=False,
     )
@@ -710,4 +776,7 @@ def ocr_question_image_gemini(
         solution=solution,
         topic_slug=topic_slug,
         subject_slug=subject_slug,
+        options_visual=options_visual,
+        option_boxes=option_boxes or None,
+        option_image_bytes=option_image_bytes or None,
     )

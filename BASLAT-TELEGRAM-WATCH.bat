@@ -7,14 +7,26 @@ set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "LOCK=%ROOT%\telegram_bot.lock"
 set "LOG=%ROOT%\logs\telegram-watch.log"
+set "SAFELOG=%ROOT%\logs\safety.log"
+set "WATCH=%ROOT%\TELEGRAM-WATCH.bat"
+set "SAFEDEL=%ROOT%\scripts\safe-del.bat"
+
+if not exist "%ROOT%\logs" mkdir "%ROOT%\logs" >nul 2>&1
+>>"%SAFELOG%" echo ===== BASLAT-WATCH %DATE% %TIME% ROOT=%ROOT% =====
 
 if not exist "%ROOT%\backend\manage.py" (
   echo [HATA] Proje klasoru bulunamadi: %ROOT%
+  >>"%SAFELOG%" echo ERROR no manage.py
   pause
   exit /b 1
 )
 
-if not exist "%ROOT%\logs\" mkdir "%ROOT%\logs\" >nul 2>&1
+if not exist "%WATCH%" (
+  echo [HATA] TELEGRAM-WATCH.bat yok - DOSYA-DURUM.bat / GERI-YUKLE-KRITIK.bat
+  >>"%SAFELOG%" echo ERROR missing TELEGRAM-WATCH.bat
+  pause
+  exit /b 1
+)
 
 if exist "%LOCK%" (
   set "LOCKPID="
@@ -22,40 +34,40 @@ if exist "%LOCK%" (
   if defined LOCKPID (
     tasklist /FI "PID eq !LOCKPID!" 2>nul | find "!LOCKPID!" >nul
     if not errorlevel 1 (
-      echo.
+      echo(
       echo  [OK] Telegram bot ZATEN calisiyor.
       echo       PID: !LOCKPID!
       echo       Log: %LOG%
-      echo.
+      echo(
       echo  Durdurmak icin: DURDUR-TELEGRAM-WATCH.bat
-      echo.
+      echo(
+      >>"%SAFELOG%" echo already-running PID=!LOCKPID!
       pause
       exit /b 0
     )
   )
-  del "%LOCK%" 2>nul
+  call "%SAFEDEL%" "%LOCK%"
 )
 
-echo.
-echo  Telegram bot arka planda baslatiliyor...
-echo  (Pencere acilmaz — bu normal.)
-echo.
+echo(
+echo  Telegram bot baslatiliyor - gorev cubugunda minimize pencere...
+echo(
+>>"%SAFELOG%" echo starting WATCH minimized
 
-rem wscript yerine dogrudan bat — antivirus / PowerShell sorunu olmaz
-start "" /MIN cmd /c ""%ROOT%\TELEGRAM-WATCH.bat" /auto __hidden__"
+start "HEDEF-TG-WATCH" /MIN "%WATCH%"
 
 set "WAIT=0"
 :wait_loop
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 set /a WAIT+=1
 if exist "%LOCK%" goto started
-if !WAIT! LSS 15 goto wait_loop
+if !WAIT! LSS 25 goto wait_loop
 
-echo  [UYARI] 30 sn icinde bot lock dosyasi olusmadi.
-echo  Log son satirlar:
-if exist "%LOG%" powershell -NoProfile -Command "Get-Content -LiteralPath '%LOG%' -Tail 12"
-echo.
-echo  Alternatif: TELEGRAM-WATCH.bat dosyasina cift tiklayin (gorunur pencere).
+echo  [UYARI] Lock olusmadi. Log:
+if exist "%LOG%" powershell -NoProfile -Command "Get-Content -LiteralPath '%LOG%' -Tail 12 -ErrorAction SilentlyContinue"
+echo(
+echo  Elle: TELEGRAM-WATCH.bat  -  Durum: DOSYA-DURUM.bat
+>>"%SAFELOG%" echo WARN lock-timeout
 pause
 exit /b 1
 
@@ -63,9 +75,11 @@ exit /b 1
 for /f "usebackq delims=" %%P in ("%LOCK%") do set "LOCKPID=%%P"
 echo  [OK] Bot basladi. PID: !LOCKPID!
 echo  Log: %LOG%
-echo.
-echo  Telegram'dan /durum yazarak test edebilirsiniz.
+echo  Safety: %SAFELOG%
+echo(
+echo  Telegram: /durum
 echo  Durdurmak: DURDUR-TELEGRAM-WATCH.bat
-echo.
+echo(
+>>"%SAFELOG%" echo started PID=!LOCKPID!
 pause
 exit /b 0

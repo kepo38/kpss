@@ -24,24 +24,27 @@ def slot_card_public_id(topic: Topic, index: int) -> str:
 
 
 def ensure_topic_summary_slots(topic: Topic) -> tuple[int, int]:
-    """5 özet kart yuvası; gövde doluysa dokunma."""
+    """5 özet kart yuvası; boş yuvalar yayında olmaz (uygulamada sayılmaz)."""
     created = updated = 0
     for i in range(1, SLOTS_PER_TOPIC + 1):
         kind = CARD_KINDS[i - 1]
         label = CARD_KIND_LABELS[kind]
         public_id = slot_card_public_id(topic, i)
         existing = TopicSummaryCard.objects.filter(public_id=public_id).first()
+        has_body = bool(existing and (existing.body or "").strip())
+        has_image = bool(existing and existing.image)
+        has_content = has_body or has_image
         defaults = {
             "topic": topic,
             "kind": kind,
             "title": f"Özet {i} · {label}",
             "sort_order": i,
-            "is_published": True,
         }
         if existing is None:
             TopicSummaryCard.objects.create(
                 public_id=public_id,
                 body="",
+                is_published=False,
                 **defaults,
             )
             created += 1
@@ -51,8 +54,9 @@ def ensure_topic_summary_slots(topic: Topic) -> tuple[int, int]:
                 if getattr(existing, field) != value:
                     setattr(existing, field, value)
                     changed = True
-            if not existing.is_published:
-                existing.is_published = True
+            # Boş yuva yanlışlıkla yayındaysa kapat — uygulamada 5 boş + 1 dolu = 6 görünmesin.
+            if not has_content and existing.is_published:
+                existing.is_published = False
                 changed = True
             if changed:
                 existing.save()

@@ -18,6 +18,9 @@ DAY_WINDOW = timedelta(hours=24)
 @dataclass(frozen=True)
 class AppLiveStats:
     install_devices: int
+    unique_token_users: int
+    orphan_tokens: int
+    tokens_seen_24h: int
     total_users: int
     account_users: int
     guest_users: int
@@ -33,7 +36,17 @@ def collect_app_live_stats() -> AppLiveStats:
     active_since = now - ACTIVE_WINDOW
     day_since = now - DAY_WINDOW
 
-    install_devices = DeviceToken.objects.filter(is_active=True).count()
+    active_tokens = DeviceToken.objects.filter(is_active=True)
+    install_devices = active_tokens.count()
+    unique_token_users = (
+        active_tokens.filter(user_id__isnull=False)
+        .values("user_id")
+        .distinct()
+        .count()
+    )
+    orphan_tokens = active_tokens.filter(user__isnull=True).count()
+    tokens_seen_24h = active_tokens.filter(last_seen_at__gte=day_since).count()
+
     total_users = AppUser.objects.filter(is_active=True).count()
     account_users = AppUser.objects.filter(
         is_active=True, is_anonymous=False
@@ -81,6 +94,9 @@ def collect_app_live_stats() -> AppLiveStats:
 
     return AppLiveStats(
         install_devices=install_devices,
+        unique_token_users=unique_token_users,
+        orphan_tokens=orphan_tokens,
+        tokens_seen_24h=tokens_seen_24h,
         total_users=total_users,
         account_users=account_users,
         guest_users=guest_users,

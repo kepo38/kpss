@@ -19,6 +19,7 @@ from content.telegram_bot import (
     notify_drain_complete,
     peek_update_queue,
     register_bot_commands,
+    set_polling_active,
     set_webhook,
     telegram_configured,
     telegram_lock,
@@ -99,10 +100,14 @@ class Command(BaseCommand):
         token = settings.TELEGRAM_BOT_TOKEN
         try:
             with telegram_lock():
-                if options.get("watch"):
-                    self._run_watch(token)
-                else:
-                    self._run_drain(token)
+                set_polling_active(True)
+                try:
+                    if options.get("watch"):
+                        self._run_watch(token)
+                    else:
+                        self._run_drain(token)
+                finally:
+                    set_polling_active(False)
         except TelegramBotLockError as exc:
             self.stderr.write(self.style.ERROR(str(exc)))
             raise SystemExit(2) from exc
@@ -164,6 +169,8 @@ class Command(BaseCommand):
     ) -> tuple[int, int, bool]:
         """Offset yalnizca basarili/atlanan mesajlarda ilerler; hatada kalir."""
         processed = 0
+        # Sıra bozulmamalı: offset = son islenen update_id + 1. Yeniden
+        # siralamak offset'i geri alir ve ayni callback iki kez islenir.
         for update in batch:
             try:
                 outcome = handle_update(update)

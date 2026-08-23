@@ -156,8 +156,11 @@ def archive_key_from_label(raw: str) -> str:
 def resolve_to_catalog_key(raw: str) -> str:
     """Kısa etiketleri katalog kanoniğine bağlar.
 
-    Örnek: «2026 AGS» → «2026 AGS · MEB Akademi Giriş Sınavı»
-    Belirsiz kısaltmalar (ör. «2026 KPSS») olduğu gibi bırakılır.
+    Örnekler:
+    - «2026 AGS» → «2026 AGS · MEB Akademi Giriş Sınavı»
+    - «2025 KPSS Lisans» → «2025 KPSS Lisans · Genel Yetenek - Genel Kültür»
+      (tek oturumlu sınavlarda GYGK / oturum adı yazmaya gerek yok)
+    - «2026 KPSS» belirsiz kaldığı için olduğu gibi bırakılır.
     """
     key = archive_key_from_label(raw)
     if not key:
@@ -169,17 +172,32 @@ def resolve_to_catalog_key(raw: str) -> str:
 
     aliases: dict[str, str] = {}
     family_slots: dict[str, list[str]] = defaultdict(list)
+    exam_slots: dict[str, list[str]] = defaultdict(list)
 
     for y, slot in slots:
         canon = slot.canonical_label(y)
         aliases[canon.casefold()] = canon
-        aliases[f"{y} {slot.exam_name}".casefold()] = canon
+        exam_key = f"{y} {slot.exam_name}".casefold()
+        exam_slots[exam_key].append(canon)
         family_slots[f"{y} {slot.family}".casefold()].append(canon)
+        # Kısa oturum: «2025 KPSS Lisans · GYGK»
+        aliases[
+            f"{y} {slot.exam_name}{LABEL_SEPARATOR}{slot.session_key}".casefold()
+        ] = canon
+        aliases[
+            f"{y} {slot.exam_name}{LABEL_SEPARATOR}{slot.session_key.upper()}".casefold()
+        ] = canon
 
     for family_key, canons in family_slots.items():
         unique = list(dict.fromkeys(canons))
         if len(unique) == 1:
             aliases[family_key] = unique[0]
+
+    # Tek oturumlu sınav: «2025 KPSS Lisans» yeterli (GYGK yazmaya gerek yok).
+    for exam_key, canons in exam_slots.items():
+        unique = list(dict.fromkeys(canons))
+        if len(unique) == 1:
+            aliases[exam_key] = unique[0]
 
     return aliases.get(key.casefold(), key)
 

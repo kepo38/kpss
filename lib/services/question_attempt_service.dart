@@ -10,14 +10,26 @@ class QuestionAttemptService {
   QuestionAttemptService._();
   static final QuestionAttemptService instance = QuestionAttemptService._();
 
+  /// Katalog `public_id_lisans` klonlar; API ham `public_id` ister.
+  static String serverTestId(String testId) {
+    const suffixes = ['_lisans', '_onLisans', '_onlisans', '_ortaogretim'];
+    for (final suffix in suffixes) {
+      if (testId.endsWith(suffix) && testId.length > suffix.length) {
+        return testId.substring(0, testId.length - suffix.length);
+      }
+    }
+    return testId;
+  }
+
   Future<QuestionAttemptSummary?> submitQuestion({
     required String testId,
     required String questionId,
     required String selectedOption,
   }) async {
     final auth = AuthService.instance;
+    final apiTestId = serverTestId(testId);
     if (!auth.hasPermanentAccount ||
-        testId.isEmpty ||
+        apiTestId.isEmpty ||
         questionId.isEmpty ||
         !RegExp(r'^[A-E]$').hasMatch(selectedOption)) {
       return null;
@@ -31,7 +43,7 @@ class QuestionAttemptService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
-              'testId': testId,
+              'testId': apiTestId,
               'selectedOption': selectedOption,
             }),
           )
@@ -55,7 +67,8 @@ class QuestionAttemptService {
     bool completionOnly = false,
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasPermanentAccount || testId.isEmpty) return false;
+    final apiTestId = serverTestId(testId);
+    if (!auth.hasPermanentAccount || apiTestId.isEmpty) return false;
     if (!completionOnly &&
         questionIds.length != selectedAnswers.length) {
       return false;
@@ -69,14 +82,15 @@ class QuestionAttemptService {
         final selected = selectedAnswers[index]?.trim().toUpperCase() ?? '';
         if (selected.isNotEmpty) answers[questionId] = selected;
       }
-      if (answers.isEmpty) return false;
+      // Boş cevapta bile completed:true gönder — TopicTestCompletion hata
+      // bildirimi kotası için gerekir (tüm boş / kilitli soru senaryoları).
     }
 
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         final response = await http
             .post(
-              ApiConfig.testAttemptUri(testId),
+              ApiConfig.testAttemptUri(apiTestId),
               headers: {
                 ...auth.authHeaders,
                 'Content-Type': 'application/json',

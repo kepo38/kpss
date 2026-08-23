@@ -3,6 +3,53 @@
  */
 (function () {
   var MAP_PLACEHOLDER = "[HARITA]";
+  var scenarioCatalog = {};
+
+  function loadScenarioCatalog() {
+    var el = document.getElementById("question-scenarios-data");
+    if (!el) return;
+    try {
+      var raw = JSON.parse(el.textContent || "[]");
+      scenarioCatalog = {};
+      (raw || []).forEach(function (item) {
+        if (item && item.id != null) {
+          scenarioCatalog[String(item.id)] = item;
+        }
+      });
+    } catch (err) {
+      scenarioCatalog = {};
+    }
+  }
+
+  function selectedScenario() {
+    var sel =
+      document.getElementById("scenario-select") ||
+      document.querySelector('[name="scenario_id"]');
+    if (!sel || !(sel.value || "").trim()) return null;
+    return scenarioCatalog[String(sel.value)] || null;
+  }
+
+  function syncScenarioCard() {
+    var card = document.getElementById("pv-scenario-card");
+    var titleEl = document.getElementById("pv-scenario-title");
+    var stemEl = document.getElementById("pv-scenario-stem");
+    if (!card || !titleEl || !stemEl) return;
+
+    var scenario = selectedScenario();
+    if (!scenario || !(scenario.stem || "").trim()) {
+      card.hidden = true;
+      titleEl.textContent = "Olay";
+      stemEl.innerHTML = "";
+      return;
+    }
+
+    var title = (scenario.title || "").trim() || "Olay";
+    titleEl.textContent = title;
+    titleEl.classList.toggle("is-empty", !((scenario.title || "").trim()));
+    stemEl.innerHTML = stemToHtml(scenario.stem);
+    stemEl.classList.toggle("is-empty", false);
+    card.hidden = false;
+  }
 
   function richHtml(text) {
     if (window.KpssMathRender) {
@@ -101,6 +148,33 @@
     return el ? (el.value || "").trim() : "";
   }
 
+  function currentSolutionImageSrc() {
+    var solutionInput = document.getElementById("solution-image-input");
+    var keep = document.querySelector('[name="keep_solution_image"]');
+    if (keep && !keep.checked) return "";
+
+    var previewBox = document.getElementById("solution-image-preview");
+    var previewImg = document.getElementById("solution-image-preview-img");
+    if (
+      previewBox &&
+      !previewBox.hidden &&
+      previewImg &&
+      (previewImg.getAttribute("src") || previewImg.src)
+    ) {
+      return previewImg.src;
+    }
+
+    var existing = document.getElementById("solution-existing-thumb");
+    if (existing && (existing.getAttribute("src") || existing.src)) {
+      return existing.src;
+    }
+
+    if (solutionInput && solutionInput.files && solutionInput.files[0]) {
+      return "";
+    }
+    return "";
+  }
+
   function syncFigureSvg(svgBox, svgText) {
     if (!svgBox) return;
     if (svgText && svgText.indexOf("<svg") !== -1) {
@@ -122,6 +196,8 @@
     var solBody = document.getElementById("pv-solution-body");
     if (!stemEl) return;
 
+    syncScenarioCard();
+
     var stem = val("stem");
     if (window.KpssOptionTable && window.KpssOptionTable.visibleStem) {
       stem = window.KpssOptionTable.visibleStem(stem);
@@ -136,8 +212,19 @@
       stemEl.classList.add("is-empty");
     }
 
+    var visualOpts =
+      window.KpssQuestionOptions && window.KpssQuestionOptions.isVisual
+        ? window.KpssQuestionOptions.isVisual()
+        : false;
+    var hasOptCrop = false;
+    if (visualOpts && window.KpssQuestionOptions) {
+      ["A", "B", "C", "D", "E"].forEach(function (k) {
+        if (window.KpssQuestionOptions.optionImageSrc(k)) hasOptCrop = true;
+      });
+    }
     if (imgEl) {
-      if (src && !rendered.inline) {
+      // Görsel şık crop'ları varken tam sayfa kaynağı gösterme (çift şık).
+      if (src && !rendered.inline && !(visualOpts && hasOptCrop)) {
         imgEl.src = src;
         imgEl.classList.add("is-on");
       } else {
@@ -161,7 +248,9 @@
         t: val("option_" + k.toLowerCase()),
       });
     });
-    if (window.KpssOptionTable) {
+    var optsRoot = document.querySelector("#question-preview .quiz-mock-opts");
+    var previewHead = document.getElementById("pv-opt-col-head");
+    if (window.KpssOptionTable && !visualOpts) {
       window.KpssOptionTable.apply({
         stem: val("stem"),
         stemEl: document.querySelector('[name="stem"]'),
@@ -174,9 +263,9 @@
         optionRows: filled.map(function (item) {
           return item.row;
         }),
-        previewHead: document.getElementById("pv-opt-col-head"),
+        previewHead: previewHead,
         formHead: document.getElementById("option-table-head"),
-        optsRoot: document.querySelector("#question-preview .quiz-mock-opts"),
+        optsRoot: optsRoot,
         emptyHtml: function (index) {
           return "Şık " + filled[index].k;
         },
@@ -187,25 +276,87 @@
             : escapeText(formatted);
         },
       });
+    } else {
+      if (previewHead) {
+        previewHead.innerHTML = "";
+        previewHead.hidden = true;
+        previewHead.classList.remove("is-opt-table");
+      }
+      if (optsRoot) optsRoot.classList.remove("is-opt-table");
+      filled.forEach(function (item) {
+        if (item.row) {
+          item.row.classList.remove("is-opt-table");
+          item.row.style.gridTemplateColumns = "";
+        }
+        item.text.classList.remove("quiz-opt-cols");
+      });
+    }
+    if (optsRoot) {
+      optsRoot.classList.toggle("is-visual-preview", !!(visualOpts && hasOptCrop));
     }
     filled.forEach(function (item) {
-      if (item.t) item.text.classList.remove("is-empty");
-      else {
+      var visual =
+        window.KpssQuestionOptions && window.KpssQuestionOptions.isVisual
+          ? window.KpssQuestionOptions.isVisual()
+          : false;
+      var imgSrc =
+        visual && window.KpssQuestionOptions
+          ? window.KpssQuestionOptions.optionImageSrc(item.k)
+          : "";
+      var showOptImg = !!(visual && imgSrc);
+      if (showOptImg) {
+        item.text.innerHTML =
+          '<img class="quiz-mock-opt-img" src="' +
+          imgSrc.replace(/"/g, "&quot;") +
+          '" alt="Şık ' +
+          item.k +
+          '">';
+        item.text.classList.remove("is-empty");
+      } else if (visual) {
+        item.text.textContent = "";
+        item.text.classList.add("is-empty");
+      } else if (item.t) {
+        if (!window.KpssOptionTable) {
+          var formatted = formatPlain(item.t);
+          item.text.innerHTML = window.KpssMathRender
+            ? window.KpssMathRender.plainInline(formatted)
+            : escapeText(formatted);
+        }
+        item.text.classList.remove("is-empty");
+      } else {
         item.text.textContent = "Şık " + item.k;
         item.text.classList.add("is-empty");
       }
+      item.text.classList.toggle("has-opt-img", showOptImg);
+      item.row.classList.toggle("has-opt-img", showOptImg);
       item.row.classList.toggle("is-correct", correct === item.k);
     });
 
     var sol = val("solution");
+    var solImgEl = document.getElementById("pv-solution-img");
+    var solImgSrc = currentSolutionImageSrc();
     if (solWrap && solBody) {
+      if (solImgEl) {
+        if (solImgSrc) {
+          solImgEl.src = solImgSrc;
+          solImgEl.hidden = false;
+          solImgEl.classList.add("is-on");
+        } else {
+          solImgEl.removeAttribute("src");
+          solImgEl.hidden = true;
+          solImgEl.classList.remove("is-on");
+        }
+      }
       if (sol) {
         solBody.innerHTML = window.KpssMathRender
           ? window.KpssMathRender.examDocumentHtml(sol)
           : stemToHtml(sol);
-        solWrap.classList.add("is-on");
       } else {
         solBody.textContent = "";
+      }
+      if (sol || solImgSrc) {
+        solWrap.classList.add("is-on");
+      } else {
         solWrap.classList.remove("is-on");
       }
     }
@@ -221,6 +372,7 @@
     if (!document.getElementById("question-preview")) return;
     var form = document.querySelector("form.form");
     if (!form) return;
+    loadScenarioCatalog();
 
     form.addEventListener("input", sync);
     form.addEventListener("change", sync);
@@ -237,6 +389,30 @@
     if (previewImg) {
       var obs = new MutationObserver(sync);
       obs.observe(previewImg, { attributes: true, attributeFilter: ["src"] });
+    }
+
+    var solutionInput = document.getElementById("solution-image-input");
+    if (solutionInput) {
+      solutionInput.addEventListener("change", function () {
+        var file = solutionInput.files && solutionInput.files[0];
+        var box = document.getElementById("solution-image-preview");
+        var img = document.getElementById("solution-image-preview-img");
+        if (!file || !box || !img) {
+          sync();
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          img.src = String(reader.result || "");
+          box.hidden = false;
+          sync();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    var keepSolutionImage = document.querySelector('[name="keep_solution_image"]');
+    if (keepSolutionImage) {
+      keepSolutionImage.addEventListener("change", sync);
     }
 
     sync();

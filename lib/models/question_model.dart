@@ -7,9 +7,12 @@ class QuestionModel {
   final String? imageUrl;
   final String? sekilKodu;
   final Map<String, String> siklar;
+  final bool optionsAreImages;
+  final Map<String, String?> optionImageUrls;
   final String optionTable;
   final String dogruCevap;
   final String cozumMetni;
+  final String? cozumImageUrl;
   final int hataBildirimSayisi;
   final DateTime guncellenmeTarihi;
   final bool osymSordu;
@@ -32,9 +35,12 @@ class QuestionModel {
     this.imageUrl,
     this.sekilKodu,
     required this.siklar,
+    this.optionsAreImages = false,
+    this.optionImageUrls = const {},
     this.optionTable = 'none',
     required this.dogruCevap,
     required this.cozumMetni,
+    this.cozumImageUrl,
     this.hataBildirimSayisi = 0,
     required this.guncellenmeTarihi,
     this.osymSordu = false,
@@ -48,6 +54,17 @@ class QuestionModel {
     this.scenarioStem,
     this.scenarioOrder = 0,
   });
+
+  String? optionImageUrlFor(String key) {
+    if (!optionsAreImages) return null;
+    final direct = optionImageUrls[key];
+    if (direct != null && direct.trim().isNotEmpty) return direct.trim();
+    return null;
+  }
+
+  bool get hasVisualOptions =>
+      optionsAreImages &&
+      optionImageUrls.values.any((u) => u != null && u.trim().isNotEmpty);
 
   static bool _keepDisplayMathDelimiters(String inner) {
     final t = inner.trim();
@@ -97,6 +114,22 @@ class QuestionModel {
     final normalizedOptions = {
       for (final e in rawOptions.entries) e.key: _normalizeLatexDelimiters(e.value),
     };
+    final rawImages = json['optionImageUrls'];
+    final optionImages = <String, String?>{};
+    if (rawImages is Map) {
+      for (final e in rawImages.entries) {
+        final v = e.value;
+        optionImages[e.key.toString()] =
+            v == null ? null : v.toString().trim();
+      }
+    }
+    for (final key in const ['A', 'B', 'C', 'D', 'E']) {
+      final alt = json['option${key}ImageUrl'] ?? json['option${key}_image_url'];
+      if (alt is String && alt.trim().isNotEmpty) {
+        optionImages[key] = alt.trim();
+      }
+    }
+    final rawSolutionImage = json['cozumImageUrl'] as String?;
     return QuestionModel(
       id: json['id'] as String,
       dersAdi: json['dersAdi'] as String,
@@ -106,9 +139,16 @@ class QuestionModel {
       imageUrl: json['imageUrl'] as String?,
       sekilKodu: (rawSvg == null || rawSvg.isEmpty) ? null : rawSvg,
       siklar: normalizedOptions,
+      optionsAreImages: json['optionsAreImages'] as bool? ??
+          json['options_are_images'] as bool? ??
+          false,
+      optionImageUrls: optionImages,
       optionTable: json['optionTable'] as String? ?? 'none',
       dogruCevap: json['dogruCevap'] as String,
       cozumMetni: _normalizeLatexDelimiters(json['cozumMetni'] as String),
+      cozumImageUrl: rawSolutionImage == null || rawSolutionImage.trim().isEmpty
+          ? null
+          : rawSolutionImage.trim(),
       hataBildirimSayisi: json['hataBildirimSayisi'] as int? ?? 0,
       guncellenmeTarihi: DateTime.parse(json['guncellenmeTarihi'] as String),
       osymSordu: json['osymSordu'] as bool? ?? false,
@@ -136,9 +176,12 @@ class QuestionModel {
         'imageUrl': imageUrl,
         'sekilKodu': sekilKodu,
         'siklar': siklar,
+        'optionsAreImages': optionsAreImages,
+        'optionImageUrls': optionImageUrls,
         'optionTable': optionTable,
         'dogruCevap': dogruCevap,
         'cozumMetni': cozumMetni,
+        'cozumImageUrl': cozumImageUrl,
         'hataBildirimSayisi': hataBildirimSayisi,
         'guncellenmeTarihi': guncellenmeTarihi.toIso8601String(),
         'osymSordu': osymSordu,
@@ -162,9 +205,12 @@ class QuestionModel {
     String? imageUrl,
     String? sekilKodu,
     Map<String, String>? siklar,
+    bool? optionsAreImages,
+    Map<String, String?>? optionImageUrls,
     String? optionTable,
     String? dogruCevap,
     String? cozumMetni,
+    String? cozumImageUrl,
     int? hataBildirimSayisi,
     DateTime? guncellenmeTarihi,
     bool? osymSordu,
@@ -187,9 +233,12 @@ class QuestionModel {
       imageUrl: imageUrl ?? this.imageUrl,
       sekilKodu: sekilKodu ?? this.sekilKodu,
       siklar: siklar ?? this.siklar,
+      optionsAreImages: optionsAreImages ?? this.optionsAreImages,
+      optionImageUrls: optionImageUrls ?? this.optionImageUrls,
       optionTable: optionTable ?? this.optionTable,
       dogruCevap: dogruCevap ?? this.dogruCevap,
       cozumMetni: cozumMetni ?? this.cozumMetni,
+      cozumImageUrl: cozumImageUrl ?? this.cozumImageUrl,
       hataBildirimSayisi: hataBildirimSayisi ?? this.hataBildirimSayisi,
       guncellenmeTarihi: guncellenmeTarihi ?? this.guncellenmeTarihi,
       osymSordu: osymSordu ?? this.osymSordu,

@@ -122,6 +122,20 @@ class FormattedText extends StatelessWidget {
         t.contains(r'\hline');
   }
 
+  /// Tam denklem (`=`, dizi, toplam). Basit `x/y` kesiri cümlede kalır.
+  static bool isStandaloneDisplayEquation(String tex) {
+    final t = tex.trim();
+    if (t.isEmpty) return false;
+    if (t.contains(r'\begin{') ||
+        t.contains(r'\sum') ||
+        t.contains(r'\int') ||
+        t.contains(r'\hline')) {
+      return true;
+    }
+    // `$x = 5$` cümlede kalsın; kök/kesirli denklem ayrı satır olsun.
+    return t.contains('=') && usesDisplayMath(t);
+  }
+
   static TextStyle mathTextStyle(TextStyle base, {required bool display}) {
     final size = base.fontSize ?? 16;
     return ExamTypography.mathFrom(
@@ -262,12 +276,14 @@ class FormattedText extends StatelessWidget {
     required TextStyle base,
     required bool display,
   }) {
-    final sized = prepareTex(tex, forceDisplayStyle: display);
+    // Kesir/kök cümle içinde de gövde puntosunda kalsın (\dfrac + display).
+    final fullSize = display || usesDisplayMath(tex);
+    final sized = prepareTex(tex, forceDisplayStyle: fullSize);
     final upright = uprightMathLetters(sized);
     return Math.tex(
       upright,
-      textStyle: mathTextStyle(base, display: display),
-      mathStyle: display ? MathStyle.display : MathStyle.text,
+      textStyle: mathTextStyle(base, display: fullSize),
+      mathStyle: fullSize ? MathStyle.display : MathStyle.text,
       onErrorFallback: (err) => Text(
         display ? '\$\$$tex\$\$' : '\$$tex\$',
         style: base,
@@ -610,6 +626,10 @@ class FormattedText extends StatelessWidget {
         .replaceAll('\x0aeq', r'\neq')
         .replaceAll(r'$rac{', r'$\frac{')
         .replaceAll(r'$sqrt{', r'$\sqrt{');
+    out = out.replaceAllMapped(
+      RegExp(r'\\vert\s*\{([^{}]*?)\\vert(?:\{\})?\}'),
+      (m) => '\\lvert ${m.group(1)!.trim()} \\rvert',
+    );
     if (out.contains('frac') && !out.contains(r'\frac')) {
       out = out.replaceAllMapped(
         RegExp(r'(^|[^\\A-Za-z])frac\{'),
@@ -624,14 +644,15 @@ class FormattedText extends StatelessWidget {
     if (t.isEmpty) return false;
     return RegExp(
           r'\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|'
-          r'underline|begin|infty|pm|neq|leq|geq|displaystyle|hline)\b',
+          r'underline|begin|infty|pm|neq|leq|geq|displaystyle|hline|'
+          r'vert|lvert|rvert|implies)\b',
         ).hasMatch(t) ||
         t.contains(r'^') ||
         t.contains(r'_') ||
         t.contains('{') ||
         RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t) ||
-        // $A + B + C$ gibi basit cebir (Yalnız I düz metin kalsın)
-        RegExp(r'[A-Za-z0-9]\s*[+\-=≠≤≥×·]\s*[A-Za-z0-9]').hasMatch(t);
+        // $A + B + C$ / $a < b < 0$ gibi basit cebir (Yalnız I düz metin kalsın)
+        RegExp(r'[A-Za-z0-9]\s*[+\-=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(t);
   }
 
   static String wrapBareLatex(String input) {
@@ -642,10 +663,15 @@ class FormattedText extends StatelessWidget {
       final inner = display.group(1)!.trim();
       return looksLikeMath(inner) ? src : inner;
     }
+    // Yalnızca metnin tamamı tek `$…$` ise veya önde gelen blok math değilse
+    // sarmalayıcıyı aç. `$a$ sıfırdan…` gibi gövdelerde kalan metni ASLA atma.
     final wrapped = RegExp(r'^\$([^$]+)\$').firstMatch(src);
     if (wrapped != null) {
       final inner = wrapped.group(1)!.trim();
-      return looksLikeMath(inner) ? src : inner;
+      final rest = src.substring(wrapped.end);
+      if (looksLikeMath(inner)) return src;
+      if (rest.trim().isEmpty) return inner;
+      return '$inner$rest';
     }
     if (src.contains(r'$') || src.contains(r'\(') || src.contains(r'\[')) {
       return src;
@@ -722,18 +748,18 @@ class FormattedText extends StatelessWidget {
       RegExp(r'\{([^{}]+)\\over\s*([^{}]+)\}'),
       (m) => '\\frac{${m.group(1)!.trim()}}{${m.group(2)!.trim()}}',
     );
-    // \dfrac / \tfrac koru, düz \frac → \dfrac (iç içe küçülmeyi kes)
-    t = t.replaceAll(r'\dfrac', '§§DFRAC§§');
-    t = t.replaceAll(r'\tfrac', '§§DFRAC§§');
-    t = t.replaceAll(r'\frac', r'\dfrac');
-    t = t.replaceAll('§§DFRAC§§', r'\dfrac');
-    final isTabular = t.contains(r'\begin{array}') ||
-        t.contains(r'\begin{matrix}') ||
-        t.contains(r'\begin{pmatrix}');
-    if (forceDisplayStyle &&
-        !isTabular &&
-        !RegExp(r'\\displaystyle\b').hasMatch(t)) {
-      t = r'\displaystyle ' + t;
+    if (forceDisplayStyle) {
+      // \dfrac / \tfrac koru, düz \frac → \dfrac (iç içe küçülmeyi kes)
+      t = t.replaceAll(r'\dfrac', '§§DFRAC§§');
+      t = t.replaceAll(r'\tfrac', '§§DFRAC§§');
+      t = t.replaceAll(r'\frac', r'\dfrac');
+      t = t.replaceAll('§§DFRAC§§', r'\dfrac');
+      final isTabular = t.contains(r'\begin{array}') ||
+          t.contains(r'\begin{matrix}') ||
+          t.contains(r'\begin{pmatrix}');
+      if (!isTabular && !RegExp(r'\\displaystyle\b').hasMatch(t)) {
+        t = r'\displaystyle ' + t;
+      }
     }
     return t;
   }
@@ -753,14 +779,22 @@ class FormattedText extends StatelessWidget {
 
   static String normalizeLatex(String input) {
     if (input.isEmpty) return input;
+    String inlineBodyToDollars(String body) {
+      var cleaned = body.trim();
+      if (cleaned.contains('\n')) {
+        cleaned = cleaned.replaceAll(RegExp(r'\s*\n\s*'), ' ').trim();
+      }
+      return '\$$cleaned\$';
+    }
+
     var text = input
         .replaceAllMapped(
           RegExp(r'\\\[([\s\S]+?)\\\]'),
           (m) => r'$$' + m.group(1)!.trim() + r'$$',
         )
         .replaceAllMapped(
-          RegExp(r'\\\((.+?)\\\)'),
-          (m) => r'$' + m.group(1)!.trim() + r'$',
+          RegExp(r'\\\(([\s\S]+?)\\\)'),
+          (m) => inlineBodyToDollars(m.group(1)!),
         );
     return text;
   }
@@ -770,7 +804,12 @@ class FormattedText extends StatelessWidget {
     var src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final holders = <String>[];
     src = src.replaceAllMapped(
-      RegExp(r'\$\$[\s\S]+?\$\$|\$[^$\n]+\$'),
+      RegExp(
+        r'\$\$[\s\S]+?\$\$|'
+        r'\$[^$\n]+\$|'
+        r'\\\([\s\S]+?\\\)|'
+        r'\\\[[\s\S]+?\\\]',
+      ),
       (m) {
         holders.add(m.group(0)!);
         return '§§M${holders.length - 1}§§';
@@ -801,6 +840,24 @@ class FormattedText extends StatelessWidget {
       (m) => ':\n',
     );
     src = src.replaceAllMapped(
+      RegExp(r';(?!\n)(?=§§M|[\$A-ZÇĞİÖŞÜÂÎÛ])'),
+      (m) => ';\n',
+    );
+    // Google mantık çözümü: A Seçeneği: / B Seçeneği:
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\n)(?=[A-E]\s+Seçeneği\s*:)', caseSensitive: false),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([.!?])(?!\n)(?=\d+\s)'),
+      (m) => '${m.group(1)}\n',
+    );
+    // camelCase: GösterimKitabın — 5A/pH/iPhone bölünmez (rich_text_common.py ile aynı)
+    src = src.replaceAllMapped(
+      RegExp(r'(?<=[a-zçğıöşüâîû]{2})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])'),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
       RegExp(r'(?<!\n)(\d+\.\s+Adım)'),
       (m) => '\n${m.group(1)}',
     );
@@ -817,7 +874,6 @@ class FormattedText extends StatelessWidget {
       (_) => '\n',
     );
     // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
-    // "III. Selim … III. Selim Dönemi" gibi aynı rakam tekrarına dokunma.
     final romanMatches = RegExp(r'\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
         .allMatches(src)
         .map((m) => m.group(0)!.trimRight())
@@ -839,28 +895,201 @@ class FormattedText extends StatelessWidget {
       ),
       (m) => '${m.group(1)}\n',
     );
+    src = src.replaceAllMapped(
+      RegExp(r'(§§M\d+§§)(?=\d+\.\s)'),
+      (m) => '${m.group(1)}\n',
+    );
     src = _expandHolders(src, holders, r'§§M(\d+)§§');
-    // Display kesir vb. kendi satırında; yanındaki etiket (Payda:) sağa kaymasın.
+    // Tam denklem / $$ bloğu ayrı satır. Cümle içi $\frac{x}{y}$ kopmasın.
     src = src.replaceAllMapped(
       RegExp(r'\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$'),
       (m) {
         final full = m.group(0)!;
         final inner = (m.group(1) ?? m.group(2) ?? '').trim();
-        if (m.group(1) != null || usesDisplayMath(inner)) {
+        if (m.group(1) != null || isStandaloneDisplayEquation(inner)) {
           return '\n$full\n';
         }
         return full;
       },
     );
-    src = src.replaceAllMapped(
-      RegExp(r'(\$)(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])'),
-      (m) => '${m.group(1)}\n',
-    );
-    src = src.replaceAllMapped(
-      RegExp(r'(\$)\s*(?=\*\*[a-zçğıöşüâîû])'),
-      (m) => '${m.group(1)}\n',
-    );
     return src.replaceAll(RegExp(r'\n{3,}'), '\n\n').replaceFirst(RegExp(r'^\n+'), '');
+  }
+
+  static final _optionHeaderRe = RegExp(
+    r'^(?:[-•*◦○–—]\s+)?(?:\*\*)?'
+    r'([A-E])\)\s+'
+    r'([A-ZÇĞİÖŞÜÂÎÛİ][A-ZÇĞİÖŞÜÂÎÛİa-zçğıöşüâîû]*)'
+    r'\s*:?(?:\*\*)?\s*$',
+  );
+  static final _optionSecenegiInlineRe = RegExp(
+    r'^(?:[-•*◦○–—]\s+)?(?:\*\*)?'
+    r'([A-E])\s+Seçeneği'
+    r'\s*:\s*(.*)$',
+    caseSensitive: false,
+  );
+  static final _optionSecenegiOnlyRe = RegExp(
+    r'^(?:[-•*◦○–—]\s+)?(?:\*\*)?'
+    r'([A-E])\s+Seçeneği'
+    r'\s*:?\s*(?:\*\*)?\s*$',
+    caseSensitive: false,
+  );
+  static final _bulletStripRe = RegExp(r'^(\s*)[-•*◦○–—]\s+');
+  static final _kuralOzetiRe = RegExp(r'^Kural\s+Özeti\s*:?\s*$', caseSensitive: false);
+  static final _resultTailRe = RegExp(
+    r'(→\s*)(🧍\s*)?(Oturuyor|AYAKTA)\.?\s*$',
+    caseSensitive: false,
+  );
+
+  static bool _isOptionHeaderLine(String line) {
+    final s = line.trim();
+    if (s.isEmpty) return false;
+    return _optionHeaderRe.hasMatch(s) ||
+        _optionSecenegiOnlyRe.hasMatch(s) ||
+        _optionSecenegiInlineRe.hasMatch(s);
+  }
+
+  static ({String letter, String title, String? inline})? _parseOptionHeader(
+    String line,
+  ) {
+    final s = line.trim();
+    var hm = _optionHeaderRe.firstMatch(s);
+    if (hm != null) {
+      final letter = hm.group(1)!.toUpperCase();
+      return (
+        letter: letter,
+        title: '$letter) ${hm.group(2)!}',
+        inline: null,
+      );
+    }
+    hm = _optionSecenegiInlineRe.firstMatch(s);
+    if (hm != null) {
+      final letter = hm.group(1)!.toUpperCase();
+      final body = (hm.group(2) ?? '').trim();
+      return (
+        letter: letter,
+        title: '$letter Seçeneği',
+        inline: body.isEmpty ? null : body,
+      );
+    }
+    hm = _optionSecenegiOnlyRe.firstMatch(s);
+    if (hm != null) {
+      final letter = hm.group(1)!.toUpperCase();
+      return (letter: letter, title: '$letter Seçeneği', inline: null);
+    }
+    return null;
+  }
+
+  static String _stripOuterBold(String text) {
+    final src = text.trim();
+    if (src.startsWith('**') &&
+        src.endsWith('**') &&
+        src.indexOf('**', 2) == src.length - 2) {
+      return src.substring(2, src.length - 2).trim();
+    }
+    return src;
+  }
+
+  static String _emphasizeResultTail(String line) {
+    return line.replaceAllMapped(_resultTailRe, (m) {
+      final arrow = m.group(1)!;
+      final emoji = m.group(2) ?? '';
+      final word = m.group(3)!;
+      return '$arrow$emoji**$word**.';
+    });
+  }
+
+  static List<String> _structurePreambleLines(List<String> lines) {
+    final out = <String>[];
+    var i = 0;
+    while (i < lines.length) {
+      final line = lines[i].trim();
+      if (line.isEmpty) {
+        i += 1;
+        continue;
+      }
+      if (i == 0 &&
+          (line.startsWith('💡') ||
+              line.contains('Adım Adım') ||
+              line.contains('Adim Adim'))) {
+        out.add('**${_stripOuterBold(line)}**');
+        out.add('');
+        i += 1;
+        continue;
+      }
+      if (_kuralOzetiRe.hasMatch(line) ||
+          line.toLowerCase().startsWith('kural özeti')) {
+        out.add('**Kural Özeti:**');
+        i += 1;
+        while (i < lines.length) {
+          final nxt = lines[i].trim();
+          if (nxt.isEmpty) {
+            i += 1;
+            break;
+          }
+          if (nxt.startsWith('Şimdi ') ||
+              nxt.startsWith('Bir öğrenci') ||
+              _isOptionHeaderLine(nxt)) {
+            break;
+          }
+          final body = _stripOuterBold(
+            nxt.replaceFirst(_bulletStripRe, '').trim(),
+          );
+          if (body.isNotEmpty) out.add('- $body');
+          i += 1;
+        }
+        out.add('');
+        continue;
+      }
+      out.add(line);
+      i += 1;
+    }
+    return out;
+  }
+
+  /// Google çözüm yapısı: madde + A–E iç içe liste (idempotent).
+  static String structureSolutionOutline(String input) {
+    if (input.isEmpty) return input;
+    final src = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+    if (src.isEmpty) return src;
+    final lines = src.split('\n');
+    final optionIdxs = <int>[];
+    for (var i = 0; i < lines.length; i++) {
+      if (_isOptionHeaderLine(lines[i].trim())) {
+        optionIdxs.add(i);
+      }
+    }
+    if (optionIdxs.length < 2) return src;
+
+    final out = _structurePreambleLines(lines.sublist(0, optionIdxs.first));
+    if (out.isNotEmpty && out.last.isNotEmpty) out.add('');
+
+    for (var oi = 0; oi < optionIdxs.length; oi++) {
+      final start = optionIdxs[oi];
+      final end =
+          oi + 1 < optionIdxs.length ? optionIdxs[oi + 1] : lines.length;
+      final block = <String>[];
+      for (var j = start; j < end; j++) {
+        if (lines[j].trim().isNotEmpty) block.add(lines[j]);
+      }
+      if (block.isEmpty) continue;
+      final parsed = _parseOptionHeader(block.first.trim());
+      if (parsed == null) continue;
+      out.add('- **${parsed.title}:**');
+      if (parsed.inline != null) {
+        final body = _stripOuterBold(parsed.inline!);
+        if (body.isNotEmpty) {
+          out.add('  - ${_emphasizeResultTail(body)}');
+        }
+      }
+      for (var c = 1; c < block.length; c++) {
+        var raw = block[c].trim().replaceFirst(_bulletStripRe, '').trim();
+        raw = _stripOuterBold(raw);
+        if (raw.isEmpty) continue;
+        out.add('  - ${_emphasizeResultTail(raw)}');
+      }
+      out.add('');
+    }
+    return out.join('\n').trim();
   }
 
   static TextStyle _emphasis(
@@ -931,7 +1160,7 @@ class FormattedText extends StatelessWidget {
     final normalized = normalizeLatex(
       preserveLineBreaks ? markup : examFormat(markup),
     );
-    final laidOut = restoreCollapsedBreaks(normalized);
+    final laidOut = structureSolutionOutline(restoreCollapsedBreaks(normalized));
     final useExamLayout = examLayout || preserveLineBreaks;
 
     if (preserveLineBreaks || laidOut.contains('\n') || examWrap) {
@@ -1064,11 +1293,15 @@ class FormattedText extends StatelessWidget {
           spans.add(TextSpan(text: raw, style: base));
         } else {
           final isBlock = m.group(1) != null;
-          final display =
-              forceDisplayMath || isBlock || usesDisplayMath(raw);
+          // Kesir/kök cümle ortasında da gövde puntosunda (surrounded olsa bile).
+          final display = forceDisplayMath ||
+              isBlock ||
+              usesDisplayMath(raw);
           spans.add(
             WidgetSpan(
-              alignment: isBlock && display
+              // Display kesirler (x/y, kök…) cümle içinde baseline ile zıplar;
+              // middle ile gövde satırına oturur.
+              alignment: display
                   ? PlaceholderAlignment.middle
                   : PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,

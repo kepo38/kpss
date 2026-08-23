@@ -239,10 +239,12 @@ def panel_tg_exam_publish(request: HttpRequest, exam_id: int) -> HttpResponse:
 
     expected = TgExamGeneratorService().slot_count()
     if len(question_ids) != expected:
-        messages.warning(
+        messages.error(
             request,
-            f"Beklenen {expected} soru, mevcut {len(question_ids)} soru.",
+            f"Yayınlanamaz: beklenen {expected} soru, mevcut {len(question_ids)} soru. "
+            "Önce soru setini tamamlayın.",
         )
+        return redirect("panel_tg_exam_edit", exam_id=exam.pk)
 
     with transaction.atomic():
         exam.is_published = True
@@ -265,7 +267,11 @@ def panel_tg_exam_publish(request: HttpRequest, exam_id: int) -> HttpResponse:
 def panel_tg_exam_unpublish(request: HttpRequest, exam_id: int) -> HttpResponse:
     exam = get_object_or_404(TgExam, pk=exam_id)
     exam.is_published = False
-    exam.save(update_fields=["is_published", "updated_at"])
+    # Yeniden yayınlandığında cooldown kaydı tekrar çalışsın.
+    exam.tg_usage_recorded = False
+    exam.save(
+        update_fields=["is_published", "tg_usage_recorded", "updated_at"]
+    )
     messages.success(request, f"“{exam.title}” yayından kaldırıldı.")
     return redirect("panel_tg_exam_edit", exam_id=exam.pk)
 

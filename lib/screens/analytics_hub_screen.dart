@@ -138,22 +138,9 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   },
                 ),
                 const SizedBox(height: 28),
-                Text(
-                  'DERSLER',
-                  style: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 1.8,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.champagne.withValues(alpha: 0.95),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Konu testlerine göre',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.mutedOnPage(context),
-                  ),
+                _SectionHeader(
+                  title: 'DERSLER',
+                  subtitle: 'Konu testlerine göre',
                 ),
                 const SizedBox(height: 14),
                 _SubjectCarouselSection(
@@ -256,7 +243,7 @@ class _SubjectCarouselSectionState extends State<_SubjectCarouselSection> {
     return Column(
       children: [
         SizedBox(
-          height: 168,
+          height: 176,
           child: Stack(
             children: [
               ListView.separated(
@@ -356,6 +343,66 @@ class _SubjectScrollDots extends StatelessWidget {
   }
 }
 
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Container(
+          width: 4,
+          height: 28,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppTheme.champagneLight,
+                AppTheme.champagne,
+                Color(0xFFB8924A),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.champagne.withValues(alpha: 0.98),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.mutedOnPage(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _HeroSummary extends StatelessWidget {
   final OverallPerformance overall;
 
@@ -365,190 +412,311 @@ class _HeroSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasData = overall.solved > 0;
     final rate = (overall.successRate * 100).round();
+    final progress = overall.successRate.clamp(0.0, 1.0);
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.champagne.withValues(alpha: 0.14),
-            blurRadius: 22,
-            offset: const Offset(0, 8),
+            color: const Color(0xFF8B1538).withValues(alpha: 0.22),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: AppTheme.ink.withValues(alpha: 0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.champagne.withValues(alpha: 0.42),
-            ),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF18263C),
-                AppTheme.inkSoft,
-                AppTheme.ink,
-              ],
-              stops: [0, 0.45, 1],
-            ),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 3,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppTheme.champagneLight,
-                        AppTheme.champagne,
-                        Color(0xFFB8924A),
-                      ],
-                    ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF1A2438),
+                      Color(0xFF121A2A),
+                      Color(0xFF0C1424),
+                    ],
+                    stops: [0, 0.55, 1],
                   ),
                 ),
               ),
-              Positioned(
-                right: -28,
-                top: -40,
-                child: IgnorePointer(
-                  child: Container(
-                    width: 130,
-                    height: 130,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          AppTheme.champagne.withValues(alpha: 0.18),
-                          AppTheme.champagne.withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
+            ),
+            Positioned(
+              right: -36,
+              top: -48,
+              child: Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      const Color(0xFFC41E3A).withValues(alpha: 0.28),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-                child: hasData
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'BAŞARI',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.8,
-                              color: AppTheme.champagne,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '%$rate',
-                            style: const TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 44,
-                              height: 1,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -1.2,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${overall.correct} doğru  ·  ${overall.wrong} yanlış'
-                            '${overall.blank > 0 ? '  ·  ${overall.blank} boş' : ''}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white.withValues(alpha: 0.55),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              value: overall.successRate.clamp(0.0, 1.0),
-                              minHeight: 4,
-                              backgroundColor:
-                                  AppTheme.champagne.withValues(alpha: 0.16),
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                AppTheme.champagne,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
+            ),
+            Positioned(
+              left: -20,
+              bottom: -30,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.champagne.withValues(alpha: 0.12),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              child: hasData
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(alpha: 0.14),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'BAŞARI',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.6,
+                                        color: AppTheme.champagneLight,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
                               Text(
-                                '${overall.solved} çözülen',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white.withValues(alpha: 0.72),
+                                '%$rate',
+                                style: const TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 46,
+                                  height: 0.95,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -1.5,
+                                  color: Colors.white,
                                 ),
                               ),
-                              const Spacer(),
-                              Text(
-                                '${overall.totalQuestions} soruluk havuz',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white.withValues(alpha: 0.42),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  _StatChip(
+                                    label: '${overall.correct} doğru',
+                                    color: const Color(0xFF34D399),
+                                  ),
+                                  _StatChip(
+                                    label: '${overall.wrong} yanlış',
+                                    color: const Color(0xFFF87171),
+                                  ),
+                                  if (overall.blank > 0)
+                                    _StatChip(
+                                      label: '${overall.blank} boş',
+                                      color: Colors.white.withValues(alpha: 0.55),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  value: progress,
+                                  minHeight: 6,
+                                  backgroundColor:
+                                      Colors.white.withValues(alpha: 0.1),
+                                  color: Colors.white,
                                 ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Text(
+                                    '${overall.solved} çözülen',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white.withValues(alpha: 0.78),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    '${overall.totalQuestions} soruluk havuz',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white.withValues(alpha: 0.42),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
+                        ),
+                        const SizedBox(width: 12),
+                        _SuccessRing(progress: progress, rate: rate),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
                             'BAŞARI',
                             style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.8,
-                              color: AppTheme.champagne,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.6,
+                              color: AppTheme.champagneLight,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Henüz ölçüm yok',
-                            style: TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 24,
-                              height: 1.15,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Henüz ölçüm yok',
+                          style: TextStyle(
+                            fontFamily: 'serif',
+                            fontSize: 26,
+                            height: 1.1,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Konu testlerini çözdükçe başarı oranın burada toplanır.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              height: 1.35,
-                              color: Colors.white.withValues(alpha: 0.5),
-                            ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Konu testlerini çözdükçe başarı oranın burada toplanır.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.4,
+                            color: Colors.white.withValues(alpha: 0.55),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _StatChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _SuccessRing extends StatelessWidget {
+  final double progress;
+  final int rate;
+
+  const _SuccessRing({required this.progress, required this.rate});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 78,
+      height: 78,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox.expand(
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 6,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              color: Colors.white,
+              strokeCap: StrokeCap.round,
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$rate',
+                style: const TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                '%',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.65),
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -591,11 +759,30 @@ class _SubjectCard extends StatelessWidget {
         onPressed: () => _openDetail(context),
         child: Container(
           height: compact ? double.infinity : null,
-          padding: EdgeInsets.fromLTRB(14, compact ? 12 : 14, 12, compact ? 12 : 14),
+          padding: EdgeInsets.fromLTRB(
+            14,
+            compact ? 14 : 14,
+            12,
+            compact ? 14 : 14,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             color: AppTheme.surfaceCard(context),
-            border: Border.all(color: AppTheme.hairline(context)),
+            border: Border.all(
+              color: accent.withValues(alpha: p.hasActivity ? 0.22 : 0.08),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: p.hasActivity ? 0.1 : 0.04),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,16 +790,24 @@ class _SubjectCard extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          accent.withValues(alpha: 0.18),
+                          accent.withValues(alpha: 0.06),
+                        ],
+                      ),
+                      border: Border.all(color: accent.withValues(alpha: 0.2)),
                     ),
                     child: Icon(
                       subjectIcon(p.subjectId),
-                      size: 18,
+                      size: 19,
                       color: accent,
                     ),
                   ),
@@ -625,44 +820,63 @@ class _SubjectCard extends StatelessWidget {
                       style: TextStyle(
                         fontFamily: 'serif',
                         fontSize: compact ? 16 : 17,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         color: on,
                       ),
                     ),
                   ),
-                  Text(
-                    p.hasActivity ? '%$rate' : '—',
-                    style: TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: compact ? 18 : 20,
-                      fontWeight: FontWeight.w700,
-                      color: p.hasActivity
-                          ? AppTheme.champagne
-                          : muted.withValues(alpha: 0.5),
+                  if (p.hasActivity)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.champagne.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '%$rate',
+                        style: const TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.champagne,
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      '—',
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: compact ? 18 : 20,
+                        fontWeight: FontWeight.w700,
+                        color: muted.withValues(alpha: 0.5),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 20,
-                    color: muted.withValues(alpha: 0.6),
+                    color: muted.withValues(alpha: 0.55),
                   ),
                 ],
               ),
               if (!p.hasActivity) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Text(
                   'Henüz soru çözülmedi',
                   style: TextStyle(fontSize: 12, color: muted),
                 ),
               ] else ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: p.successRate.clamp(0.0, 1.0),
-                    minHeight: 4,
-                    backgroundColor: accent.withValues(alpha: 0.12),
+                    minHeight: 5,
+                    backgroundColor: accent.withValues(alpha: 0.1),
                     valueColor: AlwaysStoppedAnimation<Color>(accent),
                   ),
                 ),
@@ -671,7 +885,7 @@ class _SubjectCard extends StatelessWidget {
                   '${p.solved} soru  ·  ${p.correct} doğru  ·  ${p.wrong} yanlış',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: muted),
+                  style: TextStyle(fontSize: 11, color: muted),
                 ),
               ],
             ],

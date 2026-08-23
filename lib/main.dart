@@ -24,6 +24,7 @@ import 'services/app_config_service.dart';
 import 'services/auth_service.dart';
 import 'services/content_bank_service.dart';
 import 'services/content_sync_service.dart';
+import 'services/api_diag_log.dart';
 import 'services/database_bootstrap.dart';
 import 'services/database_service.dart';
 import 'services/favorites_service.dart';
@@ -346,14 +347,41 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   Future<void> _syncContentInBackground() async {
     try {
       final ok = await ContentSyncService.instance.syncCatalog(force: true);
-      debugPrint(
-        ok
-            ? 'Content sync on launch OK v${ContentBankService.instance.packVersion}'
-            : 'Content sync on launch FAILED (API: ${ApiConfig.baseUrl})',
-      );
+      if (ok) {
+        debugPrint(
+          'Content sync on launch OK v${ContentBankService.instance.packVersion}',
+        );
+        return;
+      }
+      final entry = ApiDiagLog.lastEntry.value;
+      final tip = entry?.shortMessage ??
+          'İçerik senkronu başarısız (API: ${ApiConfig.baseUrl}).';
+      debugPrint('Content sync on launch FAILED — $tip');
+      _showSyncFailSnack(tip);
     } catch (e, st) {
+      await ApiDiagLog.record(
+        event: 'catalog_launch',
+        ok: false,
+        error: e,
+      );
       debugPrint('Content sync on launch error: $e\n$st');
+      _showSyncFailSnack(ApiDiagLog.classify(e).tip);
     }
+  }
+
+  void _showSyncFailSnack(String tip) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = AppNavigator.key.currentContext;
+      if (ctx == null) return;
+      final messenger = ScaffoldMessenger.maybeOf(ctx);
+      messenger?.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(tip),
+        ),
+      );
+    });
   }
 
   Future<void> _checkNetworkSecurity() async {

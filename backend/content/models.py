@@ -190,6 +190,42 @@ class Question(models.Model):
     option_c = models.CharField(max_length=500)
     option_d = models.CharField(max_length=500)
     option_e = models.CharField(max_length=500)
+    options_are_images = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Görsel şıklar",
+        help_text="Şıklar metin yerine kırpılmış görsellerle gösterilir.",
+    )
+    option_a_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık A görseli",
+    )
+    option_b_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık B görseli",
+    )
+    option_c_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık C görseli",
+    )
+    option_d_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık D görseli",
+    )
+    option_e_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık E görseli",
+    )
     OPTION_TABLE_NONE = "none"
     OPTION_TABLE_DUAL = "dual"
     OPTION_TABLE_TRIPLE = "triple"
@@ -211,6 +247,12 @@ class Question(models.Model):
         default="A",
     )
     solution = models.TextField(blank=True, verbose_name="Çözüm")
+    solution_image = models.ImageField(
+        upload_to="question_solutions/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Çözüm görseli",
+    )
     is_published = models.BooleanField(default=False)
     difficulty = models.CharField(
         max_length=12,
@@ -367,6 +409,39 @@ class Question(models.Model):
 
     def __str__(self) -> str:
         return f"{self.public_id} — {self.stem[:48]}"
+
+    def delete(self, using=None, keep_parents=False):
+        """Kayıt silinince tarama / stem / şık görselleri diskte orphan kalmasın."""
+        image_names: list[tuple[str, object]] = []
+        for field_name in (
+            "image",
+            "option_a_image",
+            "option_b_image",
+            "option_c_image",
+            "option_d_image",
+            "option_e_image",
+        ):
+            field = getattr(self, field_name, None)
+            if field:
+                image_names.append((field.name, field.storage))
+        result = super().delete(using=using, keep_parents=keep_parents)
+        for image_name, storage in image_names:
+            if image_name and storage is not None:
+                try:
+                    storage.delete(image_name)
+                except Exception:  # noqa: BLE001
+                    pass
+        return result
+
+    def option_image_field(self, letter: str):
+        key = letter.strip().upper()
+        return {
+            "A": self.option_a_image,
+            "B": self.option_b_image,
+            "C": self.option_c_image,
+            "D": self.option_d_image,
+            "E": self.option_e_image,
+        }.get(key)
 
     def options_map(self) -> dict[str, str]:
         return {
@@ -683,6 +758,22 @@ class TopicSummaryCard(models.Model):
 
     def __str__(self) -> str:
         return f"{self.topic.name} · {self.title}"
+
+    @property
+    def has_content(self) -> bool:
+        return bool((self.body or "").strip()) or bool(self.image)
+
+    @classmethod
+    def for_mobile_pack(cls):
+        """Yayında ve içeriği olan kartlar — boş yuvalar uygulamaya gitmesin."""
+        from django.db.models import Q
+
+        return (
+            cls.objects.filter(is_published=True, topic__is_active=True)
+            .filter(Q(body__regex=r"\S") | (Q(image__isnull=False) & ~Q(image="")))
+            .select_related("topic", "topic__subject")
+            .order_by("sort_order", "id")
+        )
 
 
 class Announcement(models.Model):
@@ -1223,7 +1314,7 @@ class TelegramBotSession(models.Model):
         null=True,
         blank=True,
         verbose_name="Telegram fotoğraf mesajı",
-        help_text="evet denince silinir; hayır denince sohbette kalır",
+        help_text="Evet veya /iptal ile silinir; Hayır'da sohbette kalır",
     )
     updated_at = models.DateTimeField(auto_now=True)
 

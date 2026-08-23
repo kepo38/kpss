@@ -1000,7 +1000,8 @@ class QuestionOsymSorduTests(TestCase):
         self.assertEqual(res.status_code, 302)
         question = Question.objects.get(topic=self.topic)
         self.assertTrue(question.osym_sordu)
-        self.assertEqual(question.osym_cikmis_adi, "2022 KPSS B Grubu · Soru 8")
+        # Panel etiketi arşiv katalog anahtarına indirger (soru no arşivde tutulmaz).
+        self.assertEqual(question.osym_cikmis_adi, "2022 KPSS B Grubu")
 
     def test_panel_save_osym_requires_cikmis_adi(self):
         self.client.force_login(self.staff)

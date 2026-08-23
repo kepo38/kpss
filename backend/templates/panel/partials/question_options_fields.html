@@ -1,0 +1,98 @@
+<label class="check" style="margin-bottom:10px;">
+  <input type="checkbox" name="options_are_images" id="options-are-images"
+         {% if question.options_are_images or question.option_a_image or question.option_b_image or question.option_c_image or question.option_d_image or question.option_e_image %}checked{% endif %}>
+  Görsel şıklar
+  <span style="opacity:.7;font-weight:400">(A–E metin yerine kırpılmış görseller)</span>
+</label>
+<span class="hint" id="options-are-images-hint" style="display:block;margin:-4px 0 12px;">
+  OCR görsel şık algılarsa otomatik açılır. Metin alanları placeholder kalır; uygulamada görseller gösterilir.
+</span>
+
+{% for letter in "ABCDE" %}
+{% with lower=letter|lower %}
+<div class="option-row js-option-row" data-letter="{{ letter }}">
+  <label class="option-row__label">{{ letter }}
+    <input type="text"
+           name="option_{{ lower }}"
+           id="option-{{ lower }}-text"
+           required
+           value="{% if letter == 'A' %}{{ question.option_a|default:'' }}{% elif letter == 'B' %}{{ question.option_b|default:'' }}{% elif letter == 'C' %}{{ question.option_c|default:'' }}{% elif letter == 'D' %}{{ question.option_d|default:'' }}{% else %}{{ question.option_e|default:'' }}{% endif %}"
+           class="js-rich js-option-text">
+  </label>
+  <div class="option-row__visual js-option-visual">
+    <span class="badge-visual">Görsel Şık</span>
+    <div class="option-row__preview">
+      {% if letter == 'A' and question.option_a_image %}
+      <img id="option-{{ lower }}-preview" src="{{ question.option_a_image.url }}" alt="Şık {{ letter }}" class="option-preview-img">
+      {% elif letter == 'B' and question.option_b_image %}
+      <img id="option-{{ lower }}-preview" src="{{ question.option_b_image.url }}" alt="Şık {{ letter }}" class="option-preview-img">
+      {% elif letter == 'C' and question.option_c_image %}
+      <img id="option-{{ lower }}-preview" src="{{ question.option_c_image.url }}" alt="Şık {{ letter }}" class="option-preview-img">
+      {% elif letter == 'D' and question.option_d_image %}
+      <img id="option-{{ lower }}-preview" src="{{ question.option_d_image.url }}" alt="Şık {{ letter }}" class="option-preview-img">
+      {% elif letter == 'E' and question.option_e_image %}
+      <img id="option-{{ lower }}-preview" src="{{ question.option_e_image.url }}" alt="Şık {{ letter }}" class="option-preview-img">
+      {% else %}
+      <img id="option-{{ lower }}-preview" src="" alt="Şık {{ letter }}" class="option-preview-img" hidden>
+      {% endif %}
+    </div>
+    <input type="file"
+           name="option_{{ lower }}_image"
+           id="option-{{ lower }}-image"
+           accept="image/*"
+           class="js-option-image-input">
+    <input type="hidden" name="option_{{ lower }}_image_data" id="option-{{ lower }}-image-data" value="">
+    <label class="check option-row__clear">
+      <input type="checkbox" name="clear_option_{{ lower }}_image" class="js-option-clear">
+      Temizle
+    </label>
+  </div>
+</div>
+{% endwith %}
+{% endfor %}
+
+<style>
+  .option-row {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 10px;
+  }
+  .option-row__visual {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  #question-form.is-visual-options .option-row__visual {
+    display: flex;
+  }
+  #question-form.is-visual-options .js-option-text {
+    opacity: 0.72;
+  }
+  .badge-visual {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(251, 191, 36, 0.18);
+    color: #fde68a;
+    border: 1px solid rgba(251, 191, 36, 0.35);
+  }
+  .option-preview-img {
+    max-height: 72px;
+    max-width: 160px;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: transparent;
+    object-fit: contain;
+  }
+  .option-row__clear {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+</style>

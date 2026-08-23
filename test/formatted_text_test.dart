@@ -59,6 +59,12 @@ void main() {
     expect(find.textContaining('durumu için:'), findsOneWidget);
   });
 
+  test('repairs telegram \\vert{x\\vert} groups to lvert/rvert', () {
+    final out = FormattedText.wrapBareLatex(r'$\vert{a - c\vert} = b$');
+    expect(out, contains(r'\lvert a - c \rvert'));
+    expect(out, isNot(contains(r'\vert{')));
+  });
+
   testWidgets('renders bold italic underline markdown', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -260,6 +266,38 @@ void main() {
       isTrue,
     );
     expect(FormattedText.usesDisplayMath('x+1'), isFalse);
+  });
+
+  test('inline x/y fraction stays after göre, not on its own line', () {
+    const src = r'Buna göre $\frac{x}{y}$ oranı kaçtır?';
+    final out = FormattedText.restoreCollapsedBreaks(src);
+    expect(out.contains('\n'), isFalse);
+    expect(out, contains(r'göre $\frac{x}{y}$ oranı'));
+    expect(
+      FormattedText.isStandaloneDisplayEquation(r'\frac{x}{y}'),
+      isFalse,
+    );
+    expect(
+      FormattedText.isStandaloneDisplayEquation(
+        r'\sqrt{x} - \sqrt{y} = 2\sqrt{2}',
+      ),
+      isTrue,
+    );
+  });
+
+  test('inline surrounded fraction uses dfrac at body size', () {
+    const tex = r'\frac{x}{y}';
+    expect(FormattedText.usesDisplayMath(tex), isTrue);
+    final prepared = FormattedText.prepareTex(tex, forceDisplayStyle: true);
+    expect(prepared, contains(r'\dfrac{x}{y}'));
+    expect(prepared, contains(r'\displaystyle'));
+  });
+
+  test('forceDisplaySizeAll keeps inline frac compact when not display', () {
+    expect(
+      FormattedText.forceDisplaySizeAll(r'\frac{x}{y}', forceDisplayStyle: false),
+      r'\frac{x}{y}',
+    );
   });
 
   test('restoreCollapsedBreaks splits glued sentences after latex', () {
@@ -527,6 +565,29 @@ void main() {
     expect(FormattedText.wrapBareLatex(r'$Yalnız I$'), 'Yalnız I');
   });
 
+  test('wrapBareLatex keeps stem after leading single-letter dollars', () {
+    const stem =
+        r'$a$ sıfırdan farklı bir gerçel sayı olmak üzere bir $f$ fonksiyonu'
+        '\n'
+        r'$f(x) = \frac{x}{a} + 1$'
+        '\n'
+        r'olduğuna göre $a$ kaçtır?';
+    final out = FormattedText.wrapBareLatex(stem);
+    expect(out, startsWith('a sıfırdan'));
+    expect(out, contains(r'$f$'));
+    expect(out, contains(r'\frac{x}{a}'));
+    expect(out, contains('kaçtır?'));
+    expect(out, isNot(equals('a')));
+  });
+
+  test('wrapBareLatex keeps stem after leading inequality dollars', () {
+    const stem =
+        r'$a < b < 0$ olmak üzere hangisi doğrudur?';
+    final out = FormattedText.wrapBareLatex(stem);
+    expect(out, contains(r'$a < b < 0$'));
+    expect(out, contains('hangisi doğrudur?'));
+  });
+
   test('normalizeMarkup restores nested math inside bold (no §§E leak)', () {
     final out = FormattedText.normalizeMarkup(
       r'**I. $a \cdot (b + c)$** ve - 1. Durum ($T \cdot Ç$): sonuç',
@@ -639,5 +700,94 @@ void main() {
     expect(find.textContaining(r'$$\displaystyle'), findsNothing);
     expect(find.textContaining(r'\begin{array}'), findsNothing);
     expect(find.textContaining(r'$A + B + C$'), findsNothing);
+  });
+
+  test('restoreCollapsedBreaks splits Google Docs math solution paste', () {
+    const src =
+        r'📊 Adım Adım Net Matematiksel GösterimKitabın Tamamı: 300 sayfa'
+        r'İlk 3 Gün Toplamı: \(300 \times \frac{3}{5} = \mathbf{180}\) sayfa.'
+        r'4. Gün Okunan: \(300 - 180 = \mathbf{120}\) sayfa.'
+        r'İlk İki Gün Toplamı: göre;'
+        r'\(120=(\text{1.\ Gün}+\text{2.\ Gün})\times \frac{5}{6}'
+        r'\implies \text{1.\ Gün}+\text{2.\ Gün}=\mathbf{144}\)'
+        r'3. Gün Okunan: çıkarırsak;\(180-144=\mathbf{36}\)';
+    final out = FormattedText.restoreCollapsedBreaks(
+      FormattedText.normalizeLatex(src),
+    );
+    expect(out, contains('Gösterim\nKitabın'));
+    expect(out, contains('sayfa\nİlk 3 Gün'));
+    expect(out, contains('sayfa.\n4. Gün'));
+    expect(out, contains('göre;\n'));
+    expect(out, contains('çıkarırsak;\n'));
+    expect(out, contains('3. Gün Okunan'));
+    expect(out.split('\n').length, greaterThan(5));
+  });
+
+  test('restoreCollapsedBreaks does not split inline dollar math', () {
+    const src = r'Taban alanı $Toplam = 5$ olarak bulunur.';
+    final out = FormattedText.restoreCollapsedBreaks(src);
+    expect(out, contains(r'$Toplam = 5$'));
+    expect(out, isNot(contains(r'$\nToplam')));
+  });
+
+  test('normalizeLatex collapses multiline paren to inline dollar', () {
+    const src = r'Buradan \(x = 5' '\n' r'+ 3\) bulunur.';
+    final out = FormattedText.normalizeLatex(src);
+    expect(out, contains(r'$x = 5 + 3$'));
+  });
+
+  test('restoreCollapsedBreaks does not split units and brands', () {
+    const src = 'Değer 5A akım, pH değeri 7, iPhone modeli ve 3D görüntü.';
+    final out = FormattedText.restoreCollapsedBreaks(src);
+    expect(out, contains('5A akım'));
+    expect(out, contains('pH değeri'));
+    expect(out, contains('iPhone modeli'));
+    expect(out, contains('3D görüntü'));
+    expect(out, isNot(contains('5\nA')));
+    expect(out, isNot(contains('p\nH')));
+  });
+
+  test('structureSolutionOutline rebuilds Google logic solution lists', () {
+    const src =
+        '💡 Adım Adım Çözüm\n'
+        'Kural Özeti:\n'
+        'Tüm öğrenciler başlangıçta oturuyor.\n'
+        'Söylenen harf isminde varsa durum değiştirir.\n'
+        'Bir öğrencinin son durumda ayakta kalması gerekir.\n'
+        'Şimdi seçenekleri kontrol edelim:\n'
+        'A) AYBERK:\n'
+        'A var (Kalktı), B var (Otuttu), C yok.\n'
+        'Toplam değişim: 2 kez → Oturuyor.\n'
+        'B) BERKCAN:\n'
+        'A var (Kalktı), B var (Otuttu), C var (Kalktı).\n'
+        'Toplam değişim: 3 kez → 🧍 AYAKTA.\n'
+        'C) CEYDA:\n'
+        'Toplam değişim: 2 kez → Oturuyor.';
+    final out = FormattedText.structureSolutionOutline(src);
+    expect(out, contains('**💡 Adım Adım Çözüm**'));
+    expect(out, contains('**Kural Özeti:**'));
+    expect(out, contains('- Tüm öğrenciler başlangıçta oturuyor.'));
+    expect(out, contains('- **A) AYBERK:**'));
+    expect(out, contains('  - A var (Kalktı), B var (Otuttu), C yok.'));
+    expect(out, contains('- **B) BERKCAN:**'));
+    expect(out, contains('**AYAKTA**'));
+    expect(out, contains('- **C) CEYDA:**'));
+    final again = FormattedText.structureSolutionOutline(out);
+    expect('- **A) AYBERK:**'.allMatches(again).length, 1);
+  });
+
+  test('structureSolutionOutline handles A Seçeneği Google candle paste', () {
+    const glued =
+        'inceleyelim:A Seçeneği: Dizilim 2 - 3 - 5 - 4 - 1 şeklindedir.'
+        '2 - 3 - 4 üçlüsü zaten sıralıdır. (2 hamlede yapılabilir)'
+        'B Seçeneği: Dizilim 3 - 1 - 4 - 5 - 2 şeklindedir.'
+        '1 - 4 - 5 üçlüsü zaten sıralıdır. (2 hamlede yapılabilir)';
+    final broken = FormattedText.restoreCollapsedBreaks(glued);
+    expect(broken, contains('\nA Seçeneği:'));
+    expect(broken, contains('\nB Seçeneği:'));
+    final out = FormattedText.structureSolutionOutline(broken);
+    expect(out, contains('- **A Seçeneği:**'));
+    expect(out, contains('- **B Seçeneği:**'));
+    expect(out, contains('  - Dizilim 2 - 3 - 5 - 4 - 1'));
   });
 }
