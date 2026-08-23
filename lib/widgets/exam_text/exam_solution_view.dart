@@ -17,6 +17,7 @@ class ExamSolutionView extends StatelessWidget {
       examLayout: true,
       examWrap: true,
       examScaleDown: false,
+      solutionMode: true,
       style: ExamTypography.solution(
         color: Colors.white.withValues(alpha: 0.92),
         fontSize: 15,

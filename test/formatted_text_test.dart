@@ -848,6 +848,42 @@ void main() {
     );
   });
 
+  test('google paste egg solution preview', () {
+    const src =
+        r'Çözüm Adımları10.06.2024 Sonu:Tarihi geçmeyen 27 yumurta ertesi güne kalır.'
+        r'Tarihi geçen 6 yumurta çöpe atılır.11.06.2024 Başlangıcı ve Ayrımı:'
+        r'Güne kalan 27 yumurta ile başlanır.Bu yumurtalar ikiye ayrılır: \((3x + y) + 5 = 27\)'
+        r'Buradan denklem: \(3x + y = 22\) elde edilir.Tarihi geçen 5 yumurta atılınca '
+        r'geriye \(3x + y\) (yani 22) yumurta kalır.12.06.2024 Ayrımı:'
+        r'Güne kalan 22 yumurta ile başlanır.Bu yumurtalar ikiye ayrılır: \(14 + 2y = 22\)'
+        r'\(2y = 8 \implies \mathbf{y = 4}\) bulunur.\(x\) Değerinin Bulunması:'
+        r'\(3x + y = 22\) denkleminde \(y = 4\) yazılır.'
+        r'\(3x + 4 = 22 \implies 3x = 18 \implies \mathbf{x = 6}\) bulunur.'
+        r'Sonuç:\(x \cdot y = 6 \cdot 4 = \mathbf{24}\) olur:';
+
+    final collapsed = FormattedText.restoreCollapsedBreaks(src);
+    final normalized = FormattedText.normalizeForSolutionDisplay(src);
+    final prepared = FormattedText.prepareSolutionText(src);
+
+    expect(collapsed, contains('Çözüm Adımları\n10.06.2024'));
+    expect(collapsed, contains('10.06.2024'));
+    expect(collapsed, isNot(contains('10.06.\n2024')));
+    expect(collapsed, contains('Sonu:\nTarihi'));
+    expect(collapsed, contains('atılır.\n11.06.2024'));
+    expect(collapsed, contains('Başlangıcı ve Ayrımı:\nGüne'));
+    expect(collapsed, contains('Ayrımı:\nGüne'));
+    expect(collapsed, contains('bulunur.\n'));
+    expect(collapsed, contains('Değerinin Bulunması:\n'));
+    expect(collapsed, contains('Sonuç:\n'));
+
+    expect(normalized, contains(r'$(3x + y) + 5 = 27$'));
+    expect(normalized, contains('Sonu:\nTarihi'));
+    expect(normalized, contains('kalır.\nTarihi'));
+    expect(normalized, contains('10.06.2024'));
+    expect(normalized, isNot(contains('10.06.\n2024')));
+    expect(prepared, contains('Sonuç:\n'));
+  });
+
   test('prepareExamDisplayText preserves inline subscript math', () {
     const raw =
         r'kenarları $k_A$, $k_B$ ve $k_C$ birim; $k_A < k_B < k_C$ olduğuna göre';

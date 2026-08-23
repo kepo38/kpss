@@ -511,6 +511,40 @@ def restore_collapsed_breaks(text: str) -> str:
         r"\1. ",
         src,
     )
+    # Google günlük çözüm yapıştırması: 10.06.2024, Sonu:, Ayrımı:
+    src = re.sub(
+        r"(Çözüm Adımları)(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(?<=[a-zçğıöşüâîû])(?=\d{1,2}\.\d{1,2}\.\d{4})",
+        "\n",
+        src,
+    )
+    src = re.sub(
+        r"([.!?])(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})",
+        r"\1\n",
+        src,
+    )
+    date_holders: list[str] = []
+
+    def _protect_calendar_date(match: re.Match[str]) -> str:
+        date_holders.append(match.group(1))
+        return f"§§D{len(date_holders) - 1}§§"
+
+    src = re.sub(
+        r"(?<!\d)(\d{1,2}\.\d{1,2}\.\d{4})(?!\d)",
+        _protect_calendar_date,
+        src,
+    )
+    src = re.sub(
+        r"(Sonu:|Ayrımı:|Sonuç:|Başlangıcı ve Ayrımı:|Değerinin Bulunması:)(?!\n)(?=\S)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
     # Cümle sonu → büyük harf / numaralı madde
     src = re.sub(r"([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", r"\1\n", src)
     src = re.sub(r":(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", ":\n", src)
@@ -624,6 +658,20 @@ def restore_collapsed_breaks(text: str) -> str:
     )
     # Matematik sonrası numaralı adım: $…$3. Gün
     src = re.sub(r"(§§M\d+§§)(?=\d+\.\s)", r"\1\n", src)
+    src = re.sub(r"([.!?])(?!\n)(?=§§M\d+§§)", r"\1\n", src)
+    src = re.sub(
+        r"(§§M\d+§§)(?!\n)(?=(?:Değerinin Bulunması|Sonuç)\s*:)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"§§D(\d+)§§",
+        lambda m: date_holders[int(m.group(1))]
+        if int(m.group(1)) < len(date_holders)
+        else m.group(0),
+        src,
+    )
     src = _MATH_HOLDER_RE.sub(
         lambda m: math_holders[int(m.group(1))]
         if int(m.group(1)) < len(math_holders)

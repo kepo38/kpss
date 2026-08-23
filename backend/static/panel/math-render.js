@@ -165,6 +165,19 @@
     var mdHolders = [];
     src = protectMarkdownSpans(src, mdHolders);
     src = src.replace(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1. ");
+    // Google günlük çözüm yapıştırması: 10.06.2024, Sonu:, Ayrımı:
+    src = src.replace(/(Çözüm Adımları)(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})/gi, "$1\n");
+    src = src.replace(/(?<=[a-zçğıöşüâîû])(?=\d{1,2}\.\d{1,2}\.\d{4})/g, "\n");
+    src = src.replace(/([.!?])(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})/g, "$1\n");
+    var dateHolders = [];
+    src = src.replace(/(?<!\d)(\d{1,2}\.\d{1,2}\.\d{4})(?!\d)/g, function (m) {
+      dateHolders.push(m);
+      return "§§D" + (dateHolders.length - 1) + "§§";
+    });
+    src = src.replace(
+      /(Sonu:|Ayrımı:|Sonuç:|Başlangıcı ve Ayrımı:|Değerinin Bulunması:)(?!\n)(?=\S)/gi,
+      "$1\n"
+    );
     src = src.replace(/([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
     src = src.replace(/:(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, ":\n");
     src = src.replace(/([.!?])(?!\n)(?=\d+\.\s)/g, "$1\n");
@@ -220,6 +233,14 @@
     src = src.replace(/§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))/g, "§§M$1§§\n");
     src = src.replace(/(§§M\d+§§)(?=\d+\.\s)/g, "$1\n");
+    src = src.replace(/([.!?])(?!\n)(?=§§M\d+§§)/g, "$1\n");
+    src = src.replace(
+      /(§§M\d+§§)(?!\n)(?=(?:Değerinin Bulunması|Sonuç)\s*:)/gi,
+      "$1\n"
+    );
+    src = src.replace(/§§D(\d+)§§/g, function (_, idx) {
+      return dateHolders[Number(idx)] || "";
+    });
     src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
       return holders[Number(idx)] || "";
     });

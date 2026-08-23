@@ -151,6 +151,26 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIn("I. Fidan,", out)
         self.assertNotIn("I.\nFidan", out)
 
+    def test_restore_collapsed_breaks_google_daily_solution_dates(self):
+        src = (
+            "Çözüm Adımları10.06.2024 Sonu:Tarihi geçmeyen 27 yumurta ertesi güne kalır."
+            "Tarihi geçen 6 yumurta çöpe atılır.11.06.2024 Başlangıcı ve Ayrımı:"
+            "Güne kalan 27 yumurta ile başlanır."
+            r"\(2y = 8 \implies \mathbf{y = 4}\) bulunur.\(x\) Değerinin Bulunması:"
+            r"\(3x + y = 22\) denkleminde \(y = 4\) yazılır."
+            r"Sonuç:\(x \cdot y = 6 \cdot 4 = \mathbf{24}\) olur:"
+        )
+        out = restore_collapsed_breaks(normalize_latex(src))
+        self.assertIn("Çözüm Adımları\n10.06.2024", out)
+        self.assertIn("10.06.2024", out)
+        self.assertNotIn("10.06.\n2024", out)
+        self.assertIn("Sonu:\nTarihi", out)
+        self.assertIn("atılır.\n11.06.2024", out)
+        self.assertIn("Başlangıcı ve Ayrımı:\nGüne", out)
+        self.assertIn("bulunur.\n", out)
+        self.assertIn("Değerinin Bulunması:\n", out)
+        self.assertIn("Sonuç:\n", out)
+
     def test_telegram_pipeline_preserves_inline_math(self):
         src = r"Sonuç \(300 \times \frac{3}{5} = \mathbf{180}\) sayfa."
         out = normalize_telegram_solution(src)

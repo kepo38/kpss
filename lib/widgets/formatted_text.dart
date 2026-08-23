@@ -22,6 +22,9 @@ class FormattedText extends StatelessWidget {
   /// true → metin satırları softWrap (panel gibi); FittedBox yok.
   final bool examWrap;
 
+  /// true → çözüm metni pipeline'ı (Google yapıştırma, madde listesi).
+  final bool solutionMode;
+
   const FormattedText(
     this.data, {
     super.key,
@@ -33,6 +36,7 @@ class FormattedText extends StatelessWidget {
     this.examLayout = false,
     this.examScaleDown = true,
     this.examWrap = false,
+    this.solutionMode = false,
   });
 
   static bool _isStructuralLine(String line) {
@@ -958,6 +962,37 @@ class FormattedText extends StatelessWidget {
       },
     );
     src = glueRomanNumeralLabels(src);
+    // Google günlük çözüm yapıştırması: 10.06.2024, Sonu:, Ayrımı:
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(Çözüm Adımları)(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})',
+        caseSensitive: false,
+      ),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<=[a-zçğıöşüâîû])(?=\d{1,2}\.\d{1,2}\.\d{4})'),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'([.!?])(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})'),
+      (m) => '${m.group(1)}\n',
+    );
+    final dateHolders = <String>[];
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\d)(\d{1,2}\.\d{1,2}\.\d{4})(?!\d)'),
+      (m) {
+        dateHolders.add(m.group(1)!);
+        return '§§D${dateHolders.length - 1}§§';
+      },
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(Sonu:|Ayrımı:|Sonuç:|Başlangıcı ve Ayrımı:|Değerinin Bulunması:)(?!\n)(?=\S)',
+        caseSensitive: false,
+      ),
+      (m) => '${m.group(1)}\n',
+    );
     src = src.replaceAllMapped(
       RegExp(r'([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])'),
       (m) => '${m.group(1)}\n',
@@ -1124,6 +1159,18 @@ class FormattedText extends StatelessWidget {
       RegExp(r'(§§M\d+§§)(?=\d+\.\s)'),
       (m) => '${m.group(1)}\n',
     );
+    src = src.replaceAllMapped(
+      RegExp(r'([.!?])(?!\n)(?=§§M\d+§§)'),
+      (m) => '${m.group(1)}\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(§§M\d+§§)(?!\n)(?=(?:Değerinin Bulunması|Sonuç)\s*:)',
+        caseSensitive: false,
+      ),
+      (m) => '${m.group(1)}\n',
+    );
+    src = _expandHolders(src, dateHolders, r'§§D(\d+)§§');
     src = _expandHolders(src, holders, r'§§M(\d+)§§');
     // Tam denklem / $$ bloğu ayrı satır. Cümle içi $\frac{x}{y}$ kopmasın.
     src = src.replaceAllMapped(
@@ -1621,7 +1668,7 @@ class FormattedText extends StatelessWidget {
     final base = style ?? DefaultTextStyle.of(context).style;
     final String laidOut;
     if (preserveLineBreaks) {
-      laidOut = examLayout && examWrap
+      laidOut = examLayout && examWrap && !solutionMode
           ? prepareExamDisplayText(data)
           : prepareSolutionText(data);
     } else {
