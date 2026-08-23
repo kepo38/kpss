@@ -109,66 +109,72 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                 ],
               ),
             ),
-            child: ListView(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               padding: EdgeInsets.fromLTRB(
                 20,
                 widget.embedded ? 8 : 8,
                 20,
                 40,
               ),
-              children: [
-                _HeroSummary(overall: overall),
-                const SizedBox(height: 20),
-                WeeklyStudyPlanCard(
-                  days: weeklyPlan,
-                  isPremium: widget.isPremium,
-                ),
-                const SizedBox(height: 20),
-                AnalyticsStudyVault(
-                  wrongCount: wrongCount,
-                  favoriteCount: favCount,
-                  notesCount: notesCount,
-                  onWrongTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const WrongQuestionsScreen(),
-                      ),
-                    );
-                  },
-                  onFavoritesTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const FavoritesScreen(),
-                      ),
-                    );
-                  },
-                  onNotesTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => NotesScreen(kpssType: widget.kpssType),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                _SectionHeader(
-                  title: 'DERSLER',
-                  subtitle: 'Konu testlerine göre',
-                ),
-                const SizedBox(height: 14),
-                _SubjectCarouselSection(
-                  subjects: subjects,
-                  kpssType: widget.kpssType,
-                ),
-                const SizedBox(height: 20),
-                AiCoachInsightCard(
-                  insight: coachInsight,
-                  isPremium: widget.isPremium,
-                ),
-                const AccountLinkCard(
-                  margin: EdgeInsets.only(top: 20),
-                ),
-              ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HeroSummary(overall: overall),
+                  const SizedBox(height: 20),
+                  WeeklyStudyPlanCard(
+                    days: weeklyPlan,
+                    isPremium: widget.isPremium,
+                  ),
+                  const SizedBox(height: 20),
+                  AnalyticsStudyVault(
+                    wrongCount: wrongCount,
+                    favoriteCount: favCount,
+                    notesCount: notesCount,
+                    onWrongTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WrongQuestionsScreen(),
+                        ),
+                      );
+                    },
+                    onFavoritesTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const FavoritesScreen(),
+                        ),
+                      );
+                    },
+                    onNotesTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => NotesScreen(kpssType: widget.kpssType),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 28),
+                  const _SectionHeader(
+                    title: 'DERSLER',
+                    subtitle: 'Konu testlerine göre',
+                  ),
+                  const SizedBox(height: 14),
+                  _SubjectCarouselSection(
+                    subjects: subjects,
+                    kpssType: widget.kpssType,
+                  ),
+                  const SizedBox(height: 20),
+                  AiCoachInsightCard(
+                    insight: coachInsight,
+                    isPremium: widget.isPremium,
+                  ),
+                  const AccountLinkCard(
+                    margin: EdgeInsets.only(top: 20),
+                  ),
+                ],
+              ),
             ),
           ),
         );

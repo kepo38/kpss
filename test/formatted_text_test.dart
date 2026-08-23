@@ -961,4 +961,26 @@ void main() {
     expect(find.byType(Math), findsWidgets);
     expect(find.textContaining(r'$k_A$'), findsNothing);
   });
+
+  test('mergeSplitInlineDollarMath preserves roman-numeral inline math lists', () {
+    const src = r'''a, b ve c pozitif tam sayılar için
+
+$a^b + b \cdot c$
+
+**Buna göre**
+
+I. $a \cdot (b + c)$
+
+II. $a + b + c$
+
+III. $a \cdot b + c$
+
+**ifadelerinden hangileri __her zaman__ çift sayıdır?**''';
+    final out = FormattedText.mergeSplitInlineDollarMath(src);
+    expect(out, isNot(contains(r'$II.')));
+    expect(out, isNot(contains(r'$III.')));
+    expect(out, contains(r'I. $a \cdot (b + c)$'));
+    expect(out, contains(r'II. $a + b + c$'));
+    expect(out, contains(r'III. $a \cdot b + c$'));
+  });
 }

@@ -88,5 +88,28 @@ void main() {
       expect(counts[TgExamSubjectKeys.vatandaslik], 9);
       expect(counts[TgExamSubjectKeys.guncel], 6);
     });
+
+    test('GY counts use index when dersAdi mismatches bank label', () {
+      final questions = List.generate(120, (i) {
+        return _q(id: 'q$i', dersAdi: 'Tarih');
+      });
+      final gyCounts = tgSubjectCountsInSection(
+        questions: questions,
+        section: TgSectionFilter.gy,
+      );
+      expect(gyCounts[TgExamSubjectKeys.turkce], 30);
+      expect(gyCounts[TgExamSubjectKeys.matematik], 30);
+      expect(gyCounts.length, 2);
+
+      final gkCounts = tgSubjectCountsInSection(
+        questions: questions,
+        section: TgSectionFilter.gk,
+      );
+      expect(gkCounts[TgExamSubjectKeys.tarih], 27);
+      expect(gkCounts[TgExamSubjectKeys.cografya], 18);
+      expect(gkCounts[TgExamSubjectKeys.vatandaslik], 9);
+      expect(gkCounts[TgExamSubjectKeys.guncel], 6);
+      expect(gkCounts.length, 4);
+    });
   });
 }

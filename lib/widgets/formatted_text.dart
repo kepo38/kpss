@@ -736,6 +736,11 @@ class FormattedText extends StatelessWidget {
       display.add(m.group(0)!);
       return '§§D${display.length - 1}§§';
     });
+    final inline = <String>[];
+    src = src.replaceAllMapped(RegExp(r'\$[^$\n]+\$'), (m) {
+      inline.add(m.group(0)!);
+      return '§§I${inline.length - 1}§§';
+    });
     var prev = '';
     while (prev != src) {
       prev = src;
@@ -749,6 +754,9 @@ class FormattedText extends StatelessWidget {
         },
       );
     }
+    src = src.replaceAllMapped(RegExp(r'§§I(\d+)§§'), (m) {
+      return inline[int.parse(m.group(1)!)];
+    });
     src = src.replaceAllMapped(RegExp(r'§§D(\d+)§§'), (m) {
       return display[int.parse(m.group(1)!)];
     });

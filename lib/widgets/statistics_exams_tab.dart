@@ -21,40 +21,54 @@ class StatisticsExamsTab extends StatelessWidget {
     final exams = PracticeExamService.instance.allExams;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
       children: [
         TgExamsSection(onRefresh: onRefresh),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
         const ExamSectionHeader(
           title: 'Yayınevi Denemelerim',
           subtitle:
-              'Dışarıda çözdüğünüz denemelerin adını, yayın evini ve D/Y/B '
-              'netlerini buraya ekleyin. Gelişim grafiğine otomatik yansır.',
+              'Dışarıda çözdüğünüz denemeleri kaydedin — netler gelişim '
+              'grafiğine otomatik yansır.',
         ),
         if (exams.isEmpty)
           ExamPremiumCardShell(
             accentBar: false,
             child: Column(
               children: [
-                Icon(
-                  Icons.assignment_outlined,
-                  size: 36,
-                  color: AppTheme.champagne.withValues(alpha: 0.75),
+                Container(
+                  width: 52,
+                  height: 52,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.champagne.withValues(alpha: 0.12),
+                    border: Border.all(
+                      color: AppTheme.champagne.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.menu_book_rounded,
+                    size: 24,
+                    color: AppTheme.champagne.withValues(alpha: 0.95),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Text(
                   'Henüz yayınevi denemesi yok',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
+                    fontFamily: 'serif',
                     fontWeight: FontWeight.w700,
+                    fontSize: 16,
                     color: AppTheme.onPage(context),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Sağ alttaki «Deneme Ekle» ile kayıt oluşturabilirsiniz.',
+                  'Sağ alttaki «Deneme Ekle» ile kayıt oluşturun.',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
                     color: AppTheme.mutedOnPage(context),
                     height: 1.4,
                     fontSize: 13,

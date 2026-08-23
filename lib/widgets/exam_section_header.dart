@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_theme.dart';
 
-/// Deneme sekmesi bölüm başlığı + kısa açıklama.
+/// Deneme sekmesi bölüm başlığı — Gelişim hub ile aynı dil.
 class ExamSectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -19,36 +18,58 @@ class ExamSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
+          Container(
+            width: 4,
+            height: subtitle != null ? 36 : 28,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFFE7B8),
+                  AppTheme.champagne,
+                  Color(0xFFB8924A),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   title,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
+                    fontFamily: 'serif',
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
                     color: AppTheme.onPage(context),
                   ),
                 ),
-              ),
-              if (trailing != null) trailing!,
-            ],
-          ),
-          if (subtitle != null && subtitle!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              subtitle!,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                height: 1.35,
-                color: AppTheme.mutedOnPage(context),
-              ),
+                if (subtitle != null && subtitle!.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: AppTheme.mutedOnPage(context),
+                    ),
+                  ),
+                ],
+              ],
             ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing!,
           ],
         ],
       ),

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import 'content_bank_service.dart';
 import 'daily_mini_exam_service.dart';
+import 'daily_mini_ranking_service.dart';
 import 'daily_quota_service.dart';
 import '../models/user_model.dart';
 import 'ad_manager.dart';
@@ -24,6 +25,7 @@ import 'question_rating_service.dart';
 import 'question_note_service.dart';
 import 'wrong_notebook_drawing_service.dart';
 import 'summary_card_progress_service.dart';
+import 'tg_exam_service.dart';
 
 /// Firebase anonim oturum + isteğe bağlı Google hesabı bağlama.
 class AuthService extends ChangeNotifier {
@@ -673,5 +675,7 @@ class AuthService extends ChangeNotifier {
     );
     await SummaryCardProgressService.instance.onUserSessionChanged();
     await DailyMiniExamService.instance.onAuthSessionChanged();
+    await TgExamService.instance.onAuthSessionChanged();
+    await DailyMiniRankingService.instance.onAuthSessionChanged();
   }
 }

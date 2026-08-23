@@ -41,7 +41,7 @@ class StatisticsOverviewTab extends StatelessWidget {
           onRefresh: () async => onRefresh(),
           color: AppTheme.champagne,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
             children: [
               const ExamPremiumSectionLabel(
                 label: 'Genel Bakış',

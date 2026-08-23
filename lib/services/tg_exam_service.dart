@@ -67,6 +67,17 @@ class TgExamService extends ChangeNotifier {
     await refresh();
   }
 
+  /// Google / misafir oturumu değişince eski kullanıcının myAttempt / ranking
+  /// verisi bellekten düşer; yeni token ile liste yeniden çekilir.
+  Future<void> onAuthSessionChanged() async {
+    _exams = const [];
+    _lastError = null;
+    _visibleExamId = null;
+    notifyListeners();
+    if (!_initialized) return;
+    await refresh();
+  }
+
   Future<void> setKpssType(KpssType type) async {
     if (_kpssType == type) return;
     _kpssType = type;

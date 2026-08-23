@@ -21,6 +21,11 @@
       display.push(m);
       return "§§D" + (display.length - 1) + "§§";
     });
+    var inline = [];
+    src = src.replace(/\$[^$\n]+\$/g, function (m) {
+      inline.push(m);
+      return "§§I" + (inline.length - 1) + "§§";
+    });
     var prev;
     do {
       prev = src;
@@ -30,6 +35,9 @@
         return a ? "$" + a + " " + b + "$" : "$" + b + "$";
       });
     } while (src !== prev);
+    src = src.replace(/§§I(\d+)§§/g, function (_, idx) {
+      return inline[Number(idx)] || "";
+    });
     src = src.replace(/§§D(\d+)§§/g, function (_, idx) {
       return display[Number(idx)] || "";
     });

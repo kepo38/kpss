@@ -439,20 +439,21 @@ class _PremiumPlanShell extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         child: Stack(
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.surfaceCard(context),
-                    AppTheme.page(context),
-                    AppTheme.pageDeep(context).withValues(alpha: 0.6),
-                  ],
-                  stops: const [0, 0.45, 1],
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.surfaceCard(context),
+                      AppTheme.page(context),
+                      AppTheme.pageDeep(context).withValues(alpha: 0.6),
+                    ],
+                    stops: const [0, 0.45, 1],
+                  ),
                 ),
               ),
-              child: const SizedBox(width: double.infinity),
             ),
             Positioned(
               right: -30,
@@ -517,14 +518,14 @@ class _WeekTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 70,
+      height: 76,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Positioned(
             left: 28,
             right: 28,
-            top: 38,
+            top: 36,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(999),
               child: LinearProgressIndicator(
@@ -579,14 +580,15 @@ class _WeekDayChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          width: 58,
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          width: 52,
+          height: 76,
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             gradient: selected
                 ? LinearGradient(
                     begin: Alignment.topCenter,
@@ -597,7 +599,9 @@ class _WeekDayChip extends StatelessWidget {
                     ],
                   )
                 : null,
-            color: selected ? null : AppTheme.surfaceCard(context).withValues(alpha: 0.85),
+            color: selected
+                ? null
+                : AppTheme.surfaceCard(context).withValues(alpha: 0.85),
             border: Border.all(
               color: selected
                   ? AppTheme.champagne.withValues(alpha: 0.75)
@@ -626,47 +630,44 @@ class _WeekDayChip extends StatelessWidget {
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (day.isToday)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 4),
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: selected
-                        ? AppTheme.champagne
-                        : AppTheme.champagne.withValues(alpha: 0.55),
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color: AppTheme.champagne.withValues(alpha: 0.5),
-                              blurRadius: 6,
-                            ),
-                          ]
-                        : null,
-                  ),
-                )
-              else if (locked)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Icon(
-                    Icons.lock_rounded,
-                    size: 11,
-                    color: muted.withValues(alpha: 0.55),
-                  ),
-                )
-              else
-                const SizedBox(height: 15),
+              SizedBox(
+                height: 12,
+                child: Center(
+                  child: day.isToday
+                      ? Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: selected
+                                ? AppTheme.champagne
+                                : AppTheme.champagne.withValues(alpha: 0.55),
+                          ),
+                        )
+                      : locked
+                          ? Icon(
+                              Icons.lock_rounded,
+                              size: 11,
+                              color: muted.withValues(alpha: 0.55),
+                            )
+                          : null,
+                ),
+              ),
               Text(
                 day.dayLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
+                  height: 1.1,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.2,
-                  color: selected ? AppTheme.champagne : on.withValues(alpha: 0.85),
+                  letterSpacing: 0.1,
+                  color: selected
+                      ? AppTheme.champagne
+                      : on.withValues(alpha: 0.85),
                 ),
               ),
               const SizedBox(height: 2),
@@ -674,30 +675,22 @@ class _WeekDayChip extends StatelessWidget {
                 '${day.date.day}',
                 style: TextStyle(
                   fontFamily: 'serif',
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   height: 1,
                   color: selected ? on : muted,
                 ),
               ),
               const SizedBox(height: 2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
+              Text(
+                '${day.tasks.length}',
+                style: TextStyle(
+                  fontSize: 9,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
                   color: selected
-                      ? AppTheme.champagne.withValues(alpha: 0.18)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '${day.tasks.length} görev',
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    color: selected
-                        ? AppTheme.champagne.withValues(alpha: 0.95)
-                        : muted.withValues(alpha: 0.65),
-                  ),
+                      ? AppTheme.champagne.withValues(alpha: 0.95)
+                      : muted.withValues(alpha: 0.65),
                 ),
               ),
             ],
@@ -742,24 +735,25 @@ class _SelectedDayPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: Stack(
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: day.isToday
-                      ? const [
-                          Color(0xFF1A2438),
-                          Color(0xFF121A2A),
-                          Color(0xFF0C1424),
-                        ]
-                      : [
-                          AppTheme.surfaceCard(context),
-                          AppTheme.page(context),
-                        ],
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: day.isToday
+                        ? const [
+                            Color(0xFF1A2438),
+                            Color(0xFF121A2A),
+                            Color(0xFF0C1424),
+                          ]
+                        : [
+                            AppTheme.surfaceCard(context),
+                            AppTheme.page(context),
+                          ],
+                  ),
                 ),
               ),
-              child: const SizedBox.expand(),
             ),
             if (day.isToday) ...[
               Positioned(
@@ -886,16 +880,10 @@ class _SelectedDayPanel extends StatelessWidget {
                     if (i < visibleTasks.length - 1) const SizedBox(height: 8),
                   ],
                   if (hiddenCount > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '+$hiddenCount görev daha',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: day.isToday
-                            ? Colors.white.withValues(alpha: 0.55)
-                            : AppTheme.mutedOnPage(context),
-                      ),
+                    const SizedBox(height: 10),
+                    DailyMissionProTeaser(
+                      hiddenCount: hiddenCount,
+                      light: day.isToday,
                     ),
                   ],
                 ],
@@ -1278,57 +1266,243 @@ class _LockedWeekTeaser extends StatelessWidget {
   }
 }
 
-/// Günlük ödev listesinde kilitli satır teaser.
+/// Günlük ödev listesinde kilitli satır teaser — Pro upsell CTA.
 class DailyMissionProTeaser extends StatelessWidget {
   final int hiddenCount;
+  final bool light;
 
-  const DailyMissionProTeaser({super.key, required this.hiddenCount});
+  const DailyMissionProTeaser({
+    super.key,
+    required this.hiddenCount,
+    this.light = false,
+  });
+
+  void _openUpsell(BuildContext context) {
+    ProUpsellSheet.show(
+      context,
+      emoji: '📋',
+      title: 'TÜM GÖREVLER',
+      subtitle: kProUpsellSubtitle,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     if (hiddenCount <= 0) return const SizedBox.shrink();
 
+    final onDark = light;
+    final titleColor = onDark ? Colors.white : AppTheme.onPage(context);
+    final subtitleColor = onDark
+        ? Colors.white.withValues(alpha: 0.58)
+        : AppTheme.mutedOnPage(context);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => ProUpsellSheet.show(
-          context,
-          emoji: '📋',
-          title: 'TÜM GÖREVLER',
-          subtitle: kProUpsellSubtitle,
-        ),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        onTap: () => _openUpsell(context),
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(14),
+            gradient: onDark
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.12),
+                      Colors.white.withValues(alpha: 0.05),
+                      Colors.white.withValues(alpha: 0.02),
+                    ],
+                  )
+                : const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF1A2438),
+                      Color(0xFF141C2E),
+                      Color(0xFF0C1424),
+                    ],
+                    stops: [0, 0.55, 1],
+                  ),
             border: Border.all(
-              color: AppTheme.champagne.withValues(alpha: 0.45),
-              width: 1.5,
+              color: AppTheme.champagne.withValues(alpha: onDark ? 0.38 : 0.44),
             ),
-            color: AppTheme.champagne.withValues(alpha: 0.06),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.lock_outline_rounded,
-                size: 18,
-                color: AppTheme.champagne.withValues(alpha: 0.9),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.champagne.withValues(alpha: onDark ? 0.12 : 0.18),
+                blurRadius: onDark ? 12 : 18,
+                offset: const Offset(0, 6),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '+$hiddenCount görev daha',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.onPage(context).withValues(alpha: 0.85),
+              if (!onDark)
+                BoxShadow(
+                  color: AppTheme.ink.withValues(alpha: 0.14),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+            ],
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (!onDark)
+                Positioned(
+                  right: -18,
+                  top: -22,
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppTheme.champagne.withValues(alpha: 0.18),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(14),
+                    ),
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF6B0F1A).withValues(alpha: onDark ? 0.5 : 1),
+                        AppTheme.champagne,
+                        const Color(0xFFFFE7B8).withValues(alpha: onDark ? 0.75 : 1),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppTheme.champagne.withValues(alpha: 0.85),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 11, 12, 13),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: onDark
+                              ? [
+                                  AppTheme.champagne.withValues(alpha: 0.28),
+                                  AppTheme.champagne.withValues(alpha: 0.1),
+                                ]
+                              : const [
+                                  Color(0xFFFFF8EE),
+                                  Color(0xFFE8CF98),
+                                  Color(0xFFC9A86C),
+                                ],
+                        ),
+                        border: Border.all(
+                          color: AppTheme.champagneLight.withValues(
+                            alpha: onDark ? 0.45 : 0.65,
+                          ),
+                        ),
+                        boxShadow: onDark
+                            ? null
+                            : [
+                                BoxShadow(
+                                  color: AppTheme.champagne.withValues(alpha: 0.28),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                      ),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: 17,
+                        color: onDark ? AppTheme.champagneLight : AppTheme.ink,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '+$hiddenCount görev daha',
+                            style: TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 14.5,
+                              height: 1.1,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                              color: titleColor,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Pro ile tüm rotayı aç',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              height: 1.2,
+                              fontWeight: FontWeight.w600,
+                              color: subtitleColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        gradient: const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Color(0xFFE2C998),
+                            Color(0xFFC9A86C),
+                            Color(0xFFB8944A),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.champagne.withValues(alpha: 0.28),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'PRO',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
+                              color: AppTheme.ink,
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 14,
+                            color: AppTheme.ink,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

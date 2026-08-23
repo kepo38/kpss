@@ -37,33 +37,12 @@ abstract final class TgExamSubjectKeys {
   static String labelFor(String key) => labels[key] ?? key;
 }
 
-/// `dersAdi` veya ÖSYM sıra indeksinden ders anahtarı.
-String tgSubjectKeyForQuestion(QuestionModel question, int index) {
-  final fromName = _subjectKeyFromDersAdi(question.dersAdi);
-  if (fromName != null) return fromName;
+/// TG canlı denemede ders anahtarı — yalnızca ÖSYM sıra indeksine göre.
+///
+/// Soru bankasındaki `dersAdi` konu/test etiketidir; TG denemede blok sırası
+/// (30+30+27+18+9+6) geçerlidir.
+String tgSubjectKeyForQuestion(QuestionModel _, int index) {
   return tgSubjectKeyByIndex(index);
-}
-
-String? _subjectKeyFromDersAdi(String dersAdi) {
-  final d = _normalizeTr(dersAdi);
-  if (d.contains('turk')) return TgExamSubjectKeys.turkce;
-  if (d.contains('matematik')) return TgExamSubjectKeys.matematik;
-  if (d.contains('tarih')) return TgExamSubjectKeys.tarih;
-  if (d.contains('cograf')) return TgExamSubjectKeys.cografya;
-  if (d.contains('vatandas')) return TgExamSubjectKeys.vatandaslik;
-  if (d.contains('guncel')) return TgExamSubjectKeys.guncel;
-  return null;
-}
-
-String _normalizeTr(String value) {
-  return value
-      .toLowerCase()
-      .replaceAll('ı', 'i')
-      .replaceAll('ğ', 'g')
-      .replaceAll('ü', 'u')
-      .replaceAll('ş', 's')
-      .replaceAll('ö', 'o')
-      .replaceAll('ç', 'c');
 }
 
 /// ÖSYM TG tam deneme sırası (30+30+27+18+9+6).

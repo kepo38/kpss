@@ -27,7 +27,7 @@ class ExamPremiumBackground extends StatelessWidget {
   }
 }
 
-/// Bölüm üst etiketi (champagne küçük harf).
+/// Bölüm üst etiketi — Gelişim hub dilinde champagne accent.
 class ExamPremiumSectionLabel extends StatelessWidget {
   final String label;
   final String? subtitle;
@@ -40,29 +40,54 @@ class ExamPremiumSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 10,
-            letterSpacing: 1.8,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.champagne.withValues(alpha: 0.95),
-          ),
-        ),
-        if (subtitle != null && subtitle!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.35,
-              color: AppTheme.mutedOnPage(context),
+        Container(
+          width: 4,
+          height: subtitle != null ? 34 : 26,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFFFE7B8),
+                AppTheme.champagne,
+                Color(0xFFB8924A),
+              ],
             ),
           ),
-        ],
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  height: 1.15,
+                  color: AppTheme.onPage(context),
+                ),
+              ),
+              if (subtitle != null && subtitle!.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  subtitle!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: AppTheme.mutedOnPage(context),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }

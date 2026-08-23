@@ -53,6 +53,16 @@ class DailyMiniRankingService extends ChangeNotifier {
     _rewardsVisible = value;
   }
 
+  /// Oturum değişince eski kullanıcının period sıralaması / «ben» vurgusu kalmasın.
+  Future<void> onAuthSessionChanged() async {
+    _weekly = null;
+    _monthly = null;
+    _history = null;
+    _error = null;
+    notifyListeners();
+    await refresh(force: true);
+  }
+
   Future<void> refresh({bool force = false}) async {
     if (_loading && !force) return;
     _loading = true;

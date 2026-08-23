@@ -454,12 +454,18 @@ def merge_split_inline_dollar_math(text: str) -> str:
     if not src:
         return src
     display: list[str] = []
+    inline: list[str] = []
 
     def stash_display(match: re.Match[str]) -> str:
         display.append(match.group(0))
         return f"§§D{len(display) - 1}§§"
 
+    def stash_inline(match: re.Match[str]) -> str:
+        inline.append(match.group(0))
+        return f"§§I{len(inline) - 1}§§"
+
     src = re.sub(r"\$\$[\s\S]+?\$\$", stash_display, src)
+    src = re.sub(r"\$[^$\n]+\$", stash_inline, src)
     prev = None
     while prev != src:
         prev = src
@@ -472,6 +478,11 @@ def merge_split_inline_dollar_math(text: str) -> str:
             ),
             src,
         )
+    src = re.sub(
+        r"§§I(\d+)§§",
+        lambda m: inline[int(m.group(1))] if int(m.group(1)) < len(inline) else m.group(0),
+        src,
+    )
     src = re.sub(
         r"§§D(\d+)§§",
         lambda m: display[int(m.group(1))] if int(m.group(1)) < len(display) else m.group(0),
