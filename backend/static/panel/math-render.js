@@ -91,10 +91,20 @@
   function looksLikeMath(text) {
     var t = String(text || "").trim();
     if (!t) return false;
-    return /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq|displaystyle|hline)\b/.test(
-      t
-    ) || /[\^_{}]/.test(t) || /(^|[^\\A-Za-z])frac\{/.test(t) ||
-      /[A-Za-z0-9]\s*[+\-=≠≤≥×·]\s*[A-Za-z0-9]/.test(t);
+    // Güçlü sinyal: LaTeX komutları.
+    if (
+      /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq|displaystyle|hline|vert|lvert|rvert|implies)\b/.test(
+        t
+      ) ||
+      /(^|[^\\A-Za-z])frac\{/.test(t)
+    ) {
+      return true;
+    }
+    // ^ _ { — yalnızca kısa ifadelerde.
+    if (t.length <= 96 && /[\^_{}]/.test(t)) return true;
+    // Basit cebir: tire (-) tarih/bileşik kelime yanlış pozitifini önle.
+    if (t.length > 64) return false;
+    return /[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]/.test(t);
   }
 
   /** Şıkta yalnızca gerçek LaTeX varsa $...$ sarmala; "Yalnız I" düz metin kalsın. */

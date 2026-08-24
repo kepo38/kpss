@@ -85,6 +85,8 @@ class QuizScreen extends StatefulWidget {
   final bool dailyMiniRankingMode;
   final bool tgExamMode;
   final bool tgExamSolutionReview;
+  /// Açık TG oturumundan devam — initState'te gereksiz kayıt uyarısı gösterme.
+  final bool tgExamResume;
   final int? tgExamId;
   final String? statisticsTestId;
   final Future<bool> Function({
@@ -110,6 +112,7 @@ class QuizScreen extends StatefulWidget {
     this.dailyMiniRankingMode = false,
     this.tgExamMode = false,
     this.tgExamSolutionReview = false,
+    this.tgExamResume = false,
     this.tgExamId,
     this.statisticsTestId,
     this.onProgress,
@@ -308,7 +311,14 @@ class _QuizScreenState extends State<QuizScreen>
     if (_selectedAnswer != null) unawaited(_loadRating());
     unawaited(_loadErrorReportState());
     unawaited(_recordCurrentView());
-    unawaited(_persistProgress());
+    if (widget.tgExamResume) {
+      // Devam: sunucu zaten cevapları biliyor; ilk karede sessiz senkron.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_persistProgress(suppressError: true));
+      });
+    } else {
+      unawaited(_persistProgress());
+    }
     if (widget.tgExamSolutionReview && widget.questions.isNotEmpty) {
       _showingSolution = true;
     }
@@ -437,7 +447,7 @@ class _QuizScreenState extends State<QuizScreen>
     if (mounted) setState(() {});
   }
 
-  Future<void> _persistProgress() async {
+  Future<void> _persistProgress({bool suppressError = false}) async {
     if (widget.questions.isEmpty || _isFinishing) return;
     _answers[_currentIndex] = _selectedAnswer;
     final meta = widget.resumeMeta;
@@ -462,6 +472,7 @@ class _QuizScreenState extends State<QuizScreen>
     if (!ok &&
         widget.tgExamMode &&
         !widget.tgExamSolutionReview &&
+        !suppressError &&
         mounted) {
       _maybeWarnProgressSaveFailed();
     }
@@ -1738,7 +1749,6 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Future<bool> _showResultDialog(QuizResult result) {
-    unawaited(AnswerFeedbackService.instance.playTestComplete());
     final shareKey = GlobalKey();
     var sharing = false;
     final showWrongReview = _canReviewSessionWrongs && result.wrong > 0;
@@ -1889,22 +1899,43 @@ class _QuizScreenState extends State<QuizScreen>
     ).then((value) => value ?? false);
   }
 
-  bool get _canReviewSessionWrongs =>
-      widget.resumeMeta != null &&
-      !widget.tgExamMode &&
-      !widget.dailyMiniRankingMode &&
-      !widget.adFreeExperience &&
-      !widget.fromWrongNotebook &&
-      !widget.suppressWrongNotebookHint;
+  bool get _canReviewSessionWrongs {
+    if (widget.tgExamMode ||
+        widget.dailyMiniRankingMode ||
+        widget.fromWrongNotebook ||
+        widget.suppressWrongNotebookHint) {
+      return false;
+    }
+    // Konu testi, deneme paketi (Matematik vb.), devam kartı…
+    if (widget.resumeMeta != null) return true;
+    if (widget.statisticsTestId != null) return true;
+    if (widget.adFreeExperience && !widget.skipResultDialog) return true;
+    return false;
+  }
 
   WrongNotebookSessionFilter _buildWrongSessionFilter(QuizResult result) {
-    final meta = widget.resumeMeta!;
-    return WrongNotebookSessionFilter.fromTopicQuiz(
-      meta: meta,
-      fallbackTitle: widget.title,
-      wrongQuestionIds: result.wrongQuestionIds,
-      allQuestions: widget.questions,
+    final meta = widget.resumeMeta;
+    if (meta != null) {
+      return WrongNotebookSessionFilter.fromTopicQuiz(
+        meta: meta,
+        fallbackTitle: widget.title,
+        wrongQuestionIds: result.wrongQuestionIds,
+        allQuestions: widget.questions,
+        testId: widget.statisticsTestId,
+      );
+    }
+    final title = widget.title.trim().isEmpty ? 'Test' : widget.title.trim();
+    final count = result.wrong;
+    final byId = {for (final q in widget.questions) q.id: q};
+    final prefetched = result.wrongQuestionIds
+        .map((id) => byId[id])
+        .whereType<QuestionModel>()
+        .toList();
+    return WrongNotebookSessionFilter(
+      sessionTitle: '$title Yanlışları ($count Soru)',
       testId: widget.statisticsTestId,
+      questionIds: List<String>.from(result.wrongQuestionIds),
+      prefetchedQuestions: prefetched,
     );
   }
 
@@ -1923,15 +1954,18 @@ class _QuizScreenState extends State<QuizScreen>
 
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
-    AdManager.instance.endTestSession();
-    await LastStudySessionService.instance.clearQuizProgress();
-    if (!widget.tgExamMode) {
+    if (!widget.tgExamMode && !widget.adFreeExperience) {
       await AdManager.instance.showTestCompletionInterstitial();
     }
+    if (!mounted) return;
+    AdManager.instance.endTestSession();
+    await LastStudySessionService.instance.clearQuizProgress();
     if (!mounted) return;
 
     var reviewWrongs = false;
     if (!widget.skipResultDialog) {
+      await AnswerFeedbackService.instance.playTestComplete();
+      if (!mounted) return;
       reviewWrongs = await _showResultDialog(result);
       if (!mounted) return;
     }

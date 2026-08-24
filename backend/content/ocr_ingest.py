@@ -262,6 +262,7 @@ def ingest_question_from_image(
         public_id=_new_public_id(),
         topic=topic,
         stem=stem,
+        stem_image_position=Question.STEM_IMAGE_BELOW,
         option_a=opts["A"],
         option_b=opts["B"],
         option_c=opts["C"],

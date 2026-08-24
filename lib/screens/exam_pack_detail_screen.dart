@@ -145,9 +145,10 @@ class _ExamPackDetailScreenState extends State<ExamPackDetailScreen> {
       final result = await Navigator.of(context).push<QuizResult>(
         MaterialPageRoute(
           builder: (_) => QuizScreen(
-            title: exam.title,
+            title: '${_pack.title} · ${exam.title}',
             questions: fetch.questions,
             timeLimitMinutes: _pack.timeLimitMinutes,
+            statisticsTestId: 'pack_${_pack.id}_e${exam.index}',
             adFreeExperience: true,
           ),
         ),

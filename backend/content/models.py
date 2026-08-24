@@ -469,6 +469,12 @@ class Question(models.Model):
         from .question_fingerprint import apply_fingerprints
         from .special_question_tags import apply_auto_tags
 
+        if not (getattr(self, "stem_image_position", None) or "").strip():
+            self.stem_image_position = self.STEM_IMAGE_BELOW
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "stem_image_position" not in update_fields:
+                kwargs["update_fields"] = list(update_fields) + ["stem_image_position"]
+
         update_fields = kwargs.get("update_fields")
         content_fields = (
             "stem",

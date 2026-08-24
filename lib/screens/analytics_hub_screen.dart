@@ -124,11 +124,13 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                 children: [
                   _HeroSummary(overall: overall),
                   const SizedBox(height: 20),
+                  const AccountLinkCard(),
+                  const SizedBox(height: 16),
                   WeeklyStudyPlanCard(
                     days: weeklyPlan,
                     isPremium: widget.isPremium,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   AnalyticsStudyVault(
                     wrongCount: wrongCount,
                     favoriteCount: favCount,
@@ -169,9 +171,6 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   AiCoachInsightCard(
                     insight: coachInsight,
                     isPremium: widget.isPremium,
-                  ),
-                  const AccountLinkCard(
-                    margin: EdgeInsets.only(top: 20),
                   ),
                 ],
               ),

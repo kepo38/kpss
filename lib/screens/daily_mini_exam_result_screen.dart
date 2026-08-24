@@ -228,18 +228,26 @@ class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
                 color: AppTheme.champagne.withValues(alpha: 0.55),
               ),
               minimumSize: const Size.fromHeight(42),
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(11),
               ),
             ),
-            child: const Text(
-              'GENEL SIRALAMA',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.4,
-              ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'TÜM SIRALAMAYI GÖR',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.emoji_events_outlined, size: 18),
+              ],
             ),
           ),
           const SizedBox(height: 28),

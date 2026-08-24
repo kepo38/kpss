@@ -77,10 +77,19 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
   }
 
   Future<void> _openQuiz({required bool resume}) async {
-    final exam = _exam;
+    var exam = _exam;
     if (exam == null || _starting) return;
     if (!await TgExamGates.requireGoogleAccount(context)) return;
     if (!mounted) return;
+
+    setState(() => _starting = true);
+    final refreshed = await TgExamService.instance.fetchDetail(exam.id);
+    if (!mounted) return;
+    exam = refreshed ?? exam;
+    setState(() {
+      _exam = exam;
+      _starting = false;
+    });
 
     final shouldResume = resume || exam.hasOpenAttempt;
     if (!exam.canEnterLiveExam) {
@@ -142,7 +151,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
     final result = await Navigator.of(context).push<QuizResult>(
       MaterialPageRoute(
         builder: (_) => QuizScreen(
-          title: exam.title,
+          title: exam!.title,
           questions: payload.questions,
           timeLimitMinutes: timeLimit,
           initialIndex: initialIndex.clamp(0, payload.questions.length - 1),
@@ -150,6 +159,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
           initialElapsed: initialElapsed,
           adFreeExperience: true,
           tgExamMode: true,
+          tgExamResume: shouldResume && exam.hasOpenAttempt,
           tgExamId: exam.id,
           skipResultDialog: true,
           onProgress: ({
@@ -158,7 +168,7 @@ class _ExamWelcomeScreenState extends State<ExamWelcomeScreen> {
             required elapsed,
           }) =>
               tgExamOnProgress(
-            examId: exam.id,
+            examId: exam!.id,
             questions: payload.questions,
             answers: answers,
             currentIndex: currentIndex,

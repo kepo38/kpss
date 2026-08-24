@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -234,54 +235,87 @@ class TgExamService extends ChangeNotifier {
     }
   }
 
+  /// Ardışık progress POST'ları sıraya alınır (yarış / zaman aşımı azaltır).
+  Future<void>? _progressSaveChain;
+
   Future<bool> saveProgress({
     required int examId,
     required Map<String, String?> answers,
     required int currentIndex,
     required Duration elapsed,
   }) async {
-    if (!AuthService.instance.isSignedIn) return false;
+    final previous = _progressSaveChain ?? Future<void>.value();
+    final completer = Completer<void>();
+    _progressSaveChain = completer.future;
+    await previous;
+    try {
+      return await _saveProgressOnce(
+        examId: examId,
+        answers: answers,
+        currentIndex: currentIndex,
+        elapsed: elapsed,
+      );
+    } finally {
+      completer.complete();
+    }
+  }
+
+  Future<bool> _saveProgressOnce({
+    required int examId,
+    required Map<String, String?> answers,
+    required int currentIndex,
+    required Duration elapsed,
+  }) async {
+    if (!AuthService.instance.hasPermanentAccount) return false;
     final payload = <String, String>{};
     answers.forEach((key, value) {
       if (value != null && value.isNotEmpty) {
         payload[key] = value;
       }
     });
-    try {
-      final response = await http
-          .post(
-            ApiConfig.tgExamProgressUri(examId),
-            headers: {
-              ...AuthService.instance.authHeaders,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'answers': payload,
-              'currentIndex': currentIndex,
-              'elapsedSeconds': elapsed.inSeconds,
-            }),
-          )
-          .timeout(const Duration(seconds: 12));
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        try {
-          final body = jsonDecode(utf8.decode(response.bodyBytes))
-              as Map<String, dynamic>;
-          final model = TgExamModel.fromJson(body);
-          _upsertLocal(model);
-          notifyListeners();
-        } catch (e) {
-          debugPrint('TgExamService.saveProgress parse: $e');
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await http
+            .post(
+              ApiConfig.tgExamProgressUri(examId),
+              headers: {
+                ...AuthService.instance.authHeaders,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'answers': payload,
+                'currentIndex': currentIndex,
+                'elapsedSeconds': elapsed.inSeconds,
+              }),
+            )
+            .timeout(const Duration(seconds: 12));
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          try {
+            final body = jsonDecode(utf8.decode(response.bodyBytes))
+                as Map<String, dynamic>;
+            final model = TgExamModel.fromJson(body);
+            _upsertLocal(model);
+            notifyListeners();
+          } catch (e) {
+            debugPrint('TgExamService.saveProgress parse: $e');
+          }
+          return true;
         }
-        return true;
+        if (response.statusCode == 401 && attempt == 0) {
+          await AuthService.instance.refreshProfile();
+          continue;
+        }
+        debugPrint(
+          'TgExamService.saveProgress: HTTP ${response.statusCode} '
+          '${utf8.decode(response.bodyBytes)}',
+        );
+        return false;
+      } catch (e) {
+        debugPrint('TgExamService.saveProgress: $e');
+        return false;
       }
-      debugPrint(
-        'TgExamService.saveProgress: HTTP ${response.statusCode}',
-      );
-      return false;
-    } catch (e) {
-      debugPrint('TgExamService.saveProgress: $e');
-      return false;
     }
+    return false;
   }
 
   Future<TgExamSubmitResult> submit({

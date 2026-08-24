@@ -563,6 +563,24 @@ void main() {
   test('wrapBareLatex keeps simple algebra dollar delimiters', () {
     expect(FormattedText.wrapBareLatex(r'$A + B + C$'), r'$A + B + C$');
     expect(FormattedText.wrapBareLatex(r'$Yalnız I$'), 'Yalnız I');
+    expect(FormattedText.wrapBareLatex('A + B + C'), r'$A + B + C$');
+  });
+
+  test('wrapBareLatex does not wrap prose with year/hyphen ranges as math', () {
+    const stems = <String>[
+      'Türkiye arazisi yaklaşık son 2-3 milyon yıl içinde yükselmiştir.',
+      'Bu geziler, XVIII - XIX. yüzyıllarda bilim insanlarının katılımıyla sürdü.',
+      "El'Kitab'ül-Muhtasar fi Hisab'il-Cebri hakkında hangisidir?",
+      'Cümlede zarf-fiil ve isim-fiil kullanılır.',
+      'Amasya Protokolü 20-22 Ekim tarihlerinde imzalandı.',
+      '1923-1950 döneminde hangi gelişme yaşanmıştır?',
+      'Michelson-Morley deneyi ışık hızını ölçmeye çalışmıştır.',
+    ];
+    for (final stem in stems) {
+      final out = FormattedText.wrapBareLatex(stem);
+      expect(out, equals(stem), reason: stem);
+      expect(FormattedText.looksLikeMath(stem), isFalse, reason: stem);
+    }
   });
 
   test('wrapBareLatex keeps stem after leading single-letter dollars', () {

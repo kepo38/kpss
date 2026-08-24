@@ -781,17 +781,25 @@ class FormattedText extends StatelessWidget {
   static bool looksLikeMath(String input) {
     final t = input.trim();
     if (t.isEmpty) return false;
-    return RegExp(
+    // Güçlü sinyal: LaTeX komutları (uzun köklerde de geçerli).
+    if (RegExp(
           r'\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|'
           r'underline|begin|infty|pm|neq|leq|geq|displaystyle|hline|'
           r'vert|lvert|rvert|implies)\b',
         ).hasMatch(t) ||
-        t.contains(r'^') ||
-        t.contains(r'_') ||
-        t.contains('{') ||
-        RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t) ||
-        // $A + B + C$ / $a < b < 0$ gibi basit cebir (Yalnız I düz metin kalsın)
-        RegExp(r'[A-Za-z0-9]\s*[+\-=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(t);
+        RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t)) {
+      return true;
+    }
+    // ^ _ { — yalnızca kısa ifadelerde; uzun paragraflarda düz metin kalsın.
+    if (t.length <= 96 &&
+        (t.contains(r'^') || t.contains(r'_') || t.contains('{'))) {
+      return true;
+    }
+    // Basit cebir yalnızca kısa şık/ifadelerde.
+    // Tire (-) tarih aralığı / bileşik kelime (2-3, XVIII - XIX, zarf-fiil,
+    // ül-Muhtasar) yanlış pozitif üretmesin — tüm kökü $…$ sarmalama.
+    if (t.length > 64) return false;
+    return RegExp(r'[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(t);
   }
 
   static String wrapBareLatex(String input) {

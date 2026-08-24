@@ -212,18 +212,25 @@ class _CompactPlanHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'HAFTALIK ÇALIŞMA PLANI',
-                    style: TextStyle(
-                      fontSize: 11,
-                      letterSpacing: 2,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.champagne.withValues(alpha: 0.98),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'HAFTALIK ÇALIŞMA PLANI',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 1.1,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.champagne.withValues(alpha: 0.98),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     dynamicHint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.mutedOnPage(context),
@@ -1291,10 +1298,11 @@ class DailyMissionProTeaser extends StatelessWidget {
     if (hiddenCount <= 0) return const SizedBox.shrink();
 
     final onDark = light;
-    final titleColor = onDark ? Colors.white : AppTheme.onPage(context);
+    final titleColor = Colors.white;
+    final accentColor = AppTheme.champagneLight;
     final subtitleColor = onDark
-        ? Colors.white.withValues(alpha: 0.58)
-        : AppTheme.mutedOnPage(context);
+        ? Colors.white.withValues(alpha: 0.72)
+        : AppTheme.champagneLight.withValues(alpha: 0.88);
 
     return Material(
       color: Colors.transparent,
@@ -1432,24 +1440,41 @@ class DailyMissionProTeaser extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '+$hiddenCount görev daha',
-                            style: TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 14.5,
-                              height: 1.1,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.2,
-                              color: titleColor,
+                          RichText(
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontFamily: 'serif',
+                                height: 1.1,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: '+$hiddenCount',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.3,
+                                    color: accentColor,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: ' görev daha',
+                                  style: TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.2,
+                                    color: titleColor,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Pro ile tüm rotayı aç',
+                            'Görevleri Tamamla',
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 11,
                               height: 1.2,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                               color: subtitleColor,
                             ),
                           ),
