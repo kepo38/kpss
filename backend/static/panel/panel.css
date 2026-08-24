@@ -1904,6 +1904,32 @@ textarea { min-height: 140px; resize: vertical; }
   color: #fff;
   font-size: 18px;
 }
+
+.stem-image-section.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.stem-image-position {
+  border: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+.stem-image-position legend {
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.stem-image-position-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
 .osym-progress-bar {
   height: 4px;
   margin-top: 10px;

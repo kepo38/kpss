@@ -1079,6 +1079,7 @@ class _QuizScreenState extends State<QuizScreen>
             child: QuestionStemContent(
               stem: _currentQuestion.soruMetni,
               imageUrl: _currentQuestion.imageUrl,
+              stemImagePosition: _currentQuestion.stemImagePosition,
               sekilKodu: _currentQuestion.sekilKodu,
             ),
           ),

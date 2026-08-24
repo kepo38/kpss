@@ -168,6 +168,19 @@ class Question(models.Model):
     image = models.ImageField(
         upload_to="questions/%Y/%m/", blank=True, null=True
     )
+    STEM_IMAGE_ABOVE = "above"
+    STEM_IMAGE_BELOW = "below"
+    STEM_IMAGE_POSITION_CHOICES = [
+        (STEM_IMAGE_ABOVE, "Üst"),
+        (STEM_IMAGE_BELOW, "Alt"),
+    ]
+    stem_image_position = models.CharField(
+        max_length=8,
+        choices=STEM_IMAGE_POSITION_CHOICES,
+        default=STEM_IMAGE_BELOW,
+        verbose_name="Soru görseli konumu",
+        help_text="Uygulamada görsel metnin üstünde mi altında mı gösterilsin.",
+    )
     figure_svg = models.TextField(
         blank=True,
         verbose_name="Şekil kodu (SVG)",

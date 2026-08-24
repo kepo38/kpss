@@ -73,11 +73,28 @@
       <span class="hint">Kalın/altı çizili için metni seçip K / A düğmelerine basın. Kayıtta <code>**kalın**</code> veya <code>__altı__</code> görünmeli; yoksa uygulamada biçim olmaz.</span>
     </label>
 
-    <div class="stem-image-section">
+    <div class="stem-image-section" id="stem-image-section">
+      <p class="media-title">Soru fotoğrafı</p>
       <label>Soru görseli (uygulamada görünür)
         <input type="file" name="stem_image" id="stem-image-input" accept="image/png,image/jpeg,image/webp,image/gif">
-        <span class="hint">Soru metninin yanında/altında gösterilecek görsel. Tablo, paragraf veya harita görseli olabilir.</span>
+        <span class="hint">Metinle birlikte gösterilecek dekoratif görsel (tablo, paragraf vb.). OCR görseli kaydedilmez.</span>
       </label>
+      <fieldset class="stem-image-position" id="stem-image-position-wrap">
+        <legend>Görsel konumu</legend>
+        <label class="stem-image-position-opt">
+          <input type="radio" name="stem_image_position" value="below"
+                 {% if not question or question.stem_image_position|default:'below' == 'below' %}checked{% endif %}>
+          Alt (metinden sonra)
+        </label>
+        <label class="stem-image-position-opt">
+          <input type="radio" name="stem_image_position" value="above"
+                 {% if question and question.stem_image_position == 'above' %}checked{% endif %}>
+          Üst (metinden önce)
+        </label>
+      </fieldset>
+      <div class="media-preview stem-image-preview-new" id="stem-image-preview-new" hidden>
+        <img alt="Yeni görsel önizlemesi" id="stem-image-preview-new-img">
+      </div>
       {% if question and question.image and not question.map_template %}
       <div class="stem-image-preview">
         <img src="{{ question.image.url }}" alt="Mevcut soru görseli" style="max-width:240px;border-radius:6px;margin-top:6px;">
@@ -323,7 +340,7 @@
       <script src="{% static 'panel/map-question-editor.js' %}?v=16"></script>
 <script src="{% static 'panel/question-options.js' %}?v=4"></script>
 <script src="{% static 'panel/option-table.js' %}?v=8"></script>
-<script src="{% static 'panel/question-preview.js' %}?v=12"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=13"></script>
 {{ scenarios_json|json_script:"question-scenarios-data" }}
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>

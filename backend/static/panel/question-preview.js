@@ -88,6 +88,28 @@
     return el ? (el.value || "").trim() : "";
   }
 
+  function currentStemImageSrc() {
+    var keep = document.querySelector('[name="keep_image"]');
+    if (keep && !keep.checked) return "";
+
+    var previewBox = document.getElementById("stem-image-preview-new");
+    var previewImg = document.getElementById("stem-image-preview-new-img");
+    if (
+      previewBox &&
+      !previewBox.hidden &&
+      previewImg &&
+      previewImg.getAttribute("src")
+    ) {
+      return previewImg.src;
+    }
+
+    var existing = document.querySelector(".stem-image-preview img");
+    if (existing && existing.getAttribute("src")) {
+      return existing.src;
+    }
+    return "";
+  }
+
   function currentImageSrc() {
     if (
       window.KpssMapQuestionEditor &&
@@ -96,20 +118,44 @@
       return window.KpssMapQuestionEditor.previewImageSrc();
     }
 
-    var clear = document.querySelector('[name="clear_image"]');
-    if (clear && clear.checked) return "";
-
-    var box = document.getElementById("q-image-preview");
-    var fresh = document.getElementById("q-image-preview-img");
-    if (box && !box.hidden && fresh && fresh.getAttribute("src")) {
-      return fresh.src;
-    }
-
-    var existing = document.querySelector(
-      ".media-preview img[src]:not(#q-image-preview-img)"
-    );
-    if (existing && existing.getAttribute("src")) return existing.src;
+    var stem = currentStemImageSrc();
+    if (stem) return stem;
     return "";
+  }
+
+  function stemImagePosition() {
+    var checked = document.querySelector('[name="stem_image_position"]:checked');
+    return checked && checked.value === "above" ? "above" : "below";
+  }
+
+  function syncStemImageSection() {
+    var section = document.getElementById("stem-image-section");
+    if (!section) return;
+    var mapEnabled =
+      window.KpssMapQuestionEditor &&
+      window.KpssMapQuestionEditor.isEnabled();
+    section.classList.toggle("is-disabled", mapEnabled);
+    section.querySelectorAll("input, button, select, textarea").forEach(function (el) {
+      el.disabled = mapEnabled;
+    });
+  }
+
+  function placeBlockStemImage(imgEl, stemWrap, svgEl, position) {
+    if (!imgEl || !stemWrap) return;
+    var body = stemWrap.closest(".quiz-mock-body");
+    if (!body) return;
+    if (position === "above") {
+      if (stemWrap.previousElementSibling === imgEl) return;
+      body.insertBefore(imgEl, stemWrap);
+      return;
+    }
+    var after = svgEl && svgEl.parentNode === body ? svgEl : stemWrap;
+    if (imgEl.previousElementSibling === after) return;
+    if (after.nextSibling) {
+      body.insertBefore(imgEl, after.nextSibling);
+    } else {
+      body.appendChild(imgEl);
+    }
   }
 
   function inlineMapHtml(src) {
@@ -227,11 +273,19 @@
       if (src && !rendered.inline && !(visualOpts && hasOptCrop)) {
         imgEl.src = src;
         imgEl.classList.add("is-on");
+        placeBlockStemImage(
+          imgEl,
+          document.querySelector(".quiz-mock-stem-wrap"),
+          svgEl,
+          stemImagePosition()
+        );
       } else {
         imgEl.removeAttribute("src");
         imgEl.classList.remove("is-on");
       }
     }
+
+    syncStemImageSection();
 
     syncFigureSvg(svgEl, currentFigureSvg());
 
@@ -414,6 +468,33 @@
     if (keepSolutionImage) {
       keepSolutionImage.addEventListener("change", sync);
     }
+
+    var stemInput = document.getElementById("stem-image-input");
+    if (stemInput) {
+      stemInput.addEventListener("change", function () {
+        var file = stemInput.files && stemInput.files[0];
+        var box = document.getElementById("stem-image-preview-new");
+        var img = document.getElementById("stem-image-preview-new-img");
+        if (!file || !box || !img) {
+          sync();
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          img.src = String(reader.result || "");
+          box.hidden = false;
+          sync();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    var keepStemImage = document.querySelector('[name="keep_image"]');
+    if (keepStemImage) {
+      keepStemImage.addEventListener("change", sync);
+    }
+    document.querySelectorAll('[name="stem_image_position"]').forEach(function (el) {
+      el.addEventListener("change", sync);
+    });
 
     sync();
     window.KpssQuestionPreview = { sync: sync };

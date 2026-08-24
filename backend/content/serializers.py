@@ -42,6 +42,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     altKonuAdi = serializers.CharField(source="subtopic")
     soruMetni = serializers.CharField(source="stem")
     imageUrl = serializers.SerializerMethodField()
+    stemImagePosition = serializers.CharField(source="stem_image_position")
     sekilKodu = serializers.CharField(source="figure_svg", allow_blank=True)
     siklar = serializers.SerializerMethodField()
     optionsAreImages = serializers.BooleanField(source="options_are_images")
@@ -73,6 +74,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "altKonuAdi",
             "soruMetni",
             "imageUrl",
+            "stemImagePosition",
             "sekilKodu",
             "siklar",
             "optionsAreImages",

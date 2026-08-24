@@ -5,6 +5,8 @@ class QuestionModel {
   final String altKonuAdi;
   final String soruMetni;
   final String? imageUrl;
+  /// `above` | `below` — soru görselinin metne göre konumu.
+  final String stemImagePosition;
   final String? sekilKodu;
   final Map<String, String> siklar;
   final bool optionsAreImages;
@@ -33,6 +35,7 @@ class QuestionModel {
     required this.altKonuAdi,
     required this.soruMetni,
     this.imageUrl,
+    this.stemImagePosition = 'below',
     this.sekilKodu,
     required this.siklar,
     this.optionsAreImages = false,
@@ -107,6 +110,12 @@ class QuestionModel {
     return text;
   }
 
+  static String _parseStemImagePosition(Map<String, dynamic> json) {
+    final raw = json['stemImagePosition'] ?? json['stem_image_position'];
+    if (raw == 'above') return 'above';
+    return 'below';
+  }
+
   factory QuestionModel.fromJson(Map<String, dynamic> json) {
     final rawSvg = (json['sekilKodu'] as String?)?.trim();
     final rawStem = (json['soruMetni'] as String? ?? '');
@@ -137,6 +146,7 @@ class QuestionModel {
       altKonuAdi: json['altKonuAdi'] as String,
       soruMetni: _normalizeLatexDelimiters(rawStem),
       imageUrl: json['imageUrl'] as String?,
+      stemImagePosition: _parseStemImagePosition(json),
       sekilKodu: (rawSvg == null || rawSvg.isEmpty) ? null : rawSvg,
       siklar: normalizedOptions,
       optionsAreImages: json['optionsAreImages'] as bool? ??
@@ -174,6 +184,7 @@ class QuestionModel {
         'altKonuAdi': altKonuAdi,
         'soruMetni': soruMetni,
         'imageUrl': imageUrl,
+        'stemImagePosition': stemImagePosition,
         'sekilKodu': sekilKodu,
         'siklar': siklar,
         'optionsAreImages': optionsAreImages,
@@ -203,6 +214,7 @@ class QuestionModel {
     String? altKonuAdi,
     String? soruMetni,
     String? imageUrl,
+    String? stemImagePosition,
     String? sekilKodu,
     Map<String, String>? siklar,
     bool? optionsAreImages,
@@ -231,6 +243,7 @@ class QuestionModel {
       altKonuAdi: altKonuAdi ?? this.altKonuAdi,
       soruMetni: soruMetni ?? this.soruMetni,
       imageUrl: imageUrl ?? this.imageUrl,
+      stemImagePosition: stemImagePosition ?? this.stemImagePosition,
       sekilKodu: sekilKodu ?? this.sekilKodu,
       siklar: siklar ?? this.siklar,
       optionsAreImages: optionsAreImages ?? this.optionsAreImages,

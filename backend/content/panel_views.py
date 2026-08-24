@@ -2010,8 +2010,20 @@ def panel_question_edit(
         from .special_question_tags import apply_auto_tags
 
         apply_auto_tags(question, only_raise=True)
+        stem_image_position = request.POST.get(
+            "stem_image_position", Question.STEM_IMAGE_BELOW
+        )
+        if stem_image_position not in {
+            Question.STEM_IMAGE_ABOVE,
+            Question.STEM_IMAGE_BELOW,
+        }:
+            stem_image_position = Question.STEM_IMAGE_BELOW
         question.map_template = map_template
         question.map_markers = map_markers
+        if map_template:
+            question.stem_image_position = Question.STEM_IMAGE_BELOW
+        else:
+            question.stem_image_position = stem_image_position
         figure_svg = _sanitize_figure_svg(
             request.POST.get("figure_svg", "")
         )
@@ -2323,6 +2335,7 @@ def panel_question_copy(
         topic=source.topic,
         subtopic=source.subtopic,
         stem=source.stem,
+        stem_image_position=source.stem_image_position,
         figure_svg=source.figure_svg,
         map_template=source.map_template,
         map_markers=list(source.map_markers or []),

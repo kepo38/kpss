@@ -14,6 +14,7 @@ class QuestionStemContent extends StatelessWidget {
 
   final String stem;
   final String? imageUrl;
+  final String stemImagePosition;
   final String? sekilKodu;
   final TextStyle? style;
 
@@ -25,6 +26,7 @@ class QuestionStemContent extends StatelessWidget {
     super.key,
     required this.stem,
     this.imageUrl,
+    this.stemImagePosition = 'below',
     this.sekilKodu,
     this.style,
     this.watermarkOnText = true,
@@ -59,6 +61,8 @@ class QuestionStemContent extends StatelessWidget {
     );
   }
 
+  bool get _imageAbove => stemImagePosition == 'above';
+
   @override
   Widget build(BuildContext context) {
     final parts = stem.split(inlineImagePlaceholder);
@@ -68,11 +72,13 @@ class QuestionStemContent extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_imageAbove && _hasImage) _QuestionImage(url: imageUrl!),
+          if (_imageAbove && _hasImage) const SizedBox(height: 16),
           _stemText(stem),
           if (_hasSvg) ...[
             const SizedBox(height: 16),
             _QuestionSvgFigure(svg: sekilKodu!),
-          ] else if (_hasImage) ...[
+          ] else if (!_imageAbove && _hasImage) ...[
             const SizedBox(height: 16),
             _QuestionImage(url: imageUrl!),
           ],
