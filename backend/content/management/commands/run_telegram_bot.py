@@ -23,6 +23,7 @@ from content.telegram_bot import (
     set_webhook,
     telegram_configured,
     telegram_lock,
+    wait_for_photo_queue,
 )
 from content.panel_context import pending_telegram_question_count
 
@@ -236,6 +237,19 @@ class Command(BaseCommand):
             )
 
         self.stdout.write("")
+        self.stdout.write("OCR kuyruğu boşalana kadar bekleniyor…")
+        ocr_ok = wait_for_photo_queue()
+        if ocr_ok:
+            self.stdout.write(self.style.SUCCESS("OCR kuyruğu boş."))
+        else:
+            self.stdout.write(
+                self.style.WARNING(
+                    "OCR bekleme süresi doldu — bazı fotoğraflar hâlâ işleniyor "
+                    "olabilir. TELEGRAM-WATCH.bat açık tutun veya tekrar çalıştırın."
+                )
+            )
+
+        self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("=== Aktarım tamamlandı ==="))
         self.stdout.write(f"Yeni soru: {stats.ingested}")
         if stats.skipped:
@@ -251,17 +265,23 @@ class Command(BaseCommand):
             )
         elif stats.errors:
             pass
-        else:
+        elif ocr_ok:
             self.stdout.write(
                 self.style.SUCCESS(
-                    "Telegram kuyruğu boş — bekleyen soru kalmadı."
+                    "Telegram kuyruğu ve OCR tamam — Evet/Hayır mesajları gönderildi."
+                )
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING(
+                    "Telegram kuyruğu alındı; OCR hâlâ sürebilir — WATCH kullanın."
                 )
             )
         self.stdout.write("")
         self.stdout.write("Telegram sohbetinize de özet gönderildi.")
         self.stdout.write("Bu pencereyi kapatabilirsiniz.")
 
-        notify_drain_complete(stats)
+        notify_drain_complete(stats, ocr_complete=ocr_ok)
 
     def _run_watch(self, token: str) -> None:
         self._prepare_polling()

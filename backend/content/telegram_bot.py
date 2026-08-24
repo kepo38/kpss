@@ -412,6 +412,53 @@ def _submit_photo_work(work: Any) -> None:
     _photo_queue.put(work)
 
 
+def wait_for_photo_queue(*, timeout_seconds: float | None = None) -> bool:
+    """Drain/çıkış öncesi OCR kuyruğunun boşalmasını bekle.
+
+    Telegram offset fotoğraf alınır alınmaz ilerler; OCR arka planda kalır.
+    Process erken çıkarsa daemon worker'lar öldürülür ve Evet/Hayır hiç
+    gönderilmez. Bu yüzden TELEGRAM.bat drain bitmeden kuyruğu bekler.
+
+    Returns:
+        True — kuyruk boşaldı (veya worker yok).
+        False — süre doldu; hâlâ iş var.
+    """
+    q = _photo_queue
+    if q is None or not _photo_workers_started:
+        return True
+    if timeout_seconds is None:
+        timeout_seconds = float(
+            getattr(settings, "TELEGRAM_DRAIN_OCR_WAIT_SECONDS", 1800) or 1800
+        )
+    if timeout_seconds <= 0:
+        q.join()
+        return True
+
+    done = threading.Event()
+
+    def _join() -> None:
+        try:
+            q.join()
+        finally:
+            done.set()
+
+    waiter = threading.Thread(
+        target=_join,
+        name="tg-ocr-drain-wait",
+        daemon=True,
+    )
+    waiter.start()
+    if done.wait(timeout=timeout_seconds):
+        return True
+    remaining = getattr(q, "unfinished_tasks", None)
+    logger.warning(
+        "Telegram OCR queue wait timed out after %.0fs (unfinished=%s)",
+        timeout_seconds,
+        remaining,
+    )
+    return False
+
+
 def _get_photo_executor():
     """Geriye dönük — worker kuyruğunu başlatır."""
     ensure_photo_workers()
@@ -1556,7 +1603,11 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
     return "ignored"
 
 
-def notify_drain_complete(stats: DrainStats) -> None:
+def notify_drain_complete(
+    stats: DrainStats,
+    *,
+    ocr_complete: bool = True,
+) -> None:
     """Kuyruk bosaldiginda Telegram ozeti."""
     if not telegram_configured():
         return
@@ -1576,8 +1627,16 @@ def notify_drain_complete(stats: DrainStats) -> None:
         lines.append("Telegram kuyruğunda işlenecek fotoğraf kalmadı.")
     elif stats.errors:
         pass
+    elif ocr_complete:
+        lines.append(
+            "OCR tamam — Evet/Hayır (veya yanıt-çözüm) mesajları gönderildi."
+        )
+        lines.append("PC'yi kapatabilirsiniz; WATCH açık değilse yeni foto beklenmez.")
     else:
-        lines.append("Telegram kuyruğu boş — PC'yi kapatabilirsiniz.")
+        lines.append(
+            "OCR hâlâ sürebilir. TELEGRAM-WATCH.bat açık tutun veya "
+            "TELEGRAM.bat'i tekrar çalıştırın."
+        )
     text = "\n".join(lines)
     for user_id in allowed:
         try:

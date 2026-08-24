@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from content.models import Question, Subject, TelegramBotSession, Topic
 from content.telegram_conversation import (
@@ -81,3 +81,27 @@ class TelegramMultiSessionTests(TestCase):
         self.assertFalse(
             TelegramBotSession.objects.filter(question=q).exists()
         )
+
+
+class TelegramDrainOcrWaitTests(TestCase):
+    @override_settings(TELEGRAM_INLINE_PHOTOS=False)
+    def test_wait_for_photo_queue_drains_submitted_work(self):
+        import threading
+        import time
+
+        from content import telegram_bot as tb
+
+        done = threading.Event()
+
+        def slow_job() -> None:
+            time.sleep(0.25)
+            done.set()
+
+        tb._submit_photo_work(slow_job)
+        self.assertTrue(tb.wait_for_photo_queue(timeout_seconds=5))
+        self.assertTrue(done.is_set())
+
+    def test_wait_for_photo_queue_noop_when_idle(self):
+        from content.telegram_bot import wait_for_photo_queue
+
+        self.assertTrue(wait_for_photo_queue(timeout_seconds=1))
