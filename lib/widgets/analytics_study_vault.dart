@@ -150,18 +150,6 @@ class _VaultTile extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '$count',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 28,
-                height: 1,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -1,
-                color: on.withValues(alpha: count == 0 ? 0.35 : 0.95),
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
               label.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -170,6 +158,18 @@ class _VaultTile extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1,
                 color: accent,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontSize: 28,
+                height: 1,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -1,
+                color: on.withValues(alpha: count == 0 ? 0.35 : 0.95),
               ),
             ),
           ],

@@ -1321,13 +1321,13 @@ class TelegramBotSession(models.Model):
         (STEP_SOLUTION_TEXT, "Çözüm metni bekleniyor"),
     ]
 
-    telegram_user_id = models.BigIntegerField(unique=True, db_index=True)
+    telegram_user_id = models.BigIntegerField(db_index=True)
     chat_id = models.BigIntegerField()
     step = models.CharField(max_length=32, choices=STEP_CHOICES)
-    question = models.ForeignKey(
+    question = models.OneToOneField(
         Question,
         on_delete=models.CASCADE,
-        related_name="telegram_bot_sessions",
+        related_name="telegram_bot_session",
     )
     source_message_id = models.BigIntegerField(
         null=True,
@@ -1343,6 +1343,31 @@ class TelegramBotSession(models.Model):
 
     def __str__(self) -> str:
         return f"{self.telegram_user_id} · {self.step} · {self.question.public_id}"
+
+
+class TelegramPendingSolution(models.Model):
+    """PC kapalıyken fotoğrafa yanıt olarak gönderilen çözüm — OCR sonrası bağlanır."""
+
+    telegram_user_id = models.BigIntegerField(db_index=True)
+    chat_id = models.BigIntegerField()
+    photo_message_id = models.BigIntegerField(
+        verbose_name="Yanıtlanan fotoğraf mesajı",
+    )
+    solution_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Telegram bekleyen çözüm"
+        verbose_name_plural = "Telegram bekleyen çözümler"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["chat_id", "photo_message_id"],
+                name="unique_telegram_pending_solution_per_photo",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.chat_id}:{self.photo_message_id}"
 
 
 class OcrIngestLog(models.Model):

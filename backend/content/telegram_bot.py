@@ -21,16 +21,18 @@ from django.conf import settings
 
 from django.db import IntegrityError
 
-from .models import Question, Topic
+from .models import Question, TelegramBotSession, Topic
 from .ocr_ingest import ingest_question_from_image
 from .panel_context import pending_telegram_question_count
 from .telegram_conversation import (
     ConversationReply,
     clear_session,
+    consume_pending_solution_for_question,
     get_session,
     solution_prompt_keyboard,
     solution_prompt_message,
     start_solution_prompt,
+    try_attach_solution_reply,
     try_handle_conversation,
     try_handle_conversation_callback,
 )
@@ -878,8 +880,9 @@ def _help_text() -> str:
         "hayır derseniz fotoğraf kalır.\n"
         "• Aynı fotoğrafı tekrar iletirseniz uyarı alırsınız.\n"
         "• Panel → Onay bekleyen sorular\n\n"
-        "• Fotoğraf sonrası çözüm eklemek için Evet/Hayır düğmeleri çıkar; "
-        "Google'dan kopyaladığınız metni yapıştırabilirsiniz.\n\n"
+        "• Fotoğraf sonrası çözüm: Evet/Hayır düğmeleri VEYA\n"
+        "  fotoğrafa YANIT yazarak çözümü yapıştırın "
+        "(PC kapalıyken de çalışır — bot açılınca bağlanır).\n\n"
         "/durum — panel + kuyruk özeti\n"
         "/eski — kaçan fotoğraflar için kısa rehber\n"
         "/sohbeti_sil — bot mesajlarını temizle (menüden Sil değil!)\n"
@@ -1127,7 +1130,9 @@ def _send_ingest_success(
     include_solution_prompt: bool,
     topic_auto_detected: bool = False,
 ) -> None:
-    keyboard = solution_prompt_keyboard() if include_solution_prompt else None
+    keyboard = (
+        solution_prompt_keyboard(question) if include_solution_prompt else None
+    )
     reply_html = _build_ingest_success_html(
         topic=topic,
         question=question,
@@ -1245,30 +1250,59 @@ def _ingest_photo_worker(
             user_id = from_user.get("id")
             if user_id is not None:
                 try:
-                    start_solution_prompt(
-                        int(user_id),
-                        int(chat_id),
+                    auto_solution = consume_pending_solution_for_question(
                         result.question,
-                        source_message_id=message_id,
+                        chat_id=int(chat_id),
+                        photo_message_id=message_id,
+                        telegram_user_id=int(user_id),
                     )
                 except Exception:
                     logger.exception(
-                        "Telegram solution session start failed user_id=%s question=%s",
+                        "Telegram pending solution apply failed user_id=%s question=%s",
                         user_id,
                         result.question.public_id,
                     )
-                _send_ingest_success(
-                    int(chat_id),
-                    topic=assigned_topic,
-                    question=result.question,
-                    pending=pending,
-                    elapsed_seconds=elapsed,
-                    forwarded=forwarded,
-                    partial=result.partial,
-                    duplicate=result.duplicate,
-                    include_solution_prompt=True,
-                    topic_auto_detected=result.topic_auto_detected,
-                )
+                    auto_solution = None
+                if auto_solution is not None:
+                    _send_ingest_success(
+                        int(chat_id),
+                        topic=assigned_topic,
+                        question=result.question,
+                        pending=pending,
+                        elapsed_seconds=elapsed,
+                        forwarded=forwarded,
+                        partial=result.partial,
+                        duplicate=result.duplicate,
+                        include_solution_prompt=False,
+                        topic_auto_detected=result.topic_auto_detected,
+                    )
+                    _dispatch_conversation_reply(int(chat_id), auto_solution)
+                else:
+                    try:
+                        start_solution_prompt(
+                            int(user_id),
+                            int(chat_id),
+                            result.question,
+                            source_message_id=message_id,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Telegram solution session start failed user_id=%s question=%s",
+                            user_id,
+                            result.question.public_id,
+                        )
+                    _send_ingest_success(
+                        int(chat_id),
+                        topic=assigned_topic,
+                        question=result.question,
+                        pending=pending,
+                        elapsed_seconds=elapsed,
+                        forwarded=forwarded,
+                        partial=result.partial,
+                        duplicate=result.duplicate,
+                        include_solution_prompt=True,
+                        topic_auto_detected=result.topic_auto_detected,
+                    )
             else:
                 _send_ingest_success(
                     int(chat_id),
@@ -1479,6 +1513,30 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
 
     if text and user_id is not None:
         entities = message.get("entities") or []
+        reply_to = message.get("reply_to_message") or {}
+        reply_to_id = reply_to.get("message_id")
+        # Yalnızca fotoğrafa (veya bilinen soru mesajına) yanıt = çözüm.
+        if reply_to_id is not None and (
+            _extract_image(reply_to) is not None
+            or Question.objects.filter(
+                telegram_chat_id=int(chat_id),
+                telegram_message_id=int(reply_to_id),
+            ).exists()
+            or TelegramBotSession.objects.filter(
+                telegram_user_id=int(user_id),
+                source_message_id=int(reply_to_id),
+            ).exists()
+        ):
+            attach = try_attach_solution_reply(
+                telegram_user_id=int(user_id),
+                chat_id=int(chat_id),
+                photo_message_id=int(reply_to_id),
+                text=text,
+                entities=entities,
+            )
+            if attach is not None:
+                _dispatch_conversation_reply(int(chat_id), attach)
+                return "command"
         reply = try_handle_conversation(
             int(user_id),
             text,

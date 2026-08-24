@@ -62,6 +62,8 @@ class AnswerFeedbackService {
 
   /// Test bitince sonuç ekranı — kısa tamamlanma efekti (~2,5 sn).
   Future<void> playTestComplete() async {
+    // Reklam / başka oynatıcı ses odağını bozmuş olabilir — bağlamı yenile.
+    _ready = false;
     await ensureReady();
     HapticFeedback.mediumImpact();
     await _playAsset(

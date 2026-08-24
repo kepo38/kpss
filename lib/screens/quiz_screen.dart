@@ -1954,6 +1954,15 @@ class _QuizScreenState extends State<QuizScreen>
 
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
+
+    // Bitiş sesi reklamdan ÖNCE — interstitial ses odağını alınca efekt kayboluyordu.
+    final playFinishSound =
+        !widget.skipResultDialog && !widget.tgExamSolutionReview;
+    if (playFinishSound) {
+      await AnswerFeedbackService.instance.playTestComplete();
+      if (!mounted) return;
+    }
+
     if (!widget.tgExamMode && !widget.adFreeExperience) {
       await AdManager.instance.showTestCompletionInterstitial();
     }
@@ -1964,8 +1973,6 @@ class _QuizScreenState extends State<QuizScreen>
 
     var reviewWrongs = false;
     if (!widget.skipResultDialog) {
-      await AnswerFeedbackService.instance.playTestComplete();
-      if (!mounted) return;
       reviewWrongs = await _showResultDialog(result);
       if (!mounted) return;
     }
