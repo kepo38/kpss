@@ -102,7 +102,7 @@ class TelegramMultiSessionTests(TestCase):
             "sol_yes:m:91", 42, chat_id=1001
         )
         self.assertIsNotNone(reply)
-        self.assertIn("yanıt", reply.text.lower())
+        self.assertIn("yapıştırın", reply.text.lower())
         pending = TelegramPendingSolution.objects.get(
             chat_id=1001, photo_message_id=91
         )
@@ -167,6 +167,66 @@ class TelegramMultiSessionTests(TestCase):
         self.assertIsNotNone(applied)
         q.refresh_from_db()
         self.assertIn("Caption cozum A", q.solution)
+
+    def test_orphan_followup_text_binds_to_latest_photo(self):
+        from content.models import TelegramPendingSolution
+        from content.telegram_conversation import (
+            consume_pending_solution_for_question,
+            mark_photo_prompt_sent,
+            try_attach_orphan_solution_text,
+        )
+
+        mark_photo_prompt_sent(
+            telegram_user_id=42,
+            chat_id=1001,
+            photo_message_id=888,
+        )
+        pending = TelegramPendingSolution.objects.get(
+            chat_id=1001, photo_message_id=888
+        )
+        self.assertEqual(pending.solution_text, "")
+
+        reply = try_attach_orphan_solution_text(
+            telegram_user_id=42,
+            chat_id=1001,
+            text=(
+                "Metinde sanayileşmeyi temsil eden ifade doğrudan doğrular. "
+                "Diğer seçenekler metinde yoktur ve çeldiricidir."
+            ),
+        )
+        self.assertIsNotNone(reply)
+        self.assertIn("not edildi", reply.text.lower())
+        pending.refresh_from_db()
+        self.assertIn("sanayileşmeyi", pending.solution_text)
+
+        q = self._q("q_orphan_sol")
+        q.telegram_chat_id = 1001
+        q.telegram_message_id = 888
+        q.save(update_fields=["telegram_chat_id", "telegram_message_id"])
+        applied = consume_pending_solution_for_question(
+            q,
+            chat_id=1001,
+            photo_message_id=888,
+            telegram_user_id=42,
+        )
+        self.assertIsNotNone(applied)
+        q.refresh_from_db()
+        self.assertIn("sanayileşmeyi", q.solution)
+
+    def test_yes_no_session_accepts_pasted_solution_without_reply(self):
+        from content.telegram_conversation import try_handle_conversation
+
+        q = self._q("q_yesno_paste")
+        start_solution_prompt(42, 1001, q, source_message_id=12)
+        reply = try_handle_conversation(
+            42,
+            "Metinde verilen cümle sanayileşmenin insan-eşya bağını "
+            "değiştirdiğini doğrudan doğrular çünkü trajik biçimde anlatılır.",
+        )
+        self.assertIsNotNone(reply)
+        q.refresh_from_db()
+        self.assertIn("sanayileşmenin", q.solution)
+        self.assertFalse(TelegramBotSession.objects.filter(question=q).exists())
 
 
 class TelegramCaptionParseTests(TestCase):

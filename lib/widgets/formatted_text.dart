@@ -969,6 +969,7 @@ class FormattedText extends StatelessWidget {
         return '§§M${holders.length - 1}§§';
       },
     );
+    src = _splitGoogleVerbalSolution(src);
     final mdHolders = <String>[];
     src = src.replaceAllMapped(
       RegExp(r'\*\*[\s\S]+?\*\*|__[\s\S]+?__'),
@@ -1203,6 +1204,47 @@ class FormattedText extends StatelessWidget {
     return src.replaceAll(RegExp(r'\n{3,}'), '\n\n').replaceFirst(RegExp(r'^\n+'), '');
   }
 
+  /// Google sözel çözüm: italik tırnak + Diğer Seçenekler + A)…E) yapışması.
+  static String _splitGoogleVerbalSolution(String input) {
+    var src = input;
+    src = src.replaceAllMapped(
+      RegExp(r'\*("[^"\n]+")[ \t]+\*(?!\*)'),
+      (m) => '*${m.group(1)}* ',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<=[^\s*])\*[ \t]+("[^"\n]+")\*'),
+      (m) => ' *${m.group(1)}*',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?:\*\*)?\s*(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri))\s*(?:\*\*)?\s*(?=(?:[-•*◦○–—]\s*)?(?:\*\*)?\s*[A-E]\s*\)\s*(?:\*\*)?)',
+        caseSensitive: false,
+      ),
+      (m) => '\n\n**${m.group(1)}**\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'(?<!\n)(?:\s*[-•*◦○–—])?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*'),
+      (m) => '\n**${m.group(1)})** ',
+    );
+    src = src.replaceAllMapped(
+      RegExp(r'^[ \t]*[-•*◦○–—]?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*', multiLine: true),
+      (m) => '**${m.group(1)})** ',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'(?<=[.!?:;]|[a-zçğıöşüâîû”"])(?:\s*\*\*)?\s*(?=[A-E]\)\s)',
+      ),
+      (_) => '\n',
+    );
+    src = src.replaceAllMapped(
+      RegExp(
+        r'([A-E]\)[^\n*]{3,80}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ"“«])',
+      ),
+      (m) => '${m.group(1)}\n',
+    );
+    return src;
+  }
+
   static final _presenceCellRe = RegExp(
     r'^(Yok|Var)\s*\(\s*[01]\s*\)$',
     caseSensitive: false,
@@ -1368,6 +1410,9 @@ class FormattedText extends StatelessWidget {
     r'^(?:[-•*◦○–—]\s+)?(?:\*\*)?'
     r'([A-E])\)\s+(.+\S)\s*:?\s*$',
   );
+  static final _optionBoldLetterRe = RegExp(
+    r'^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\s*\)\s*\*\*\s*(.+)$',
+  );
   static final _bulletStripRe = RegExp(r'^(\s*)[-•*◦○–—]\s+');
   static final _kuralOzetiRe = RegExp(r'^Kural\s+Özeti\s*:?\s*$', caseSensitive: false);
   static final _resultTailRe = RegExp(
@@ -1398,7 +1443,8 @@ class FormattedText extends StatelessWidget {
     if (s.isEmpty) return false;
     if (_optionHeaderRe.hasMatch(s) ||
         _optionSecenegiOnlyRe.hasMatch(s) ||
-        _optionSecenegiInlineRe.hasMatch(s)) {
+        _optionSecenegiInlineRe.hasMatch(s) ||
+        _optionBoldLetterRe.hasMatch(s)) {
       return true;
     }
     final trial = _optionTrialHeaderRe.firstMatch(s);
@@ -1437,10 +1483,23 @@ class FormattedText extends StatelessWidget {
       final letter = hm.group(1)!.toUpperCase();
       return (letter: letter, title: '$letter Seçeneği', inline: null);
     }
+    hm = _optionBoldLetterRe.firstMatch(s);
+    if (hm != null) {
+      final letter = hm.group(1)!.toUpperCase();
+      final body = (hm.group(2) ?? '').trim();
+      return (
+        letter: letter,
+        title: '$letter)',
+        inline: body.isEmpty ? null : body,
+      );
+    }
     hm = _optionTrialHeaderRe.firstMatch(s);
     if (hm != null) {
       final letter = hm.group(1)!.toUpperCase();
-      final body = hm.group(2)!.trim();
+      var body = hm.group(2)!.trim();
+      while (body.endsWith(':')) {
+        body = body.substring(0, body.length - 1).trim();
+      }
       return (letter: letter, title: '$letter) $body', inline: null);
     }
     return null;
@@ -1534,6 +1593,16 @@ class FormattedText extends StatelessWidget {
         } else {
           out.add('**$line**');
         }
+        out.add('');
+        i += 1;
+        continue;
+      }
+      final diger = RegExp(
+        r'^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (diger != null) {
+        out.add('**${diger.group(1)!.trim()}**');
         out.add('');
         i += 1;
         continue;

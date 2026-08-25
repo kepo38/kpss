@@ -1018,7 +1018,7 @@ h2 {
   font-size: 12px;
   line-height: 1.5;
   color: rgba(255,255,255,0.85);
-  white-space: pre-wrap;
+  white-space: normal;
   overflow-wrap: anywhere;
   min-width: 0;
   max-width: 100%;
@@ -1064,7 +1064,7 @@ h2 {
   margin: 0.95em 0;
 }
 .cozum-metni-alani {
-  white-space: pre-wrap;
+  white-space: normal;
 }
 .quiz-mock-solution .body strong,
 .quiz-mock-solution .body .preview-bold,

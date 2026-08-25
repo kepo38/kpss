@@ -374,6 +374,9 @@
       converted = window.KpssMathRender && window.KpssMathRender.restoreCollapsedBreaks
         ? window.KpssMathRender.restoreCollapsedBreaks(converted)
         : converted;
+      converted = window.KpssMathRender && window.KpssMathRender.structureSolutionOutline
+        ? window.KpssMathRender.structureSolutionOutline(converted)
+        : converted;
       if (!converted) return;
       e.preventDefault();
       insertAtCursor(el, converted);

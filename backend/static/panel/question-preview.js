@@ -403,7 +403,9 @@
       }
       if (sol) {
         solBody.innerHTML = window.KpssMathRender
-          ? window.KpssMathRender.examDocumentHtml(sol)
+          ? (window.KpssMathRender.solutionDocumentHtml
+              ? window.KpssMathRender.solutionDocumentHtml(sol)
+              : window.KpssMathRender.examDocumentHtml(sol))
           : stemToHtml(sol);
       } else {
         solBody.textContent = "";

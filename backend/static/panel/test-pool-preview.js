@@ -112,7 +112,9 @@
     if (solWrap && solBody) {
       if (q.solution) {
         solBody.innerHTML = window.KpssMathRender
-          ? window.KpssMathRender.examDocumentHtml(q.solution)
+          ? (window.KpssMathRender.solutionDocumentHtml
+              ? window.KpssMathRender.solutionDocumentHtml(q.solution)
+              : window.KpssMathRender.examDocumentHtml(q.solution))
           : stemToHtml(q.solution);
         solWrap.classList.add("is-on");
       } else {

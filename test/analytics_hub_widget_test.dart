@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/screens/analytics_hub_screen.dart';
 import 'package:kpss_akademi/widgets/analytics_study_vault.dart';
@@ -22,5 +22,9 @@ void main() {
     expect(find.text('DERSLER'), findsOneWidget);
     expect(find.byType(AnalyticsStudyVault), findsOneWidget);
     expect(find.textContaining('HAFTALIK'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byType(AnalyticsStudyVault)).dy,
+      lessThan(tester.getTopLeft(find.textContaining('HAFTALIK')).dy),
+    );
   });
 }

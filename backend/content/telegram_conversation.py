@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from .embeddings import refresh_question_embedding
@@ -11,10 +12,30 @@ from .rich_text_telegram import normalize_telegram_solution
 _YES = frozenset({"evet", "e", "yes", "y"})
 _NO = frozenset({"hayır", "hayir", "h", "no", "n"})
 
+# Google çözümleri uzun; kısa onay sözcükleri çözüm sayılmaz.
+_SOLUTION_TEXT_MIN_LEN = 40
+
 CALLBACK_SOLUTION_YES = "sol_yes"
 CALLBACK_SOLUTION_NO = "sol_no"
 CALLBACK_PHOTO_YES_PREFIX = f"{CALLBACK_SOLUTION_YES}:m:"
 CALLBACK_PHOTO_NO_PREFIX = f"{CALLBACK_SOLUTION_NO}:m:"
+
+
+def looks_like_solution_text(text: str) -> bool:
+    """Evet/Hayır değil; Google'dan yapıştırılmış çözüm."""
+    raw = (text or "").strip()
+    if not raw or raw.startswith("/"):
+        return False
+    lowered = raw.lower()
+    if lowered in _YES or lowered in _NO:
+        return False
+    if len(raw) >= _SOLUTION_TEXT_MIN_LEN:
+        return True
+    if "\n" in raw or "**" in raw:
+        return True
+    if re.search(r"[A-E]\)", raw):
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -80,11 +101,12 @@ def solution_prompt_message() -> str:
     return (
         "Çözüm eklemek ister misiniz?\n"
         "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz — "
-        "bu soruyu bitirmeniz gerekmez.\n"
-        "Evet: çözümü bu FOTOĞRAFA yanıt olarak yapıştırın.\n"
+        "OCR veya Evet/Hayır beklemeyin.\n"
+        "Çözüm: fotoğrafın alt yazısı, hemen sonraki mesaj, "
+        "veya fotoğrafa yanıt. Evet düğmesi şart değil.\n"
         "Hayır: çözüm yok, OCR bitince panele düşer.\n\n"
-        "PC kapalıyken düğme gelmez; alt yazıya veya fotoğrafa yanıt "
-        "olarak çözümü yazın (bot açılınca bağlanır)."
+        "PC kapalıyken de aynı: fotoğraf + alt yazı veya altındaki "
+        "çözüm mesajı. Bot açılınca bağlanır."
     )
 
 
@@ -250,10 +272,84 @@ def try_attach_solution_reply(
         solution_text=solution,
     )
     return ConversationReply(
-        "Çözüm not edildi.\n"
-        "Fotoğraf işlenince otomatik eklenecek; Evet/Hayır gerekmez.\n"
+        "Çözüm not edildi — fotoğrafa yanıt şart değil.\n"
+        "OCR bitince otomatik eklenecek; Evet/Hayır gerekmez.\n"
         "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz."
     )
+
+
+def try_attach_orphan_solution_text(
+    *,
+    telegram_user_id: int,
+    chat_id: int,
+    text: str,
+    entities: list[dict] | None = None,
+) -> ConversationReply | None:
+    """Fotoğrafın hemen altındaki mesaj (yanıt/alt yazı değil) = o fotoğrafın çözümü.
+
+    Telefonda kullanıcı çoğu zaman altyazı yerine sonraki mesajı yazar.
+    """
+    if not looks_like_solution_text(text):
+        return None
+
+    pending = (
+        TelegramPendingSolution.objects.filter(
+            telegram_user_id=telegram_user_id,
+            chat_id=chat_id,
+            skip_solution=False,
+            solution_text="",
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if pending is not None:
+        return try_attach_solution_reply(
+            telegram_user_id=telegram_user_id,
+            chat_id=chat_id,
+            photo_message_id=pending.photo_message_id,
+            text=text,
+            entities=entities,
+        )
+
+    session = (
+        TelegramBotSession.objects.filter(telegram_user_id=telegram_user_id)
+        .select_related("question")
+        .order_by("-updated_at")
+        .first()
+    )
+    if (
+        session is not None
+        and session.source_message_id
+        and not (session.question.solution or "").strip()
+    ):
+        return try_attach_solution_reply(
+            telegram_user_id=telegram_user_id,
+            chat_id=chat_id,
+            photo_message_id=int(session.source_message_id),
+            text=text,
+            entities=entities,
+        )
+
+    question = (
+        Question.objects.filter(
+            telegram_chat_id=chat_id,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+            is_published=False,
+        )
+        .filter(solution="")
+        .exclude(telegram_message_id__isnull=True)
+        .order_by("-id")
+        .first()
+    )
+    if question is not None and question.telegram_message_id:
+        return try_attach_solution_reply(
+            telegram_user_id=telegram_user_id,
+            chat_id=chat_id,
+            photo_message_id=int(question.telegram_message_id),
+            text=text,
+            entities=entities,
+        )
+    return None
 
 
 def handle_photo_solution_decision(
@@ -295,8 +391,8 @@ def handle_photo_solution_decision(
                 prompt_sent=True,
             )
         return ConversationReply(
-            "Çözümü bu FOTOĞRAFA yanıt olarak yapıştırın "
-            "(Google metnini tek mesajda).\n"
+            "Çözümü hemen sonraki mesaj olarak yapıştırın "
+            "(yanıt veya alt yazı da olur; Google metnini tek seferde).\n"
             "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz — OCR beklemeyin."
         )
 
@@ -549,26 +645,37 @@ def try_handle_conversation(
             )
         session = text_qs.first()
         if session is None:
-            if TelegramBotSession.objects.filter(
+            yes_no_qs = TelegramBotSession.objects.filter(
                 telegram_user_id=telegram_user_id,
                 step=TelegramBotSession.STEP_SOLUTION_YES_NO,
-            ).exists():
+            ).select_related("question")
+            if looks_like_solution_text(text) and yes_no_qs.exists():
+                session = yes_no_qs.order_by("-updated_at").first()
+            elif yes_no_qs.exists():
                 return ConversationReply(
-                    "Evet/Hayır düğmesine basın veya fotoğrafa yanıt olarak "
-                    "çözümü yapıştırın.\n"
+                    "Çözümü hemen sonraki mesaj olarak yapıştırın "
+                    "(Evet düğmesi şart değil).\n"
                     "Sıradaki soru fotoğrafını bekletmeden gönderebilirsiniz."
                 )
-            return None
+            else:
+                return None
 
     if session is None:
         return None
 
     if session.step == TelegramBotSession.STEP_SOLUTION_YES_NO:
+        if looks_like_solution_text(text):
+            return apply_solution_and_release(
+                session.question,
+                text,
+                telegram_user_id=telegram_user_id,
+            )
         if normalized in _YES:
             session.step = TelegramBotSession.STEP_SOLUTION_TEXT
             session.save(update_fields=["step", "updated_at"])
             return ConversationReply(
-                "Çözümü bu FOTOĞRAFA yanıt olarak yapıştırın.\n"
+                "Çözümü hemen sonraki mesaj olarak yapıştırın "
+                "(fotoğrafa yanıt şart değil).\n"
                 f"Soru: {session.question.public_id}\n"
                 "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz.\n"
                 "İptal: /iptal",
@@ -591,7 +698,7 @@ def try_handle_conversation(
                 + extra
             )
         return ConversationReply(
-            "Evet/Hayır düğmesine basın veya fotoğrafa yanıt olarak çözümü yapıştırın.\n"
+            "Çözümü yapıştırın veya Hayır'a basın.\n"
             "Sıradaki soru fotoğrafını bekletmeden gönderebilirsiniz (iptal: /iptal)."
         )
 

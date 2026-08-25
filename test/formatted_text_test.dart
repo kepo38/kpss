@@ -1001,4 +1001,56 @@ III. $a \cdot b + c$
     expect(out, contains(r'II. $a + b + c$'));
     expect(out, contains(r'III. $a \cdot b + c$'));
   });
+
+  test('prepareSolutionText splits Google verbal Diğer Seçenekler paste', () {
+    const src =
+        'Metinde sanayileşmeyi temsil eden *"XIX. yüzyılla birlikte '
+        'makineleşmeye bağlı olarak seri üretimin artması" *ifadesinden sonra, '
+        'bu durumun ortak zevkleri ve modayı doğurduğu anlatılmıştır. '
+        'Cümlenin devamındaki* "Trajik biçimde insan da kendi ürettiği '
+        'eşyaların biçimlendirdiği bir kültürel evren içinde yaşamaya başladı."* '
+        'ifadesi, sanayileşmenin ilişkisini tamamen değiştirip ona '
+        '**yeni bir boyut kazandırdığını** doğrudan doğrular.** '
+        'Diğer Seçenekler Neden Olmaz?A) İnsanlar, eşyanın yaşam tarzı '
+        'üzerindeki etkisine uzun süre tepkisiz kalmıştır:** Metinde '
+        'insanların bu duruma "tepkisiz kaldığına" dair bir bilgi yoktur.** '
+        'B) Sosyal ilişkiler eşyanın sembolik değerini belirleyen bir niteliğe '
+        'sahiptir:** Metne göre tersine bir durum söz konusudur.** '
+        'C) Seri üretimle birlikte eski eşyalara olan rağbet gün geçtikçe '
+        'azalmıştır:** Parçada böyle bir kıyaslama yer almamaktadır.** '
+        'E) Eşyaya atfedilen değer modanın ölçütlerine göre zamanla '
+        'değişmiştir:** Metinde bu yönde bir vurgu yoktur.';
+    final out = FormattedText.prepareSolutionText(src);
+    expect(out, contains('**Diğer Seçenekler Neden Olmaz?**'));
+    expect(
+      out,
+      contains(
+        '- **A) İnsanlar, eşyanın yaşam tarzı üzerindeki etkisine uzun süre tepkisiz kalmıştır:**',
+      ),
+    );
+    expect(out, contains('- **B) Sosyal ilişkiler'));
+    expect(out, contains('- **E) Eşyaya atfedilen değer'));
+    expect(out, contains('  - Metinde insanların bu duruma'));
+    expect(out, isNot(contains('Olmaz?A)')));
+    expect(out, contains('ifadesinden'));
+    expect(out, contains('*"XIX. yüzyılla birlikte'));
+  });
+
+  test('prepareSolutionText splits Elenme Nedenleri ** A)** paste', () {
+    const src = '''
+Metinde, geçmişte eşyanın etkisi belirtilmektedir.
+Bu durum, ** sanayileşmenin ilişkisini kökten değiştirdiğini ** (D seçeneği) doğrular.
+** Diğer Seçeneklerin Elenme Nedenleri **-** A)** Metinde tepkisiz kaldığına dair bilgi yoktur.
+** B)** Sosyal ilişkiler eşyanın değerini belirlememektedir.
+** C)** Eski eşyalara rağbet azalmamıştır.
+-** E)** Modanın ölçütlerine göre değer değişmez, makineleşme modayı doğurur.
+''';
+    final out = FormattedText.prepareSolutionText(src);
+    expect(out, contains('**Diğer Seçeneklerin Elenme Nedenleri**'));
+    expect(out, contains('- **A):**'));
+    expect(out, contains('- **B):**'));
+    expect(out, contains('- **E):**'));
+    expect(out, contains('tepkisiz kaldığına'));
+    expect(out, isNot(contains('-** A)**')));
+  });
 }

@@ -342,6 +342,62 @@ class RichTextNormalizationTests(SimpleTestCase):
             again = structure_solution_outline(out)
             self.assertEqual(again.count("- Kendisi: $10a + b$"), 1)
 
+    def test_google_verbal_solution_diger_secenekler_paste(self):
+        src = (
+            'Metinde sanayileşmeyi temsil eden *"XIX. yüzyılla birlikte '
+            'makineleşmeye bağlı olarak seri üretimin artması" *ifadesinden sonra, '
+            "bu durumun ortak zevkleri ve modayı doğurduğu anlatılmıştır. "
+            'Cümlenin devamındaki* "Trajik biçimde insan da kendi ürettiği '
+            'eşyaların biçimlendirdiği bir kültürel evren içinde yaşamaya başladı."* '
+            "ifadesi, sanayileşmenin ilişkisini tamamen değiştirip ona "
+            "**yeni bir boyut kazandırdığını** doğrudan doğrular.** "
+            "Diğer Seçenekler Neden Olmaz?A) İnsanlar, eşyanın yaşam tarzı "
+            "üzerindeki etkisine uzun süre tepkisiz kalmıştır:** Metinde "
+            'insanların bu duruma "tepkisiz kaldığına" dair bir bilgi yoktur.** '
+            "B) Sosyal ilişkiler eşyanın sembolik değerini belirleyen bir niteliğe "
+            "sahiptir:** Metne göre tersine bir durum söz konusudur.** "
+            "C) Seri üretimle birlikte eski eşyalara olan rağbet gün geçtikçe "
+            "azalmıştır:** Parçada böyle bir kıyaslama yer almamaktadır.** "
+            "E) Eşyaya atfedilen değer modanın ölçütlerine göre zamanla "
+            "değişmiştir:** Metinde bu yönde bir vurgu yoktur."
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn('*"XIX. yüzyılla birlikte', out)
+            self.assertIn("ifadesinden", out)
+            self.assertIn('*"Trajik biçimde', out)
+            self.assertIn("**Diğer Seçenekler Neden Olmaz?**", out)
+            self.assertIn("- **A) İnsanlar, eşyanın yaşam tarzı üzerindeki etkisine uzun süre tepkisiz kalmıştır:**", out)
+            self.assertIn("- **B) Sosyal ilişkiler eşyanın sembolik değerini belirleyen bir niteliğe sahiptir:**", out)
+            self.assertIn("- **C) Seri üretimle birlikte eski eşyalara olan rağbet gün geçtikçe azalmıştır:**", out)
+            self.assertIn("- **E) Eşyaya atfedilen değer modanın ölçütlerine göre zamanla değişmiştir:**", out)
+            self.assertIn("  - Metinde insanların bu duruma", out)
+            self.assertNotIn("Olmaz?A)", out)
+
+    def test_google_verbal_elenme_nedenleri_bold_letters(self):
+        src = (
+            "Metinde, geçmişte eşyanın insan üzerindeki etkisinin sadece belirli "
+            "kişilerin alışkanlıklarında görüldüğü belirtilmektedir.\n"
+            'Özellikle **"XIX. yüzyılla birlikte makineleşmeye bağlı olarak '
+            'seri üretimin artması..."** ifadesi sanayileşme sürecine işaret eder.\n'
+            "Bu durum, ** sanayileşmenin insanın eşya ile olan ilişkisini kökten "
+            "değiştirerek ona yeni bir boyut kazandırdığını ** (D seçeneği) "
+            "doğrudan doğrular.\n"
+            "** Diğer Seçeneklerin Elenme Nedenleri **-** A)** Metinde insanların "
+            'bu etkiye "tepkisiz kaldığına" dair bir bilgi yoktur.\n'
+            "** B)** Metne göre sosyal ilişkiler eşyanın değerini belirlememektedir.\n"
+            "** C)** Eski eşyalara olan rağbetin azaldığından bahsedilmemiştir.\n"
+            "-** E)** Eşyaya atfedilen değerin modanın ölçütlerine göre değiştiği "
+            "değil, makineleşmenin modayı doğurduğu anlatılmıştır."
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**Diğer Seçeneklerin Elenme Nedenleri**", out)
+            self.assertIn("- **A):**", out)
+            self.assertIn("- **B):**", out)
+            self.assertIn("- **C):**", out)
+            self.assertIn("- **E):**", out)
+            self.assertIn("tepkisiz kaldığına", out)
+            self.assertNotIn("-** A)**", out)
+
     def test_structure_solution_outline_xyz_addition_paste(self):
         src = (
             r"1. Adım: Toplama İşlemini Alt Alta Yazalım"

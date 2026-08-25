@@ -36,6 +36,7 @@ from .telegram_conversation import (
     solution_prompt_keyboard,
     solution_prompt_message,
     start_solution_prompt,
+    try_attach_orphan_solution_text,
     try_attach_solution_reply,
     try_handle_conversation,
     try_handle_conversation_callback,
@@ -964,18 +965,18 @@ def _help_text() -> str:
         "botu yeniden açmanız gerekir (BotFather gerekmez; bota /start yazmanız yeter).\n"
         "✅ Bunun yerine komut yazın: /sohbeti_sil\n"
         "   (yalnızca bot mesajları silinir, arka plan dinlemesi devam eder)\n\n"
-        "• Soru fotoğrafı gönderin.\n"
-        "• Fotoğraf gelir gelmez Evet/Hayır sorulur (OCR beklemez).\n"
-        "  Sıradaki fotoğrafı hemen atabilirsiniz.\n"
-        "• Fotoğrafla aynı anda çözüm: alt yazı veya fotoğrafa yanıt.\n"
-        "  İsteğe bağlı ilk satır konu slug, alt satırlar çözüm "
+        "• Soru fotoğrafı gönderin — sıradaki fotoğrafı OCR bitmeden atın.\n"
+        "• Çözüm (Evet şart değil):\n"
+        "  1) Göndermeden önce fotoğrafın alt yazısı, veya\n"
+        "  2) Fotoğraftan hemen sonraki mesaj (telefonda ‘altına yazmak’),\n"
+        "  3) Fotoğrafa yanıt.\n"
+        "  Uzun Google metni alt yazıya sığmaz (1024 harf); sonraki mesaj kullanın.\n"
+        "  İsteğe bağlı ilk satır konu slug "
         f"(örn. {default_slug}).\n"
-        "  Veya alt yazıyı «çözüm:» ile başlatın.\n"
+        "• Hayır = çözüm yok, OCR bitince panele düşer.\n"
         "• Konu yazmazsanız ders/konu fotoğraftan otomatik algılanır.\n"
-        "• PC kapalıyken bot düğme gönderemez; kuyruk ~24 saat durur.\n"
-        "  O sırada çözüm: alt yazı veya fotoğrafa yanıt.\n"
-        "  Eve gelince TELEGRAM-WATCH açılınca Evet/Hayır fotoğraf fotoğraf gelir;\n"
-        "  OCR arka planda devam eder.\n"
+        "• PC kapalıyken fotoğraf + çözüm yine kuyruğa girer; "
+        "WATCH açılınca OCR bağlar.\n"
         "• Eve gelince TELEGRAM-WATCH.bat açık tutun (sürekli dinler).\n"
         "• Tek seferlik aktarım: TELEGRAM.bat\n"
         "• Django/panel açık olması yetmez — Telegram bat ayrı çalışmalı.\n"
@@ -985,8 +986,6 @@ def _help_text() -> str:
         "hayır derseniz fotoğraf kalır.\n"
         "• Aynı fotoğrafı tekrar iletirseniz uyarı alırsınız.\n"
         "• Panel → Onay bekleyen sorular\n\n"
-        "• Fotoğraf sonrası çözüm: Evet/Hayır düğmeleri VEYA\n"
-        "  fotoğrafa YANIT yazarak çözümü yapıştırın.\n\n"
         "/durum — panel + kuyruk özeti\n"
         "/eski — kaçan fotoğraflar için kısa rehber\n"
         "/sohbeti_sil — bot mesajlarını temizle (menüden Sil değil!)\n"
@@ -1681,6 +1680,15 @@ def handle_update(update: dict[str, Any]) -> HandleOutcome:
             if attach is not None:
                 _dispatch_conversation_reply(int(chat_id), attach)
                 return "command"
+        orphan = try_attach_orphan_solution_text(
+            telegram_user_id=int(user_id),
+            chat_id=int(chat_id),
+            text=text,
+            entities=entities,
+        )
+        if orphan is not None:
+            _dispatch_conversation_reply(int(chat_id), orphan)
+            return "command"
         reply = try_handle_conversation(
             int(user_id),
             text,

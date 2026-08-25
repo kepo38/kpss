@@ -508,6 +508,48 @@ def _protect_math_spans(text: str, holders: list[str]) -> str:
     )
 
 
+_ITALIC_QUOTE_TRAIL_RE = re.compile(r'\*("[^"\n]+")[ \t]+\*(?!\*)')
+_ITALIC_QUOTE_LEAD_RE = re.compile(r'(?<=[^\s*])\*[ \t]+("[^"\n]+")\*')
+_DIGER_SECENEKLER_GLUE_RE = re.compile(
+    r"(?:\*\*)?\s*(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri))\s*"
+    r"(?:\*\*)?\s*"
+    r"(?=(?:[-•*◦○–—]\s*)?(?:\*\*)?\s*[A-E]\s*\)\s*(?:\*\*)?)",
+    re.IGNORECASE,
+)
+_GLUED_OPTION_LETTER_RE = re.compile(
+    r"(?<=[.!?:;]|[a-zçğıöşüâîû”\"'])(?:\s*\*\*)?\s*(?=[A-E]\)\s)"
+)
+_GLUED_BOLD_LETTER_RE = re.compile(
+    r"(?<!\n)(?:\s*[-•*◦○–—])?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*"
+)
+_LINE_BOLD_LETTER_RE = re.compile(
+    r"^[ \t]*[-•*◦○–—]?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*",
+    re.MULTILINE,
+)
+_OPTION_TITLE_BODY_GLUE_RE = re.compile(
+    r"([A-E]\)[^\n*]{3,80}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ\"“«])"
+)
+_DIGER_SECENEKLER_LINE_RE = re.compile(
+    r"^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$",
+    re.IGNORECASE,
+)
+
+
+def _split_google_verbal_solution(src: str) -> str:
+    """Google sözel çözüm: italik tırnak, 'Diğer Seçenekler', A)…E) yapışması.
+
+    ``**…**`` koruması A) harflerini yutmasın diye markdown protect'ten önce.
+    """
+    src = _ITALIC_QUOTE_TRAIL_RE.sub(r"*\1* ", src)
+    src = _ITALIC_QUOTE_LEAD_RE.sub(r" *\1*", src)
+    src = _DIGER_SECENEKLER_GLUE_RE.sub(r"\n\n**\1**\n", src)
+    src = _GLUED_BOLD_LETTER_RE.sub(r"\n**\1)** ", src)
+    src = _LINE_BOLD_LETTER_RE.sub(r"**\1)** ", src)
+    src = _GLUED_OPTION_LETTER_RE.sub("\n", src)
+    src = _OPTION_TITLE_BODY_GLUE_RE.sub(r"\1\n", src)
+    return src
+
+
 def restore_collapsed_breaks(text: str) -> str:
     """Google / sohbet kopyasında yutulan satır kırıklarını geri aç."""
     src = merge_split_inline_dollar_math((text or "").replace("\r\n", "\n").replace("\r", "\n"))
@@ -515,6 +557,7 @@ def restore_collapsed_breaks(text: str) -> str:
         return src
     math_holders: list[str] = []
     src = _protect_math_spans(src, math_holders)
+    src = _split_google_verbal_solution(src)
     md_holders: list[str] = []
     src = _protect_markdown_spans(src, md_holders)
     src = re.sub(
@@ -825,6 +868,16 @@ _OPTION_HEADER_RE = re.compile(
     r"([A-ZÇĞİÖŞÜÂÎÛİ][A-ZÇĞİÖŞÜÂÎÛİa-zçğıöşüâîû]*)"
     r"\s*:?(?:\*\*)?\s*$"
 )
+# Cümle başlıklı şık: A) İnsanlar, … kalmıştır:
+_OPTION_TRIAL_HEADER_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?(?:\*\*)?"
+    r"([A-E])\)\s+"
+    r"(.+\S)\s*:?\s*(?:\*\*)?\s*$"
+)
+_OPTION_TRIAL_TITLE_RE = re.compile(r"[\s',\d]")
+_OPTION_BOLD_LETTER_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\s*\)\s*\*\*\s*(.+)$"
+)
 _OPTION_SECENEGI_INLINE_RE = re.compile(
     r"^(?:[-•*◦○–—]\s+)?(?:\*\*)?"
     r"([A-E])\s+Seçeneği"
@@ -879,11 +932,17 @@ def _is_option_header_line(line: str) -> bool:
     s = line.strip()
     if not s:
         return False
-    return bool(
+    if (
         _OPTION_HEADER_RE.match(s)
         or _OPTION_SECENEGI_ONLY_RE.match(s)
         or _OPTION_SECENEGI_INLINE_RE.match(s)
-    )
+        or _OPTION_BOLD_LETTER_RE.match(s)
+    ):
+        return True
+    trial = _OPTION_TRIAL_HEADER_RE.match(s)
+    if trial and _OPTION_TRIAL_TITLE_RE.search(trial.group(2) or ""):
+        return True
+    return False
 
 
 def _parse_option_header(line: str) -> tuple[str, str, str | None]:
@@ -902,6 +961,16 @@ def _parse_option_header(line: str) -> tuple[str, str, str | None]:
     if m:
         letter = m.group(1).upper()
         return letter, f"{letter} Seçeneği", None
+    m = _OPTION_BOLD_LETTER_RE.match(s)
+    if m:
+        letter = m.group(1).upper()
+        body = (m.group(2) or "").strip()
+        return letter, f"{letter})", body or None
+    m = _OPTION_TRIAL_HEADER_RE.match(s)
+    if m and _OPTION_TRIAL_TITLE_RE.search(m.group(2) or ""):
+        letter = m.group(1).upper()
+        title = _strip_outer_bold(m.group(2).strip()).rstrip(":").strip()
+        return letter, f"{letter}) {title}", None
     raise ValueError(f"not an option header: {line!r}")
 
 
@@ -1009,6 +1078,12 @@ def _structure_preamble_lines(lines: list[str]) -> list[str]:
                 out.append(title.group(2).strip())
             else:
                 out.append(f"**{line}**")
+            out.append("")
+            i += 1
+            continue
+        diger = _DIGER_SECENEKLER_LINE_RE.match(line)
+        if diger:
+            out.append(f"**{diger.group(1).strip()}**")
             out.append("")
             i += 1
             continue

@@ -126,11 +126,6 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   const SizedBox(height: 20),
                   const AccountLinkCard(),
                   const SizedBox(height: 16),
-                  WeeklyStudyPlanCard(
-                    days: weeklyPlan,
-                    isPremium: widget.isPremium,
-                  ),
-                  const SizedBox(height: 16),
                   AnalyticsStudyVault(
                     wrongCount: wrongCount,
                     favoriteCount: favCount,
@@ -156,6 +151,11 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                         ),
                       );
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  WeeklyStudyPlanCard(
+                    days: weeklyPlan,
+                    isPremium: widget.isPremium,
                   ),
                   const SizedBox(height: 28),
                   const _SectionHeader(

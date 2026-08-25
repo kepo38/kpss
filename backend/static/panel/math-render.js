@@ -164,6 +164,33 @@
     });
   }
 
+  function splitGoogleVerbalSolution(src) {
+    src = String(src || "");
+    src = src.replace(/\*("[^"\n]+")[ \t]+\*(?!\*)/g, "*$1* ");
+    src = src.replace(/(?<=[^\s*])\*[ \t]+("[^"\n]+")\*/g, " *$1*");
+    src = src.replace(
+      /(?:\*\*)?\s*(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri))\s*(?:\*\*)?\s*(?=(?:[-•*◦○–—]\s*)?(?:\*\*)?\s*[A-E]\s*\)\s*(?:\*\*)?)/gi,
+      "\n\n**$1**\n"
+    );
+    src = src.replace(
+      /(?<!\n)(?:\s*[-•*◦○–—])?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*/g,
+      "\n**$1)** "
+    );
+    src = src.replace(
+      /^[ \t]*[-•*◦○–—]?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*/gm,
+      "**$1)** "
+    );
+    src = src.replace(
+      /(?<=[.!?:;]|[a-zçğıöşüâîû”"'])(?:\s*\*\*)?\s*(?=[A-E]\)\s)/g,
+      "\n"
+    );
+    src = src.replace(
+      /([A-E]\)[^\n*]{3,80}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ"“«])/g,
+      "$1\n"
+    );
+    return src;
+  }
+
   /**
    * Google / sohbet kopyasında yutulan Enter'ları geri koy:
    * "...aynıdır ($a^b \\equiv a$).Verilen" → satır kırılır.
@@ -180,6 +207,7 @@
         return "§§M" + (holders.length - 1) + "§§";
       }
     );
+    src = splitGoogleVerbalSolution(src);
     var mdHolders = [];
     src = protectMarkdownSpans(src, mdHolders);
     src = src.replace(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1. ");
@@ -381,6 +409,11 @@
 
   var OPTION_HEADER_RE =
     /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+([A-ZÇĞİÖŞÜÂÎÛİ][A-ZÇĞİÖŞÜÂÎÛİa-zçğıöşüâîû]*)\s*:?(?:\*\*)?\s*$/;
+  var OPTION_TRIAL_HEADER_RE =
+    /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+(.+\S)\s*:?\s*(?:\*\*)?\s*$/;
+  var OPTION_TRIAL_TITLE_RE = /[\s',\d]/;
+  var OPTION_BOLD_LETTER_RE =
+    /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\s*\)\s*\*\*\s*(.+)$/;
   var OPTION_SECENEGI_INLINE_RE =
     /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\s+Seçeneği\s*:\s*(.*)$/i;
   var OPTION_SECENEGI_ONLY_RE =
@@ -399,11 +432,16 @@
   function isOptionHeaderLine(line) {
     var s = String(line || "").trim();
     if (!s) return false;
-    return (
+    if (
       OPTION_HEADER_RE.test(s) ||
       OPTION_SECENEGI_ONLY_RE.test(s) ||
-      OPTION_SECENEGI_INLINE_RE.test(s)
-    );
+      OPTION_SECENEGI_INLINE_RE.test(s) ||
+      OPTION_BOLD_LETTER_RE.test(s)
+    ) {
+      return true;
+    }
+    var trial = s.match(OPTION_TRIAL_HEADER_RE);
+    return !!(trial && OPTION_TRIAL_TITLE_RE.test(String(trial[2] || "")));
   }
 
   function parseOptionHeader(line) {
@@ -426,6 +464,24 @@
       return {
         letter: hm[1].toUpperCase(),
         title: hm[1].toUpperCase() + " Seçeneği",
+        inline: null,
+      };
+    }
+    hm = s.match(OPTION_BOLD_LETTER_RE);
+    if (hm) {
+      var letterBody = String(hm[2] || "").trim();
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + ")",
+        inline: letterBody || null,
+      };
+    }
+    hm = s.match(OPTION_TRIAL_HEADER_RE);
+    if (hm && OPTION_TRIAL_TITLE_RE.test(String(hm[2] || ""))) {
+      var trialTitle = stripOuterBold(String(hm[2] || "").trim()).replace(/:+$/, "").trim();
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + ") " + trialTitle,
         inline: null,
       };
     }
@@ -511,6 +567,15 @@
         } else {
           out.push("**" + line + "**");
         }
+        out.push("");
+        i += 1;
+        continue;
+      }
+      var diger = line.match(
+        /^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$/i
+      );
+      if (diger) {
+        out.push("**" + String(diger[1] || "").trim() + "**");
         out.push("");
         i += 1;
         continue;
@@ -908,12 +973,86 @@
     return out;
   }
 
+  function usesDisplayMath(tex) {
+    var t = String(tex || "");
+    return (
+      t.indexOf("\\frac") !== -1 ||
+      t.indexOf("\\dfrac") !== -1 ||
+      t.indexOf("\\tfrac") !== -1 ||
+      t.indexOf("\\displaystyle") !== -1 ||
+      /\\over(?![a-zA-Z])/.test(t) ||
+      t.indexOf("\\sqrt") !== -1 ||
+      t.indexOf("\\left") !== -1 ||
+      t.indexOf("\\sum") !== -1 ||
+      t.indexOf("\\int") !== -1 ||
+      t.indexOf("\\begin{") !== -1 ||
+      t.indexOf("\\hline") !== -1
+    );
+  }
+
+  /** Flutter FormattedText._isStructuralLine — madde / başlık satırları. */
+  function isStructuralLine(line) {
+    var t = String(line || "").trim();
+    if (!t) return false;
+    return /^(?:#{1,3}\s+|[-•*◦○–—]\s+|(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+|\*\*|---|\*\*\*|___)/.test(
+      t
+    );
+  }
+
+  function isHardBreakLine(trimmed) {
+    if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) return true;
+    var displayInline = trimmed.match(/^\$([^$\n]+)\$$/);
+    if (displayInline && usesDisplayMath(displayInline[1].trim())) return true;
+    if (/^(---|\*\*\*|___)$/.test(trimmed)) return true;
+    if (/^#{1,3}\s+/.test(trimmed)) return true;
+    if (isStructuralLine(trimmed)) return true;
+    if (/^\*\*\s*\d+\.\s+Adım:.+\*\*$/.test(trimmed)) return true;
+    if (/^(?:\*\*)?(?:Payda|Pay|Kesrin değeri)\s*:/i.test(trimmed)) return true;
+    if (/^(?:\s*)(?:[-•*◦○–—]\s+)/.test(trimmed)) return true;
+    return false;
+  }
+
+  /**
+   * Google / Telegram yumuşak satırlarını paragrafta birleştirir
+   * (Flutter ExamSolutionView examWrap).
+   */
+  function coalesceSoftLines(src) {
+    var lines = String(src || "").split("\n");
+    var out = [];
+    var buf = [];
+    function flush() {
+      var joined = buf.join(" ").replace(/[ \t]{2,}/g, " ").trim();
+      buf = [];
+      if (joined) out.push(joined);
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var trimmed = lines[i].trim();
+      if (!trimmed) {
+        flush();
+        out.push("");
+        continue;
+      }
+      if (isHardBreakLine(trimmed)) {
+        flush();
+        out.push(trimmed);
+      } else {
+        buf.push(trimmed);
+      }
+    }
+    flush();
+    return out.join("\n");
+  }
+
   /** Çözüm / ders metni — satır ve madde yapısını korur. */
   function documentHtml(text, options) {
     options = options || {};
     var examMode = !!options.examMode;
+    var solutionMode = !!options.solutionMode;
     var src = normalizeMarkup(String(text || ""));
     src = structureSolutionOutline(restoreCollapsedBreaks(normalizeLatex(src)));
+    if (solutionMode) {
+      src = coalesceSoftLines(src);
+    }
     if (!src.trim()) return "";
 
     var lines = src.split("\n");
@@ -1046,6 +1185,11 @@
     return documentHtml(text, { examMode: true });
   }
 
+  /** Onay / çözüm önizleme — uygulama ExamSolutionView ile aynı paragraf akışı. */
+  function solutionDocumentHtml(text) {
+    return documentHtml(text, { solutionMode: true });
+  }
+
   global.KpssMathRender = {
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
@@ -1061,5 +1205,7 @@
     paragraphHtml: paragraphHtml,
     documentHtml: documentHtml,
     examDocumentHtml: examDocumentHtml,
+    solutionDocumentHtml: solutionDocumentHtml,
+    coalesceSoftLines: coalesceSoftLines,
   };
 })(window);
