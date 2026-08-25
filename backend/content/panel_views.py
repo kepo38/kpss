@@ -17,6 +17,7 @@ from django.db.models import Avg, Count, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
 from django.templatetags.static import static
+from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -70,6 +71,7 @@ from .panel_context import (
     pending_error_report_count,
     pending_telegram_question_count,
     pending_telegram_questions_qs,
+    telegram_solution_hold_question_ids,
 )
 from .telegram_panel import build_pending_telegram_rows
 from .test_grouping import (
@@ -376,11 +378,32 @@ def panel_home(request: HttpRequest) -> HttpResponse:
         )
         .order_by("sort_order", "name")
     )
+    today_start = timezone.localtime().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    hold_ids = telegram_solution_hold_question_ids()
+    today_qs = Question.objects.filter(created_at__gte=today_start)
+    if hold_ids:
+        today_qs = today_qs.exclude(pk__in=hold_ids)
+    today_questions = list(
+        today_qs.select_related("topic", "topic__subject").order_by("-created_at")[:100]
+    )
+    today_pending_count = sum(
+        1
+        for q in today_questions
+        if (
+            not q.is_published
+            and q.submission_source == Question.SUBMISSION_SOURCE_TELEGRAM
+        )
+    )
     return render(
         request,
         "panel/subjects.html",
         {
             "subjects": subjects,
+            "today_questions": today_questions,
+            "today_question_count": today_qs.count(),
+            "today_pending_count": today_pending_count,
             "page_title": "Dersler",
         },
     )

@@ -85,7 +85,10 @@ def panel_osym_archive(request: HttpRequest) -> HttpResponse:
             "selected_family": family,
             "selected_year": year_filter,
             "show_missing_only": show_missing_only,
-            "label_format_hint": "2025 KPSS Lisans  (GYGK gerekmez)  ·  2025 AGS",
+            "label_format_hint": (
+                "2025 KPSS Lisans  ·  2025 AGS  ·  "
+                "2025 Kaymakamlık  ·  2025 adli  ·  2025 idari"
+            ),
         },
     )
 

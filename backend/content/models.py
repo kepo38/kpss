@@ -1346,14 +1346,17 @@ class TelegramBotSession(models.Model):
 
 
 class TelegramPendingSolution(models.Model):
-    """PC kapalıyken fotoğrafa yanıt olarak gönderilen çözüm — OCR sonrası bağlanır."""
+    """Fotoğraf bazlı çözüm kararı — OCR öncesi Evet/Hayır, caption veya yanıt."""
 
     telegram_user_id = models.BigIntegerField(db_index=True)
     chat_id = models.BigIntegerField()
     photo_message_id = models.BigIntegerField(
         verbose_name="Yanıtlanan fotoğraf mesajı",
     )
-    solution_text = models.TextField()
+    solution_text = models.TextField(blank=True, default="")
+    skip_solution = models.BooleanField(default=False)
+    awaiting_text = models.BooleanField(default=False)
+    prompt_sent = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

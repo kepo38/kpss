@@ -62,3 +62,36 @@ class OsmArchiveLabelTests(SimpleTestCase):
             resolve_to_catalog_key("2025 KPSS Lisans · GYGK"),
             "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
         )
+
+    def test_kaymakamlik_and_hakimlik_families(self):
+        families = archive_families()
+        self.assertIn("Kaymakamlık", families)
+        self.assertIn("Hakimlik", families)
+        self.assertEqual(
+            resolve_to_catalog_key("2025 Kaymakamlık"),
+            "2025 Kaymakamlık",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 kaymakamlik"),
+            "2025 Kaymakamlık",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 Adli Yargı Hakimliği"),
+            "2025 Adli Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 İdari Yargı Hakimliği"),
+            "2025 İdari Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 adli"),
+            "2025 Adli Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 idari"),
+            "2025 İdari Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 Hakimlik"),
+            "2025 Hakimlik",
+        )

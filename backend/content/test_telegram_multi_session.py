@@ -45,8 +45,68 @@ class TelegramMultiSessionTests(TestCase):
         reply2 = try_handle_conversation_callback("sol_yes:q_multi_2", 42)
         self.assertIsNotNone(reply2)
         self.assertIn("yapıştırın", reply2.text.lower())
+        self.assertIsNone(reply2.delete_photo_message_id)
         session = TelegramBotSession.objects.get(question=q2)
         self.assertEqual(session.step, TelegramBotSession.STEP_SOLUTION_TEXT)
+
+    def test_solution_text_not_stolen_by_later_photo_session(self):
+        from content.telegram_conversation import try_handle_conversation
+
+        q1 = self._q("q_keep_1")
+        q2 = self._q("q_keep_2")
+        start_solution_prompt(42, 1001, q1, source_message_id=1)
+        try_handle_conversation_callback("sol_yes:q_keep_1", 42)
+        start_solution_prompt(42, 1001, q2, source_message_id=2)
+        reply = try_handle_conversation(42, "Dogru cevap A")
+        self.assertIsNotNone(reply)
+        q1.refresh_from_db()
+        self.assertIn("Dogru cevap A", q1.solution)
+        self.assertTrue(TelegramBotSession.objects.filter(question=q2).exists())
+
+    def test_hayir_before_ocr_skips_second_prompt(self):
+        from content.models import TelegramPendingSolution
+        from content.telegram_conversation import (
+            handle_photo_solution_decision,
+            resolve_photo_intake_after_ocr,
+        )
+
+        handle_photo_solution_decision(
+            telegram_user_id=42,
+            chat_id=1001,
+            photo_message_id=90,
+            yes=False,
+        )
+        pending = TelegramPendingSolution.objects.get(
+            chat_id=1001, photo_message_id=90
+        )
+        self.assertTrue(pending.skip_solution)
+
+        q = self._q("q_skip_ocr")
+        q.telegram_chat_id = 1001
+        q.telegram_message_id = 90
+        q.save(update_fields=["telegram_chat_id", "telegram_message_id"])
+        outcome = resolve_photo_intake_after_ocr(
+            q,
+            chat_id=1001,
+            photo_message_id=90,
+            telegram_user_id=42,
+        )
+        self.assertFalse(outcome.include_solution_prompt)
+        self.assertIsNone(outcome.reply)
+
+    def test_photo_yes_callback_before_ocr(self):
+        from content.models import TelegramPendingSolution
+        from content.telegram_conversation import try_handle_conversation_callback
+
+        reply = try_handle_conversation_callback(
+            "sol_yes:m:91", 42, chat_id=1001
+        )
+        self.assertIsNotNone(reply)
+        self.assertIn("yanıt", reply.text.lower())
+        pending = TelegramPendingSolution.objects.get(
+            chat_id=1001, photo_message_id=91
+        )
+        self.assertTrue(pending.awaiting_text)
 
     def test_reply_solution_queued_then_applied_on_ocr(self):
         from content.telegram_conversation import (
@@ -81,6 +141,84 @@ class TelegramMultiSessionTests(TestCase):
         self.assertFalse(
             TelegramBotSession.objects.filter(question=q).exists()
         )
+
+    def test_caption_solution_queued_like_reply(self):
+        from content.telegram_conversation import (
+            consume_pending_solution_for_question,
+            save_pending_solution_reply,
+        )
+
+        save_pending_solution_reply(
+            telegram_user_id=42,
+            chat_id=1001,
+            photo_message_id=777,
+            solution_text="Caption cozum A",
+        )
+        q = self._q("q_caption_sol")
+        q.telegram_chat_id = 1001
+        q.telegram_message_id = 777
+        q.save(update_fields=["telegram_chat_id", "telegram_message_id"])
+        applied = consume_pending_solution_for_question(
+            q,
+            chat_id=1001,
+            photo_message_id=777,
+            telegram_user_id=42,
+        )
+        self.assertIsNotNone(applied)
+        q.refresh_from_db()
+        self.assertIn("Caption cozum A", q.solution)
+
+
+class TelegramCaptionParseTests(TestCase):
+    def setUp(self):
+        subject = Subject.objects.create(slug="mat_cap", name="Matematik")
+        Topic.objects.create(
+            subject=subject, slug="mat_problem", name="Problem", is_active=True
+        )
+
+    def test_empty_caption(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        self.assertEqual(_parse_photo_caption(""), ("", "", False))
+        self.assertEqual(_parse_photo_caption("  "), ("", "", False))
+
+    def test_solution_marker_is_not_topic(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        slug, sol, explicit = _parse_photo_caption(
+            "çözüm: Doğru cevap A çünkü oran orantı."
+        )
+        self.assertEqual(slug, "")
+        self.assertFalse(explicit)
+        self.assertIn("Doğru cevap A", sol)
+
+    def test_long_turkish_caption_is_solution_not_missing_topic(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        slug, sol, explicit = _parse_photo_caption(
+            "Doğru cevap C şıkkıdır çünkü metin bütünlüğü bozulmaz."
+        )
+        self.assertEqual(slug, "")
+        self.assertFalse(explicit)
+        self.assertTrue(sol.startswith("Doğru cevap C"))
+
+    def test_first_line_known_slug_rest_is_solution(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        slug, sol, explicit = _parse_photo_caption(
+            "mat_problem\nCevap 12’dir."
+        )
+        self.assertEqual(slug, "mat_problem")
+        self.assertTrue(explicit)
+        self.assertEqual(sol, "Cevap 12’dir.")
+
+    def test_unknown_underscore_token_stays_slug_error_path(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        slug, sol, explicit = _parse_photo_caption("konu_yok_xyz")
+        self.assertEqual(slug, "konu_yok_xyz")
+        self.assertEqual(sol, "")
+        self.assertTrue(explicit)
 
 
 class TelegramDrainOcrWaitTests(TestCase):

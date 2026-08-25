@@ -30,7 +30,10 @@ class OsymArchiveSlot:
     expected_count: int
 
     def canonical_label(self, year: int) -> str:
-        return f"{year} {self.exam_name}{LABEL_SEPARATOR}{self.session_name}"
+        session = (self.session_name or "").strip()
+        if not session:
+            return f"{year} {self.exam_name}"
+        return f"{year} {self.exam_name}{LABEL_SEPARATOR}{session}"
 
 
 @dataclass
@@ -140,6 +143,36 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
         "exam_name": "DGS",
         "sessions": (("dgs", "DGS", 120),),
     },
+    {
+        "family": "Kaymakamlık",
+        "exam_name": "Kaymakamlık",
+        "sessions": (("all", "", 120),),
+        "short_aliases": ("kaymakamlik", "kaymakamlık"),
+    },
+    {
+        "family": "Hakimlik",
+        "exam_name": "Adli Yargı Hakimliği",
+        "sessions": (("adli", "Yazılı Sınav", 100),),
+        "short_aliases": (
+            "adli",
+            "adli yargı",
+            "adli yargi",
+            "adli hakimlik",
+            "adli yargı hakimliği",
+        ),
+    },
+    {
+        "family": "Hakimlik",
+        "exam_name": "İdari Yargı Hakimliği",
+        "sessions": (("idari", "Yazılı Sınav", 100),),
+        "short_aliases": (
+            "idari",
+            "idari yargı",
+            "idari yargi",
+            "idari hakimlik",
+            "idari yargı hakimliği",
+        ),
+    },
 )
 
 DEFAULT_YEARS = range(2019, 2027)
@@ -153,14 +186,20 @@ def archive_key_from_label(raw: str) -> str:
     return normalize_osym_cikmis_label(SORU_SUFFIX_RE.sub("", normalized))
 
 
+def _alias_fold(text: str) -> str:
+    """Türkçe ı/i farkını yok sayarak etiket karşılaştırır."""
+    return (text or "").casefold().replace("ı", "i").replace("â", "a")
+
+
 def resolve_to_catalog_key(raw: str) -> str:
     """Kısa etiketleri katalog kanoniğine bağlar.
 
     Örnekler:
     - «2026 AGS» → «2026 AGS · MEB Akademi Giriş Sınavı»
     - «2025 KPSS Lisans» → «2025 KPSS Lisans · Genel Yetenek - Genel Kültür»
-      (tek oturumlu sınavlarda GYGK / oturum adı yazmaya gerek yok)
-    - «2026 KPSS» belirsiz kaldığı için olduğu gibi bırakılır.
+    - «2025 Kaymakamlık» → «2025 Kaymakamlık» (GYGK / alan ayrılmaz)
+    - «2025 adli» → «2025 Adli Yargı Hakimliği · Yazılı Sınav»
+    - «2025 idari» → «2025 İdari Yargı Hakimliği · Yazılı Sınav»
     """
     key = archive_key_from_label(raw)
     if not key:
@@ -176,30 +215,47 @@ def resolve_to_catalog_key(raw: str) -> str:
 
     for y, slot in slots:
         canon = slot.canonical_label(y)
-        aliases[canon.casefold()] = canon
-        exam_key = f"{y} {slot.exam_name}".casefold()
-        exam_slots[exam_key].append(canon)
-        family_slots[f"{y} {slot.family}".casefold()].append(canon)
-        # Kısa oturum: «2025 KPSS Lisans · GYGK»
+        aliases[_alias_fold(canon)] = canon
+        exam_key = f"{y} {slot.exam_name}"
+        exam_slots[_alias_fold(exam_key)].append(canon)
+        family_slots[_alias_fold(f"{y} {slot.family}")].append(canon)
         aliases[
-            f"{y} {slot.exam_name}{LABEL_SEPARATOR}{slot.session_key}".casefold()
+            _alias_fold(f"{y} {slot.exam_name}{LABEL_SEPARATOR}{slot.session_key}")
         ] = canon
         aliases[
-            f"{y} {slot.exam_name}{LABEL_SEPARATOR}{slot.session_key.upper()}".casefold()
+            _alias_fold(
+                f"{y} {slot.exam_name}{LABEL_SEPARATOR}{slot.session_key.upper()}"
+            )
         ] = canon
+
+    for template in _EXAM_TEMPLATES:
+        for session_key, session_name, expected in template["sessions"]:
+            for y in years:
+                slot = OsymArchiveSlot(
+                    family=template["family"],
+                    exam_name=template["exam_name"],
+                    session_key=session_key,
+                    session_name=session_name,
+                    expected_count=expected,
+                )
+                canon = slot.canonical_label(y)
+                for short in template.get("short_aliases") or ():
+                    aliases[_alias_fold(f"{y} {short}")] = canon
+                    aliases[
+                        _alias_fold(f"{y} {short}{LABEL_SEPARATOR}{session_key}")
+                    ] = canon
 
     for family_key, canons in family_slots.items():
         unique = list(dict.fromkeys(canons))
         if len(unique) == 1:
             aliases[family_key] = unique[0]
 
-    # Tek oturumlu sınav: «2025 KPSS Lisans» yeterli (GYGK yazmaya gerek yok).
     for exam_key, canons in exam_slots.items():
         unique = list(dict.fromkeys(canons))
         if len(unique) == 1:
             aliases[exam_key] = unique[0]
 
-    return aliases.get(key.casefold(), key)
+    return aliases.get(_alias_fold(key), key)
 
 
 def parse_archive_key(key: str) -> tuple[int | None, str]:
@@ -242,7 +298,7 @@ def _question_counts_by_key() -> dict[str, dict[str, int | str]]:
         key = resolve_to_catalog_key(row["osym_cikmis_adi"])
         if not key:
             continue
-        bucket = merged[key.casefold()]
+        bucket = merged[_alias_fold(key)]
         if not bucket["display_label"]:
             bucket["display_label"] = key
         bucket["total"] = int(bucket["total"]) + row["c"]
@@ -260,7 +316,7 @@ def _slot_stats(
     counts: dict[str, dict[str, int | str]],
 ) -> OsymArchiveSlotStats:
     label = slot.canonical_label(year)
-    bucket = counts.get(label.casefold(), {"active": 0, "total": 0, "unpublished": 0})
+    bucket = counts.get(_alias_fold(label), {"active": 0, "total": 0, "unpublished": 0})
     return OsymArchiveSlotStats(
         slot=slot,
         year=year,
@@ -307,7 +363,7 @@ def build_extra_groups(*, years: Iterable[int] | None = None) -> list[OsymArchiv
     """Katalog dışı veya farklı yazılmış etiket grupları."""
     counts = _question_counts_by_key()
     catalog_keys = {
-        slot.canonical_label(year).casefold()
+        _alias_fold(slot.canonical_label(year))
         for year, slot in iter_catalog_slots(years=years)
     }
     extras: list[OsymArchiveExtraGroup] = []
@@ -336,7 +392,7 @@ def build_archive_summary(*, years: Iterable[int] | None = None) -> dict[str, in
     loaded_active = 0
     for year, slot in all_slots:
         label = slot.canonical_label(year)
-        active = int(counts.get(label.casefold(), {}).get("active", 0))
+        active = int(counts.get(_alias_fold(label), {}).get("active", 0))
         loaded_active += active
         if active <= 0:
             missing += 1
@@ -368,7 +424,7 @@ def questions_for_archive_key(
     published_only: bool = False,
 ) -> list[Question]:
     """Verilen arşiv anahtarına düşen sorular."""
-    target = resolve_to_catalog_key(archive_key).casefold()
+    target = _alias_fold(resolve_to_catalog_key(archive_key))
     if not target:
         return []
     qs = Question.objects.filter(osym_sordu=True).select_related("topic", "topic__subject")
@@ -376,7 +432,7 @@ def questions_for_archive_key(
         qs = qs.filter(is_published=True)
     matched: list[Question] = []
     for q in qs:
-        if resolve_to_catalog_key(q.osym_cikmis_adi).casefold() == target:
+        if _alias_fold(resolve_to_catalog_key(q.osym_cikmis_adi)) == target:
             matched.append(q)
     matched.sort(key=lambda q: (q.topic.subject.name, q.topic.name, q.public_id))
     return matched

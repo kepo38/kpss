@@ -27,8 +27,12 @@ from .panel_context import pending_telegram_question_count
 from .telegram_conversation import (
     ConversationReply,
     clear_session,
-    consume_pending_solution_for_question,
     get_session,
+    mark_photo_prompt_sent,
+    photo_has_solution_ready,
+    photo_solution_keyboard,
+    resolve_photo_intake_after_ocr,
+    save_pending_solution_reply,
     solution_prompt_keyboard,
     solution_prompt_message,
     start_solution_prompt,
@@ -594,12 +598,15 @@ def send_message(
     *,
     parse_mode: str | None = None,
     reply_markup: dict[str, Any] | None = None,
+    reply_to_message_id: int | None = None,
 ) -> int | None:
     payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
     if reply_markup is not None:
         payload["reply_markup"] = reply_markup
+    if reply_to_message_id:
+        payload["reply_to_message_id"] = int(reply_to_message_id)
     try:
         body = _post("sendMessage", payload)
     except Exception:
@@ -614,6 +621,8 @@ def send_message(
             }
             if reply_markup is not None:
                 plain_payload["reply_markup"] = reply_markup
+            if reply_to_message_id:
+                plain_payload["reply_to_message_id"] = int(reply_to_message_id)
             try:
                 body = _post("sendMessage", plain_payload)
             except Exception:
@@ -768,12 +777,53 @@ def _allowed_user(user_id: int | None) -> bool:
     return user_id in allowed
 
 
-def _caption_slug(caption: str) -> str:
-    return (caption or "").strip().split()[0] if caption else ""
+def _parse_photo_caption(caption: str) -> tuple[str, str, bool]:
+    """Fotoğraf alt yazısını konu slug + çözüm diye ayırır.
+
+    Returns:
+        (topic_slug, solution_text, explicit_topic)
+
+    İş yeri / PC kapalı toplu gönderim:
+    - Alt yazıya doğrudan çözüm yapıştırılabilir.
+    - İsteğe bağlı ilk satır: konu slug (örn. mat_problem), alt satırlar çözüm.
+    - ``çözüm:`` / ``cozum:`` / ``solution:`` ile başlarsa tamamı çözüm.
+    """
+    raw = (caption or "").strip()
+    if not raw:
+        return "", "", False
+
+    lower = raw.lower()
+    for prefix in ("çözüm:", "cozum:", "solution:"):
+        if lower.startswith(prefix):
+            return "", raw[len(prefix) :].strip(), False
+
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    if len(lines) >= 2:
+        first = lines[0]
+        first_token = first.split()[0]
+        if (
+            first == first_token
+            and Topic.objects.filter(slug=first_token, is_active=True).exists()
+        ):
+            return first_token, "\n\n".join(lines[1:]).strip(), True
+        return "", "\n\n".join(lines).strip(), False
+
+    tokens = raw.split()
+    if len(tokens) == 1:
+        token = tokens[0]
+        if Topic.objects.filter(slug=token, is_active=True).exists():
+            return token, "", True
+        # Bilinmeyen tek kelime slug gibiyse eski hata yolu için slug say.
+        if "_" in token and len(token) <= 64:
+            return token, "", True
+        return "", raw, False
+
+    # Çok kelimeli tek satır → çözüm (otomatik konu).
+    return "", raw, False
 
 
-def _resolve_topic(caption: str) -> Topic | None:
-    slug = _caption_slug(caption)
+def _resolve_topic(topic_slug: str = "") -> Topic | None:
+    slug = (topic_slug or "").strip()
     if slug:
         topic = Topic.objects.filter(slug=slug, is_active=True).select_related(
             "subject"
@@ -914,10 +964,18 @@ def _help_text() -> str:
         "botu yeniden açmanız gerekir (BotFather gerekmez; bota /start yazmanız yeter).\n"
         "✅ Bunun yerine komut yazın: /sohbeti_sil\n"
         "   (yalnızca bot mesajları silinir, arka plan dinlemesi devam eder)\n\n"
-        "• Soru fotoğrafı gönderin (altına isteğe bağlı konu slug, "
-        f"örn. {default_slug}).\n"
+        "• Soru fotoğrafı gönderin.\n"
+        "• Fotoğraf gelir gelmez Evet/Hayır sorulur (OCR beklemez).\n"
+        "  Sıradaki fotoğrafı hemen atabilirsiniz.\n"
+        "• Fotoğrafla aynı anda çözüm: alt yazı veya fotoğrafa yanıt.\n"
+        "  İsteğe bağlı ilk satır konu slug, alt satırlar çözüm "
+        f"(örn. {default_slug}).\n"
+        "  Veya alt yazıyı «çözüm:» ile başlatın.\n"
         "• Konu yazmazsanız ders/konu fotoğraftan otomatik algılanır.\n"
-        "• PC kapalıyken bot ~24 saat kuyruğu dinler.\n"
+        "• PC kapalıyken bot düğme gönderemez; kuyruk ~24 saat durur.\n"
+        "  O sırada çözüm: alt yazı veya fotoğrafa yanıt.\n"
+        "  Eve gelince TELEGRAM-WATCH açılınca Evet/Hayır fotoğraf fotoğraf gelir;\n"
+        "  OCR arka planda devam eder.\n"
         "• Eve gelince TELEGRAM-WATCH.bat açık tutun (sürekli dinler).\n"
         "• Tek seferlik aktarım: TELEGRAM.bat\n"
         "• Django/panel açık olması yetmez — Telegram bat ayrı çalışmalı.\n"
@@ -928,8 +986,7 @@ def _help_text() -> str:
         "• Aynı fotoğrafı tekrar iletirseniz uyarı alırsınız.\n"
         "• Panel → Onay bekleyen sorular\n\n"
         "• Fotoğraf sonrası çözüm: Evet/Hayır düğmeleri VEYA\n"
-        "  fotoğrafa YANIT yazarak çözümü yapıştırın "
-        "(PC kapalıyken de çalışır — bot açılınca bağlanır).\n\n"
+        "  fotoğrafa YANIT yazarak çözümü yapıştırın.\n\n"
         "/durum — panel + kuyruk özeti\n"
         "/eski — kaçan fotoğraflar için kısa rehber\n"
         "/sohbeti_sil — bot mesajlarını temizle (menüden Sil değil!)\n"
@@ -1113,7 +1170,14 @@ def _build_ingest_success_html(
             f"(<code>{dup_id}</code>).</b>"
         )
     if include_solution_prompt:
-        lines.append("Panele henüz düşmedi — önce Evet veya Hayır seçin.")
+        lines.append(
+            f"Bu soru (<code>{public_id}</code>) panele henüz düşmedi — "
+            "aşağıdaki Evet veya Hayır'ı seçin."
+        )
+        lines.append(
+            "<i>Az önce başka bir “panele gönderildi” gördüyseniz "
+            "o önceki soruyadır; bu mesaj yeni fotoğrafa aittir.</i>"
+        )
     else:
         lines.append(f"Bekleyen toplam: {pending}")
     if include_solution_prompt:
@@ -1155,7 +1219,14 @@ def _build_ingest_success_plain(
             f"🔴 Uyarı: benzer soru var ({duplicate.public_id})."
         )
     if include_solution_prompt:
-        lines.append("Panele henüz düşmedi — önce Evet veya Hayır seçin.")
+        lines.append(
+            f"Bu soru ({question.public_id}) panele henüz düşmedi — "
+            "aşağıdaki Evet veya Hayır'ı seçin."
+        )
+        lines.append(
+            "Az önce başka bir “panele gönderildi” gördüyseniz "
+            "o önceki soruyadır; bu mesaj yeni fotoğrafa aittir."
+        )
     else:
         lines.append(f"Bekleyen toplam: {pending}")
     if include_solution_prompt:
@@ -1297,7 +1368,7 @@ def _ingest_photo_worker(
             user_id = from_user.get("id")
             if user_id is not None:
                 try:
-                    auto_solution = consume_pending_solution_for_question(
+                    intake = resolve_photo_intake_after_ocr(
                         result.question,
                         chat_id=int(chat_id),
                         photo_message_id=message_id,
@@ -1309,22 +1380,12 @@ def _ingest_photo_worker(
                         user_id,
                         result.question.public_id,
                     )
-                    auto_solution = None
-                if auto_solution is not None:
-                    _send_ingest_success(
-                        int(chat_id),
-                        topic=assigned_topic,
-                        question=result.question,
-                        pending=pending,
-                        elapsed_seconds=elapsed,
-                        forwarded=forwarded,
-                        partial=result.partial,
-                        duplicate=result.duplicate,
-                        include_solution_prompt=False,
-                        topic_auto_detected=result.topic_auto_detected,
-                    )
-                    _dispatch_conversation_reply(int(chat_id), auto_solution)
-                else:
+                    intake = None
+                auto_solution = intake.reply if intake is not None else None
+                include_prompt = (
+                    True if intake is None else intake.include_solution_prompt
+                )
+                if include_prompt and intake is None:
                     try:
                         start_solution_prompt(
                             int(user_id),
@@ -1338,18 +1399,20 @@ def _ingest_photo_worker(
                             user_id,
                             result.question.public_id,
                         )
-                    _send_ingest_success(
-                        int(chat_id),
-                        topic=assigned_topic,
-                        question=result.question,
-                        pending=pending,
-                        elapsed_seconds=elapsed,
-                        forwarded=forwarded,
-                        partial=result.partial,
-                        duplicate=result.duplicate,
-                        include_solution_prompt=True,
-                        topic_auto_detected=result.topic_auto_detected,
-                    )
+                _send_ingest_success(
+                    int(chat_id),
+                    topic=assigned_topic,
+                    question=result.question,
+                    pending=pending,
+                    elapsed_seconds=elapsed,
+                    forwarded=forwarded,
+                    partial=result.partial,
+                    duplicate=result.duplicate,
+                    include_solution_prompt=include_prompt,
+                    topic_auto_detected=result.topic_auto_detected,
+                )
+                if auto_solution is not None:
+                    _dispatch_conversation_reply(int(chat_id), auto_solution)
             else:
                 _send_ingest_success(
                     int(chat_id),
@@ -1382,14 +1445,13 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
 
     file_id, file_unique_id = extracted
     caption = (message.get("caption") or "").strip()
-    caption_slug = _caption_slug(caption)
-    explicit_topic = bool(caption_slug)
-    topic = _resolve_topic(caption)
+    topic_slug, caption_solution, explicit_topic = _parse_photo_caption(caption)
+    topic = _resolve_topic(topic_slug)
     if topic is None:
-        if caption_slug:
+        if topic_slug:
             send_message(
                 chat_id,
-                f"Konu bulunamadı: {caption_slug} — "
+                f"Konu bulunamadı: {topic_slug} — "
                 "düzeltin veya slug yazmadan gönderin.\n"
                 f"{_retry_hint()}",
             )
@@ -1402,6 +1464,20 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
         return "error"
 
     message_id = int(message.get("message_id") or 0)
+    from_user = message.get("from") or {}
+    user_id = from_user.get("id")
+    if caption_solution and user_id is not None and message_id:
+        from .rich_text_telegram import normalize_telegram_solution
+
+        save_pending_solution_reply(
+            telegram_user_id=int(user_id),
+            chat_id=int(chat_id),
+            photo_message_id=message_id,
+            solution_text=normalize_telegram_solution(
+                caption_solution,
+                entities=message.get("caption_entities"),
+            ),
+        )
     forwarded = _is_forwarded(message)
     existing, match = _find_existing_telegram_question(
         chat_id=int(chat_id),
@@ -1430,19 +1506,38 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
 
     send_message(
         chat_id,
-        "📷 Fotoğraf alındı, OCR başlıyor…",
+        (
+            "📷 Fotoğraf alındı.\n"
+            "Çözüm alt yazıdan not edildi — OCR arka planda.\n"
+            "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz."
+            if caption_solution
+            else (
+                "📷 Fotoğraf alındı — OCR arka planda (beklemeyin).\n\n"
+                + solution_prompt_message()
+            )
+        ),
+        reply_markup=(
+            None
+            if caption_solution or user_id is None
+            else photo_solution_keyboard(message_id)
+        ),
+        reply_to_message_id=message_id or None,
     )
-    if getattr(settings, "TELEGRAM_INLINE_PHOTOS", False):
-        return _ingest_photo_worker(
-            message=message,
+    if (
+        not caption_solution
+        and user_id is not None
+        and message_id
+        and not photo_has_solution_ready(
             chat_id=int(chat_id),
-            message_id=message_id,
-            file_id=file_id,
-            file_unique_id=file_unique_id,
-            topic=topic,
-            explicit_topic=explicit_topic,
-            forwarded=forwarded,
+            photo_message_id=message_id,
         )
+    ):
+        mark_photo_prompt_sent(
+            telegram_user_id=int(user_id),
+            chat_id=int(chat_id),
+            photo_message_id=message_id,
+        )
+    # OCR'yi kuyruğa at — Evet/Hayır ve sıradaki fotoğraf OCR bitene kadar beklemasın.
     _submit_photo_work(
         lambda: _ingest_photo_worker(
             message=message,
@@ -1486,7 +1581,9 @@ def _handle_callback_query(callback: dict[str, Any]) -> HandleOutcome:
 
     # Önce spinner'ı kapat — silme/OCR bekletmesin.
     answer_callback_query(callback_id)
-    reply = try_handle_conversation_callback(data, int(user_id))
+    reply = try_handle_conversation_callback(
+        data, int(user_id), chat_id=int(chat_id)
+    )
     if reply is None:
         return "ignored"
 

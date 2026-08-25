@@ -4,6 +4,46 @@
   <h1>Dersler</h1>
   <p class="lead">Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.</p>
 </header>
+
+<section class="panel-card today-questions-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Bugün eklenen sorular</h2>
+      <p class="media-hint">
+        İstanbul saatine göre bugün oluşan kayıtlar (en fazla 100).
+        Telegram taslakları ayrı oluşmaz — onay kuyruğuna düşer.
+        {% if today_pending_count %}
+        <a href="{% url 'panel_pending_questions' %}">Onay bekleyen ({{ today_pending_count }})</a>
+        {% else %}
+        <a href="{% url 'panel_pending_questions' %}">Onay bekleyen sorular</a>
+        {% endif %}
+      </p>
+    </div>
+    <span class="pill pill-gold">{{ today_question_count }}</span>
+  </div>
+  {% if today_questions %}
+  <div class="list">
+    {% for q in today_questions %}
+    <a class="row" href="{% url 'panel_question_edit' topic_id=q.topic_id question_id=q.id %}">
+      <div class="name">
+        <strong>{{ q.topic.subject.name }} · {{ q.topic.name }}</strong>
+        <div class="hint">{{ q.public_id }} · {{ q.created_at|date:"H:i" }} · {{ q.stem|truncatechars:80 }}</div>
+      </div>
+      {% if q.is_published %}
+      <span class="badge on">Yayında</span>
+      {% elif q.submission_source == 'telegram' %}
+      <span class="badge off">Onay bekliyor</span>
+      {% else %}
+      <span class="badge off">Taslak</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">Bugün henüz soru eklenmedi.</p>
+  {% endif %}
+</section>
+
 <div class="grid">
   {% for s in subjects %}
   <a class="card" href="{% url 'panel_subject' s.id %}">

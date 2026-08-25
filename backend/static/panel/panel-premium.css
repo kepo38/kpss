@@ -503,6 +503,10 @@ details pre {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+.today-questions-card {
+  margin-bottom: 28px;
+}
+
 .list {
   gap: 12px;
 }
