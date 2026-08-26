@@ -515,6 +515,23 @@ class Question(models.Model):
         return round(rate * 100, 1) if rate is not None else None
 
     @property
+    def option_percentages(self) -> dict[str, float] | None:
+        option_counts = {
+            "A": self.option_a_count,
+            "B": self.option_b_count,
+            "C": self.option_c_count,
+            "D": self.option_d_count,
+            "E": self.option_e_count,
+        }
+        solved_count = sum(option_counts.values())
+        if solved_count < 1:
+            return None
+        return {
+            option: round(count / solved_count * 100, 1)
+            for option, count in option_counts.items()
+        }
+
+    @property
     def difficulty_visible(self) -> bool:
         return self.attempt_count >= self.DIFFICULTY_MIN_ATTEMPTS
 

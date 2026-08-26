@@ -118,6 +118,12 @@ detayli_cozum:
 - Görselde çözüm metni varsa onu aktar.
 - Yoksa Türkçe, adım adım, öğretici bir çözüm yaz.
 - Matematikte LaTeX ($...$) kullan.
+- Çözümü mobil uygulama MarkdownBody ile gösterecek; HTML kullanma.
+- Her paragraf/aşama arasında boş satır bırak.
+- Ana adım başlıkları yalnızca ## ile (ör. ## 1. Aşama: Kenar İncelemesi).
+- Kritik kavram/şık/sonuç için **kalın** kullan; tüm paragrafı kalın yapma.
+- Romen rakamlı öncülleri düz metin yaz (I. … II. …); otomatik liste üretme.
+- Yön okları yalnızca → sembolü; sağında solunda boşluk bırak.
 
 Geometri sorusu ise:
 - soru_metni: Şeklin yanındaki/altındaki verilen bilgiler + en sondaki soru cümlesi.
@@ -160,6 +166,41 @@ Kurallar:
 - Kenar uzunluklarını ilgili kenarın yanına yerleştir.
 - Oranları ve ölçüleri görseldekiyle aynı tut.
 - script, foreignObject, harici href kullanma.
+"""
+
+_MARKDOWN_SOLUTION_RULES = """
+Mobil uygulama çözüm formatı (TAVİZSİZ):
+- Yalnızca standart Markdown; HTML etiketi kullanma.
+- Her paragraf/aşama arasında bir boş satır bırak.
+- Ana adım başlıkları yalnızca ## ile yaz (tek # veya ### kullanma).
+- Kritik kavram/şık/sonuç için **kalın**; tüm paragrafı kalın yapma.
+- Romen rakamlı öncülleri düz metin yaz (I. … II. …); otomatik liste üretme.
+- Matematik ifadeleri $...$ içinde veya düz metinde bozulmadan yaz.
+- Yön okları yalnızca → ; sağında ve solunda birer boşluk bırak.
+"""
+
+_GEOMETRY_OVERLAY_PROMPT = """Bu görselde bir geometri sorusu var.
+Görev: soruyu çöz, mobil uygulama için Markdown çözüm yaz ve şekil üzerine
+yazılması gereken sayı/değerleri koordinatlarıyla birlikte JSON olarak döndür.
+
+""" + _MARKDOWN_SOLUTION_RULES + """
+Geometri annotasyon kuralları:
+- Resimdeki harf, kenar ve açı konumlarını incele.
+- Eklenecek sayısal değerleri belirle (ör. 4/3, x=10, R=4, |AB|=10).
+- Her değer için normalize bbox ver: [ymin, xmin, ymax, xmax] (0–1000, sol-üst köşe 0,0).
+- renk alanı:
+  - Bilinen/verilen değerler → "mavi"
+  - Bulunan/hesaplanan sonuçlar → "kirmizi"
+- Metin zaten görselde okunaklıysa tekrar ekleme; yalnızca çözümde eklenmesi gerekenleri yaz.
+
+Çıktı yalnızca şu JSON (başka metin yok):
+{
+  "detayli_cozum": "...",
+  "geometri_annotasyonlari": [
+    {"metin": "10", "bbox": [420, 510, 460, 570], "renk": "mavi"},
+    {"metin": "x = 4/3", "bbox": [300, 680, 340, 760], "renk": "kirmizi"}
+  ]
+}
 """
 
 _PLACEHOLDER_OPTION = re.compile(r"(?i)^(?:şık\s*)?[a-e]\s*$")
@@ -417,6 +458,66 @@ def _payload_topic_slug(data: dict[str, Any]) -> str:
         if val:
             return str(val).strip().lower()
     return ""
+
+
+def _payload_geometry_annotations(data: dict[str, Any]) -> list[dict[str, Any]]:
+    from .geometry_overlay_renderer import normalize_geometry_annotations
+
+    raw = (
+        data.get("geometri_annotasyonlari")
+        or data.get("geometryAnnotations")
+        or data.get("geometry_annotations")
+        or data.get("annotasyonlar")
+    )
+    return normalize_geometry_annotations(raw)
+
+
+def _fetch_geometry_solution_overlay(
+    image_bytes: bytes,
+    mime: str,
+    *,
+    stem: str,
+    options: dict[str, str],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Geometri: çözüm + şekil üstü sayı koordinatları (ikinci Gemini çağrısı)."""
+    context = stem.strip()
+    if options:
+        opts = ", ".join(
+            f"{k}) {options[k]}" for k in OPTION_KEYS if (options.get(k) or "").strip()
+        )
+        if opts:
+            context = f"{context}\n\nŞıklar: {opts}" if context else f"Şıklar: {opts}"
+    prompt = _GEOMETRY_OVERLAY_PROMPT
+    if context:
+        prompt = f"{prompt}\n\nOkunan soru metni:\n{context}"
+
+    last_err: Exception | None = None
+    for model in _model_candidates():
+        try:
+            raw = _post_gemini_model(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=90,
+                json_mode=True,
+            )
+            data = _extract_json(raw)
+            if not data:
+                raise RuntimeError("Geometri overlay JSON ayrıştırılamadı.")
+            solution = _payload_solution(data)
+            annotations = _payload_geometry_annotations(data)
+            return solution, annotations
+        except RuntimeError as exc:
+            last_err = exc
+            if _retryable(exc):
+                continue
+            return "", []
+        except Exception:  # noqa: BLE001
+            return "", []
+    if last_err:
+        return "", []
+    return "", []
 
 
 # JSON \f \b \t \n \r kaçışları LaTeX komutlarından ters eğik çizgiyi yer.
@@ -730,6 +831,27 @@ def ocr_question_image_gemini(
     if not figure_svg and _likely_geometry_question(stem, options, stem):
         figure_svg = _fetch_geometry_svg(image_bytes, mime)
 
+    geometry_annotations: list[dict[str, Any]] = []
+    annotated_image_bytes: bytes | None = None
+    if _likely_geometry_question(stem, options, stem):
+        overlay_solution, geometry_annotations = _fetch_geometry_solution_overlay(
+            image_bytes,
+            mime,
+            stem=stem,
+            options=options,
+        )
+        if overlay_solution and (
+            not solution or len(overlay_solution) >= len(solution)
+        ):
+            solution = overlay_solution
+        if geometry_annotations:
+            from .geometry_overlay_renderer import render_geometry_annotations
+
+            annotated_image_bytes = render_geometry_annotations(
+                image_bytes,
+                geometry_annotations,
+            )
+
     options_visual = _payload_options_visual(data)
     from .option_image_crop import (
         VISUAL_OPTION_PLACEHOLDER,
@@ -761,6 +883,7 @@ def ocr_question_image_gemini(
             "sik_kutulari": {
                 k: list(v) for k, v in (option_boxes or {}).items()
             },
+            "geometri_annotasyonlari": geometry_annotations,
         },
         ensure_ascii=False,
     )
@@ -779,4 +902,6 @@ def ocr_question_image_gemini(
         options_visual=options_visual,
         option_boxes=option_boxes or None,
         option_image_bytes=option_image_bytes or None,
+        geometry_annotations=geometry_annotations or None,
+        annotated_image_bytes=annotated_image_bytes,
     )

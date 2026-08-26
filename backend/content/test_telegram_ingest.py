@@ -113,6 +113,8 @@ class TelegramIngestTests(TestCase):
         result.solution = "Çözüm metni"
         result.engine = "gemini:test"
         result.error = ""
+        result.annotated_image_bytes = None
+        result.geometry_annotations = None
         return result
 
     @override_settings(
@@ -159,15 +161,20 @@ class TelegramIngestTests(TestCase):
         # Evet/Hayır bitmeden panele düşmez
         self.assertEqual(pending_telegram_question_count(), 0)
         mock_send.assert_called()
-        full_reply = mock_send.call_args[0][1]
-        self.assertIn("Soru hazırlandı", full_reply)
-        self.assertIn("⏱", full_reply)
-        self.assertIn("Çözüm eklemek ister misiniz", full_reply)
-        self.assertIn("panele düşmez", full_reply)
+        first_reply = mock_send.call_args_list[0][0][1]
+        self.assertIn("Fotoğraf alındı", first_reply)
+        self.assertIn("Çözüm eklemek ister misiniz", first_reply)
+        first_keyboard = mock_send.call_args_list[0].kwargs.get("reply_markup")
+        self.assertIsNotNone(first_keyboard)
+        self.assertEqual(first_keyboard["inline_keyboard"][0][0]["text"], "Evet")
+
+        last_reply = mock_send.call_args[0][1]
+        self.assertIn("Soru alındı", last_reply)
+        self.assertIn("⏱", last_reply)
+        self.assertNotIn("Çözüm eklemek ister misiniz", last_reply)
         self.assertEqual(mock_send.call_args.kwargs.get("parse_mode"), "HTML")
-        keyboard = mock_send.call_args.kwargs.get("reply_markup") or mock_send.call_args[1].get("reply_markup")
-        self.assertIsNotNone(keyboard)
-        self.assertEqual(keyboard["inline_keyboard"][0][0]["text"], "Evet")
+        last_keyboard = mock_send.call_args.kwargs.get("reply_markup")
+        self.assertIsNone(last_keyboard)
         mock_delete.assert_not_called()
 
     def test_format_elapsed_seconds(self):
@@ -265,7 +272,7 @@ class TelegramIngestTests(TestCase):
         )
 
         mock_answer.assert_called_once()
-        mock_delete.assert_called_once_with(1001, 104)
+        mock_delete.assert_not_called()
         mock_edit.assert_called_once_with(1001, 500, None)
         reply = mock_send.call_args_list[-1][0][1]
         self.assertIn("yapıştırın", reply.lower())
@@ -328,7 +335,7 @@ class TelegramIngestTests(TestCase):
     @patch("content.telegram_bot.send_message")
     @patch("content.telegram_bot._download_file")
     @patch("content.ocr_ingest._run_ocr")
-    def test_solution_yes_deletes_photo_before_paste(
+    def test_solution_yes_keeps_photo_until_paste(
         self, mock_ocr, mock_download, mock_send, mock_delete, mock_embed
     ):
         mock_download.return_value = (b"fake-image", "image/jpeg")
@@ -364,7 +371,7 @@ class TelegramIngestTests(TestCase):
                 }
             }
         )
-        mock_delete.assert_called_once_with(1001, 103)
+        mock_delete.assert_not_called()
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",
@@ -413,7 +420,7 @@ class TelegramIngestTests(TestCase):
                 }
             }
         )
-        mock_delete.assert_called_once_with(1001, 101)
+        mock_delete.assert_not_called()
 
         handle_update(
             {
@@ -482,6 +489,61 @@ class TelegramIngestTests(TestCase):
         warning = mock_send.call_args[0][1]
         self.assertIn("daha önce ilettiniz", warning.lower())
         mock_delete.assert_called_once_with(1001, 200)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="test-token",
+        TELEGRAM_ALLOWED_USER_IDS=[42],
+        TELEGRAM_DEFAULT_TOPIC_SLUG="turkce_anlam",
+    )
+    @patch("content.telegram_bot._submit_photo_work")
+    @patch("content.telegram_bot.send_message")
+    @patch("content.telegram_bot._download_file")
+    def test_early_image_duplicate_warns_before_ocr(
+        self, mock_download, mock_send, mock_submit
+    ):
+        from content.question_fingerprint import image_fingerprint
+
+        image_bytes = b"fake-image-bytes-for-hash"
+        img_hash = image_fingerprint(__import__("io").BytesIO(image_bytes))
+        Question.objects.create(
+            topic=self.topic,
+            public_id="q_same_image",
+            stem="Mevcut soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=True,
+            source_image_hash=img_hash,
+        )
+        mock_download.return_value = (image_bytes, "image/jpeg")
+
+        outcome = handle_update(
+            {
+                "message": {
+                    "message_id": 201,
+                    "chat": {"id": 1001},
+                    "from": {"id": 42},
+                    "photo": [
+                        {
+                            "file_id": "abc",
+                            "file_unique_id": "uniq-new-image",
+                            "width": 100,
+                            "height": 100,
+                        }
+                    ],
+                }
+            }
+        )
+
+        self.assertEqual(outcome, "ingested")
+        mock_submit.assert_called_once()
+        first_reply = mock_send.call_args_list[0][0][1]
+        self.assertIn("Fotoğraf alındı", first_reply)
+        self.assertIn("Çözüm eklemek ister misiniz", first_reply)
+        self.assertIn("q_same_image", first_reply)
+        self.assertIn("aynı görsel", first_reply)
 
     @override_settings(
         TELEGRAM_BOT_TOKEN="test-token",

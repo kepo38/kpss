@@ -89,6 +89,7 @@ class ContinueStudyCard extends StatelessWidget {
           title: session.testDisplayName,
           questions: questions,
           timeLimitMinutes: session.timeLimitMinutes,
+          statisticsTestId: testId,
           initialIndex: session.currentIndex,
           initialAnswers: session.answers,
           initialElapsed: Duration(seconds: session.elapsedSeconds),

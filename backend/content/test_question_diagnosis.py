@@ -1,13 +1,13 @@
 """Tests for question_diagnosis."""
 
-from django.test import SimpleTestCase, TestCase
+from django.test import TestCase
 
 from content.models import Question, Subject, Topic
 from content.question_diagnosis import diagnose_question_public_id
 from content.telegram_panel import telegram_question_ocr_flags
 
 
-class DiagnoseQuestionNotFoundTests(SimpleTestCase):
+class DiagnoseQuestionNotFoundTests(TestCase):
     def test_missing_public_id(self):
         diag = diagnose_question_public_id("q_does_not_exist_xyz")
         self.assertFalse(diag.found)

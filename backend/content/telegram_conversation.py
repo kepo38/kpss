@@ -42,6 +42,8 @@ def looks_like_solution_text(text: str) -> bool:
 class ConversationReply:
     text: str
     delete_photo_message_id: int | None = None
+    photo_bytes: bytes | None = None
+    photo_caption: str | None = None
 
 
 @dataclass(frozen=True)
@@ -179,6 +181,15 @@ def photo_has_solution_ready(*, chat_id: int, photo_message_id: int) -> bool:
     return bool(pending.solution_text.strip()) or pending.skip_solution
 
 
+def photo_prompt_already_sent(*, chat_id: int, photo_message_id: int) -> bool:
+    """OCR öncesi Evet/Hayır gönderildiyse OCR sonrası tekrar sorma."""
+    return TelegramPendingSolution.objects.filter(
+        chat_id=chat_id,
+        photo_message_id=photo_message_id,
+        prompt_sent=True,
+    ).exists()
+
+
 def pop_pending_solution(
     *,
     chat_id: int,
@@ -210,10 +221,26 @@ def apply_solution_and_release(
         clear_session(telegram_user_id, question=question)
     else:
         TelegramBotSession.objects.filter(question=question).delete()
+
+    photo_bytes: bytes | None = None
+    if question.solution_image:
+        try:
+            with question.solution_image.open("rb") as handle:
+                photo_bytes = handle.read()
+        except Exception:
+            photo_bytes = None
+
+    lines = [
+        "Çözüm kaydedildi.",
+        f"Kimlik: {question.public_id}",
+        "Panel → Onay bekleyen sorular → İncele → çözüm alanında görünür.",
+    ]
+    if photo_bytes:
+        lines.append("Annotasyonlu geometri görseli eklendi.")
     return ConversationReply(
-        "Çözüm kaydedildi.\n"
-        f"Kimlik: {question.public_id}\n"
-        "Panel → Onay bekleyen sorular → İncele → çözüm alanında görünür."
+        text="\n".join(lines),
+        photo_bytes=photo_bytes,
+        photo_caption="Geometri çözüm annotasyonu",
     )
 
 

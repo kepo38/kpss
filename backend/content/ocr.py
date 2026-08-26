@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from django.conf import settings
 from PIL import Image, ImageFilter, ImageOps
@@ -1052,6 +1052,8 @@ class OcrQuestionResult:
     options_visual: bool = False
     option_boxes: dict[str, tuple[float, float, float, float]] | None = None
     option_image_bytes: dict[str, bytes] | None = None
+    geometry_annotations: list[dict[str, Any]] | None = None
+    annotated_image_bytes: bytes | None = None
 
 
 def _read_source_bytes(source: BinaryIO | bytes | Path | str) -> tuple[bytes, str]:

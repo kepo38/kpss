@@ -523,7 +523,7 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Future<void> _submitQuestionAttempt(String selectedOption) async {
-    final testId = widget.statisticsTestId;
+    final testId = widget.statisticsTestId ?? widget.resumeMeta?.testId;
     if (testId == null || testId.isEmpty) return;
     final questionId = _currentQuestion.id;
     if (ContentBankService.instance.isStatLockedForQuestion(questionId)) {
@@ -669,7 +669,8 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   Map<String, double>? get _optionPercentages =>
-      _attemptSummaries[_currentQuestion.id]?.optionPercentages;
+      _attemptSummaries[_currentQuestion.id]?.optionPercentages ??
+      _currentQuestion.optionPercentages;
 
   /// Gerçek veri yokken debug APK'da şık yüzdelerini önizlemek için.
   Map<String, double> get _visibleOptionPercentages {
@@ -2812,42 +2813,6 @@ class _ScenarioPassageCard extends StatelessWidget {
 
 enum _OptionTone { correct, wrong }
 
-class _SolutionContentBlock extends StatelessWidget {
-  final String text;
-  final String? imageUrl;
-
-  const _SolutionContentBlock({
-    required this.text,
-    this.imageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final url = imageUrl?.trim();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (url != null && url.isNotEmpty) ...[
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
-              child: CachedRemoteImage(
-                imageUrl: url,
-                fit: BoxFit.contain,
-                borderRadius: BorderRadius.circular(8),
-                semanticLabel: 'Çözüm görseli',
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        ExamSolutionView(text: text),
-      ],
-    );
-  }
-}
-
 class _SolutionPanel extends StatelessWidget {
   final QuestionModel question;
   final String? selectedAnswer;
@@ -2935,7 +2900,7 @@ class _SolutionPanel extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           if (showFullSolution)
-            _SolutionContentBlock(
+            ExamSolutionBlock(
               text: question.cozumMetni,
               imageUrl: question.cozumImageUrl,
             )
@@ -2949,7 +2914,7 @@ class _SolutionPanel extends StatelessWidget {
                     imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: Opacity(
                       opacity: 0.55,
-                      child: _SolutionContentBlock(
+                      child: ExamSolutionBlock(
                         text: question.cozumMetni,
                         imageUrl: question.cozumImageUrl,
                       ),
@@ -2996,7 +2961,7 @@ class _SolutionPanel extends StatelessWidget {
               ),
             ),
           ] else ...[
-            _SolutionContentBlock(
+            ExamSolutionBlock(
               text: parts.preview,
               imageUrl: question.cozumImageUrl,
             ),
@@ -3009,7 +2974,7 @@ class _SolutionPanel extends StatelessWidget {
                     imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: Opacity(
                       opacity: 0.55,
-                      child: _SolutionContentBlock(
+                      child: ExamSolutionBlock(
                         text: parts.remainder,
                       ),
                     ),
@@ -3222,6 +3187,40 @@ class _AnswerChip extends StatelessWidget {
   }
 }
 
+class _OptionTrailing extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final double? percentage;
+
+  const _OptionTrailing({
+    required this.icon,
+    required this.iconColor,
+    this.percentage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (percentage == null) {
+      return Icon(icon, color: iconColor, size: 20);
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: iconColor, size: 18),
+        const SizedBox(height: 2),
+        Text(
+          '%${percentage!.toStringAsFixed(1)}',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.78),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _OptionTile extends StatelessWidget {
   final String label;
   final String text;
@@ -3385,16 +3384,16 @@ class _OptionTile extends StatelessWidget {
                         ? Alignment.topRight
                         : Alignment.centerRight,
                     child: tone == _OptionTone.correct
-                        ? const Icon(
-                            Icons.check_rounded,
-                            color: _correct,
-                            size: 20,
+                        ? _OptionTrailing(
+                            icon: Icons.check_rounded,
+                            iconColor: _correct,
+                            percentage: percentage,
                           )
                         : tone == _OptionTone.wrong
-                            ? const Icon(
-                                Icons.close_rounded,
-                                color: _wrong,
-                                size: 20,
+                            ? _OptionTrailing(
+                                icon: Icons.close_rounded,
+                                iconColor: _wrong,
+                                percentage: percentage,
                               )
                             : percentage != null
                                 ? Text(

@@ -24,12 +24,14 @@ from django.db import IntegrityError
 from .models import Question, TelegramBotSession, Topic
 from .ocr_ingest import ingest_question_from_image
 from .panel_context import pending_telegram_question_count
+from .question_fingerprint import find_duplicate_question, image_fingerprint
 from .telegram_conversation import (
     ConversationReply,
     clear_session,
     get_session,
     mark_photo_prompt_sent,
     photo_has_solution_ready,
+    photo_prompt_already_sent,
     photo_solution_keyboard,
     resolve_photo_intake_after_ocr,
     save_pending_solution_reply,
@@ -407,14 +409,14 @@ def ensure_photo_workers() -> None:
         _photo_workers_started = True
 
 
-def _submit_photo_work(work: Any) -> None:
+def _submit_photo_work(work: Any) -> HandleOutcome | None:
     """OCR/temizlik işini kuyruğa koy; testlerde TELEGRAM_INLINE_PHOTOS=True."""
     if getattr(settings, "TELEGRAM_INLINE_PHOTOS", False):
-        work()
-        return
+        return work()
     ensure_photo_workers()
     assert _photo_queue is not None
     _photo_queue.put(work)
+    return None
 
 
 def wait_for_photo_queue(*, timeout_seconds: float | None = None) -> bool:
@@ -593,6 +595,74 @@ def ensure_polling_mode() -> str | None:
     return url
 
 
+def _post_multipart(
+    method: str,
+    fields: dict[str, str],
+    files: dict[str, tuple[str, bytes, str]],
+    *,
+    timeout: int = 90,
+) -> dict[str, Any]:
+    boundary = f"----hedefkamu-{int(time.time() * 1000)}"
+    body = bytearray()
+    for key, value in fields.items():
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(
+            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode()
+        )
+        body.extend(f"{value}\r\n".encode())
+    for field_name, (filename, content, mime) in files.items():
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(
+            (
+                f'Content-Disposition: form-data; name="{field_name}"; '
+                f'filename="{filename}"\r\n'
+            ).encode()
+        )
+        body.extend(f"Content-Type: {mime}\r\n\r\n".encode())
+        body.extend(content)
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode())
+    req = urllib.request.Request(
+        _api_url(method),
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    with _urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    if not payload.get("ok"):
+        raise RuntimeError(payload.get("description") or "Telegram API hatası")
+    return payload
+
+
+def send_photo(
+    chat_id: int,
+    photo_bytes: bytes,
+    *,
+    caption: str | None = None,
+    parse_mode: str | None = None,
+    filename: str = "geometry_solution.png",
+) -> int | None:
+    fields: dict[str, str] = {"chat_id": str(int(chat_id))}
+    if caption:
+        fields["caption"] = caption
+    if parse_mode:
+        fields["parse_mode"] = parse_mode
+    try:
+        body = _post_multipart(
+            "sendPhoto",
+            fields,
+            {"photo": (filename, photo_bytes, "image/png")},
+        )
+    except Exception:
+        logger.exception("Telegram sendPhoto failed chat_id=%s", chat_id)
+        return None
+    message_id = (body.get("result") or {}).get("message_id")
+    if message_id:
+        _track_chat_message(int(chat_id), int(message_id))
+    return int(message_id) if message_id else None
+
+
 def send_message(
     chat_id: int,
     text: str,
@@ -753,6 +823,27 @@ def edit_message_reply_markup(
         )
 
 
+def _maybe_send_geometry_solution_photo(chat_id: int, question: Question) -> None:
+    if not question.solution_image:
+        return
+    try:
+        with question.solution_image.open("rb") as handle:
+            photo_bytes = handle.read()
+    except Exception:
+        logger.exception(
+            "Telegram geometry solution photo read failed question=%s",
+            question.public_id,
+        )
+        return
+    if not photo_bytes:
+        return
+    send_photo(
+        int(chat_id),
+        photo_bytes,
+        caption="Geometri çözüm annotasyonu",
+    )
+
+
 def _dispatch_conversation_reply(
     chat_id: int,
     reply: ConversationReply,
@@ -760,6 +851,12 @@ def _dispatch_conversation_reply(
     prompt_message_id: int | None = None,
 ) -> None:
     send_message(chat_id, reply.text)
+    if reply.photo_bytes:
+        send_photo(
+            chat_id,
+            reply.photo_bytes,
+            caption=reply.photo_caption,
+        )
     if reply.delete_photo_message_id:
         delete_message(chat_id, int(reply.delete_photo_message_id))
     if prompt_message_id:
@@ -1073,6 +1170,36 @@ def _find_existing_after_conflict(
     return None, None
 
 
+def _early_content_duplicate_line(duplicate: Question, match: str) -> str:
+    status = "yayında" if duplicate.is_published else "onay bekliyor"
+    labels = {
+        "image": "aynı görsel",
+        "image_similar": "çok benzer görsel",
+        "content": "aynı soru metni ve şıklar",
+        "stem": "aynı soru metni",
+    }
+    label = labels.get(match, "benzer içerik")
+    return (
+        f"🔴 Uyarı: {label} kayıtlı "
+        f"({duplicate.public_id}, {status})."
+    )
+
+
+def _find_early_image_duplicate(file_id: str) -> tuple[Question | None, str]:
+    """Telegram'dan indir + görsel hash — OCR/Gemini beklemeden benzer soru."""
+    try:
+        image_bytes, _mime = _download_file(file_id)
+    except (urllib.error.URLError, RuntimeError, TimeoutError, OSError) as exc:
+        logger.debug("Early image duplicate check skipped: %s", exc)
+        return None, ""
+    try:
+        img_hash = image_fingerprint(io.BytesIO(image_bytes))
+        return find_duplicate_question(image_hash=img_hash)
+    except Exception:
+        logger.exception("Early image duplicate fingerprint failed")
+        return None, ""
+
+
 def _duplicate_warning(
     existing: Question,
     match: Literal["file", "message"],
@@ -1292,6 +1419,7 @@ def _ingest_photo_worker(
     topic: Topic,
     explicit_topic: bool,
     forwarded: bool,
+    skip_duplicate_public_id: str = "",
 ) -> HandleOutcome:
     processing_key = _processing_key(int(chat_id), message_id)
     try:
@@ -1381,10 +1509,14 @@ def _ingest_photo_worker(
                     )
                     intake = None
                 auto_solution = intake.reply if intake is not None else None
-                include_prompt = (
-                    True if intake is None else intake.include_solution_prompt
-                )
-                if include_prompt and intake is None:
+                if intake is None:
+                    include_prompt = not photo_prompt_already_sent(
+                        chat_id=int(chat_id),
+                        photo_message_id=message_id,
+                    )
+                else:
+                    include_prompt = intake.include_solution_prompt
+                if include_prompt:
                     try:
                         start_solution_prompt(
                             int(user_id),
@@ -1398,6 +1530,13 @@ def _ingest_photo_worker(
                             user_id,
                             result.question.public_id,
                         )
+                duplicate = result.duplicate
+                if (
+                    duplicate is not None
+                    and skip_duplicate_public_id
+                    and duplicate.public_id == skip_duplicate_public_id
+                ):
+                    duplicate = None
                 _send_ingest_success(
                     int(chat_id),
                     topic=assigned_topic,
@@ -1406,13 +1545,22 @@ def _ingest_photo_worker(
                     elapsed_seconds=elapsed,
                     forwarded=forwarded,
                     partial=result.partial,
-                    duplicate=result.duplicate,
+                    duplicate=duplicate,
                     include_solution_prompt=include_prompt,
                     topic_auto_detected=result.topic_auto_detected,
                 )
                 if auto_solution is not None:
                     _dispatch_conversation_reply(int(chat_id), auto_solution)
+                elif result.question.solution_image:
+                    _maybe_send_geometry_solution_photo(int(chat_id), result.question)
             else:
+                duplicate = result.duplicate
+                if (
+                    duplicate is not None
+                    and skip_duplicate_public_id
+                    and duplicate.public_id == skip_duplicate_public_id
+                ):
+                    duplicate = None
                 _send_ingest_success(
                     int(chat_id),
                     topic=assigned_topic,
@@ -1421,10 +1569,11 @@ def _ingest_photo_worker(
                     elapsed_seconds=elapsed,
                     forwarded=forwarded,
                     partial=result.partial,
-                    duplicate=result.duplicate,
+                    duplicate=duplicate,
                     include_solution_prompt=False,
                     topic_auto_detected=result.topic_auto_detected,
                 )
+                _maybe_send_geometry_solution_photo(int(chat_id), result.question)
                 delete_message(int(chat_id), message_id)
             return "ingested"
     except PhotoAlreadyProcessing:
@@ -1503,18 +1652,33 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
             )
             return "skipped"
 
+    early_dup, early_match = _find_early_image_duplicate(file_id)
+    skip_duplicate_public_id = (
+        early_dup.public_id if early_dup is not None else ""
+    )
+    immediate_lines: list[str] = []
+    if caption_solution:
+        immediate_lines.extend(
+            [
+                "📷 Fotoğraf alındı.",
+                "Çözüm alt yazıdan not edildi — OCR arka planda.",
+                "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz.",
+            ]
+        )
+    else:
+        immediate_lines.extend(
+            [
+                "📷 Fotoğraf alındı — OCR arka planda (beklemeyin).",
+                "",
+                solution_prompt_message(),
+            ]
+        )
+    if early_dup is not None:
+        immediate_lines.extend(["", _early_content_duplicate_line(early_dup, early_match)])
+
     send_message(
         chat_id,
-        (
-            "📷 Fotoğraf alındı.\n"
-            "Çözüm alt yazıdan not edildi — OCR arka planda.\n"
-            "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz."
-            if caption_solution
-            else (
-                "📷 Fotoğraf alındı — OCR arka planda (beklemeyin).\n\n"
-                + solution_prompt_message()
-            )
-        ),
+        "\n".join(immediate_lines),
         reply_markup=(
             None
             if caption_solution or user_id is None
@@ -1537,7 +1701,7 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
             photo_message_id=message_id,
         )
     # OCR'yi kuyruğa at — Evet/Hayır ve sıradaki fotoğraf OCR bitene kadar beklemasın.
-    _submit_photo_work(
+    worker_outcome = _submit_photo_work(
         lambda: _ingest_photo_worker(
             message=message,
             chat_id=int(chat_id),
@@ -1547,8 +1711,18 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
             topic=topic,
             explicit_topic=explicit_topic,
             forwarded=forwarded,
+            skip_duplicate_public_id=skip_duplicate_public_id,
         )
     )
+    if worker_outcome in (
+        "ingested",
+        "skipped",
+        "error",
+        "command",
+        "ignored",
+        "unauthorized",
+    ):
+        return worker_outcome
     return "ingested"
 
 

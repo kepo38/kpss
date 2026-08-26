@@ -37,6 +37,12 @@ class TgExamAnalysisHelper {
 
     final sorted = byLabel.entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
-    return sorted.take(maxCount).map((e) => e.key).toList(growable: false);
+    if (sorted.isEmpty) return const [];
+
+    final maxNet = sorted.last.value;
+    final fireCandidates =
+        sorted.where((entry) => entry.value < maxNet).toList(growable: false);
+    final chosen = fireCandidates.isNotEmpty ? fireCandidates : sorted;
+    return chosen.take(maxCount).map((e) => e.key).toList(growable: false);
   }
 }

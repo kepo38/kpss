@@ -559,22 +559,15 @@ def _attempt_stats_payload(question: Question) -> dict:
         "D": question.option_d_count,
         "E": question.option_e_count,
     }
-    solved_count = sum(option_counts.values())
-    percentages = None
-    if solved_count >= 100:
-        percentages = {
-            option: round(count / solved_count * 100, 1)
-            for option, count in option_counts.items()
-        }
     return {
         "attemptCount": question.attempt_count,
-        "solvedCount": solved_count,
+        "solvedCount": sum(option_counts.values()),
         "correctRate": (
             round(question.correct_count / question.attempt_count, 4)
             if question.attempt_count
             else None
         ),
-        "optionPercentages": percentages,
+        "optionPercentages": question.option_percentages,
     }
 
 

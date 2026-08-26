@@ -57,6 +57,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     attemptCount = serializers.IntegerField(source="attempt_count")
     viewCount = serializers.IntegerField(source="view_count", read_only=True)
     correctRate = serializers.SerializerMethodField()
+    optionPercentages = serializers.SerializerMethodField()
     difficultyVisible = serializers.BooleanField(source="difficulty_visible")
     qualityScore = serializers.SerializerMethodField()
     ratingCount = serializers.SerializerMethodField()
@@ -89,6 +90,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "attemptCount",
             "viewCount",
             "correctRate",
+            "optionPercentages",
             "difficultyVisible",
             "qualityScore",
             "ratingCount",
@@ -135,6 +137,9 @@ class QuestionSerializer(serializers.ModelSerializer):
     def get_correctRate(self, obj: Question) -> float | None:
         rate = obj.correct_rate
         return round(rate, 4) if rate is not None else None
+
+    def get_optionPercentages(self, obj: Question) -> dict[str, float] | None:
+        return obj.option_percentages
 
     def get_qualityScore(self, obj: Question) -> float | None:
         from django.db.models import Avg

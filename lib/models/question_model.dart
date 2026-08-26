@@ -22,6 +22,7 @@ class QuestionModel {
   final int attemptCount;
   final int viewCount;
   final double? correctRate;
+  final Map<String, double>? optionPercentages;
   final bool difficultyVisible;
   final String? scenarioId;
   final String? scenarioTitle;
@@ -51,6 +52,7 @@ class QuestionModel {
     this.attemptCount = 0,
     this.viewCount = 0,
     this.correctRate,
+    this.optionPercentages,
     this.difficultyVisible = false,
     this.scenarioId,
     this.scenarioTitle,
@@ -139,6 +141,16 @@ class QuestionModel {
       }
     }
     final rawSolutionImage = json['cozumImageUrl'] as String?;
+    final rawOptionPercentages = json['optionPercentages'];
+    Map<String, double>? optionPercentages;
+    if (rawOptionPercentages is Map) {
+      optionPercentages = rawOptionPercentages.map(
+        (key, value) => MapEntry(
+          key.toString(),
+          (value as num).toDouble(),
+        ),
+      );
+    }
     return QuestionModel(
       id: json['id'] as String,
       dersAdi: json['dersAdi'] as String,
@@ -167,6 +179,7 @@ class QuestionModel {
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
       correctRate: (json['correctRate'] as num?)?.toDouble() ??
           (json['correct_rate'] as num?)?.toDouble(),
+      optionPercentages: optionPercentages,
       difficultyVisible: json['difficultyVisible'] as bool? ?? false,
       scenarioId: json['scenarioId'] as String?,
       scenarioTitle: json['scenarioTitle'] as String?,
@@ -200,6 +213,7 @@ class QuestionModel {
         'attemptCount': attemptCount,
         'viewCount': viewCount,
         'correctRate': correctRate,
+        'optionPercentages': optionPercentages,
         'difficultyVisible': difficultyVisible,
         'scenarioId': scenarioId,
         'scenarioTitle': scenarioTitle,
@@ -230,6 +244,7 @@ class QuestionModel {
     int? attemptCount,
     int? viewCount,
     double? correctRate,
+    Map<String, double>? optionPercentages,
     bool? difficultyVisible,
     String? scenarioId,
     String? scenarioTitle,
@@ -259,6 +274,7 @@ class QuestionModel {
       attemptCount: attemptCount ?? this.attemptCount,
       viewCount: viewCount ?? this.viewCount,
       correctRate: correctRate ?? this.correctRate,
+      optionPercentages: optionPercentages ?? this.optionPercentages,
       difficultyVisible: difficultyVisible ?? this.difficultyVisible,
       scenarioId: scenarioId ?? this.scenarioId,
       scenarioTitle: scenarioTitle ?? this.scenarioTitle,

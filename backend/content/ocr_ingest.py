@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import re
 import uuid
 from dataclasses import dataclass
@@ -99,6 +100,43 @@ def _run_ocr(image: BinaryIO, *, mime: str = "image/jpeg") -> tuple[object, str,
     return ocr, img_hash, img_phash, gemini_attempted, gemini_failed
 
 
+def _maybe_apply_geometry_overlay(
+    ocr,
+    image_bytes: bytes,
+    *,
+    mime: str = "image/jpeg",
+) -> None:
+    """Tesseract yolu veya kısmi Gemini sonrası — ücretsiz Gemini ile annotasyon."""
+    existing = getattr(ocr, "annotated_image_bytes", None)
+    if isinstance(existing, (bytes, bytearray)) and existing:
+        return
+    if not gemini_configured():
+        return
+    from .ocr import _likely_geometry_question
+    from .ocr_gemini import _fetch_geometry_solution_overlay
+    from .geometry_overlay_renderer import render_geometry_annotations
+
+    stem = (getattr(ocr, "stem", "") or "").strip()
+    options = getattr(ocr, "options", None) or {}
+    if not _likely_geometry_question(stem, options, stem):
+        return
+    overlay_solution, annotations = _fetch_geometry_solution_overlay(
+        image_bytes,
+        mime,
+        stem=stem,
+        options=options,
+    )
+    if overlay_solution:
+        current = (getattr(ocr, "solution", "") or "").strip()
+        if not current or len(overlay_solution) >= len(current):
+            ocr.solution = overlay_solution
+    if annotations:
+        ocr.geometry_annotations = annotations
+        rendered = render_geometry_annotations(image_bytes, annotations)
+        if rendered:
+            ocr.annotated_image_bytes = rendered
+
+
 def _log_ingest(
     *,
     topic: Topic | None,
@@ -160,9 +198,13 @@ def ingest_question_from_image(
     allow_duplicate: bool = True,
     auto_classify_topic: bool = False,
 ) -> IngestQuestionResult:
+    if hasattr(image, "seek"):
+        image.seek(0)
+    source_bytes = image.read()
+    buffer = io.BytesIO(source_bytes)
     try:
         ocr, img_hash, img_phash, gemini_attempted, gemini_failed = _run_ocr(
-            image, mime=mime
+            buffer, mime=mime
         )
     except Exception as exc:  # noqa: BLE001
         _log_ingest(
@@ -191,6 +233,8 @@ def ingest_question_from_image(
             ok=False,
             error=ocr.error or "Görselden metin okunamadı.",
         )
+
+    _maybe_apply_geometry_overlay(ocr, source_bytes, mime=mime)
 
     stem = (ocr.stem or "").strip() or "Aşağıdaki görsele göre cevaplayınız."
     opts = _normalize_options(ocr.options or {})
@@ -289,13 +333,15 @@ def ingest_question_from_image(
         for letter in "ABCDE":
             if not (getattr(question, f"option_{letter.lower()}") or "").strip():
                 setattr(question, f"option_{letter.lower()}", VISUAL_OPTION_PLACEHOLDER)
-    if hasattr(image, "seek"):
-        image.seek(0)
-    image_bytes = image.read()
-    # Görsel şıklı sorularda tam sayfa OCR görseli uygulamaya gitmesin;
-    # Telegram onayında kırpılmış şıklar yeterli.
     if not (options_visual and option_crops):
-        question.image.save(filename, ContentFile(image_bytes), save=False)
+        question.image.save(filename, ContentFile(source_bytes), save=False)
+    annotated_bytes = getattr(ocr, "annotated_image_bytes", None)
+    if isinstance(annotated_bytes, (bytes, bytearray)) and annotated_bytes:
+        question.solution_image.save(
+            f"solution_overlay_{question.public_id}.png",
+            ContentFile(annotated_bytes),
+            save=False,
+        )
     question.save()
     if options_visual and option_crops:
         for letter, data in option_crops.items():

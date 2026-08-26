@@ -130,6 +130,6 @@ class QuestionDifficultyTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["accepted"])
         self.assertEqual(response.json()["solvedCount"], 1)
-        self.assertIsNone(response.json()["optionPercentages"])
+        self.assertEqual(response.json()["optionPercentages"]["A"], 100.0)
         self.question.refresh_from_db()
         self.assertEqual(self.question.option_a_count, 1)
