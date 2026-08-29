@@ -125,6 +125,55 @@ void main() {
     expect(ExamOptionView.isMathStyleOption('0,3'), isTrue);
     expect(ExamOptionView.isMathStyleOption('-1/2'), isTrue);
     expect(ExamOptionView.isMathStyleOption('ukala kanıksıyor'), isFalse);
+    // Regresyon: cümle içindeki sıcaklık formülü bütün şıkkı büyütüp
+    // ortalamamalı.
+    expect(
+      ExamOptionView.isCompactOption(
+        r'Ortalama indirgenmiş sıcaklık farkı $7^\circ C$ den fazladır.',
+      ),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isMathStyleOption(
+        r'Ortalama indirgenmiş sıcaklık farkı $7^\circ C$ den fazladır.',
+      ),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isMathStyleOption(
+        r'Sıcaklık farkı 7^\circ C den fazladır.',
+      ),
+      isFalse,
+    );
+    // 56 karakter sınırından kısa: özellikle `$` içeren düz-cümle korumasını
+    // çalıştırır.
+    expect(
+      ExamOptionView.isMathStyleOption(r'Sıcaklık $7^\circ C$ olur.'),
+      isFalse,
+    );
+    expect(ExamOptionView.isCompactOption(r'$$x + y = 12$$'), isTrue);
+  });
+
+  testWidgets('mixed prose and inline math stays 15pt and start aligned',
+      (tester) async {
+    const option = r'Sıcaklık $7^\circ C$ olur.';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 280,
+            child: ExamOptionView(text: option),
+          ),
+        ),
+      ),
+    );
+
+    final formatted = tester.widget<FormattedText>(
+      find.byType(FormattedText),
+    );
+    expect(formatted.style?.fontSize, 15);
+    expect(formatted.textAlign, TextAlign.start);
+    expect(tester.takeException(), isNull);
   });
 
   test('dash-separated options become two or three columns', () {

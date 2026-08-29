@@ -13,12 +13,21 @@ class CoachInsight {
   final String message;
   final String? subject;
   final String? topic;
+  final KpssType? kpssType;
+  final String? subjectId;
+  final String? topicId;
 
   const CoachInsight({
     required this.message,
     this.subject,
     this.topic,
+    this.kpssType,
+    this.subjectId,
+    this.topicId,
   });
+
+  bool get canOpenTopic =>
+      kpssType != null && subjectId != null && topicId != null;
 }
 
 class AiCoachService {
@@ -26,9 +35,9 @@ class AiCoachService {
   static final AiCoachService instance = AiCoachService._();
 
   static const _topicHints = <String, String>{
-    'Coğrafya': 'Türkiye\'nin Coğrafi Bölgeleri',
+    'Coğrafya': 'Türkiye’nin Coğrafi Bölgeleri',
     'Tarih': 'Atatürk İnkılapları',
-    'Vatandaşlık': '1982 Anayasası Yargı Bölümü',
+    'Vatandaşlık': 'Yargı',
     'Türkçe': 'Paragraf',
     'Matematik': 'Problemler',
   };
@@ -48,24 +57,27 @@ class AiCoachService {
     if (attempts.length < 2) {
       final weakest = _weakestSubject(active);
       if (weakest == null) return null;
-      final topic = weakest.topWeakTopics.isNotEmpty
-          ? weakest.topWeakTopics.first.topicName
-          : _topicHints[weakest.subjectName];
+      final measuredTopic = weakest.topWeakTopics.firstOrNull?.topicName;
+      final topic = measuredTopic ?? _topicHints[weakest.subjectName];
       return CoachInsight(
-        message: _message(
+        message: composeMessage(
           subject: weakest.subjectName,
           topic: topic,
           streak: 1,
         ),
         subject: weakest.subjectName,
         topic: topic,
+        kpssType: type,
+        subjectId: weakest.subjectId,
+        topicId: measuredTopic == null
+            ? null
+            : _topicIdForName(type, weakest.subjectId, measuredTopic),
       );
     }
 
     final lastThree = attempts.take(3).toList();
     final subjectWrong = <String, int>{};
     for (final a in lastThree) {
-      final topic = KpssCurriculum.findTopic(type, a.topicId);
       final subjectId = KpssCurriculum.subjectIdForTopic(type, a.topicId);
       if (subjectId == null) continue;
       final subject = KpssCurriculum.findSubject(type, subjectId);
@@ -78,40 +90,52 @@ class AiCoachService {
     if (subjectWrong.isEmpty) {
       final weakest = _weakestSubject(active);
       if (weakest == null) return null;
-      final topic = weakest.topWeakTopics.firstOrNull?.topicName ??
-          _topicHints[weakest.subjectName];
+      final measuredTopic = weakest.topWeakTopics.firstOrNull?.topicName;
+      final topic = measuredTopic ?? _topicHints[weakest.subjectName];
       return CoachInsight(
         message:
-            'Genel gidişat iyi. Bir sonraki odak: ${weakest.subjectName}'
+            'Genel gidişatın olumlu. Bir sonraki çalışma odağın: ${weakest.subjectName}'
             '${topic != null ? ' · $topic' : ''}.',
         subject: weakest.subjectName,
         topic: topic,
+        kpssType: type,
+        subjectId: weakest.subjectId,
+        topicId: measuredTopic == null
+            ? null
+            : _topicIdForName(type, weakest.subjectId, measuredTopic),
       );
     }
 
     final sorted = subjectWrong.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final subjectName = sorted.first.key;
-    final subjectPerf = active.firstWhere(
-      (s) => s.subjectName == subjectName,
-      orElse: () => active.first,
-    );
-    final topic = subjectPerf.topWeakTopics.firstOrNull?.topicName ??
-        _topicHints[subjectName];
+    final subjectPerf = active
+        .where((subject) => subject.subjectName == subjectName)
+        .toList()
+        .firstOrNull;
+    final subjectId =
+        subjectPerf?.subjectId ?? _subjectIdForName(type, subjectName);
+    final measuredTopic = subjectPerf?.topWeakTopics.firstOrNull?.topicName;
+    final topic = measuredTopic ?? _topicHints[subjectName];
 
     return CoachInsight(
-      message: _message(
+      message: composeMessage(
         subject: subjectName,
         topic: topic,
         streak: lastThree.length.clamp(2, 3),
       ),
       subject: subjectName,
       topic: topic,
+      kpssType: type,
+      subjectId: subjectId,
+      topicId: measuredTopic == null
+          ? null
+          : _topicIdForName(type, subjectId, measuredTopic),
     );
   }
 
   /// Deneme trendinden — son 3 denemede düşen ders.
-  CoachInsight? buildExamTrendInsight() {
+  CoachInsight? buildExamTrendInsight(KpssType type) {
     final practice = PracticeExamService.instance.allExams
         .where((e) => !e.isInAppGenerated)
         .toList()
@@ -129,13 +153,18 @@ class AiCoachService {
       final decline = _largestSubjectDeclineAcrossExams(recent);
       if (decline != null) {
         return CoachInsight(
-          message: _message(
+          message: composeMessage(
             subject: decline.$1,
             topic: decline.$2,
             streak: recent.length.clamp(2, 3),
           ),
           subject: decline.$1,
           topic: decline.$2,
+          kpssType: type,
+          subjectId: _subjectIdForName(type, decline.$1),
+          // Deneme trendi dersi saptar; statik konu önerisi ölçülmüş bir
+          // zayıf-konu verisi olmadığı için bağlantı oluşturmaz.
+          topicId: null,
         );
       }
     }
@@ -149,15 +178,17 @@ class AiCoachService {
     if (delta >= 0) {
       return CoachInsight(
         message:
-            'Son denemende netin ${last.totalNet.toStringAsFixed(1)} — '
-            'ivme korunuyor. Zayıf derslerde mini tekrar ekle.',
+            'Son denemendeki net sayın ${_formatDecimal(last.totalNet)}. '
+            '${delta > 0 ? 'Olumlu ivmeni koruyorsun' : 'Netini koruyorsun'}; '
+            'gelişime açık derslere kısa tekrarlar ekleyebilirsin.',
       );
     }
 
     return CoachInsight(
       message:
-          'Son iki denemede toplam nette ${delta.abs().toStringAsFixed(1)} '
-          'netlik düşüş var. Ders bazlı barları inceleyip zayıf alana odaklan.',
+          'Son iki denemede toplam netin ${_formatDecimal(delta.abs())} puan '
+          'geriledi. Ders bazındaki sonuçlarını inceleyerek gelişime açık '
+          'alana odaklanmanı öneriyorum.',
     );
   }
 
@@ -207,26 +238,49 @@ class AiCoachService {
     return (worstSubject, _topicHints[worstSubject]);
   }
 
-  String _message({
+  static String composeMessage({
     required String subject,
     required String? topic,
     required int streak,
   }) {
-    final streakText = streak >= 3 ? 'Son 3 testtir' : 'Son testlerde';
-    final topicPart =
-        topic != null ? ' çalışman gereken alt konu $topic\'tir' : ' tekrar yapmalısın';
-    return '$streakText ${_locative(subject)} patlıyorsun,$topicPart.';
+    final period = switch (streak) {
+      >= 3 => 'Son üç test sonucuna göre',
+      2 => 'Son iki test sonucuna göre',
+      _ => 'Son test sonucuna göre',
+    };
+    final opening =
+        '$period $subject dersinde gelişime açık bir alan bulunuyor.';
+    if (topic == null || topic.trim().isEmpty) {
+      return '$opening Kısa bir konu tekrarı yaptıktan sonra yeni bir test '
+          'çözmeni öneriyorum.';
+    }
+    return '$opening Öncelikle “$topic” konusuna odaklanmanı öneriyorum.';
   }
 
-  String _locative(String subject) {
-    return switch (subject) {
-      'Coğrafya' => 'coğrafyada',
-      'Tarih' => 'tarihte',
-      'Vatandaşlık' => 'vatandaşlıkta',
-      'Türkçe' => 'türkçede',
-      'Matematik' => 'matematikte',
-      _ => '${subject.toLowerCase()}da',
-    };
+  static String _formatDecimal(double value) =>
+      value.toStringAsFixed(1).replaceAll('.', ',');
+
+  String? _subjectIdForName(KpssType type, String subjectName) {
+    for (final subject in KpssCurriculum.subjectsFor(type)) {
+      if (subject.name == subjectName) return subject.id;
+    }
+    return null;
+  }
+
+  String? _topicIdForName(
+    KpssType type,
+    String? subjectId,
+    String? topicName,
+  ) {
+    if (subjectId == null || topicName == null) return null;
+    final subject = KpssCurriculum.findSubject(type, subjectId);
+    if (subject == null) return null;
+    for (final topic in subject.topics) {
+      if (topic.name == topicName || topic.subtopics.contains(topicName)) {
+        return topic.id;
+      }
+    }
+    return null;
   }
 }
 

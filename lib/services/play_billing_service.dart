@@ -17,7 +17,8 @@ class PlayBillingService {
   PlayBillingService._();
   static final PlayBillingService instance = PlayBillingService._();
 
-  final InAppPurchase _iap = InAppPurchase.instance;
+  InAppPurchase? _iapInstance;
+  InAppPurchase get _iap => _iapInstance ??= InAppPurchase.instance;
 
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
 

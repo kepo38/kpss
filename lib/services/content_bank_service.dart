@@ -962,7 +962,6 @@ class ContentBankService extends ChangeNotifier {
   }
 
   /// Günün Mini Denemesi ödev barını ve günlük test hakkını tüketmez.
-  @visibleForTesting
   static bool countsTowardDailyHomework(TestAttemptModel attempt) {
     return !attempt.testId.startsWith(DailyMiniExamConstants.testIdPrefix);
   }

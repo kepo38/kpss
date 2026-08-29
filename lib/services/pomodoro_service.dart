@@ -305,6 +305,38 @@ class PomodoroService extends ChangeNotifier {
     await ensureAmbientKeepsPlaying(forceReplay: true);
   }
 
+  bool _pausedForFeedback = false;
+  bool _ambientWasPlayingBeforeFeedback = false;
+  bool _deepWorkWasPlayingBeforeFeedback = false;
+
+  /// Cevap / test bitiş efektleri çalarken ortam ve Deep Work sesini geçici durdur.
+  Future<void> pauseForFeedback() async {
+    if (_pausedForFeedback) return;
+    _pausedForFeedback = true;
+    _ambientWasPlayingBeforeFeedback = _ambientPlaying;
+    _deepWorkWasPlayingBeforeFeedback = _deepWorkPlaying;
+    try {
+      if (_ambientPlaying) await _ambientPlayer.pause();
+    } catch (_) {}
+    try {
+      if (_deepWorkPlaying) await _deepWorkPlayer.pause();
+    } catch (_) {}
+  }
+
+  /// Test / cevap efekti bittikten sonra ortam müziğini sürdür.
+  Future<void> resumeAfterFeedback() async {
+    if (!_pausedForFeedback) return;
+    _pausedForFeedback = false;
+    if (_deepWorkWasPlayingBeforeFeedback) {
+      await ensureDeepWorkKeepsPlaying();
+    }
+    if (_ambientWasPlayingBeforeFeedback) {
+      await ensureAmbientKeepsPlaying();
+    }
+    _ambientWasPlayingBeforeFeedback = false;
+    _deepWorkWasPlayingBeforeFeedback = false;
+  }
+
   /// Bildirim / focus çakışması ortam sesini kesse bile geri getirir.
   Future<void> ensureAmbientKeepsPlaying({bool forceReplay = false}) async {
     if (!_ambientUntilStopped || _ambientResumeBusy) return;

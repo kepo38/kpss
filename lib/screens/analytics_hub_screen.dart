@@ -23,6 +23,7 @@ import 'study_hub_screen.dart';
 import 'subject_analytics_detail_screen.dart';
 import 'favorites_screen.dart';
 import 'notes_screen.dart';
+import 'topic_detail_screen.dart';
 import 'wrong_questions_screen.dart';
 
 /// Ders bazlı performans özeti (yalnızca konu testleri).
@@ -77,7 +78,7 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
         final notesCount = NotesService.instance.count;
         final coachInsight =
             AiCoachService.instance.buildTopicTestInsight(widget.kpssType) ??
-            AiCoachService.instance.buildExamTrendInsight();
+            AiCoachService.instance.buildExamTrendInsight(widget.kpssType);
         final weeklyPlan =
             WeeklyStudyPlanService.instance.buildPlan(widget.kpssType);
 
@@ -171,6 +172,20 @@ class _AnalyticsHubScreenState extends State<AnalyticsHubScreen> {
                   AiCoachInsightCard(
                     insight: coachInsight,
                     isPremium: widget.isPremium,
+                    onTopicTap:
+                        widget.isPremium && coachInsight?.canOpenTopic == true
+                        ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => TopicDetailScreen(
+                                  kpssType: coachInsight!.kpssType!,
+                                  subjectId: coachInsight.subjectId!,
+                                  topicId: coachInsight.topicId!,
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
                   ),
                 ],
               ),

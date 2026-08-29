@@ -193,7 +193,10 @@ class FormattedText extends StatelessWidget {
     applyHeightToLastDescent: true,
   );
 
-  static StrutStyle examStrutStyle(TextStyle base) {
+  static StrutStyle examStrutStyle(
+    TextStyle base, {
+    bool forceHeight = true,
+  }) {
     final size = base.fontSize ?? 16;
     final lineHeight = base.height ?? 1.35;
     return StrutStyle(
@@ -201,7 +204,7 @@ class FormattedText extends StatelessWidget {
       fontFamilyFallback: base.fontFamilyFallback,
       fontSize: size,
       height: lineHeight * 1.12,
-      forceStrutHeight: true,
+      forceStrutHeight: forceHeight,
       leadingDistribution: TextLeadingDistribution.even,
     );
   }
@@ -882,10 +885,78 @@ class FormattedText extends StatelessWidget {
     return _expandHolders(src, holders, r'§§F(\d+)§§');
   }
 
-  /// ÖSYM kitapçığı: tüm kesirler display boyutu.
+  /// Dış kesirleri display, iç içe kesirleri text boyutunda tutar.
   ///
-  /// TeX kuralı: dış `\frac` içindeki iç `\frac` scriptstyle (küçük) olur.
-  /// Bu yüzden `\frac` / `\tfrac` → `\dfrac` (iç içe 1/4 de gövde puntosunda kalır).
+  /// Tüm kesirleri `\dfrac` yapmak, örneğin
+  /// `\frac{1+\frac14}{3-\frac12}` ifadesini aşırı yükseltip sonraki şık
+  /// kutusuna yaklaştırır. İç kesirler `\tfrac` ile kompakt ve birbirleriyle
+  /// tutarlı kalır.
+  static String _normalizeFractionStyles(String tex) {
+    int closingBrace(String source, int opening) {
+      var depth = 0;
+      for (var i = opening; i < source.length; i++) {
+        var slashCount = 0;
+        for (var j = i - 1; j >= 0 && source[j] == '\\'; j--) {
+          slashCount += 1;
+        }
+        if (slashCount.isOdd) continue;
+        if (source[i] == '{') depth += 1;
+        if (source[i] == '}') {
+          depth -= 1;
+          if (depth == 0) return i;
+        }
+      }
+      return -1;
+    }
+
+    String normalizeSegment(String source, {required bool fractionArgument}) {
+      final out = StringBuffer();
+      var i = 0;
+      while (i < source.length) {
+        String? command;
+        if (source[i] == '\\') {
+          for (final candidate in const [r'\dfrac', r'\tfrac', r'\frac']) {
+            if (source.startsWith(candidate, i)) {
+              command = candidate;
+              break;
+            }
+          }
+        }
+        if (command == null) {
+          out.write(source[i]);
+          i += 1;
+          continue;
+        }
+
+        out.write(fractionArgument ? r'\tfrac' : r'\dfrac');
+        i += command.length;
+        for (var argument = 0; argument < 2; argument++) {
+          while (i < source.length && source[i].trim().isEmpty) {
+            out.write(source[i]);
+            i += 1;
+          }
+          if (i >= source.length || source[i] != '{') break;
+          final close = closingBrace(source, i);
+          if (close < 0) {
+            out.write(source.substring(i));
+            return out.toString();
+          }
+          out
+            ..write('{')
+            ..write(normalizeSegment(
+              source.substring(i + 1, close),
+              fractionArgument: true,
+            ))
+            ..write('}');
+          i = close + 1;
+        }
+      }
+      return out.toString();
+    }
+
+    return normalizeSegment(tex, fractionArgument: false);
+  }
+
   static String forceDisplaySizeAll(String tex, {bool forceDisplayStyle = true}) {
     var t = tex.trim();
     if (t.isEmpty) return t;
@@ -896,11 +967,7 @@ class FormattedText extends StatelessWidget {
       (m) => '\\frac{${m.group(1)!.trim()}}{${m.group(2)!.trim()}}',
     );
     if (forceDisplayStyle) {
-      // \dfrac / \tfrac koru, düz \frac → \dfrac (iç içe küçülmeyi kes)
-      t = t.replaceAll(r'\dfrac', '§§DFRAC§§');
-      t = t.replaceAll(r'\tfrac', '§§DFRAC§§');
-      t = t.replaceAll(r'\frac', r'\dfrac');
-      t = t.replaceAll('§§DFRAC§§', r'\dfrac');
+      t = _normalizeFractionStyles(t);
       final isTabular = t.contains(r'\begin{array}') ||
           t.contains(r'\begin{matrix}') ||
           t.contains(r'\begin{pmatrix}');
@@ -2222,7 +2289,13 @@ class _WrappedExamLine extends StatelessWidget {
       textAlign: textAlign ?? TextAlign.start,
       softWrap: true,
       textWidthBasis: TextWidthBasis.parent,
-      strutStyle: FormattedText.examStrutStyle(base),
+      // Kesir/kök WidgetSpan'i sabit strut yüksekliğine zorlanırsa satırın
+      // dışına taşıp alttaki şık kutusuna yaklaşır. Matematikli satır kendi
+      // gerçek yüksekliği kadar büyüyebilsin.
+      strutStyle: FormattedText.examStrutStyle(
+        base,
+        forceHeight: !FormattedText.usesDisplayMath(trimmed),
+      ),
       textHeightBehavior: FormattedText.examTextHeightBehavior,
     );
   }

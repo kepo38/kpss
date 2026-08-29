@@ -37,14 +37,14 @@ class _HomeScreenState extends State<HomeScreen>
   late final Animation<double> _fadeLate;
   late final Animation<double> _fadeType;
 
-  final ValueNotifier<KpssType> _selectedType =
-      ValueNotifier(KpssType.lisans);
-  final ValueNotifier<bool> _isPremium =
-      ValueNotifier(PremiumService.instance.isPremium);
+  final ValueNotifier<KpssType> _selectedType = ValueNotifier(KpssType.lisans);
+  late final ValueNotifier<bool> _isPremium;
 
   @override
   void initState() {
     super.initState();
+    DatabaseService.instance.setCurrentUser(widget.user);
+    _isPremium = ValueNotifier(PremiumService.instance.isPremium);
     _enter = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
@@ -77,8 +77,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _bindServicesAfterAnimationFrame() {
-    AdManager.instance.setPremium(_isPremium.value);
     DatabaseService.instance.setCurrentUser(widget.user);
+    _onPremiumChanged();
     PlayBillingService.instance.premiumNotifier.addListener(_onPremiumChanged);
   }
 

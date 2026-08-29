@@ -106,9 +106,19 @@ def solution_prompt_message() -> str:
         "OCR veya Evet/Hayır beklemeyin.\n"
         "Çözüm: fotoğrafın alt yazısı, hemen sonraki mesaj, "
         "veya fotoğrafa yanıt. Evet düğmesi şart değil.\n"
-        "Hayır: çözüm yok, OCR bitince panele düşer.\n\n"
+        "Hayır: kendi çözümünüzü eklemezsiniz; Gemini'nin yazdığı "
+        "otomatik adım adım çözüm kalır.\n\n"
         "PC kapalıyken de aynı: fotoğraf + alt yazı veya altındaki "
         "çözüm mesajı. Bot açılınca bağlanır."
+    )
+
+
+def ai_solution_status_note(question: Question | None) -> str:
+    """Telegram'da çözüm yapıştırılmadığında Gemini OCR çözümünün durumu."""
+    if question is not None and (question.solution or "").strip():
+        return "Gemini otomatik çözüm kayıtlı — panelde görünür."
+    return (
+        "Kendi çözümünüzü eklemezseniz Gemini adım adım çözüm yazar."
     )
 
 
@@ -439,7 +449,8 @@ def handle_photo_solution_decision(
             else ""
         )
         return ConversationReply(
-            f"Tamam — {public} panele düşecek (çözüm yok).\n"
+            f"Tamam — {public} panele düşecek.\n"
+            f"{ai_solution_status_note(question)}\n"
             "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz."
             + extra
         )
@@ -454,7 +465,8 @@ def handle_photo_solution_decision(
         prompt_sent=True,
     )
     return ConversationReply(
-        "Tamam — çözüm yok. OCR bitince panele düşer.\n"
+        "Tamam — OCR bitince panele düşer.\n"
+        f"{ai_solution_status_note(None)}\n"
         "Sıradaki soru fotoğrafını şimdi gönderebilirsiniz."
     )
 

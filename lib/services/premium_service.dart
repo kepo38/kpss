@@ -9,14 +9,16 @@ class PremiumService {
   static final PremiumService instance = PremiumService._();
 
   bool get isPremium {
-    if (PlayBillingService.instance.premiumNotifier.value) return true;
-    return DatabaseService.instance.currentUser?.isPremium ?? false;
+    final user = DatabaseService.instance.currentUser;
+    if (user?.isPremium ?? false) return true;
+    return PlayBillingService.instance.premiumNotifier.value;
   }
 
   /// Offline paket yalnızca yıllık abonelikte (Play veya sunucu grant).
   bool get isYearlyPremium {
-    if (PlayBillingService.instance.isYearlyPremium) return true;
-    return DatabaseService.instance.currentUser?.isYearlyPremium ?? false;
+    final user = DatabaseService.instance.currentUser;
+    if (user?.isYearlyPremium ?? false) return true;
+    return PlayBillingService.instance.isYearlyPremium;
   }
 
   bool get isOfflinePackModuleEnabled =>

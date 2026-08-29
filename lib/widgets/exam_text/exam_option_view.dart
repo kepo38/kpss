@@ -25,11 +25,23 @@ class ExamOptionView extends StatelessWidget {
     this.forceColumns,
   });
 
-  /// Yalnızca LaTeX `$…$` — eski kısa-metin eşiği kaldırıldı (hizayı bozuyordu).
+  /// Yalnızca tamamı LaTeX olan şıklar kompakt görünür.
+  ///
+  /// Cümle içindeki `$7^\circ C$` gibi tek bir formül, bütün şıkkın 19 punto
+  /// ve ortalı çizilmesine neden olmamalı.
   static bool isCompactOption(String text) {
-    final visible = _visiblePlain(text);
-    if (visible.isEmpty) return false;
-    return visible.contains(r'$');
+    final raw = FormattedText.stripMarkup(text)
+        .replaceAll('\u00a0', ' ')
+        .trim();
+    if (raw.isEmpty || !raw.contains(r'$')) return false;
+    if (_visiblePlain(raw).length > 56) return false;
+    final withoutMath = raw.replaceAll(
+      RegExp(r'\$\$.*?\$\$|\$[^$\n]+\$', dotAll: true),
+      '',
+    );
+    return withoutMath
+        .replaceAll(RegExp(r'[\s,;:/|+\-–—=\(\)\[\]\{\}]+'), '')
+        .isEmpty;
   }
 
   /// Matematik / kısa sayısal şık — ortalı büyük punto.
@@ -38,10 +50,19 @@ class ExamOptionView extends StatelessWidget {
     if (isCompactOption(text)) return true;
     final visible = _visiblePlain(text);
     if (visible.isEmpty || visible.length > 56) return false;
+    // İçinde LaTeX bulunan bir düz cümleyi, sembol içeriyor diye matematik
+    // şıkkına dönüştürme.
+    if (visible.contains(r'$')) return false;
     if (RegExp(r'^\d+$').hasMatch(visible)) return true;
     if (_isShortNumericOption(visible)) return true;
-    return RegExp(r'[√⁄÷×±^_=\\]|\\sqrt|\\frac|\\dfrac|\\tfrac')
-        .hasMatch(visible);
+    final hasMathSymbol =
+        RegExp(r'[√⁄÷×±^_=\\]|\\sqrt|\\frac|\\dfrac|\\tfrac')
+            .hasMatch(visible);
+    if (!hasMathSymbol) return false;
+    final proseLetters = visible
+        .replaceAll(RegExp(r'\\[A-Za-z]+'), '')
+        .replaceAll(RegExp(r'[^A-Za-zÇĞİÖŞÜçğıöşüÂÎÛâîû]'), '');
+    return proseLetters.length <= 6;
   }
 
   /// `0,1` · `0.5` · `-3/4` gibi kısa sayısal şıklar.
@@ -135,7 +156,7 @@ class ExamOptionView extends StatelessWidget {
       );
     }
 
-    final mathStyle = isMathStyleOption(text);
+    final mathStyle = isMathStyleOption(text, imageUrl: imageUrl);
     final style = ExamTypography.option(
       color: Colors.white,
       fontSize: mathStyle ? kCompactOptionFontSize : 15,

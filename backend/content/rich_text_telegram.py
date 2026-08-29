@@ -13,7 +13,9 @@ from .rich_text_common import (
     _utf16_index_to_py,
     _wrap_markdown_node,
     choose_paste_text,
+    is_structured_solution_outline,
     normalize_latex,
+    normalize_roman_solution_sections,
     repair_vert_groups,
     restore_collapsed_breaks,
     structure_solution_outline,
@@ -90,6 +92,9 @@ def normalize_telegram_solution(
         raw = telegram_entities_to_markdown(raw, entities)
     raw = normalize_telegram_latex(raw)
     chosen = choose_paste_text(raw, "")
+    if is_structured_solution_outline(chosen):
+        return normalize_turkish_text(chosen).strip()
     chosen = restore_collapsed_breaks(chosen)
+    chosen = normalize_roman_solution_sections(chosen)
     chosen = structure_solution_outline(chosen)
     return normalize_turkish_text(chosen).strip()

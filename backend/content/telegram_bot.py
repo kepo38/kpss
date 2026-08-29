@@ -1287,6 +1287,10 @@ def _build_ingest_success_html(
     if topic_auto_detected:
         lines.append("<i>(Konu fotoğraftan otomatik algılandı)</i>")
     lines.append(f"Kimlik: <code>{public_id}</code>")
+    if (question.solution or "").strip():
+        lines.append(
+            "✨ <b>Gemini otomatik çözüm eklendi</b> — panelde görünür."
+        )
     if partial:
         lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
     if duplicate is not None:
@@ -1300,6 +1304,11 @@ def _build_ingest_success_html(
             f"Bu soru (<code>{public_id}</code>) panele henüz düşmedi — "
             "aşağıdaki Evet veya Hayır'ı seçin."
         )
+        if (question.solution or "").strip():
+            lines.append(
+                "<i>Evet: kendi çözümünüzü yapıştırın (Gemini çözümünün "
+                "üzerine yazar). Hayır: otomatik çözüm kalır.</i>"
+            )
         lines.append(
             "<i>Az önce başka bir “panele gönderildi” gördüyseniz "
             "o önceki soruyadır; bu mesaj yeni fotoğrafa aittir.</i>"
@@ -1338,6 +1347,8 @@ def _build_ingest_success_plain(
     if topic_auto_detected:
         lines.append("(Konu fotoğraftan otomatik algılandı)")
     lines.append(f"Kimlik: {question.public_id}")
+    if (question.solution or "").strip():
+        lines.append("✨ Gemini otomatik çözüm eklendi — panelde görünür.")
     if partial:
         lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
     if duplicate is not None:
@@ -1349,6 +1360,11 @@ def _build_ingest_success_plain(
             f"Bu soru ({question.public_id}) panele henüz düşmedi — "
             "aşağıdaki Evet veya Hayır'ı seçin."
         )
+        if (question.solution or "").strip():
+            lines.append(
+                "Evet: kendi çözümünüzü yapıştırın (Gemini çözümünün üzerine yazar). "
+                "Hayır: otomatik çözüm kalır."
+            )
         lines.append(
             "Az önce başka bir “panele gönderildi” gördüyseniz "
             "o önceki soruyadır; bu mesaj yeni fotoğrafa aittir."

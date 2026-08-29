@@ -449,14 +449,79 @@ void main() {
     expect(FormattedText.usesDisplayMath(r'{x \over y}'), isTrue);
   });
 
-  test('forceDisplaySizeAll keeps nested fractions at display size via dfrac', () {
+  test('forceDisplaySizeAll keeps outer fraction large and nested compact', () {
     final out = FormattedText.forceDisplaySizeAll(
       r'\left(\frac{1 + \frac{1}{4}}{2 + \frac{1}{2}}\right)',
     );
-    expect(RegExp(r'(?<![d])\\frac\{').hasMatch(out), isFalse);
+    expect(out, contains(r'\dfrac{1 + \tfrac{1}{4}}{2 + \tfrac{1}{2}}'));
+    expect(out, startsWith(r'\displaystyle'));
+  });
+
+  test('reported nested fraction uses compact inner fractions consistently', () {
+    final out = FormattedText.forceDisplaySizeAll(
+      r'\frac{1 + \frac{1}{4}}{3 - \frac{1}{2}}'
+      r' \cdot (2 - \frac{3}{2})',
+    );
+    expect(
+      out,
+      contains(r'\dfrac{1 + \tfrac{1}{4}}{3 - \tfrac{1}{2}}'),
+    );
+    expect(out, contains(r'(2 - \dfrac{3}{2})'));
+    expect(out, isNot(contains(r'\dfrac{1}{4}')));
+    expect(out, isNot(contains(r'\dfrac{1}{2}')));
+  });
+
+  test('standalone one-quarter option keeps uniform display fraction', () {
+    expect(
+      FormattedText.prepareTex(r'\frac{1}{4}'),
+      r'\displaystyle \dfrac{1}{4}',
+    );
+  });
+
+  test('fraction inside a non-fraction group stays display sized', () {
+    expect(
+      FormattedText.forceDisplaySizeAll(r'\sqrt{\frac{1}{2}}'),
+      r'\displaystyle \sqrt{\dfrac{1}{2}}',
+    );
+  });
+
+  test('malformed brace does not shrink later top-level fractions', () {
+    final out = FormattedText.forceDisplaySizeAll(
+      r'{bozuk \frac{1}{4} + \frac{1}{2}',
+    );
     expect(out, contains(r'\dfrac{1}{4}'));
     expect(out, contains(r'\dfrac{1}{2}'));
-    expect(out, startsWith(r'\displaystyle'));
+  });
+
+  testWidgets('reported nested fraction line can grow beyond fixed strut',
+      (tester) async {
+    const stem =
+        r'$\frac{1 + \frac{1}{4}}{3 - \frac{1}{2}}'
+        r' \cdot (2 - \frac{3}{2})$ işleminin sonucu kaçtır?';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: FormattedText(
+              stem,
+              style: TextStyle(fontSize: 18, height: 1.35),
+              examLayout: true,
+              examWrap: true,
+              examScaleDown: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final mathLine = tester.widgetList<Text>(find.byType(Text)).firstWhere(
+          (widget) =>
+              widget.textSpan?.toPlainText().contains('işleminin sonucu') ??
+              false,
+        );
+    expect(mathLine.strutStyle?.forceStrutHeight, isFalse);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('exam layout keeps bold lines at body font size', (tester) async {

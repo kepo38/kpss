@@ -14,8 +14,10 @@ from .rich_text_common import (
     collapse_nested_marks,
     html_clipboard_to_text,
     html_to_markdown,
+    is_structured_solution_outline,
     normalize_latex,
     normalize_paste_text,
+    normalize_roman_solution_sections,
     repair_latex_escapes,
     restore_collapsed_breaks,
     structure_solution_outline,
@@ -38,7 +40,10 @@ def normalize_pasted_solution(
         chosen = choose_paste_text(raw, html_src)
     else:
         chosen = choose_paste_text(raw, "")
+    if is_structured_solution_outline(chosen):
+        return normalize_turkish_text(chosen).strip()
     chosen = restore_collapsed_breaks(chosen)
+    chosen = normalize_roman_solution_sections(chosen)
     chosen = structure_solution_outline(chosen)
     return normalize_turkish_text(chosen).strip()
 

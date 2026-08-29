@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'pomodoro_service.dart';
@@ -11,7 +12,9 @@ class AnswerFeedbackService {
   static final AnswerFeedbackService instance = AnswerFeedbackService._();
 
   final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _testCompletePlayer = AudioPlayer();
   bool _ready = false;
+  bool _testCompleteReady = false;
 
   Future<void> ensureReady() async {
     if (_ready) return;
@@ -24,7 +27,6 @@ class AnswerFeedbackService {
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.ambient,
-          options: {AVAudioSessionOptions.mixWithOthers},
         ),
       ),
     );
@@ -32,10 +34,31 @@ class AnswerFeedbackService {
     _ready = true;
   }
 
+  Future<void> _ensureTestCompleteReady() async {
+    if (_testCompleteReady) return;
+    await _testCompletePlayer.setAudioContext(
+      AudioContext(
+        android: const AudioContextAndroid(
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {AVAudioSessionOptions.mixWithOthers},
+        ),
+      ),
+    );
+    await _testCompletePlayer.setPlayerMode(PlayerMode.mediaPlayer);
+    await _testCompletePlayer.setReleaseMode(ReleaseMode.stop);
+    _testCompleteReady = true;
+  }
+
   Future<void> playCorrect() async {
     await ensureReady();
     HapticFeedback.lightImpact();
     await _playAsset(
+      _player,
       'sounds/correct.wav',
       onFailure: () => SystemSound.play(SystemSoundType.click),
     );
@@ -45,6 +68,7 @@ class AnswerFeedbackService {
     await ensureReady();
     HapticFeedback.mediumImpact();
     await _playAsset(
+      _player,
       'sounds/wrong.wav',
       onFailure: () => SystemSound.play(SystemSoundType.alert),
     );
@@ -55,6 +79,7 @@ class AnswerFeedbackService {
     await ensureReady();
     HapticFeedback.heavyImpact();
     await _playAsset(
+      _player,
       'sounds/focus_complete.wav',
       onFailure: () => SystemSound.play(SystemSoundType.alert),
     );
@@ -62,29 +87,61 @@ class AnswerFeedbackService {
 
   /// Test bitince sonuç ekranı — kısa tamamlanma efekti (~2,5 sn).
   Future<void> playTestComplete() async {
-    // Reklam / başka oynatıcı ses odağını bozmuş olabilir — bağlamı yenile.
-    _ready = false;
-    await ensureReady();
+    _testCompleteReady = false;
+    await _ensureTestCompleteReady();
+    await PomodoroService.instance.pauseForFeedback();
     HapticFeedback.mediumImpact();
-    await _playAsset(
-      'sounds/test_complete.wav',
-      onFailure: () => SystemSound.play(SystemSoundType.click),
-    );
+    try {
+      await _playAsset(
+        _testCompletePlayer,
+        'sounds/test_complete.wav',
+        onFailure: () => SystemSound.play(SystemSoundType.click),
+        waitForCompletion: true,
+        completionTimeout: const Duration(seconds: 5),
+      );
+    } finally {
+      await PomodoroService.instance.resumeAfterFeedback();
+    }
   }
 
   Future<void> _playAsset(
+    AudioPlayer player,
     String asset, {
     required void Function() onFailure,
+    bool waitForCompletion = false,
+    Duration completionTimeout = const Duration(seconds: 4),
   }) async {
+    StreamSubscription<void>? sub;
     try {
-      await _player.stop();
-      final done = _player.onPlayerComplete.first;
-      await _player.play(AssetSource(asset));
-      await done.timeout(const Duration(seconds: 4), onTimeout: () {});
-    } catch (_) {
+      await player.stop();
+      if (waitForCompletion) {
+        final completer = Completer<void>();
+        sub = player.onPlayerComplete.listen((_) {
+          if (!completer.isCompleted) completer.complete();
+        });
+        await player.setVolume(1.0);
+        await player.play(AssetSource(asset));
+        await completer.future.timeout(
+          completionTimeout,
+          onTimeout: () {},
+        );
+      } else {
+        await player.play(AssetSource(asset));
+        await player.onPlayerComplete.first.timeout(
+          completionTimeout,
+          onTimeout: () {},
+        );
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('AnswerFeedbackService asset failed ($asset): $e\n$st');
+      }
       onFailure();
     } finally {
-      await _restorePomodoroMusic();
+      await sub?.cancel();
+      if (player == _player) {
+        await _restorePomodoroMusic();
+      }
     }
   }
 
@@ -96,6 +153,8 @@ class AnswerFeedbackService {
 
   Future<void> dispose() async {
     await _player.dispose();
+    await _testCompletePlayer.dispose();
     _ready = false;
+    _testCompleteReady = false;
   }
 }

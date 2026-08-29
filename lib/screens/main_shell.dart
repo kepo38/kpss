@@ -38,18 +38,17 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
-  final ValueNotifier<KpssType> _selectedType =
-      ValueNotifier(KpssType.lisans);
-  final ValueNotifier<bool> _isPremium =
-      ValueNotifier(PremiumService.instance.isPremium);
+  final ValueNotifier<KpssType> _selectedType = ValueNotifier(KpssType.lisans);
+  late final ValueNotifier<bool> _isPremium;
 
   @override
   void initState() {
     super.initState();
     _selectedType.value = KpssPreferenceService.instance.kpssType;
     KpssPreferenceService.instance.addListener(_onKpssPrefChanged);
-    AdManager.instance.setPremium(_isPremium.value);
     DatabaseService.instance.setCurrentUser(widget.user);
+    _isPremium = ValueNotifier(PremiumService.instance.isPremium);
+    AdManager.instance.setPremium(_isPremium.value);
     PlayBillingService.instance.premiumNotifier.addListener(_onPremiumChanged);
     AuthService.instance.addListener(_onPremiumChanged);
     SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -183,14 +182,16 @@ class _MainShellState extends State<MainShell> {
                               shellTopBarVisible: true,
                             ),
                             StudyHubScreen(
-                              key: const PageStorageKey<String>('shell_subjects'),
+                              key: const PageStorageKey<String>(
+                                  'shell_subjects'),
                               kpssType: type,
                               embedded: true,
                               pane: StudyHubPane.subjects,
                               shellTopBarVisible: true,
                             ),
                             AnalyticsHubScreen(
-                              key: const PageStorageKey<String>('shell_analytics'),
+                              key: const PageStorageKey<String>(
+                                  'shell_analytics'),
                               kpssType: type,
                               embedded: true,
                               isPremium: premium,
@@ -308,9 +309,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = AppTheme.onPage(context);
-    final color = selected
-        ? on
-        : AppTheme.mutedOnPage(context);
+    final color = selected ? on : AppTheme.mutedOnPage(context);
 
     return Material(
       color: Colors.transparent,

@@ -42,16 +42,16 @@ class TgExamResultScreen extends StatefulWidget {
       return;
     }
 
-    final initialAnswers = questions
-        .map((q) => attempt?.answers[q.id])
-        .toList(growable: false);
+    final initialAnswers =
+        questions.map((q) => attempt?.answers[q.id]).toList(growable: false);
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => QuizScreen(
-          title: '${exam.title} · Çözümler',
+          title: exam.title,
           questions: questions,
           initialAnswers: initialAnswers,
+          hideQuestionCounter: true,
           adFreeExperience: true,
           tgExamMode: true,
           tgExamSolutionReview: true,

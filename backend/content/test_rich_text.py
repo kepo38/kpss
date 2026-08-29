@@ -16,7 +16,12 @@ from content.rich_text_common import (
     repair_latex_escapes,
     restore_collapsed_breaks,
 )
-from content.telegram_conversation import try_handle_conversation
+from content.telegram_conversation import (
+    ai_solution_status_note,
+    handle_photo_solution_decision,
+    solution_prompt_message,
+    try_handle_conversation,
+)
 
 
 class RichTextNormalizationTests(SimpleTestCase):
@@ -150,6 +155,106 @@ class RichTextNormalizationTests(SimpleTestCase):
         out = restore_collapsed_breaks(src)
         self.assertIn("I. Fidan,", out)
         self.assertNotIn("I.\nFidan", out)
+
+    def test_telegram_roman_solution_plain_text_gets_bold_headers(self):
+        src = (
+            "I. Suriye-Filistin: Liman von Sanders birlikte görev yapmıştır."
+            "II. Çanakkale: Liman von Sanders birlikte çalışmıştır."
+            "III. Kafkas: Liman von Sanders bu cephede görev almamıştır."
+        )
+        out = normalize_telegram_solution(src)
+        self.assertIn("**I. Suriye-Filistin:**", out)
+        self.assertIn("**II. Çanakkale:**", out)
+        self.assertIn("**III. Kafkas:**", out)
+        self.assertIn("\n", out)
+
+    def test_telegram_roman_solution_monolithic_bold_entity_splits(self):
+        src = (
+            "I. Suriye-Filistin: Liman von Sanders birlikte görev yapmıştır."
+            "II. Çanakkale: Liman von Sanders birlikte çalışmıştır."
+            "III. Kafkas: Liman von Sanders bu cephede görev almamıştır."
+        )
+        entities = [{"type": "bold", "offset": 0, "length": len(src)}]
+        out = normalize_telegram_solution(src, entities=entities)
+        self.assertIn("**I. Suriye-Filistin:**", out)
+        self.assertIn("**II. Çanakkale:**", out)
+        self.assertGreaterEqual(out.count("\n"), 2)
+        self.assertNotIn("yapmıştır.II.", out)
+
+    def test_telegram_glued_verbal_solution_restores_outline(self):
+        src = (
+            "Sorunun doğru cevabı A seçeneğidir (Demirci Mehmet Efe)."
+            "Millî Mücadele döneminde metinde bahsedilen tarihsel gelişmeler ve "
+            "unvanlar şu şekildedir:"
+            "Aydın ve Yöresi Komutanlığı: Sivas Kongresi'nin ardından bölgedeki "
+            "dağınık direniş güçlerini birleştirmek amacıyla Demirci Mehmet Efe'ye, "
+            "Aydın ve Yöresi Kuvayımilliye Komutanı unvanı verilmiştir."
+            "Düzenli Orduya Karşı İsyan: Batı Cephesi'nde disiplini sağlamak için "
+            "düzenli ordunun kurulması kararlaştırılınca, emir altına girmek "
+            "istemeyerek TBMM'ye karşı ayaklanmıştır (Aralık 1920)."
+            "Diğer Seçeneklerin Elenme Nedenleri"
+            "B) Çerkez Ethem: Düzenli orduya isyan etmiştir ancak faaliyet sahası "
+            "Aydın çevresi değildir."
+            "C) Yörük Ali Efe: Aydın bölgesinin önemli bir efe lideridir."
+            "D) Ahmet Anzavur: İstanbul Hükümeti tarafından desteklenmiştir."
+            "E) Tekelioğlu Sinan: Çukurova bölgesinde mücadele etmiştir."
+        )
+
+        out = normalize_telegram_solution(src)
+
+        self.assertIn("- **Aydın ve Yöresi Komutanlığı:**", out)
+        self.assertIn("- **Düzenli Orduya Karşı İsyan:**", out)
+        self.assertIn("**Diğer Seçeneklerin Elenme Nedenleri**", out)
+        self.assertIn("- **B) Çerkez Ethem:**", out)
+        self.assertIn("- **C) Yörük Ali Efe:**", out)
+        self.assertIn("- **D) Ahmet Anzavur:**", out)
+        self.assertIn("- **E) Tekelioğlu Sinan:**", out)
+        self.assertNotIn("verilmiştir.Düzenli", out)
+        self.assertNotIn("NedenleriB)", out)
+
+        again = normalize_telegram_solution(out)
+        self.assertEqual(again, out)
+
+    def test_telegram_regnal_roman_numerals_remain_prose(self):
+        src = (
+            "II. Mahmut döneminde Sened-i İttifak uygulanmıştır. "
+            "III. Selim ise Nizam-ı Cedit hareketini başlatmıştır."
+        )
+
+        out = normalize_telegram_solution(src)
+
+        self.assertIn("II. Mahmut döneminde", out)
+        self.assertIn("III. Selim ise", out)
+        self.assertNotIn("**II. Mahmut", out)
+        self.assertNotIn("**III. Selim", out)
+
+    def test_telegram_normalized_roman_sections_are_idempotent(self):
+        src = (
+            "I. Suriye-Filistin: Birinci açıklama."
+            "II. Çanakkale: İkinci açıklama."
+            "III. Kafkas: Üçüncü açıklama."
+        )
+
+        once = normalize_telegram_solution(src)
+        twice = normalize_telegram_solution(once)
+
+        self.assertEqual(twice, once)
+        self.assertNotIn("\n**\n", twice)
+
+    def test_structured_solution_still_normalizes_inline_markup(self):
+        src = (
+            "- **Birinci Başlık:** Denklem \\(x^2\\) ve A -> B.\n"
+            "- **İkinci Başlık:** \\vert{}a-b\\vert{} &amp; devam."
+        )
+
+        out = normalize_telegram_solution(src)
+
+        self.assertIn("$x^2$", out)
+        self.assertIn("A → B", out)
+        self.assertIn(r"\lvert a-b \rvert", out)
+        self.assertIn("& devam", out)
+        self.assertNotIn(r"\(", out)
+        self.assertNotIn("&amp;", out)
 
     def test_restore_collapsed_breaks_google_daily_solution_dates(self):
         src = (
@@ -474,3 +579,53 @@ class TelegramSolutionNormalizationIntegrationTests(TestCase):
         self.question.refresh_from_db()
         self.assertIn("$$", self.question.solution)
         self.assertIn(r"\frac", self.question.solution)
+
+
+class TelegramAiSolutionMessagingTests(TestCase):
+    def setUp(self):
+        subject = Subject.objects.create(slug="matematik", name="Matematik")
+        topic = Topic.objects.create(
+            subject=subject,
+            slug="matematik_sayilar",
+            name="Sayılar",
+        )
+        self.question = Question.objects.create(
+            topic=topic,
+            public_id="q_ai_solution",
+            stem="Soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            solution="## 1. Adım\nSonuç **A** olur.",
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+            telegram_chat_id=1001,
+            telegram_message_id=555,
+        )
+
+    def test_solution_prompt_mentions_gemini_auto_solution(self):
+        msg = solution_prompt_message()
+        self.assertIn("Gemini", msg)
+        self.assertNotIn("çözüm yok", msg.lower())
+
+    def test_hayir_keeps_gemini_solution_and_message(self):
+        reply = handle_photo_solution_decision(
+            telegram_user_id=42,
+            chat_id=1001,
+            photo_message_id=555,
+            yes=False,
+        )
+        self.question.refresh_from_db()
+        self.assertIn("Gemini otomatik çözüm kayıtlı", reply.text)
+        self.assertIn("## 1. Adım", self.question.solution)
+
+    def test_ai_solution_status_note_before_ocr(self):
+        self.assertIn(
+            "Gemini adım adım çözüm yazar",
+            ai_solution_status_note(None),
+        )
+        self.assertIn(
+            "Gemini otomatik çözüm kayıtlı",
+            ai_solution_status_note(self.question),
+        )

@@ -75,7 +75,9 @@ _EXTERIOR_UNDER_CLOSE = re.compile(
     r"(?<=[^\s_])(__)(?!_)([0-9A-Za-zĞğİıÖöŞşÜüÇç'’])"
 )
 
-_SPLIT_BOLD_RE = re.compile(r"\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*")
+_SPLIT_BOLD_RE = re.compile(
+    r"(?<!\S)\*\*([^\n*][^\n*]*?)\n\s+([^\n*][^\n*]*?)\*\*"
+)
 
 _COMBINED_BOLD_UNDER_RE = re.compile(
     r"<(?:strong|b)\b[^>]*>\s*<u\b[^>]*>([\s\S]*?)</u\s*>\s*</(?:strong|b)\s*>|"
@@ -533,6 +535,19 @@ _DIGER_SECENEKLER_LINE_RE = re.compile(
     r"^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$",
     re.IGNORECASE,
 )
+_ROMAN_SECTION_LINE_RE = re.compile(
+    r"^(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:"
+)
+_ROMAN_SECTION_TITLE_RE = re.compile(
+    r"^(\*{0,2})((?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]+:)(\*{0,2})\s*(.*)$",
+    re.DOTALL,
+)
+_ROMAN_SECTION_SPLIT_RE = re.compile(
+    r"(?<=[.!?])(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)",
+)
+_ROMAN_TOKEN_RE = re.compile(
+    r"\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:"
+)
 
 
 def _split_google_verbal_solution(src: str) -> str:
@@ -548,6 +563,61 @@ def _split_google_verbal_solution(src: str) -> str:
     src = _GLUED_OPTION_LETTER_RE.sub("\n", src)
     src = _OPTION_TITLE_BODY_GLUE_RE.sub(r"\1\n", src)
     return src
+
+
+def _split_glued_roman_sections(src: str) -> str:
+    """Google/Telegram yapıştırmasında yapışık I./II./III. satırlarını ayır."""
+    roman_tokens = _ROMAN_TOKEN_RE.findall(src)
+    if len(set(roman_tokens)) < 2:
+        return src
+    return re.sub(
+        r"(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)",
+        "\n",
+        src,
+    )
+
+
+def normalize_roman_solution_sections(text: str) -> str:
+    """Roma rakamlı çözüm maddelerini satır + kalın başlığa dönüştür."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src:
+        return src
+    if not _ROMAN_TOKEN_RE.search(src):
+        return src
+
+    inner = src
+    if inner.startswith("**") and inner.endswith("**") and inner.count("**") == 2:
+        inner = inner[2:-2].strip()
+
+    inner = _split_glued_roman_sections(inner)
+    parts = [
+        part.strip()
+        for part in _ROMAN_SECTION_SPLIT_RE.split(inner)
+        if part.strip()
+    ]
+    if len(parts) < 2:
+        parts = [line.strip() for line in inner.split("\n") if line.strip()]
+    if len(parts) < 2:
+        return src
+
+    out: list[str] = []
+    matched = 0
+    for part in parts:
+        title = _ROMAN_SECTION_TITLE_RE.match(part)
+        if not title:
+            out.append(part)
+            continue
+        matched += 1
+        header = _strip_outer_bold(title.group(2).strip())
+        body = (title.group(4) or "").strip()
+        out.append(f"**{header}**")
+        if body:
+            out.append(body)
+        out.append("")
+
+    if matched < 2:
+        return src
+    return "\n".join(out).strip()
 
 
 def restore_collapsed_breaks(text: str) -> str:
@@ -602,6 +672,12 @@ def restore_collapsed_breaks(text: str) -> str:
     # Cümle sonu → büyük harf / numaralı madde
     src = re.sub(r"([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", r"\1\n", src)
     src = re.sub(r":(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", ":\n", src)
+    # Düz metindeki tek boşluklu kısa başlık/gövde birleşmesi.
+    src = re.sub(
+        r"(?m)^([A-ZÇĞİÖŞÜÂÎÛ][^.!?:\n]{2,79}:)[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ])",
+        r"\1\n",
+        src,
+    )
     src = re.sub(r"([.!?])(?!\n)(?=\d+\.\s)", r"\1\n", src)
     src = re.sub(r":(?!\n)(?=\d+\.\s)", ":\n", src)
     # Noktalı virgül sonrası yeni cümle / matematik (korumalı veya ham)
@@ -690,13 +766,9 @@ def restore_collapsed_breaks(text: str) -> str:
         src,
         flags=re.I,
     )
-    roman_tokens = re.findall(r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s", src)
+    roman_tokens = _ROMAN_TOKEN_RE.findall(src)
     if len(set(token.rstrip() for token in roman_tokens)) >= 2:
-        src = re.sub(
-            r"(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)",
-            "\n",
-            src,
-        )
+        src = _split_glued_roman_sections(src)
     src = _restore_markdown_spans(src, md_holders)
     src = re.sub(
         r"§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))",
@@ -908,6 +980,7 @@ _RESULT_TAIL_RE = re.compile(
     r"(→\s*)(🧍\s*)?(Oturuyor|AYAKTA)\.?\s*$",
     re.IGNORECASE,
 )
+_DESCRIPTIVE_HEADING_RE = re.compile(r"^[A-ZÇĞİÖŞÜÂÎÛ][^.!?:\n]{2,79}:$")
 
 
 def _emphasize_result_tail(line: str) -> str:
@@ -1055,6 +1128,34 @@ def _structure_preamble_lines(lines: list[str]) -> list[str]:
                 i += 1
             out.append("")
             continue
+        if (
+            _DESCRIPTIVE_HEADING_RE.match(line)
+            and len(line.split()) <= 8
+            and not _KURAL_OZETI_RE.match(line)
+            and not _DIGER_SECENEKLER_LINE_RE.match(line)
+            and not re.search(r"(?:elim|alım|şunlardır):$", line, re.IGNORECASE)
+        ):
+            body = ""
+            if i + 1 < len(lines):
+                candidate = lines[i + 1].strip()
+                if (
+                    candidate
+                    and not _DESCRIPTIVE_HEADING_RE.match(candidate)
+                    and not _is_option_header_line(candidate)
+                    and not _DIGER_SECENEKLER_LINE_RE.match(candidate)
+                    and not _FORMULA_LIST_LABEL_RE.match(candidate)
+                    and not _CONDITION_BULLET_RE.match(candidate)
+                    and not _STEP_HEADER_RE.match(candidate)
+                    and not _ROMAN_SECTION_LINE_RE.match(candidate)
+                    and not _NUMBERED_SECTION_RE.match(candidate)
+                ):
+                    body = candidate
+                    i += 1
+            suffix = f" {body}" if body else ""
+            out.append(f"- **{_strip_outer_bold(line)}**{suffix}")
+            out.append("")
+            i += 1
+            continue
         if _CONDITION_BULLET_RE.match(line):
             while i < len(lines) and _CONDITION_BULLET_RE.match(lines[i].strip()):
                 out.append(f"- {lines[i].strip()}")
@@ -1067,6 +1168,19 @@ def _structure_preamble_lines(lines: list[str]) -> list[str]:
                 out.append(core)
             else:
                 out.append(f"**{core}**")
+            out.append("")
+            i += 1
+            continue
+        if _ROMAN_SECTION_LINE_RE.match(line):
+            title = _ROMAN_SECTION_TITLE_RE.match(line)
+            if title and title.group(2).strip():
+                header = _strip_outer_bold(title.group(2).strip())
+                body = (title.group(4) or "").strip()
+                out.append(f"**{header}**")
+                if body:
+                    out.append(body)
+            else:
+                out.append(f"**{_strip_outer_bold(line)}**")
             out.append("")
             i += 1
             continue
@@ -1161,6 +1275,20 @@ def _structure_score(text: str) -> int:
     return bolds * 3 + unders * 3 + breaks + bullets * 2 + heads * 4
 
 
+def is_structured_solution_outline(text: str) -> bool:
+    """Daha önce biçimlenmiş çözümü ikinci normalizasyondan koru."""
+    src = text or ""
+    structured_lines = re.findall(
+        r"(?m)^\s*(?:-\s+)?\*\*(?:"
+        r"[A-E]\)\s+[^*\n]+:|"
+        r"(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^*\n]+:|"
+        r"[^*\n]{3,80}:"
+        r")\*\*",
+        src,
+    )
+    return len(structured_lines) >= 2
+
+
 def _align_list_to_plain(from_html: str, from_plain: str) -> str:
     html = collapse_bullet_prefixes(from_html)
     plain_list = len(re.findall(r"^\s*[-•*]\s+", from_plain, re.MULTILINE))
@@ -1176,7 +1304,7 @@ def choose_paste_text(plain: str, html: str = "") -> str:
         collapse_nested_marks(normalize_paste_text(plain or ""))
     )
     from_html = html_clipboard_to_text(html) if (html or "").strip() else ""
-    if from_html:
+    if from_html and from_plain:
         from_html = _align_list_to_plain(from_html, from_plain)
     if not from_html:
         return from_plain

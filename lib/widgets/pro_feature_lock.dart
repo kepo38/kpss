@@ -15,6 +15,10 @@ class ProFeatureLock extends StatelessWidget {
   final VoidCallback? onUnlock;
   final String upsellTitle;
   final String upsellSubtitle;
+  /// Kart üzerinde görünen tanıtım metni (tıklanınca açılan sheet’ten ayrı).
+  final String? lockHint;
+  final String lockCta;
+  final IconData lockIcon;
 
   const ProFeatureLock({
     super.key,
@@ -23,6 +27,9 @@ class ProFeatureLock extends StatelessWidget {
     this.onUnlock,
     this.upsellTitle = 'PRO ÖZELLİK',
     this.upsellSubtitle = kProUpsellSubtitle,
+    this.lockHint,
+    this.lockCta = 'Pro ile aç',
+    this.lockIcon = Icons.lock_rounded,
   });
 
   Future<void> _handleTap(BuildContext context) async {
@@ -41,13 +48,17 @@ class ProFeatureLock extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!locked) return child;
 
+    final hint = lockHint ?? upsellSubtitle;
+
     return Stack(
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: Opacity(opacity: 0.45, child: child),
+          child: ExcludeSemantics(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Opacity(opacity: 0.45, child: child),
+            ),
           ),
         ),
         Positioned.fill(
@@ -81,13 +92,13 @@ class ProFeatureLock extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.lock_rounded,
+                        lockIcon,
                         color: AppTheme.champagne.withValues(alpha: 0.95),
                         size: 28,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        upsellSubtitle,
+                        hint,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontFamily: 'serif',
@@ -99,7 +110,7 @@ class ProFeatureLock extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Pro ile aç',
+                        lockCta,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,

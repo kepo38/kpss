@@ -9,14 +9,16 @@ class AiCoachInsightCard extends StatelessWidget {
   final CoachInsight? insight;
   final bool isPremium;
   final String fallbackMessage;
+  final VoidCallback? onTopicTap;
 
   const AiCoachInsightCard({
     super.key,
     required this.insight,
     required this.isPremium,
     this.fallbackMessage =
-        'Son 3 testtir coğrafyada patlıyorsun, çalışman gereken alt konu '
-        'Türkiye\'nin Coğrafi Bölgeleri\'dir.',
+        'Birkaç test çözdükten sonra kişisel çalışma değerlendirmen burada '
+        'görünecek.',
+    this.onTopicTap,
   });
 
   @override
@@ -33,11 +35,17 @@ class AiCoachInsightCard extends StatelessWidget {
         ProFeatureLock(
           locked: !isPremium,
           upsellTitle: 'AI KOÇ',
-          upsellSubtitle: kProUpsellSubtitle,
+          upsellSubtitle:
+              'Konu testlerindeki performansına göre net trendini, zayıf '
+              'alanlarını ve çalışma önceliğini söyler.',
+          lockHint: 'AI KOÇ\nNet trendin · zayıf konun · kişisel önerin',
+          lockCta: 'Keşfet',
+          lockIcon: Icons.auto_awesome_rounded,
           child: _PremiumCoachCard(
             message: message,
             subject: subject,
             topic: topic,
+            onTopicTap: isPremium ? onTopicTap : null,
           ),
         ),
       ],
@@ -103,11 +111,13 @@ class _PremiumCoachCard extends StatelessWidget {
   final String message;
   final String? subject;
   final String? topic;
+  final VoidCallback? onTopicTap;
 
   const _PremiumCoachCard({
     required this.message,
     this.subject,
     this.topic,
+    this.onTopicTap,
   });
 
   @override
@@ -327,6 +337,7 @@ class _PremiumCoachCard extends StatelessWidget {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (subject != null)
                           _InsightChip(
@@ -338,6 +349,7 @@ class _PremiumCoachCard extends StatelessWidget {
                             icon: Icons.track_changes_rounded,
                             label: topic!,
                             accent: true,
+                            onTap: onTopicTap,
                           ),
                       ],
                     ),
@@ -356,23 +368,26 @@ class _InsightChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool accent;
+  final VoidCallback? onTap;
 
   const _InsightChip({
     required this.icon,
     required this.label,
     this.accent = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final color = accent ? AppTheme.champagneLight : Colors.white;
-    return Container(
+    final radius = BorderRadius.circular(999);
+    final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: accent
             ? AppTheme.champagne.withValues(alpha: 0.12)
             : Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: radius,
         border: Border.all(
           color: accent
               ? AppTheme.champagne.withValues(alpha: 0.42)
@@ -392,7 +407,34 @@ class _InsightChip extends StatelessWidget {
               color: color.withValues(alpha: 0.92),
             ),
           ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 10,
+              color: color.withValues(alpha: 0.78),
+            ),
+          ],
         ],
+      ),
+    );
+    if (onTap == null) return content;
+    return Semantics(
+      container: true,
+      button: true,
+      label: '$label konusuna git',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Center(child: content),
+          ),
+        ),
       ),
     );
   }
