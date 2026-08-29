@@ -165,8 +165,9 @@
     {% include "panel/partials/question_options_fields.html" %}
     <label>Doğru cevap
       <select name="correct_option">
+        <option value="" {% if not question.correct_option %}selected{% endif %}>— Seçin —</option>
         {% for c in "ABCDE" %}
-        <option value="{{ c }}" {% if question.correct_option == c %}selected{% elif not question and c == 'A' %}selected{% endif %}>{{ c }}</option>
+        <option value="{{ c }}" {% if question.correct_option == c %}selected{% endif %}>{{ c }}</option>
         {% endfor %}
       </select>
     </label>
@@ -314,7 +315,7 @@
           <div class="quiz-opt-col-head" id="pv-opt-col-head" hidden></div>
           <div class="quiz-mock-opts">
             {% for c in "ABCDE" %}
-            <div class="quiz-mock-opt{% if question.correct_option == c or not question and c == 'A' %} is-correct{% endif %}" id="pv-opt-{{ c }}">
+            <div class="quiz-mock-opt{% if question.correct_option == c %} is-correct{% endif %}" id="pv-opt-{{ c }}">
               <span class="quiz-mock-badge">{{ c }}</span>
               <div class="quiz-mock-opt-text is-empty" id="pv-opt-text-{{ c }}">Şık {{ c }}</div>
             </div>
@@ -340,7 +341,7 @@
       <script src="{% static 'panel/map-question-editor.js' %}?v=16"></script>
 <script src="{% static 'panel/question-options.js' %}?v=4"></script>
 <script src="{% static 'panel/option-table.js' %}?v=8"></script>
-<script src="{% static 'panel/question-preview.js' %}?v=14"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=16"></script>
 {{ scenarios_json|json_script:"question-scenarios-data" }}
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
@@ -516,9 +517,9 @@
     const answerRaw = (data.dogru_cevap || data.correct_option || '').toString().toUpperCase();
     const answer = 'ABCDE'.split('').find(function (k) { return answerRaw.indexOf(k) !== -1; });
     const answerSel = document.querySelector('[name=correct_option]');
-    if (answerSel && answer) {
-      answerSel.value = answer;
-      answerSel.dispatchEvent(new Event('change', { bubbles: true }));
+    if (answerSel) {
+      answerSel.value = answer || "";
+      answerSel.dispatchEvent(new Event("change", { bubbles: true }));
     }
     const solField = document.querySelector('[name=solution]');
     const sol = data.detayli_cozum || data.solution || '';

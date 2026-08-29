@@ -71,6 +71,15 @@ class IngestQuestionResult:
     topic_auto_detected: bool = False
 
 
+def normalize_correct_option(raw: str) -> str:
+    letter = (raw or "").strip().upper()
+    return letter if letter in "ABCDE" else ""
+
+
+def _normalize_correct_option(raw: str) -> str:
+    return normalize_correct_option(raw)
+
+
 def _run_ocr(image: BinaryIO, *, mime: str = "image/jpeg") -> tuple[object, str, str, bool, bool]:
     gemini_attempted = False
     gemini_failed = False
@@ -239,9 +248,7 @@ def ingest_question_from_image(
     stem = (ocr.stem or "").strip() or "Aşağıdaki görsele göre cevaplayınız."
     opts = _normalize_options(ocr.options or {})
     figure_svg = _sanitize_figure_svg(getattr(ocr, "figure_svg", "") or "")
-    correct_option = getattr(ocr, "correct_option", "") or "A"
-    if correct_option not in "ABCDE":
-        correct_option = "A"
+    correct_option = _normalize_correct_option(getattr(ocr, "correct_option", ""))
     solution = (getattr(ocr, "solution", "") or "").strip()
 
     topic_auto_detected = False

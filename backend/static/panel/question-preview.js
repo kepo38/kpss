@@ -89,9 +89,6 @@
   }
 
   function currentStemImageSrc() {
-    var keep = document.querySelector('[name="keep_image"]');
-    if (keep && !keep.checked) return "";
-
     var previewBox = document.getElementById("stem-image-preview-new");
     var previewImg = document.getElementById("stem-image-preview-new-img");
     if (
@@ -120,6 +117,17 @@
 
     var stem = currentStemImageSrc();
     if (stem) return stem;
+
+    var ocrPreview = document.getElementById("q-image-preview-img");
+    var ocrBox = document.getElementById("q-image-preview");
+    if (
+      ocrBox &&
+      !ocrBox.hidden &&
+      ocrPreview &&
+      ocrPreview.getAttribute("src")
+    ) {
+      return ocrPreview.src;
+    }
     return "";
   }
 
@@ -289,7 +297,7 @@
 
     syncFigureSvg(svgEl, currentFigureSvg());
 
-    var correct = val("correct_option") || "A";
+    var correct = val("correct_option");
     var filled = [];
     ["A", "B", "C", "D", "E"].forEach(function (k) {
       var row = document.getElementById("pv-opt-" + k);
@@ -324,10 +332,9 @@
           return "Şık " + filled[index].k;
         },
         plainHtml: function (t) {
-          var formatted = formatPlain(t);
           return window.KpssMathRender
-            ? window.KpssMathRender.plainInline(formatted)
-            : escapeText(formatted);
+            ? window.KpssMathRender.optionInline(t)
+            : escapeText(formatPlain(t));
         },
       });
     } else {
@@ -371,10 +378,9 @@
         item.text.classList.add("is-empty");
       } else if (item.t) {
         if (!window.KpssOptionTable) {
-          var formatted = formatPlain(item.t);
           item.text.innerHTML = window.KpssMathRender
-            ? window.KpssMathRender.plainInline(formatted)
-            : escapeText(formatted);
+            ? window.KpssMathRender.optionInline(item.t)
+            : escapeText(formatPlain(item.t));
         }
         item.text.classList.remove("is-empty");
       } else {

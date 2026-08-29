@@ -48,6 +48,7 @@ from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
+from .ocr_ingest import normalize_correct_option
 from .svg_sanitize import sanitize_figure_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
@@ -168,7 +169,7 @@ def _store_ocr_draft(
     options: dict[str, str],
     figure_svg: str = "",
     solution: str = "",
-    correct_option: str = "A",
+    correct_option: str = "",
     source_image_hash: str = "",
     source_image_phash: str = "",
     test_assignment: str = "auto",
@@ -277,7 +278,7 @@ def _question_from_draft(draft: dict) -> types.SimpleNamespace:
         option_c_image=None,
         option_d_image=None,
         option_e_image=None,
-        correct_option=draft.get("correct_option", "A") or "A",
+        correct_option=normalize_correct_option(draft.get("correct_option", "")),
         solution=draft.get("solution", ""),
         figure_svg=draft.get("figure_svg", ""),
         source_image_hash=draft.get("source_image_hash", ""),
@@ -996,11 +997,9 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                     figure_svg = _sanitize_figure_svg(
                         getattr(ocr, "figure_svg", "") or ""
                     )
-                    correct_option = (
-                        getattr(ocr, "correct_option", "") or "A"
+                    correct_option = normalize_correct_option(
+                        getattr(ocr, "correct_option", "")
                     )
-                    if correct_option not in "ABCDE":
-                        correct_option = "A"
                     solution = (getattr(ocr, "solution", "") or "").strip()
 
                     c_hash = content_fingerprint(
@@ -2007,7 +2006,14 @@ def panel_question_edit(
         }:
             option_table = Question.OPTION_TABLE_NONE
         question.option_table = option_table
-        question.correct_option = request.POST.get("correct_option", "A")
+        correct_option = normalize_correct_option(
+            request.POST.get("correct_option", "")
+        )
+        if request.POST.get("is_published") == "on" and not correct_option:
+            return HttpResponseBadRequest(
+                "Yayınlamak için doğru cevabı (A–E) seçmelisiniz."
+            )
+        question.correct_option = correct_option
         question.solution = normalize_pasted_solution(
             request.POST.get("solution", "")
         )
@@ -2503,7 +2509,7 @@ def panel_test_edit(
                 "D": q.option_d or "",
                 "E": q.option_e or "",
             },
-            "correct": q.correct_option or "A",
+            "correct": q.correct_option or "",
             "solution": q.solution or "",
         }
         for q in pool

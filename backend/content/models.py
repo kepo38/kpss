@@ -247,6 +247,7 @@ class Question(models.Model):
         (OPTION_TABLE_DUAL, "İkili"),
         (OPTION_TABLE_TRIPLE, "Üçlü"),
     ]
+    CORRECT_OPTION_CHOICES = [("", "—")] + [(c, c) for c in "ABCDE"]
     option_table = models.CharField(
         max_length=8,
         choices=OPTION_TABLE_CHOICES,
@@ -256,8 +257,9 @@ class Question(models.Model):
     )
     correct_option = models.CharField(
         max_length=1,
-        choices=[(c, c) for c in "ABCDE"],
-        default="A",
+        choices=CORRECT_OPTION_CHOICES,
+        default="",
+        blank=True,
     )
     solution = models.TextField(blank=True, verbose_name="Çözüm")
     solution_image = models.ImageField(

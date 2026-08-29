@@ -954,7 +954,13 @@
     return restoreHolders(out, holders);
   }
 
-  /** Şık metni — kalın/italik/altı çizili yok, yalnızca matematik. */
+  /** Şık metni — kalın/italik/altı çizili + matematik (uygulama ExamOptionView ile uyumlu). */
+  function optionInline(text) {
+    if (!text) return "";
+    return richInline(formatPlain(text));
+  }
+
+  /** Eski ad — yalnızca LaTeX, markdown yok (tablo ayrıştırma vb.). */
   function plainInline(text) {
     if (!text) return "";
     var src = wrapBareLatex(normalizeExamArrows(normalizeLatex(String(text))));
@@ -1201,6 +1207,7 @@
     wrapBareLatex: wrapBareLatex,
     forceDisplaySizeAll: forceDisplaySizeAll,
     richInline: richInline,
+    optionInline: optionInline,
     plainInline: plainInline,
     paragraphHtml: paragraphHtml,
     documentHtml: documentHtml,

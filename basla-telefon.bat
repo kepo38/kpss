@@ -32,17 +32,17 @@ echo.
 echo   [ADIM] JAVA / Flutter / adb PATH...
 if exist "C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin\java.exe" (
   set "JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot"
-  set "PATH=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin;%PATH%"
+  set "PATH=C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot\bin;!PATH!"
   echo [OK] JAVA_HOME ayarlandi
 ) else (
   echo [.] JAVA_HOME varsayilan - jdk-17.0.20 bulunamadi
 )
 if exist "C:\flutter\flutter\bin\flutter.bat" (
-  set "PATH=C:\flutter\flutter\bin;%PATH%"
+  set "PATH=C:\flutter\flutter\bin;!PATH!"
   echo [OK] Flutter PATH eklendi
 )
 if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
-  set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;%PATH%"
+  set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;!PATH!"
   echo [OK] adb PATH eklendi
 ) else echo [UYARI] adb SDK yolunda yok - flutter kendi adb kullanabilir
 
@@ -64,25 +64,10 @@ echo [OK] PUB_CACHE=%PUB_CACHE%
 echo.
 echo   [ADIM] Python bulunuyor...
 set "PY="
-if exist "%ROOT%\venv\Scripts\python.exe" set "PY=%ROOT%\venv\Scripts\python.exe"
-if not defined PY if exist "%ROOT%\.venv\Scripts\python.exe" set "PY=%ROOT%\.venv\Scripts\python.exe"
-if not defined PY if exist "%ROOT%\backend\venv\Scripts\python.exe" set "PY=%ROOT%\backend\venv\Scripts\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python314\python.exe" set "PY=%LocalAppData%\Programs\Python\Python314\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python313\python.exe" set "PY=%LocalAppData%\Programs\Python\Python313\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python312\python.exe" set "PY=%LocalAppData%\Programs\Python\Python312\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python311\python.exe" set "PY=%LocalAppData%\Programs\Python\Python311\python.exe"
-if not defined PY (
-  where py >nul 2>&1
-  if not errorlevel 1 for /f "delims=" %%P in ('py -3 -c "import sys; print(sys.executable)" 2^>nul') do set "PY=%%P"
-)
-if not defined PY (
-  for /f "delims=" %%P in ('where python 2^>nul') do (
-    echo %%P | findstr /I "WindowsApps" >nul
-    if errorlevel 1 if not defined PY set "PY=%%P"
-  )
-)
+for /f "usebackq delims=" %%P in (`call "%ROOT%\scripts\find-python.bat" "%ROOT%"`) do set "PY=%%P"
 if not defined PY (
   echo [HATA] Python bulunamadi.
+  echo        Kurulum: https://www.python.org/downloads/  veya  py -3 -m venv venv
   goto :fail
 )
 echo [OK] Python: !PY!

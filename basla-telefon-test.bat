@@ -28,25 +28,10 @@ echo [OK] ROOT=%ROOT%
 echo.
 echo [ADIM 2/6] Python bulunuyor...
 set "PY="
-if exist "%ROOT%\venv\Scripts\python.exe" set "PY=%ROOT%\venv\Scripts\python.exe"
-if not defined PY if exist "%ROOT%\.venv\Scripts\python.exe" set "PY=%ROOT%\.venv\Scripts\python.exe"
-if not defined PY if exist "%ROOT%\backend\venv\Scripts\python.exe" set "PY=%ROOT%\backend\venv\Scripts\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python314\python.exe" set "PY=%LocalAppData%\Programs\Python\Python314\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python313\python.exe" set "PY=%LocalAppData%\Programs\Python\Python313\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python312\python.exe" set "PY=%LocalAppData%\Programs\Python\Python312\python.exe"
-if not defined PY if exist "%LocalAppData%\Programs\Python\Python311\python.exe" set "PY=%LocalAppData%\Programs\Python\Python311\python.exe"
-if not defined PY (
-  where py >nul 2>&1
-  if not errorlevel 1 for /f "delims=" %%P in ('py -3 -c "import sys; print(sys.executable)" 2^>nul') do set "PY=%%P"
-)
-if not defined PY (
-  for /f "delims=" %%P in ('where python 2^>nul') do (
-    echo %%P | findstr /I "WindowsApps" >nul
-    if errorlevel 1 if not defined PY set "PY=%%P"
-  )
-)
+for /f "usebackq delims=" %%P in (`call "%ROOT%\scripts\find-python.bat" "%ROOT%"`) do set "PY=%%P"
 if not defined PY (
   echo [HATA] Python bulunamadi.
+  echo        Kurulum: https://www.python.org/downloads/  veya  py -3 -m venv venv
   pause
   exit /b 1
 )

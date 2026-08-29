@@ -72,6 +72,26 @@ class SvgExtractTests(SimpleTestCase):
         self.assertEqual(strip_raster_embeds(raw).count("image"), 0)
 
 
+class CorrectOptionNormalizationTests(SimpleTestCase):
+    def test_empty_when_missing(self):
+        from .ocr_ingest import normalize_correct_option
+
+        self.assertEqual(normalize_correct_option(""), "")
+        self.assertEqual(normalize_correct_option("  "), "")
+
+    def test_keeps_valid_letter(self):
+        from .ocr_ingest import normalize_correct_option
+
+        self.assertEqual(normalize_correct_option("c"), "C")
+        self.assertEqual(normalize_correct_option(" A "), "A")
+
+    def test_rejects_invalid(self):
+        from .ocr_ingest import normalize_correct_option
+
+        self.assertEqual(normalize_correct_option("AB"), "")
+        self.assertEqual(normalize_correct_option("1"), "")
+
+
 class FigureSvgPanelTests(TestCase):
     def setUp(self):
         self.media_dir = tempfile.TemporaryDirectory()
