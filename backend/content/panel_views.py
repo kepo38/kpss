@@ -48,7 +48,8 @@ from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
-from .ocr_ingest import normalize_correct_option
+from .ocr_ingest import normalize_correct_option, _run_ocr, _compose_fallback_log_error
+from .ocr_diagnostics import compose_error_message, log_ocr_event
 from .svg_sanitize import sanitize_figure_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
@@ -119,6 +120,7 @@ def _log_ocr_ingest(
     error_message: str = "",
     status: str | None = None,
     raw_response: str = "",
+    gemini_error: str = "",
 ) -> None:
     try:
         stem = (getattr(result, "stem", "") or "") if result is not None else ""
@@ -135,7 +137,15 @@ def _log_ocr_ingest(
         computed_status = status or (
             OcrIngestLog.STATUS_SUCCESS if ok else OcrIngestLog.STATUS_FAILED
         )
-        err = error_message or (getattr(result, "error", "") or "")
+        err = compose_error_message(
+            (getattr(result, "diagnostics", None) if result is not None else None),
+            error_message
+            or _compose_fallback_log_error(gemini_error, result)
+            or (getattr(result, "error", "") or ""),
+        )
+        diagnostics = getattr(result, "diagnostics", None) if result is not None else {}
+        if not isinstance(diagnostics, dict):
+            diagnostics = {}
         OcrIngestLog.objects.create(
             image_path=image_path or "",
             source_image_hash=source_image_hash or "",
@@ -155,6 +165,13 @@ def _log_ocr_ingest(
             raw_text=raw_text,
             issue_formula_missing=_detect_formula_missing(stem, options, raw_text),
             issue_char_drift=_detect_char_drift(stem, options, raw_text),
+            diagnostics=diagnostics,
+        )
+        log_ocr_event(
+            diagnostics=diagnostics,
+            image_path=image_path,
+            ok=ok,
+            status=computed_status,
         )
     except Exception:
         # OCR logu ana akışı bozmamalı.
@@ -913,26 +930,12 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
         else:
             topic = get_object_or_404(Topic, pk=topic_id, is_active=True)
             try:
-                gemini_attempted = False
-                gemini_failed = False
-                img_hash = image_fingerprint(image)
                 if hasattr(image, "seek"):
                     image.seek(0)
-                img_phash = image_phash(image)
-                if hasattr(image, "seek"):
-                    image.seek(0)
-                if gemini_configured():
-                    gemini_attempted = True
-                    img_bytes = image.read()
-                    mime = getattr(image, "content_type", "image/png") or "image/png"
-                    ocr = ocr_question_image_gemini(img_bytes, mime)
-                    if not ocr.ok:
-                        gemini_failed = True
-                        if hasattr(image, "seek"):
-                            image.seek(0)
-                        ocr = ocr_question_image(image)
-                else:
-                    ocr = ocr_question_image(image)
+                mime = getattr(image, "content_type", "image/png") or "image/png"
+                ocr, img_hash, img_phash, gemini_attempted, gemini_failed, gemini_error = (
+                    _run_ocr(image, mime=mime)
+                )
             except Exception:  # noqa: BLE001
                 _log_ocr_ingest(
                     request,
@@ -1040,6 +1043,7 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                             if gemini_attempted and gemini_failed and ocr.ok
                             else OcrIngestLog.STATUS_SUCCESS
                         ),
+                        gemini_error=gemini_error,
                     )
                     if dup and not force_duplicate:
                         duplicate = duplicate_payload(dup, match)
@@ -1164,26 +1168,12 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
     topic = Topic.objects.filter(pk=topic_raw, is_active=True).first() if topic_raw else None
 
     try:
-        gemini_attempted = False
-        gemini_failed = False
-        img_hash = image_fingerprint(image)
         if hasattr(image, "seek"):
             image.seek(0)
-        img_phash = image_phash(image)
-        if hasattr(image, "seek"):
-            image.seek(0)
-        if gemini_configured():
-            gemini_attempted = True
-            img_bytes = image.read()
-            mime = getattr(image, "content_type", "image/png") or "image/png"
-            result = ocr_question_image_gemini(img_bytes, mime)
-            if not result.ok:
-                gemini_failed = True
-                if hasattr(image, "seek"):
-                    image.seek(0)
-                result = ocr_question_image(image)
-        else:
-            result = ocr_question_image(image)
+        mime = getattr(image, "content_type", "image/png") or "image/png"
+        result, img_hash, img_phash, gemini_attempted, gemini_failed, gemini_error = (
+            _run_ocr(image, mime=mime)
+        )
     except Exception:  # noqa: BLE001
         _log_ocr_ingest(
             request,
@@ -1280,6 +1270,7 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             if gemini_attempted and gemini_failed and result.ok
             else OcrIngestLog.STATUS_SUCCESS
         ),
+        gemini_error=gemini_error,
     )
     from .option_image_crop import crops_to_data_urls
 

@@ -1445,6 +1445,7 @@ class OcrIngestLog(models.Model):
     raw_text = models.TextField(blank=True, default="")
     issue_formula_missing = models.BooleanField(default=False)
     issue_char_drift = models.BooleanField(default=False)
+    diagnostics = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

@@ -1054,6 +1054,7 @@ class OcrQuestionResult:
     option_image_bytes: dict[str, bytes] | None = None
     geometry_annotations: list[dict[str, Any]] | None = None
     annotated_image_bytes: bytes | None = None
+    diagnostics: dict[str, Any] | None = None
 
 
 def _read_source_bytes(source: BinaryIO | bytes | Path | str) -> tuple[bytes, str]:
@@ -1256,12 +1257,22 @@ def _tesseract_once(img: Image.Image, lang: str, psm: int) -> str:
     return pytesseract.image_to_string(img, lang=lang, config=config) or ""
 
 
-def extract_text(source: BinaryIO | bytes | Path | str) -> str:
-    """Görselden ham OCR metni; biçimli (markdown) çıktı üretir."""
+def extract_text_with_diagnostics(
+    source: BinaryIO | bytes | Path | str,
+) -> tuple[str, dict[str, Any]]:
+    """Görselden ham OCR metni + Tesseract tanılama."""
+    diag: dict[str, Any] = {
+        "attempted": True,
+        "ok": False,
+        "error": "",
+        "best": {},
+        "attempts": [],
+    }
     _configure_tesseract()
     try:
         img = _load_image(source)
     except Exception as exc:  # noqa: BLE001
+        diag["error"] = _tesseract_user_error(exc)
         raise ValueError(
             "Görsel açılamadı. Desteklenen bir resim dosyası yükleyin."
         ) from exc
@@ -1283,21 +1294,37 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
     last_error: BaseException | None = None
     for lang in lang_candidates:
         for psm in (6, 4, 3):
+            attempt: dict[str, Any] = {
+                "lang": lang,
+                "psm": psm,
+                "ok": False,
+                "score": 0,
+                "chars": 0,
+                "filled_options": 0,
+                "error": "",
+            }
             try:
                 raw = normalize_turkish_text(_tesseract_once(img, lang, psm))
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
+                attempt["error"] = str(exc)[:300]
+                diag["attempts"].append(attempt)
                 continue
+            attempt["chars"] = len(raw.strip())
             if not raw.strip():
+                diag["attempts"].append(attempt)
                 continue
             stem, opts = parse_question_text(raw)
             filled = sum(1 for k in OPTION_KEYS if (opts.get(k) or "").strip())
-            # Tam A–E + uzun şık metinleri ödüllendir
             score = filled * 10 + sum(min(len(opts[k]), 80) for k in OPTION_KEYS)
             if filled == 5:
                 score += 50
             if stem:
                 score += min(len(stem), 200) // 10
+            attempt["ok"] = True
+            attempt["score"] = score
+            attempt["filled_options"] = filled
+            diag["attempts"].append(attempt)
             if score > best_score:
                 best_score = score
                 best_raw = raw
@@ -1308,16 +1335,24 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
 
     if not best_raw.strip():
         if last_error is not None:
-            raise RuntimeError(_tesseract_user_error(last_error)) from last_error
-        return best_raw
+            diag["error"] = _tesseract_user_error(last_error)
+            raise RuntimeError(diag["error"]) from last_error
+        diag["error"] = "Görselden metin okunamadı (tüm PSM/dil denemeleri boş)."
+        return best_raw, diag
 
-    # En iyi PSM/dil ile kelime kutularından biçim (kalın/italik/altı çizili)
+    diag["best"] = {
+        "lang": best_lang,
+        "psm": best_psm,
+        "score": best_score,
+    }
+
+    final_text = best_raw
+    styled_error = ""
     try:
         styled = normalize_turkish_text(
             extract_styled_text(img, best_lang, best_psm)
         )
         if styled.strip():
-            # Biçimli metin de şıkları bozmamalı; skor düşerse düz metne dön
             stem_s, opts_s = parse_question_text(styled)
             filled_s = sum(1 for k in OPTION_KEYS if (opts_s.get(k) or "").strip())
             score_s = filled_s * 10 + sum(
@@ -1328,10 +1363,22 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
             if stem_s:
                 score_s += min(len(stem_s), 200) // 10
             if score_s >= best_score - 15:
-                return styled
-    except Exception:
-        pass
-    return best_raw
+                final_text = styled
+                diag["best"]["styled"] = True
+    except Exception as exc:  # noqa: BLE001
+        styled_error = str(exc)[:200]
+        diag["styled_error"] = styled_error
+
+    diag["ok"] = bool(final_text.strip())
+    if not diag["ok"]:
+        diag["error"] = "Görselden metin okunamadı."
+    return final_text, diag
+
+
+def extract_text(source: BinaryIO | bytes | Path | str) -> str:
+    """Görselden ham OCR metni; biçimli (markdown) çıktı üretir."""
+    text, _diag = extract_text_with_diagnostics(source)
+    return text
 
 
 def _merge_orphan_paren_lines(lines: list[str]) -> list[str]:
@@ -1656,7 +1703,7 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
         )
 
     try:
-        raw = extract_text(BytesIO(img_bytes))
+        raw, tess_diag = extract_text_with_diagnostics(source)
     except Exception as exc:  # noqa: BLE001
         return OcrQuestionResult(
             stem="",
@@ -1664,6 +1711,7 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
             raw_text="",
             ok=False,
             error=_tesseract_user_error(exc),
+            diagnostics={"tesseract": {"attempted": True, "ok": False, "error": str(exc)[:500]}},
         )
 
     if not (raw or "").strip():
@@ -1676,6 +1724,8 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
                 "Görselden metin okunamadı. Daha net bir görsel deneyin "
                 "veya alanları elle doldurun."
             ),
+            engine="tesseract",
+            diagnostics={"tesseract": tess_diag},
         )
 
     stem, options = parse_question_text(raw)
@@ -1706,4 +1756,5 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
         ok=ok,
         error="" if ok else "Görselden metin okunamadı." + hint,
         engine="tesseract",
+        diagnostics={"tesseract": tess_diag},
     )

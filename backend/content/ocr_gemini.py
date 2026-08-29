@@ -8,6 +8,7 @@ import re
 import socket
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
@@ -46,6 +47,7 @@ from .ocr import (
     parse_question_text,
     strip_option_emphasis,
 )
+from .ocr_diagnostics import attach_gemini_failure, attach_gemini_success, new_diagnostics
 from .svg_sanitize import extract_svg, is_safe_svg
 
 _GEMINI_URL = (
@@ -201,6 +203,22 @@ Geometri annotasyon kuralları:
     {"metin": "x = 4/3", "bbox": [300, 680, 340, 760], "renk": "kirmizi"}
   ]
 }
+"""
+
+_SUPPLEMENT_PROMPT = """Bu görselde bir KPSS çoktan seçmeli soru var.
+Tesseract OCR ile okunan soru metni ve şıklar aşağıda verilmiştir; görseli de incele.
+
+Görev: YALNIZCA doğru şık ve detaylı çözüm üret. Soru metnini veya şıkları yeniden yazma.
+
+Kurallar:
+- dogru_cevap: yalnızca A, B, C, D veya E
+- Görselde işaretli/daireli şık varsa onu kullan; yoksa soruyu çözerek belirle
+- detayli_cozum: Türkçe, adım adım, öğretici
+- Matematikte LaTeX ($...$) kullan
+- Mobil uygulama Markdown formatı: paragraflar arası boş satır, ## adım başlıkları, **kalın** vurgu
+
+Çıktı yalnızca şu JSON (başka metin yok):
+{"dogru_cevap": "C", "detayli_cozum": "..."}
 """
 
 _PLACEHOLDER_OPTION = re.compile(r"(?i)^(?:şık\s*)?[a-e]\s*$")
@@ -724,8 +742,19 @@ def _ocr_prompt_with_panel_catalog() -> str:
     )
 
 
-def _post_gemini(image_bytes: bytes, mime: str) -> tuple[dict[str, Any], str]:
+class GeminiPostError(RuntimeError):
+    """Gemini OCR denemeleriyle birlikte yükseltilen hata."""
+
+    def __init__(self, message: str, attempts: list[dict[str, Any]] | None = None):
+        super().__init__(message)
+        self.attempts = attempts or []
+
+
+def _post_gemini(
+    image_bytes: bytes, mime: str
+) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
     last_err: Exception | None = None
+    attempts: list[dict[str, Any]] = []
     prompt = _ocr_prompt_with_panel_catalog()
     for model in _model_candidates():
         try:
@@ -735,15 +764,102 @@ def _post_gemini(image_bytes: bytes, mime: str) -> tuple[dict[str, Any], str]:
             data = _extract_json(raw)
             if not data:
                 raise RuntimeError("Gemini JSON ayrıştırılamadı.")
-            return data, model
+            attempts.append({"model": model, "ok": True, "error": ""})
+            return data, model, attempts
         except RuntimeError as exc:
             last_err = exc
+            attempts.append(
+                {"model": model, "ok": False, "error": str(exc)[:500]}
+            )
             if _retryable(exc):
                 continue
-            raise
+            raise GeminiPostError(str(exc), attempts) from exc
     if last_err:
-        raise last_err
-    raise RuntimeError("Gemini modelleri kullanılamıyor.")
+        raise GeminiPostError(str(last_err), attempts) from last_err
+    raise GeminiPostError("Gemini modelleri kullanılamıyor.", attempts)
+
+
+def _format_ocr_context(stem: str, options: dict[str, str]) -> str:
+    lines: list[str] = []
+    if (stem or "").strip():
+        lines.append(stem.strip())
+    for key in OPTION_KEYS:
+        val = (options.get(key) or "").strip()
+        if val:
+            lines.append(f"{key}) {val}")
+    return "\n".join(lines) if lines else "(OCR metni boş)"
+
+
+@dataclass
+class GeminiSupplementResult:
+    correct_option: str
+    solution: str
+    model: str
+    attempts: list[dict[str, Any]]
+    ok: bool
+    error: str = ""
+
+
+def gemini_supplement_answer_solution(
+    image_bytes: bytes,
+    mime: str,
+    *,
+    stem: str,
+    options: dict[str, str],
+) -> GeminiSupplementResult:
+    """Tesseract fallback sonrası — yalnızca doğru şık + çözüm (hafif ikinci çağrı)."""
+    if not gemini_configured():
+        return GeminiSupplementResult(
+            "", "", "", [], ok=False, error="GEMINI_API_KEY tanımlı değil."
+        )
+
+    prompt = (
+        f"{_SUPPLEMENT_PROMPT}\n\nTesseract OCR metni:\n"
+        f"{_format_ocr_context(stem, options)}"
+    )
+    attempts: list[dict[str, Any]] = []
+    last_err: Exception | None = None
+    for model in _model_candidates():
+        try:
+            raw = _post_gemini_model(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=35,
+                json_mode=True,
+            )
+            data = _extract_json(raw)
+            if not data:
+                raise RuntimeError("Gemini supplement JSON ayrıştırılamadı.")
+            letter = _payload_answer(data)
+            solution = _payload_solution(data)
+            if not letter and not solution:
+                raise RuntimeError("Gemini supplement boş döndü.")
+            attempts.append({"model": model, "ok": True, "error": ""})
+            return GeminiSupplementResult(
+                correct_option=letter,
+                solution=solution,
+                model=model,
+                attempts=attempts,
+                ok=True,
+            )
+        except RuntimeError as exc:
+            last_err = exc
+            attempts.append(
+                {"model": model, "ok": False, "error": str(exc)[:500]}
+            )
+            if _retryable(exc):
+                continue
+            return GeminiSupplementResult(
+                "", "", "", attempts, ok=False, error=str(exc)
+            )
+    err = (
+        str(last_err)
+        if last_err
+        else "Gemini supplement modelleri kullanılamıyor."
+    )
+    return GeminiSupplementResult("", "", "", attempts, ok=False, error=err)
 
 
 def _svg_from_raw(raw: str) -> str:
@@ -786,17 +902,32 @@ def ocr_question_image_gemini(
     mime: str = "image/png",
 ) -> OcrQuestionResult:
     """Görsel → Gemini Vision → stem + A–E."""
+    diagnostics = new_diagnostics(pipeline="gemini")
+    diagnostics["gemini"]["configured"] = gemini_configured()
     if not gemini_configured():
+        attach_gemini_failure(
+            diagnostics,
+            error="GEMINI_API_KEY tanımlı değil.",
+            attempts=[],
+        )
         return OcrQuestionResult(
             stem="",
             options={k: "" for k in OPTION_KEYS},
             raw_text="",
             ok=False,
             error="GEMINI_API_KEY tanımlı değil.",
+            diagnostics=diagnostics,
         )
     try:
-        data, model_used = _post_gemini(image_bytes, mime)
+        data, model_used, attempts = _post_gemini(image_bytes, mime)
+        attach_gemini_success(diagnostics, model=model_used, attempts=attempts)
     except Exception as exc:  # noqa: BLE001
+        attempts = getattr(exc, "attempts", None) or []
+        attach_gemini_failure(
+            diagnostics,
+            error=str(exc),
+            attempts=attempts if isinstance(attempts, list) else [],
+        )
         return OcrQuestionResult(
             stem="",
             options={k: "" for k in OPTION_KEYS},
@@ -804,6 +935,7 @@ def ocr_question_image_gemini(
             ok=False,
             error=str(exc),
             engine="gemini",
+            diagnostics=diagnostics,
         )
 
     stem = normalize_turkish_text(_payload_stem(data))
@@ -887,6 +1019,9 @@ def ocr_question_image_gemini(
         },
         ensure_ascii=False,
     )
+    if not ok:
+        diagnostics["gemini"]["ok"] = False
+        diagnostics["gemini"]["error"] = "Gemini soruyu okuyamadı."
     return OcrQuestionResult(
         stem=stem,
         options=options,
@@ -904,4 +1039,5 @@ def ocr_question_image_gemini(
         option_image_bytes=option_image_bytes or None,
         geometry_annotations=geometry_annotations or None,
         annotated_image_bytes=annotated_image_bytes,
+        diagnostics=diagnostics,
     )
