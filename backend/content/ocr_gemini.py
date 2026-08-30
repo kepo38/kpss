@@ -45,6 +45,7 @@ from .ocr import (
     _strip_watermarks,
     normalize_turkish_text,
     parse_question_text,
+    sanitize_ocr_emphasis,
     strip_option_emphasis,
 )
 from .ocr_diagnostics import attach_gemini_failure, attach_gemini_success, new_diagnostics
@@ -70,6 +71,8 @@ Görev: aşağıdaki JSON şablonunun tüm alanlarını doldur.
 
 Kurallar:
 - Türkçe karakterleri doğru yaz (ğüşıöç).
+- soru_metni düz metin yaz; görselde açıkça kalın/italik/altı çizili olmayan kelimelere **, * veya __ ekleme.
+- Özel ad ve kurum adları (Divan-ı Hümayun, Kubbealtı vb.) her zaman düz metin olsun.
 - Matematik ifadeleri LaTeX ile $...$ içinde yaz.
   Örnek üs: $\\frac{4^x-2^x}{2^x-2^{-x}} = 2^x - \\frac{1}{5}$
   Örnek kök: $\\sqrt{x} - \\sqrt{y} = 2\\sqrt{2}$, $\\sqrt{4xy}$
@@ -90,6 +93,8 @@ Kurallar:
   Çözümü de aynı işleme göre yaz (çıkarma ise çıkarma; 738 − 165 = 573 gibi).
 - Şıklarda kalın/italik/altı çizili yok. Beş şık da dolu olsun. Sayı ve formül düz metin veya $...$ olsun.
   Örnek: {"A": "1", "B": "8", "C": "15", "D": "18", "E": "21"}
+- Terim–açıklama eşleştirme / tablo sorularında her şık tek satır yaz: "Terim : Açıklama" veya "Terim - Açıklama".
+  Örnek: {"A": "Reaya : Halk", "B": "Ulema : Din adamları", "C": "Tımar : Dirlik", "D": "Ocak : Yeniçeri ocağı", "E": "Millet : Halk"}
 - Romen rakamlı şıklar (I ve II, III ve V vb.) olduğu gibi ayrı ayrı yazılsın; şık harfi (A–E) ile Romen rakamı karıştırılmasın.
   Örnek: {"A": "I ve II", "B": "I ve IV", "C": "II ve III", "D": "III ve V", "E": "IV ve V"}
 - Watermark (ÖSYM vb.) metne dahil etme.
@@ -219,6 +224,15 @@ Kurallar:
 
 Çıktı yalnızca şu JSON (başka metin yok):
 {"dogru_cevap": "C", "detayli_cozum": "..."}
+"""
+
+_SUPPLEMENT_OPTIONS_APPEND = """
+- Tesseract şıkları okuyamadı veya boş; görselden A–E şıklarını da oku.
+- Terim–açıklama eşleştirmede her şık "Terim : Açıklama" biçiminde tek satır olsun.
+- siklar alanına beş dolu şık yaz: {"A":"...","B":"...","C":"...","D":"...","E":"..."}
+
+Çıktı yalnızca şu JSON (başka metin yok):
+{"dogru_cevap": "C", "detayli_cozum": "...", "siklar": {"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."}}
 """
 
 _PLACEHOLDER_OPTION = re.compile(r"(?i)^(?:şık\s*)?[a-e]\s*$")
@@ -798,6 +812,7 @@ class GeminiSupplementResult:
     attempts: list[dict[str, Any]]
     ok: bool
     error: str = ""
+    options: dict[str, str] | None = None
 
 
 def gemini_supplement_answer_solution(
@@ -806,15 +821,19 @@ def gemini_supplement_answer_solution(
     *,
     stem: str,
     options: dict[str, str],
+    need_options: bool = False,
 ) -> GeminiSupplementResult:
-    """Tesseract fallback sonrası — yalnızca doğru şık + çözüm (hafif ikinci çağrı)."""
+    """Tesseract fallback sonrası — doğru şık + çözüm (+ gerekirse şıklar)."""
     if not gemini_configured():
         return GeminiSupplementResult(
             "", "", "", [], ok=False, error="GEMINI_API_KEY tanımlı değil."
         )
 
+    base_prompt = _SUPPLEMENT_PROMPT
+    if need_options:
+        base_prompt = f"{_SUPPLEMENT_PROMPT.rstrip()}\n{_SUPPLEMENT_OPTIONS_APPEND}"
     prompt = (
-        f"{_SUPPLEMENT_PROMPT}\n\nTesseract OCR metni:\n"
+        f"{base_prompt}\n\nTesseract OCR metni:\n"
         f"{_format_ocr_context(stem, options)}"
     )
     attempts: list[dict[str, Any]] = []
@@ -834,7 +853,12 @@ def gemini_supplement_answer_solution(
                 raise RuntimeError("Gemini supplement JSON ayrıştırılamadı.")
             letter = _payload_answer(data)
             solution = _payload_solution(data)
-            if not letter and not solution:
+            extra_opts = _payload_options(data) if need_options else None
+            got_opts = bool(
+                extra_opts
+                and sum(1 for v in extra_opts.values() if (v or "").strip()) >= 3
+            )
+            if not letter and not solution and not got_opts:
                 raise RuntimeError("Gemini supplement boş döndü.")
             attempts.append({"model": model, "ok": True, "error": ""})
             return GeminiSupplementResult(
@@ -843,6 +867,7 @@ def gemini_supplement_answer_solution(
                 model=model,
                 attempts=attempts,
                 ok=True,
+                options=extra_opts if got_opts else None,
             )
         except RuntimeError as exc:
             last_err = exc
@@ -938,7 +963,7 @@ def ocr_question_image_gemini(
             diagnostics=diagnostics,
         )
 
-    stem = normalize_turkish_text(_payload_stem(data))
+    stem = sanitize_ocr_emphasis(normalize_turkish_text(_payload_stem(data)))
     options = _peel_embedded_options(_payload_options(data))
     figure_svg = _payload_figure(data)
     correct_option = _payload_answer(data)

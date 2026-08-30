@@ -3,7 +3,20 @@ class DailyMissionCopy {
   DailyMissionCopy._();
 
   static const morningHour = 9;
-  static const eveningHour = 21;
+  static const eveningHour = 20;
+  static const eveningMinute = 58;
+
+  /// Bugünkü gece hatırlatma anı (Europe/Istanbul yerel saat).
+  static DateTime eveningScheduleOnDay(DateTime day) => DateTime(
+        day.year,
+        day.month,
+        day.day,
+        eveningHour,
+        eveningMinute,
+      );
+
+  static bool isPastEveningSchedule(DateTime now) =>
+      !now.isBefore(eveningScheduleOnDay(now));
 
   static const morningTitle = 'Günaydın';
   static const morningBody =

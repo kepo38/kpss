@@ -23,6 +23,7 @@ class AppConfigService extends ChangeNotifier {
     for (final key in StudioModules.allKeys) key: true,
   };
   DateTime? _updatedAt;
+  String _recommendedAppVersion = '';
   bool _authListening = false;
 
   /// Oturum içi kapatma — uygulama yeniden açılınca sıfırlanır.
@@ -32,6 +33,7 @@ class AppConfigService extends ChangeNotifier {
   bool get wrongNotebookBubbleEnabled => _wrongNotebookBubbleEnabled;
   String get wrongNotebookBubbleLabel => _wrongNotebookBubbleLabel;
   bool get bannerAdsEnabled => _bannerAdsEnabled;
+  String get recommendedAppVersion => _recommendedAppVersion;
 
   /// Panelden pasif yapılan Stüdyo modülleri — anahtar yoksa açık.
   bool isStudioModuleEnabled(String moduleId) =>
@@ -90,6 +92,10 @@ class AppConfigService extends ChangeNotifier {
       // Anahtar yoksa eski sunucular için banner açık kalsın.
       if (map.containsKey('bannerAdsEnabled')) {
         _bannerAdsEnabled = map['bannerAdsEnabled'] == true;
+      }
+      final recommended = map['recommendedAppVersion']?.toString().trim();
+      if (recommended != null) {
+        _recommendedAppVersion = recommended;
       }
       final studioRaw = map['studioModules'];
       if (studioRaw is Map) {

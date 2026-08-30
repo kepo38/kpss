@@ -405,7 +405,7 @@ class NotificationService {
     );
   }
 
-  /// 21:00 FOMO — yalnızca 4 bar dolu, 1 ders kalınca.
+  /// 20:58 FOMO — yalnızca 4 bar dolu, 1 ders kalınca.
   Future<void> scheduleEveningFomo() async {
     if (!_initialized) return;
 
@@ -432,8 +432,16 @@ class NotificationService {
     );
     final body = DailyMissionCopy.eveningBody(remaining);
     final now = tz.TZDateTime.now(tz.local);
+    final scheduledToday = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      DailyMissionCopy.eveningHour,
+      DailyMissionCopy.eveningMinute,
+    );
 
-    if (now.hour >= DailyMissionCopy.eveningHour) {
+    if (!now.isBefore(scheduledToday)) {
       await _showEveningFomoOnce(body, details, payload);
       return;
     }
@@ -442,9 +450,13 @@ class NotificationService {
       eveningFomoId,
       DailyMissionCopy.eveningTitle,
       body,
-      _nextDailyAt(hour: DailyMissionCopy.eveningHour),
+      _nextDailyAt(
+        hour: DailyMissionCopy.eveningHour,
+        minute: DailyMissionCopy.eveningMinute,
+      ),
       details,
       androidScheduleMode: _dailyScheduleMode,
+      matchDateTimeComponents: DateTimeComponents.time,
       payload: payload,
     );
   }

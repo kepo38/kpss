@@ -12,7 +12,7 @@ from django.core.files.base import ContentFile
 
 from .embeddings import refresh_question_embedding
 from .models import OcrIngestLog, Question, Topic
-from .ocr import ocr_question_image, strip_option_emphasis
+from .ocr import ocr_question_image, sanitize_ocr_emphasis, strip_option_emphasis
 from .ocr_diagnostics import compose_error_message, log_ocr_event, merge_diagnostics, new_diagnostics
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
 from .question_fingerprint import (
@@ -77,6 +77,312 @@ def normalize_correct_option(raw: str) -> str:
     return letter if letter in "ABCDE" else ""
 
 
+_OPTION_FORM_PLACEHOLDERS = frozenset({"", "—", "-", "Görsel şık"})
+
+# Tesseract / telefon SS artefaktları (| / ll Roma rakamı, UI çöpü)
+_CORRUPT_OPTION_UI_RE = re.compile(
+    r"(?:Ss\s*o\.|N\s+oru|ipe\s+Bs|NAL\s+FED|�)",
+    re.IGNORECASE,
+)
+_CORRUPT_ROMAN_PIPE_RE = re.compile(
+    r"Yalnız\s*\||\|\s*ve\s*ll|Yalnız\s*ll\b|^\|\s*ve",
+    re.IGNORECASE,
+)
+_STEM_UI_JUNK_RE = re.compile(
+    r"^\d{1,2}:\d{2}\s|\bNal\s+FED\b",
+    re.IGNORECASE,
+)
+
+
+def _option_is_weak(val: str) -> bool:
+    return (val or "").strip() in _OPTION_FORM_PLACEHOLDERS
+
+
+def _option_is_corrupt(val: str) -> bool:
+    """Dolu görünen ama OCR/Tesseract çöpü şık metni."""
+    s = (val or "").strip()
+    if not s or _option_is_weak(s):
+        return False
+    if "�" in s:
+        return True
+    if _CORRUPT_OPTION_UI_RE.search(s):
+        return True
+    if _CORRUPT_ROMAN_PIPE_RE.search(s):
+        return True
+    if len(s) >= 15:
+        weird = len(
+            re.findall(r"[^\w\sÇĞİÖŞÜçğıöşüâîû.,;:'\"()\-/+*]", s, flags=re.UNICODE)
+        )
+        if weird >= 3:
+            return True
+    return False
+
+
+def _count_weak_options(opts: dict[str, str]) -> int:
+    return sum(1 for letter in "ABCDE" if _option_is_weak(opts.get(letter, "")))
+
+
+def _count_corrupt_options(opts: dict[str, str]) -> int:
+    return sum(1 for letter in "ABCDE" if _option_is_corrupt(opts.get(letter, "")))
+
+
+def _question_options_dict(question) -> dict[str, str]:
+    return {
+        letter: (getattr(question, f"option_{letter.lower()}", "") or "").strip()
+        for letter in "ABCDE"
+    }
+
+
+def _stem_has_ui_junk(stem: str) -> bool:
+    s = (stem or "").strip()
+    if not s:
+        return False
+    if _STEM_UI_JUNK_RE.search(s):
+        return True
+    if re.match(r"^\d{1,2}:\d{2}.+Soru\s*:", s, re.IGNORECASE | re.DOTALL):
+        return True
+    return False
+
+
+def _ocr_log_was_tesseract_fallback(question) -> bool:
+    image_hash = (getattr(question, "source_image_hash", "") or "").strip()
+    if not image_hash:
+        return False
+    log = (
+        OcrIngestLog.objects.filter(source_image_hash=image_hash)
+        .order_by("-created_at")
+        .first()
+    )
+    if not log:
+        return False
+    engine = (log.engine or "").lower()
+    status = (log.status or "").lower()
+    if status == OcrIngestLog.STATUS_FALLBACK_SUCCESS:
+        return True
+    return "tesseract" in engine and "gemini" not in engine
+
+
+def _question_needs_gemini_repair(question) -> bool:
+    """Yayınlanmamış Telegram + Tesseract fallback + bozuk/eksik alan."""
+    if not question or not getattr(question, "pk", None):
+        return False
+    if not question.image or not gemini_configured():
+        return False
+    if question.is_published:
+        return False
+
+    is_telegram_pending = (
+        question.submission_source == Question.SUBMISSION_SOURCE_TELEGRAM
+    )
+    fallback_log = _ocr_log_was_tesseract_fallback(question)
+    if not is_telegram_pending and not fallback_log:
+        return False
+
+    opts = _question_options_dict(question)
+    stem = getattr(question, "stem", "") or ""
+    corrupt = _count_corrupt_options(opts)
+    weak = _count_weak_options(opts)
+    no_solution = not (getattr(question, "solution", "") or "").strip()
+
+    if corrupt >= 1:
+        return True
+    if weak >= 3:
+        return True
+    if _stem_has_ui_junk(stem):
+        return True
+    if fallback_log and no_solution:
+        return True
+    raw = _ocr_raw_text_for_question(question)
+    if _detect_char_drift(stem, opts, raw):
+        return True
+    return False
+
+
+def _options_from_raw_blob(raw_text: str) -> dict[str, str]:
+    """Ham OCR/Gemini metninden veya JSON'dan şıkları çıkar."""
+    from .ocr import OPTION_KEYS, parse_question_text
+    from .ocr_gemini import _extract_json, _payload_options
+
+    empty = {k: "" for k in OPTION_KEYS}
+    raw = (raw_text or "").strip()
+    if not raw:
+        return empty
+    if "{" in raw:
+        data = _extract_json(raw)
+        if data:
+            opts = _payload_options(data)
+            if sum(1 for v in opts.values() if v and not _option_is_weak(v)) >= 2:
+                return opts
+    _, parsed = parse_question_text(raw)
+    return parsed
+
+
+def _ocr_raw_text_for_question(question) -> str:
+    """Soru görseliyle eşleşen son OCR log ham metni."""
+    from .models import OcrIngestLog
+
+    image_hash = (getattr(question, "source_image_hash", "") or "").strip()
+    if image_hash:
+        log = (
+            OcrIngestLog.objects.filter(source_image_hash=image_hash)
+            .order_by("-created_at")
+            .first()
+        )
+        if log:
+            return (log.raw_text or log.raw_response or "").strip()
+    return ""
+
+
+def panel_form_options(question) -> dict[str, str]:
+    """Panel form/önizleme — boş, placeholder veya bozuk OCR şıklarını tamamla."""
+    from .ocr import parse_question_text
+
+    opts = {
+        letter: (getattr(question, f"option_{letter.lower()}", "") or "").strip()
+        for letter in "ABCDE"
+    }
+    weak = _count_weak_options(opts)
+    corrupt = _count_corrupt_options(opts)
+    if weak < 3 and corrupt < 1:
+        return opts
+
+    stem = getattr(question, "stem", "") or ""
+    raw = _ocr_raw_text_for_question(question)
+    _, merged = coalesce_ocr_options(stem, opts, raw)
+    if _count_weak_options(merged) < weak or _count_corrupt_options(merged) < corrupt:
+        opts = merged
+
+    _, parsed = parse_question_text(stem)
+    filled = sum(
+        1
+        for letter in "ABCDE"
+        if (parsed.get(letter) or "").strip() and not _option_is_weak(parsed.get(letter, ""))
+    )
+    if filled >= 3:
+        for letter in "ABCDE":
+            val = (parsed.get(letter) or "").strip()
+            if not val or _option_is_weak(val):
+                continue
+            cur = opts.get(letter, "")
+            if _option_is_weak(cur) or _option_is_corrupt(cur):
+                opts[letter] = val
+    return opts
+
+
+def maybe_backfill_question_options(question, *, save: bool = True) -> bool:
+    """Kayıtta — placeholder şık varsa OCR log/ham metinden doldur."""
+    if not question or not getattr(question, "pk", None):
+        return False
+    before = {
+        letter: (getattr(question, f"option_{letter.lower()}", "") or "").strip()
+        for letter in "ABCDE"
+    }
+    if _count_weak_options(before) < 3 and _count_corrupt_options(before) < 1:
+        return False
+    merged = panel_form_options(question)
+    if (
+        _count_weak_options(merged) >= _count_weak_options(before)
+        and _count_corrupt_options(merged) >= _count_corrupt_options(before)
+    ):
+        return False
+    changed = False
+    for letter in "ABCDE":
+        val = (merged.get(letter) or "").strip()
+        if val and val != before.get(letter, ""):
+            setattr(question, f"option_{letter.lower()}", val)
+            changed = True
+    if changed and save:
+        question.save(
+            update_fields=[
+                "option_a",
+                "option_b",
+                "option_c",
+                "option_d",
+                "option_e",
+                "updated_at",
+            ]
+        )
+    return changed
+
+
+def maybe_auto_repair_question_on_panel_get(question, *, save: bool = True) -> bool:
+    """Panel GET — bozuk Tesseract/Telegram sorularını kaynak görselden Gemini ile onar."""
+    if not _question_needs_gemini_repair(question):
+        return False
+    result = repair_question_with_gemini(question, dry_run=not save)
+    return bool(result.get("ok"))
+
+
+def question_form_bootstrap(question) -> dict[str, object]:
+    """Panel soru formu — önizleme için güvenilir başlangıç verisi."""
+    if not question:
+        return {}
+    opts = panel_form_options(question)
+    return {
+        "options": opts,
+        "solution": (getattr(question, "solution", "") or "").strip(),
+        "correct_option": normalize_correct_option(
+            getattr(question, "correct_option", "") or ""
+        ),
+    }
+
+
+def coalesce_ocr_options(
+    stem: str,
+    options: dict[str, str] | None,
+    raw_text: str = "",
+) -> tuple[str, dict[str, str]]:
+    """API şıkları boş/placeholder ise stem/ham metin/JSON'dan A–E ayrıştır."""
+    from .ocr import OPTION_KEYS, parse_question_text
+
+    opts = {k: (options or {}).get(k, "") or "" for k in OPTION_KEYS}
+    if _count_weak_options(opts) < 3 and _count_corrupt_options(opts) < 1:
+        return (stem or "").strip(), opts
+
+    if raw_text:
+        parsed_raw = _options_from_raw_blob(raw_text)
+        for key in OPTION_KEYS:
+            val = (parsed_raw.get(key) or "").strip()
+            if val and (
+                _option_is_weak(opts.get(key, ""))
+                or _option_is_corrupt(opts.get(key, ""))
+            ):
+                opts[key] = val
+        if _count_weak_options(opts) < 3 and _count_corrupt_options(opts) < 1:
+            return (stem or "").strip(), opts
+
+    blob = "\n".join(
+        part for part in ((stem or "").strip(), (raw_text or "").strip()) if part
+    )
+    stem2, parsed = parse_question_text(blob)
+    filled = sum(
+        1
+        for k in OPTION_KEYS
+        if (parsed.get(k) or "").strip() and not _option_is_weak(parsed.get(k, ""))
+    )
+    if filled < 3:
+        return (stem or "").strip(), opts
+    for key in OPTION_KEYS:
+        val = (parsed.get(key) or "").strip()
+        if val and (
+            _option_is_weak(opts.get(key, ""))
+            or _option_is_corrupt(opts.get(key, ""))
+        ):
+            opts[key] = val
+    out_stem = (stem2 or stem or "").strip()
+    return out_stem, opts
+
+
+def prepare_question_for_panel(question):
+    """Panel formunda gösterim — şüpheli OCR italiklerini temizle."""
+    if not question:
+        return question
+    stem = sanitize_ocr_emphasis(getattr(question, "stem", "") or "")
+    if stem != (getattr(question, "stem", "") or ""):
+        question.stem = stem
+    return question
+
+
 def _normalize_correct_option(raw: str) -> str:
     return normalize_correct_option(raw)
 
@@ -123,12 +429,16 @@ def _apply_gemini_supplement_after_fallback(
         "attempts": [],
         "got_answer": False,
         "got_solution": False,
+        "got_options": False,
     }
     if not gemini_configured():
         return False, "", meta
     need_answer = not _normalize_correct_option(getattr(ocr, "correct_option", ""))
     need_solution = not (getattr(ocr, "solution", "") or "").strip()
-    if not need_answer and not need_solution:
+    need_options = _count_weak_options(getattr(ocr, "options", None) or {}) >= 3 or (
+        _count_corrupt_options(getattr(ocr, "options", None) or {}) >= 1
+    )
+    if not need_answer and not need_solution and not need_options:
         return False, "", meta
 
     from .ocr_gemini import gemini_supplement_answer_solution
@@ -139,6 +449,7 @@ def _apply_gemini_supplement_after_fallback(
         mime,
         stem=(getattr(ocr, "stem", "") or "").strip(),
         options=getattr(ocr, "options", None) or {},
+        need_options=need_options,
     )
     meta["attempts"] = supplement.attempts
     meta["model"] = supplement.model
@@ -154,11 +465,24 @@ def _apply_gemini_supplement_after_fallback(
     if need_solution and solution:
         ocr.solution = solution
         meta["got_solution"] = True
+    if need_options and supplement.options:
+        merged_opts = dict(getattr(ocr, "options", None) or {})
+        for letter in "ABCDE":
+            val = (supplement.options.get(letter) or "").strip()
+            if val and _option_is_weak(merged_opts.get(letter, "")):
+                merged_opts[letter] = val
+        if _count_weak_options(merged_opts) < _count_weak_options(
+            getattr(ocr, "options", None) or {}
+        ):
+            ocr.options = merged_opts
+            meta["got_options"] = True
 
-    applied = bool(meta["got_answer"] or meta["got_solution"])
+    applied = bool(
+        meta["got_answer"] or meta["got_solution"] or meta["got_options"]
+    )
     meta["ok"] = applied
     if not applied:
-        meta["error"] = "Gemini cevap/çözüm döndürmedi"
+        meta["error"] = "Gemini tamamlama şık/cevap/çözüm döndürmedi"
         return False, str(meta["error"]), meta
     return True, "", meta
 
@@ -403,8 +727,15 @@ def ingest_question_from_image(
 
     _maybe_apply_geometry_overlay(ocr, source_bytes, mime=mime)
 
-    stem = (ocr.stem or "").strip() or "Aşağıdaki görsele göre cevaplayınız."
-    opts = _normalize_options(ocr.options or {})
+    stem = sanitize_ocr_emphasis((ocr.stem or "").strip()) or (
+        "Aşağıdaki görsele göre cevaplayınız."
+    )
+    stem, opts_parsed = coalesce_ocr_options(
+        stem,
+        ocr.options or {},
+        getattr(ocr, "raw_text", "") or "",
+    )
+    opts = _normalize_options(opts_parsed)
     figure_svg = _sanitize_figure_svg(getattr(ocr, "figure_svg", "") or "")
     correct_option = _normalize_correct_option(getattr(ocr, "correct_option", ""))
     solution = (getattr(ocr, "solution", "") or "").strip()
@@ -586,13 +917,17 @@ def repair_question_with_gemini(
         }
 
     updates: dict[str, str] = {}
-    stem = (ocr.stem or "").strip()
-    if stem:
-        updates["stem"] = stem
-    opts = _normalize_options(ocr.options or {})
+    stem_raw = (ocr.stem or "").strip()
+    stem_out, opts = coalesce_ocr_options(
+        stem_raw,
+        ocr.options or {},
+        getattr(ocr, "raw_text", "") or "",
+    )
+    if stem_out:
+        updates["stem"] = sanitize_ocr_emphasis(stem_out)
     for letter in "ABCDE":
-        val = opts.get(letter, "")
-        if val and val != "—":
+        val = (opts.get(letter) or "").strip()
+        if val and not _option_is_weak(val):
             updates[f"option_{letter.lower()}"] = val
     letter = _normalize_correct_option(getattr(ocr, "correct_option", ""))
     if letter:

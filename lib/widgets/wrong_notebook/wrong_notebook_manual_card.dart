@@ -38,44 +38,34 @@ class WrongNotebookManualCard extends StatelessWidget {
           border: Border.all(color: AppTheme.hairline(context)),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 16, 10),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _MetaPill(label: item.subjectLabel),
-                  const SizedBox(width: 6),
-                  _MetaPill(label: item.topicLabel),
-                  const Spacer(),
-                  if (onShare != null)
-                    IconButton(
-                      onPressed: onShare,
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                      icon: Icon(
-                        Icons.share_rounded,
-                        color: const Color(0xFF25D366).withValues(alpha: 0.9),
-                      ),
-                      tooltip: 'WhatsApp / paylaş',
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _MetaPill(label: item.subjectLabel),
+                        _MetaPill(label: item.topicLabel),
+                      ],
                     ),
-                  IconButton(
-                    onPressed: onRemove,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
-                    ),
-                    icon: Icon(
-                      Icons.delete_outline_rounded,
-                      color: muted.withValues(alpha: 0.7),
-                    ),
-                    tooltip: 'Kaldır',
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (onShare != null) ...[
+                        _ShareButton(onTap: onShare!),
+                        const SizedBox(width: 4),
+                      ],
+                      _RemoveButton(onTap: onRemove),
+                    ],
                   ),
                 ],
               ),
@@ -152,10 +142,78 @@ class _MetaPill extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 10.5,
           fontWeight: FontWeight.w600,
           color: AppTheme.mutedOnPage(context),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ShareButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppTheme.mutedOnPage(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
+        message: 'WhatsApp / paylaş',
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF25D366).withValues(alpha: 0.12),
+            border: Border.all(
+              color: const Color(0xFF25D366).withValues(alpha: 0.4),
+            ),
+          ),
+          child: Icon(
+            Icons.share_rounded,
+            size: 16,
+            color: muted.withValues(alpha: 0.85),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RemoveButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _RemoveButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppTheme.mutedOnPage(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
+        message: 'Kaldır',
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.ink.withValues(alpha: 0.04),
+            border: Border.all(color: AppTheme.ink.withValues(alpha: 0.06)),
+          ),
+          child: Icon(
+            Icons.delete_outline_rounded,
+            size: 16,
+            color: muted.withValues(alpha: 0.55),
+          ),
         ),
       ),
     );

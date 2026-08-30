@@ -11,6 +11,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import '../constants/brand_constants.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../config/api_config.dart';
 import '../navigation/app_navigator.dart';
@@ -290,6 +291,7 @@ class PushNotificationService {
 
   Future<void> _registerToken(String token) async {
     try {
+      final package = await PackageInfo.fromPlatform();
       final headers = {
         'Content-Type': 'application/json',
         ...AuthService.instance.authHeaders,
@@ -301,7 +303,7 @@ class PushNotificationService {
             body: jsonEncode({
               'token': token,
               'platform': Platform.isIOS ? 'ios' : 'android',
-              'app_version': '1.0.0',
+              'app_version': package.version,
             }),
           )
           .timeout(const Duration(seconds: 8));

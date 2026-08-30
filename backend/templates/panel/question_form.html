@@ -199,7 +199,7 @@
     </label>
 
     <label>Çözüm
-      <textarea class="js-rich" name="solution" id="question-solution" placeholder="Gemini sohbetinden çözümü kopyala-yapıştır.">{{ question.solution|default:'' }}</textarea>
+      <textarea class="js-rich" name="solution" id="question-solution" placeholder="Gemini sohbetinden çözümü kopyala-yapıştır." data-bootstrap-value="{% firstof form_bootstrap.solution question.solution '' %}">{% firstof form_bootstrap.solution question.solution '' %}</textarea>
       <span class="hint">Çözüm için Gemini kullanın: sohbetten kopyala → buraya yapıştır. \( ... \) otomatik $...$ olur.</span>
     </label>
     <div class="solution-image-section">
@@ -314,17 +314,17 @@
           <p class="quiz-mock-opts-label">Şıklar</p>
           <div class="quiz-opt-col-head" id="pv-opt-col-head" hidden></div>
           <div class="quiz-mock-opts">
-            {% for c in "ABCDE" %}
-            <div class="quiz-mock-opt{% if question.correct_option == c %} is-correct{% endif %}" id="pv-opt-{{ c }}">
-              <span class="quiz-mock-badge">{{ c }}</span>
-              <div class="quiz-mock-opt-text is-empty" id="pv-opt-text-{{ c }}">Şık {{ c }}</div>
+            {% for item in preview_option_items %}
+            <div class="quiz-mock-opt{% if question.correct_option == item.letter %} is-correct{% endif %}" id="pv-opt-{{ item.letter }}">
+              <span class="quiz-mock-badge">{{ item.letter }}</span>
+              <div class="quiz-mock-opt-text{% if not item.text %} is-empty{% endif %}" id="pv-opt-text-{{ item.letter }}" data-server-rendered="1"{% if item.text %} data-initial-text="{{ item.text|escape }}"{% endif %}>{% if item.text %}{{ item.text }}{% else %}Şık {{ item.letter }}{% endif %}</div>
             </div>
             {% endfor %}
           </div>
-          <div class="quiz-mock-solution" id="pv-solution">
+          <div class="quiz-mock-solution{% if preview_solution %} is-on{% endif %}" id="pv-solution">
             <p class="title">Çözüm</p>
             <img class="quiz-mock-solution-img" id="pv-solution-img" alt="" hidden>
-            <div class="body cozum-metni-alani" id="pv-solution-body"></div>
+            <div class="body cozum-metni-alani" id="pv-solution-body" data-server-rendered="1"{% if preview_solution %} data-initial-text="{{ preview_solution|escape }}"{% endif %}>{{ preview_solution|default:'' }}</div>
           </div>
         </div>
       </div>
@@ -334,15 +334,18 @@
 
 <script src="{% static 'panel/paste-image.js' %}"></script>
 <script src="{% static 'panel/math-formulas.js' %}?v=1"></script>
-<script src="{% static 'panel/rich-format.js' %}?v=5"></script>
+<script src="{% static 'panel/rich-format.js' %}?v=8"></script>
 {{ map_markers_json|json_script:"map-markers-data" }}
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=2"></script>
       <script src="{% static 'panel/map-question-editor.js' %}?v=16"></script>
-<script src="{% static 'panel/question-options.js' %}?v=4"></script>
+<script src="{% static 'panel/question-options.js' %}?v=7"></script>
 <script src="{% static 'panel/option-table.js' %}?v=8"></script>
-<script src="{% static 'panel/question-preview.js' %}?v=16"></script>
+{{ form_bootstrap|json_script:"question-form-bootstrap" }}
+{{ preview_seed|json_script:"question-preview-seed" }}
 {{ scenarios_json|json_script:"question-scenarios-data" }}
+<script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
+<script src="{% static 'panel/question-preview.js' %}?v=25"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {
@@ -478,62 +481,119 @@
     });
   }
 
+  function parseEmbeddedOptions(stem) {
+    var out = { A: '', B: '', C: '', D: '', E: '' };
+    if (!stem) return out;
+    String(stem).split(/\n/).forEach(function (ln) {
+      var m = ln.match(/^\s*([A-E])\s*[\)\]\.\:\-]\s*(.*)$/i);
+      if (m) out[m[1].toUpperCase()] = (m[2] || '').trim();
+    });
+    return out;
+  }
+
+  function mergeOptionsFromStem(stemText, opts) {
+    var merged = Object.assign({}, opts || {});
+    var embedded = parseEmbeddedOptions(stemText);
+    ['A', 'B', 'C', 'D', 'E'].forEach(function (k) {
+      if (!merged[k] && embedded[k]) merged[k] = embedded[k];
+    });
+    return merged;
+  }
+
+  function setFieldValue(name, value) {
+    var field = document.querySelector('[name="' + name + '"]');
+    if (!field || value == null || value === '') return;
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function hasVisualOptionCrops(data) {
+    var urls = (data && (data.optionImageDataUrls || data.option_image_data_urls)) || {};
+    return !!(data && (data.optionsVisual || data.options_are_images) && Object.keys(urls).length);
+  }
+
+  async function applySuggestedTopic(data) {
+    var topicId = data.suggested_topic_id;
+    var subjectId = data.suggested_subject_id;
+    if (!topicId || !subjectId) return;
+    var subject = document.getElementById('subject-select');
+    var topic = document.getElementById('topic-select');
+    var pvTopic = document.getElementById('pv-topic');
+    if (!subject || !topic) return;
+    var load = function () {
+      return fetch('/panel/ders/' + subjectId + '/konular/?selected=' + topicId, {
+        headers: { 'HX-Request': 'true' }
+      })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          topic.innerHTML = html;
+          topic.value = String(topicId);
+          topic.dispatchEvent(new Event('change', { bubbles: true }));
+          if (pvTopic && topic.selectedIndex >= 0) {
+            pvTopic.textContent = topic.options[topic.selectedIndex].text;
+          }
+        });
+    };
+    if (String(subject.value) !== String(subjectId)) {
+      subject.value = String(subjectId);
+      subject.dispatchEvent(new Event('change', { bubbles: true }));
+      await load();
+    } else if (!topic.querySelector('option[value="' + topicId + '"]')) {
+      await load();
+    } else {
+      topic.value = String(topicId);
+      topic.dispatchEvent(new Event('change', { bubbles: true }));
+      if (pvTopic && topic.selectedIndex >= 0) {
+        pvTopic.textContent = topic.options[topic.selectedIndex].text;
+      }
+    }
+  }
+
   async function fill(data) {
-    const stem = document.querySelector('[name=stem]');
-    const stemText = data.stem || data.soru_metni || '';
-    if (stem && stemText) {
-      stem.value = stemText;
-      stem.dispatchEvent(new Event('input', { bubbles: true }));
+    var stemText = data.stem || data.soru_metni || '';
+    var opts = mergeOptionsFromStem(stemText, data.options || data.siklar || {});
+    setFieldValue('stem', stemText);
+
+    var map = { A: 'option_a', B: 'option_b', C: 'option_c', D: 'option_d', E: 'option_e' };
+    var visualReady = hasVisualOptionCrops(data);
+    var visualApplied = false;
+    if (visualReady && window.KpssQuestionOptions && window.KpssQuestionOptions.applyOcrVisualOptions) {
+      try {
+        await window.KpssQuestionOptions.applyOcrVisualOptions(data);
+        visualApplied = true;
+      } catch (visualErr) {
+        console.warn('Görsel şık yüklenemedi, metin şıklar kullanılıyor.', visualErr);
+      }
     }
-    const isVisual = !!(data.optionsVisual || data.options_are_images);
-    const map = { A: 'option_a', B: 'option_b', C: 'option_c', D: 'option_d', E: 'option_e' };
-    const opts = data.options || data.siklar || {};
-    if (!isVisual) {
-      Object.keys(map).forEach(function (k) {
-        const field = document.querySelector('[name=' + map[k] + ']');
-        if (field && opts[k]) {
-          field.value = opts[k];
-          field.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-      });
+    var visualUrls = (data.optionImageDataUrls || data.option_image_data_urls) || {};
+    Object.keys(map).forEach(function (k) {
+      if (visualApplied && visualUrls[k]) return;
+      var val = (opts[k] || '').trim();
+      if (!val || val === 'Görsel şık') return;
+      setFieldValue(map[k], val);
+    });
+
+    setFieldValue('figure_svg', data.sekil_kodu || data.figure_svg || data.figure_tikz || '');
+
+    var answerRaw = (data.dogru_cevap || data.correct_option || '').toString().toUpperCase();
+    var answer = 'ABCDE'.split('').find(function (k) { return answerRaw.indexOf(k) !== -1; });
+    var answerSel = document.querySelector('[name=correct_option]');
+    if (answerSel && answer) {
+      answerSel.value = answer;
+      answerSel.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    if (window.KpssQuestionOptions && window.KpssQuestionOptions.applyOcrVisualOptions) {
-      await window.KpssQuestionOptions.applyOcrVisualOptions(data);
-    } else if (isVisual) {
-      Object.keys(map).forEach(function (k) {
-        const field = document.querySelector('[name=' + map[k] + ']');
-        if (field && opts[k]) {
-          field.value = opts[k];
-          field.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-      });
+
+    setFieldValue('solution', data.detayli_cozum || data.solution || '');
+
+    try {
+      await applySuggestedTopic(data);
+    } catch (topicErr) {
+      console.warn('Konu önerisi uygulanamadı.', topicErr);
     }
-    const svgField = document.querySelector('[name=figure_svg]');
-    const fig = data.sekil_kodu || data.figure_svg || data.figure_tikz || '';
-    if (svgField && fig) {
-      svgField.value = fig;
-      svgField.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    const answerRaw = (data.dogru_cevap || data.correct_option || '').toString().toUpperCase();
-    const answer = 'ABCDE'.split('').find(function (k) { return answerRaw.indexOf(k) !== -1; });
-    const answerSel = document.querySelector('[name=correct_option]');
-    if (answerSel) {
-      answerSel.value = answer || "";
-      answerSel.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    const solField = document.querySelector('[name=solution]');
-    const sol = data.detayli_cozum || data.solution || '';
-    if (solField && sol) {
-      solField.value = sol;
-      solField.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    if (hashField && data.image_hash) {
-      hashField.value = data.image_hash;
-    }
+
+    if (hashField && data.image_hash) hashField.value = data.image_hash;
     var phashField = document.getElementById('source-image-phash');
-    if (phashField && data.image_phash) {
-      phashField.value = data.image_phash;
-    }
+    if (phashField && data.image_phash) phashField.value = data.image_phash;
     if (rawBox && rawWrap) {
       if (data.raw_text) {
         rawWrap.hidden = false;
@@ -544,7 +604,9 @@
       }
     }
     showDuplicate(data.duplicate || null);
-    if (window.KpssQuestionPreview) window.KpssQuestionPreview.sync();
+    if (window.KpssQuestionPreview) {
+      window.KpssQuestionPreview.sync();
+    }
   }
 
   async function imageFile() {
@@ -570,18 +632,35 @@
     const fd = new FormData();
     fd.append('image', file);
     if (excludeId) fd.append('exclude_question_id', excludeId);
+    var topicSel = document.getElementById('topic-select');
+    if (topicSel && topicSel.value) fd.append('topic_id', topicSel.value);
     try {
       const res = await fetch('{% url "panel_ocr_question" %}', {
         method: 'POST',
         headers: { 'X-CSRFToken': csrf() },
         body: fd
       });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        status.style.color = '#f87171';
+        status.textContent = 'Sunucu yanıtı okunamadı (HTTP ' + res.status + ').';
+        return;
+      }
       if (!data.ok && !data.raw_text && !hasOcrContent(data)) {
+        status.style.color = '#f87171';
         status.textContent = data.error || 'Okunamadı.';
         showDuplicate(data.duplicate || null);
       } else {
-        await fill(data);
+        try {
+          await fill(data);
+        } catch (fillErr) {
+          console.error(fillErr);
+          status.style.color = '#f87171';
+          status.textContent = 'OCR metni alındı ama forma yazılırken hata oluştu.';
+          return;
+        }
         if (!hasOcrContent(data)) {
           status.style.color = '#f87171';
           status.textContent = data.error || 'Metin okunamadı — görseli veya API anahtarını kontrol edin.';
@@ -594,13 +673,15 @@
           if (data.sekil_kodu || data.figure_svg || data.figure_tikz) engine += ' · şekil SVG';
           if (data.dogru_cevap || data.correct_option) engine += ' · cevap';
           if (data.detayli_cozum || data.solution) engine += ' · çözüm';
+          if (data.suggested_topic_name) engine += ' · konu: ' + data.suggested_topic_name;
           status.textContent = data.ok
             ? 'Metin dolduruldu' + engine + ' — kontrol edip kaydedin.'
-            : (data.error || 'Kısmi okuma; düzenleyin.');
+            : (data.error || 'Kısmi okuma; alanları kontrol edin.');
         }
       }
     } catch (err) {
-      status.textContent = 'OCR isteği başarısız.';
+      status.style.color = '#f87171';
+      status.textContent = 'OCR isteği başarısız: ' + (err && err.message ? err.message : 'ağ hatası');
     } finally {
       btn.disabled = false;
     }
@@ -641,6 +722,23 @@
     field.focus();
     field.reportValidity();
   });
+})();
+</script>
+<script>
+(function () {
+  function bootPreview() {
+    if (!window.KpssQuestionPreview) return;
+    if (window.KpssQuestionPreview.reloadBootstrap) {
+      window.KpssQuestionPreview.reloadBootstrap();
+    }
+    if (window.KpssQuestionPreview.hydrateFormFromBootstrap) {
+      window.KpssQuestionPreview.hydrateFormFromBootstrap();
+    }
+    window.KpssQuestionPreview.sync();
+  }
+  window.setTimeout(bootPreview, 0);
+  window.setTimeout(bootPreview, 180);
+  window.addEventListener('load', bootPreview);
 })();
 </script>
 {% endblock %}

@@ -105,6 +105,41 @@ _LATEX_SCORE_FRAC_RE = re.compile(
     r"\\(?:frac|sqrt|circ|cdot|left|right|text)"
 )
 
+_NAMED_SOLUTION_LABEL_RE = re.compile(
+    r"(Mühimme\s+Defteri\s*:|Kimin\s+Sorumluluğundadır\s*\?|"
+    r"(?:KPSS\s+)?Hap\s+Bilgi\s*:)",
+    re.IGNORECASE,
+)
+_NAMED_SOLUTION_SPLIT_RE = re.compile(
+    r"(?<!^)(?<!\n)\s*(?="
+    r"Mühimme\s+Defteri\s*:|Kimin\s+Sorumluluğundadır\s*\?|"
+    r"KPSS\s+Hap\s+Bilgi\s*:|(?<!KPSS\s)Hap\s+Bilgi\s*:)",
+    re.IGNORECASE,
+)
+
+
+def _format_named_solution_sections(text: str) -> str:
+    """Yapışık bilgi etiketlerini kalın, ayrı paragraflara dönüştür."""
+    src = (text or "").strip()
+    if not src:
+        return src
+
+    # Önceden eklenmiş dış markdown'ı kaldırıp tek, geçerli çift yıldız üret.
+    src = re.sub(
+        rf"\*\*\s*({_NAMED_SOLUTION_LABEL_RE.pattern})\s*\*\*",
+        r"\1",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = _NAMED_SOLUTION_SPLIT_RE.sub("\n\n", src)
+    src = re.sub(
+        rf"(?m)^[ \t]*(?:[-•◦○–—]\s+)?({_NAMED_SOLUTION_LABEL_RE.pattern})[ \t]*",
+        lambda match: f"**{match.group(1).strip()}** ",
+        src,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\n{3,}", "\n\n", src).strip()
+
 
 def _decode_entities(text: str) -> str:
     out = text

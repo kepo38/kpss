@@ -16,6 +16,7 @@ import 'navigation/app_navigator.dart';
 import 'screens/security_warning_modal.dart';
 import 'services/ad_free_campaign_service.dart';
 import 'services/ad_manager.dart';
+import 'services/app_update_service.dart';
 import 'services/boot_store.dart';
 import 'services/offline_pack_service.dart';
 import 'services/smart_review_service.dart';
@@ -116,11 +117,13 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     if (needsExamChoice) {
       setState(() => _showLaunchSplash = false);
       FlutterNativeSplash.remove();
+      unawaited(AppUpdateService.maybeShowOnLaunch());
       return;
     }
     if (!_minSplashDone || !_bootDataReady) return;
     setState(() => _showLaunchSplash = false);
     FlutterNativeSplash.remove();
+    unawaited(AppUpdateService.maybeShowOnLaunch());
   }
 
   void _beginAssignmentSplash() {

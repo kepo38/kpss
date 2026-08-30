@@ -48,7 +48,19 @@ from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
-from .ocr_ingest import normalize_correct_option, _run_ocr, _compose_fallback_log_error
+from .ocr_ingest import (
+    coalesce_ocr_options,
+    normalize_correct_option,
+    _option_is_corrupt,
+    _run_ocr,
+    _compose_fallback_log_error,
+    panel_form_options,
+    prepare_question_for_panel,
+    question_form_bootstrap,
+    maybe_backfill_question_options,
+    maybe_auto_repair_question_on_panel_get,
+)
+from .topic_classifier import classify_topic_from_ocr
 from .ocr_diagnostics import compose_error_message, log_ocr_event
 from .svg_sanitize import sanitize_figure_svg
 from .push import firebase_ready, send_announcement_push
@@ -67,7 +79,12 @@ from .osym_cikmis import (
     osym_cikmis_suggestions,
     record_osym_cikmis_oneri,
 )
-from .rich_text_panel import normalize_pasted_solution
+from .rich_text_panel import (
+    normalize_panel_paste_field,
+    normalize_pasted_option,
+    normalize_pasted_solution,
+    normalize_pasted_stem,
+)
 from .panel_context import (
     mark_question_error_reports_reviewed,
     pending_error_report_count,
@@ -1228,16 +1245,20 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             charset="utf-8",
         )
 
-    opts = result.options or {}
-    c_hash = content_fingerprint(
+    stem_out, opts = coalesce_ocr_options(
         result.stem or "",
+        result.options or {},
+        result.raw_text or "",
+    )
+    c_hash = content_fingerprint(
+        stem_out,
         opts.get("A", ""),
         opts.get("B", ""),
         opts.get("C", ""),
         opts.get("D", ""),
         opts.get("E", ""),
     )
-    s_hash = stem_fingerprint(result.stem or "")
+    s_hash = stem_fingerprint(stem_out)
     dup, match = find_duplicate_question(
         content_hash=c_hash,
         stem_hash=s_hash,
@@ -1249,12 +1270,20 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             and (opts.get("B") or "").strip()
             and (opts.get("C") or "").strip()
         ),
-        stem=result.stem or "",
+        stem=stem_out,
         option_a=opts.get("A", ""),
         option_b=opts.get("B", ""),
         option_c=opts.get("C", ""),
         option_d=opts.get("D", ""),
         option_e=opts.get("E", ""),
+    )
+    classified = classify_topic_from_ocr(
+        stem_out,
+        opts,
+        result.raw_text or "",
+        topic_slug_hint=getattr(result, "topic_slug", "") or "",
+        subject_slug_hint=getattr(result, "subject_slug", "") or "",
+        fallback=topic,
     )
     _log_ocr_ingest(
         request,
@@ -1276,12 +1305,19 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
 
     option_crops = getattr(result, "option_image_bytes", None) or {}
     options_visual = bool(getattr(result, "options_visual", False) and option_crops)
+    option_data_urls: dict[str, str] = {}
+    if options_visual:
+        try:
+            option_data_urls = crops_to_data_urls(option_crops)
+        except Exception:  # noqa: BLE001
+            options_visual = False
+            option_data_urls = {}
     payload = {
         "ok": result.ok,
-        "stem": result.stem,
-        "options": result.options,
-        "soru_metni": result.stem,
-        "siklar": result.options,
+        "stem": stem_out,
+        "options": opts,
+        "soru_metni": stem_out,
+        "siklar": opts,
         "sekil_kodu": getattr(result, "figure_svg", "") or "",
         "figure_svg": getattr(result, "figure_svg", "") or "",
         "dogru_cevap": getattr(result, "correct_option", "") or "",
@@ -1297,12 +1333,18 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         "duplicate": duplicate_payload(dup, match) if dup else None,
         "optionsVisual": options_visual,
         "options_are_images": options_visual,
-        "optionImageDataUrls": crops_to_data_urls(option_crops) if options_visual else {},
+        "optionImageDataUrls": option_data_urls,
         "optionBoxes": {
             k: list(v)
             for k, v in (getattr(result, "option_boxes", None) or {}).items()
         },
     }
+    if classified is not None and classified.source != "fallback":
+        payload["suggested_topic_id"] = classified.topic.id
+        payload["suggested_subject_id"] = classified.topic.subject_id
+        payload["suggested_topic_name"] = classified.topic.name
+        payload["topic_confidence"] = classified.confidence
+        payload["topic_source"] = classified.source
     return JsonResponse(
         payload,
         json_dumps_params={"ensure_ascii": False},
@@ -1914,6 +1956,52 @@ def _apply_question_scenario(
         question.scenario_order = 0
 
 
+def _preview_field_options(question, form_options: dict | None) -> dict[str, str]:
+    """Önizleme — placeholder veya bozuk OCR olmayan şık metinleri."""
+    placeholders = {"", "—", "-", "Görsel şık"}
+    out: dict[str, str] = {}
+    for letter in "ABCDE":
+        raw = ""
+        if isinstance(form_options, dict):
+            raw = (form_options.get(letter) or "").strip()
+        elif question:
+            raw = (getattr(question, f"option_{letter.lower()}", "") or "").strip()
+        if raw in placeholders or _option_is_corrupt(raw):
+            out[letter] = ""
+        else:
+            out[letter] = raw
+    return out
+
+
+def _preview_solution_text(question, form_bootstrap: dict | None) -> str:
+    boot = form_bootstrap or {}
+    raw = (boot.get("solution") if isinstance(boot, dict) else "") or ""
+    if not raw and question:
+        raw = getattr(question, "solution", "") or ""
+    return str(raw).strip()
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_normalize_paste(request: HttpRequest) -> JsonResponse:
+    """Panel yapıştırma — Python normalizasyon (tek kaynak)."""
+    import json
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Geçersiz JSON"}, status=400)
+    field = str(payload.get("field") or "solution").strip()
+    text = str(payload.get("text") or "")
+    html = str(payload.get("html") or "")
+    try:
+        normalized = normalize_panel_paste_field(field, text, html=html)
+    except Exception:  # noqa: BLE001
+        return JsonResponse({"error": "Normalizasyon başarısız"}, status=500)
+    return JsonResponse({"text": normalized})
+
+
 def _is_pending_telegram_question(question: Question | None) -> bool:
     return bool(
         question
@@ -1934,6 +2022,11 @@ def panel_question_edit(
         get_object_or_404(Question, pk=question_id) if question_id else None
     )
     topic = question.topic if question else url_topic
+    if request.method == "GET":
+        prepare_question_for_panel(question)
+        if question and question.pk:
+            maybe_backfill_question_options(question)
+            maybe_auto_repair_question_on_panel_get(question)
 
     subjects = Subject.objects.filter(is_active=True).order_by(
         "sort_order", "name"
@@ -1973,12 +2066,12 @@ def panel_question_edit(
             question.topic = target_topic
 
         question.subtopic = request.POST.get("subtopic", "").strip()
-        question.stem = stem
-        question.option_a = request.POST.get("option_a", "").strip()
-        question.option_b = request.POST.get("option_b", "").strip()
-        question.option_c = request.POST.get("option_c", "").strip()
-        question.option_d = request.POST.get("option_d", "").strip()
-        question.option_e = request.POST.get("option_e", "").strip()
+        question.stem = normalize_pasted_stem(stem)
+        question.option_a = normalize_pasted_option(request.POST.get("option_a", ""))
+        question.option_b = normalize_pasted_option(request.POST.get("option_b", ""))
+        question.option_c = normalize_pasted_option(request.POST.get("option_c", ""))
+        question.option_d = normalize_pasted_option(request.POST.get("option_d", ""))
+        question.option_e = normalize_pasted_option(request.POST.get("option_e", ""))
         if not all(
             [
                 question.option_a,
@@ -2221,6 +2314,22 @@ def panel_question_edit(
         for t in Topic.objects.filter(is_active=True).only("pk", "subtopics")
     }
 
+    form_bootstrap = question_form_bootstrap(question) if question else {}
+    form_options = form_bootstrap.get("options") if form_bootstrap else None
+    if not form_options and question:
+        form_options = panel_form_options(question)
+    preview_options = _preview_field_options(question, form_options)
+    preview_solution = _preview_solution_text(question, form_bootstrap)
+
+    preview_seed = {
+        "stem": (question.stem or "").strip() if question else "",
+        "solution": preview_solution,
+        "options": preview_options,
+        "correct_option": (form_bootstrap.get("correct_option") or "")
+        if form_bootstrap
+        else "",
+    }
+
     return render(
         request,
         "panel/question_form.html",
@@ -2250,6 +2359,15 @@ def panel_question_edit(
             "entry_mode": entry_mode,
             "pending_telegram_review": _is_pending_telegram_question(question),
             "osym_cikmis_suggestions": osym_cikmis_suggestions(),
+            "form_options": form_options,
+            "form_bootstrap": form_bootstrap,
+            "preview_options": preview_options,
+            "preview_solution": preview_solution,
+            "preview_option_items": [
+                {"letter": letter, "text": preview_options.get(letter, "")}
+                for letter in "ABCDE"
+            ],
+            "preview_seed": preview_seed,
         },
     )
 
@@ -3237,6 +3355,9 @@ def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
             cfg.wrong_notebook_bubble_label = label[:48]
         cfg.banner_ads_enabled = (
             request.POST.get("banner_ads_enabled") == "on"
+        )
+        cfg.recommended_app_version = (
+            request.POST.get("recommended_app_version", "").strip()[:32]
         )
         modules: dict[str, bool] = {}
         for db_key, _, _, _ in cfg.STUDIO_MODULE_DEFS:

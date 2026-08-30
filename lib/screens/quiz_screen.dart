@@ -156,6 +156,7 @@ class _QuizScreenState extends State<QuizScreen>
 
   /// Soru açılışında / cevapta güncellenen canlı başarı oranı (0–1 veya 0–100).
   final Map<String, double> _liveCorrectRates = {};
+  final Map<String, Map<String, double>> _liveOptionPercentages = {};
   final Map<String, List<QuizStroke>> _drawings = {};
   bool _drawingEnabled = false;
   bool _noteCardOpen = false;
@@ -677,7 +678,12 @@ class _QuizScreenState extends State<QuizScreen>
 
   Map<String, double>? get _optionPercentages =>
       _attemptSummaries[_currentQuestion.id]?.optionPercentages ??
+      _liveOptionPercentages[_currentQuestion.id] ??
       _currentQuestion.optionPercentages;
+
+  /// Canlı TG sınavında gizli; çözüm inceleme / defter / konu testinde göster.
+  bool get _showOptionPercentages =>
+      !widget.tgExamMode || widget.tgExamSolutionReview;
 
   /// Gerçek veri yokken debug APK'da şık yüzdelerini önizlemek için.
   Map<String, double> get _visibleOptionPercentages {
@@ -1165,7 +1171,7 @@ class _QuizScreenState extends State<QuizScreen>
                   ),
                   isSelected: selected,
                   tone: tone,
-                  percentage: revealed && !widget.tgExamMode
+                  percentage: revealed && _showOptionPercentages
                       ? _visibleOptionPercentages[entry.key]
                       : null,
                   onTap: widget.tgExamSolutionReview || widget.fromWrongNotebook
@@ -1240,6 +1246,10 @@ class _QuizScreenState extends State<QuizScreen>
       final rate = result.correctRate;
       if (rate != null) {
         _liveCorrectRates[id] = rate;
+      }
+      final optionPct = result.optionPercentages;
+      if (optionPct != null && optionPct.isNotEmpty) {
+        _liveOptionPercentages[id] = optionPct;
       }
     });
   }
@@ -3312,15 +3322,19 @@ class _OptionTrailing extends StatelessWidget {
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Icon(icon, color: iconColor, size: 18),
         const SizedBox(height: 2),
-        Text(
-          '%${percentage!.toStringAsFixed(1)}',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.78),
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            '%${percentage!.toStringAsFixed(1)}',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],
@@ -3352,7 +3366,22 @@ class _OptionTile extends StatelessWidget {
   static const _correct = Color(0xFF34D399);
   static const _wrong = Color(0xFFF87171);
   static const _borderWidth = 2.0;
-  static const _trailingSlotWidth = 36.0;
+  static const _trailingSlotWidth = 44.0;
+
+  Widget _buildTrailingPercent(double value) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerRight,
+      child: Text(
+        '%${value.toStringAsFixed(1)}',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.78),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 
   bool get _mathStyle =>
       forceColumns == null &&
@@ -3501,15 +3530,7 @@ class _OptionTile extends StatelessWidget {
                                 percentage: percentage,
                               )
                             : percentage != null
-                                ? Text(
-                                    '%${percentage!.toStringAsFixed(1)}',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.78),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  )
+                                ? _buildTrailingPercent(percentage!)
                                 : const SizedBox.shrink(),
                   ),
                 ),

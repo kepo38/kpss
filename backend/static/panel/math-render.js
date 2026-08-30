@@ -181,12 +181,31 @@
       "**$1)** "
     );
     src = src.replace(
-      /(?<=[.!?:;]|[a-zçğıöşüâîû”"'])(?:\s*\*\*)?\s*(?=[A-E]\)\s)/g,
+      /(?<=[.!?:;*"'»)\]]|[a-zçğıöşüâîû])(?:\s*\*\*)?\s*(?=[A-E]\)\s)/g,
       "\n"
     );
     src = src.replace(
-      /([A-E]\)[^\n*]{3,80}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ"“«])/g,
+      /([A-E]\)[^\n*]{3,120}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ"“«])/g,
       "$1\n"
+    );
+    src = splitInlineOptionHeaders(src);
+    return src;
+  }
+
+  /** Google Docs: "A) Başlık (Alt): gövde metni" tek satır → başlık + gövde. */
+  function splitInlineOptionHeaders(src) {
+    src = String(src || "");
+    src = src.replace(
+      /(^|\n)(\s*(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+)([^\n*]+?):\s+(?=\S)/g,
+      function (_, lead, prefix, letter, title) {
+        return lead + prefix + title + ":\n";
+      }
+    );
+    src = src.replace(
+      /(^|\n)(\s*(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+)([^\n]+?):\s*\*\*\s+(?=\S)/g,
+      function (_, lead, prefix, letter, title) {
+        return lead + prefix + title + ":**\n";
+      }
     );
     return src;
   }
@@ -414,6 +433,10 @@
   var OPTION_TRIAL_TITLE_RE = /[\s',\d]/;
   var OPTION_BOLD_LETTER_RE =
     /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\s*\)\s*\*\*\s*(.+)$/;
+  var OPTION_BOLD_TITLE_RE =
+    /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\)\s+(.+?)\s*:?\s*\*\*\s*$/;
+  var OPTION_BOLD_TITLE_INLINE_RE =
+    /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\)\s+(.+?):\s*\*\*\s*(.+)$/;
   var OPTION_SECENEGI_INLINE_RE =
     /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\s+Seçeneği\s*:\s*(.*)$/i;
   var OPTION_SECENEGI_ONLY_RE =
@@ -436,7 +459,9 @@
       OPTION_HEADER_RE.test(s) ||
       OPTION_SECENEGI_ONLY_RE.test(s) ||
       OPTION_SECENEGI_INLINE_RE.test(s) ||
-      OPTION_BOLD_LETTER_RE.test(s)
+      OPTION_BOLD_LETTER_RE.test(s) ||
+      OPTION_BOLD_TITLE_RE.test(s) ||
+      OPTION_BOLD_TITLE_INLINE_RE.test(s)
     ) {
       return true;
     }
@@ -476,6 +501,25 @@
         inline: letterBody || null,
       };
     }
+    hm = s.match(OPTION_BOLD_TITLE_INLINE_RE);
+    if (hm) {
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + ") " + stripOuterBold(hm[2]).replace(/:+$/, "").trim(),
+        inline: String(hm[3] || "").trim() || null,
+      };
+    }
+    hm = s.match(OPTION_BOLD_TITLE_RE);
+    if (hm) {
+      return {
+        letter: hm[1].toUpperCase(),
+        title:
+          hm[1].toUpperCase() +
+          ") " +
+          stripOuterBold(hm[2]).replace(/:+$/, "").trim(),
+        inline: null,
+      };
+    }
     hm = s.match(OPTION_TRIAL_HEADER_RE);
     if (hm && OPTION_TRIAL_TITLE_RE.test(String(hm[2] || ""))) {
       var trialTitle = stripOuterBold(String(hm[2] || "").trim()).replace(/:+$/, "").trim();
@@ -497,9 +541,24 @@
   }
 
   function emphasizeResultTail(line) {
-    return String(line || "").replace(RESULT_TAIL_RE, function (_, arrow, emoji, word) {
+    var src = String(line || "");
+    src = src.replace(RESULT_TAIL_RE, function (_, arrow, emoji, word) {
       return arrow + (emoji || "") + "**" + word + "**.";
     });
+    return ensureFarkiItalic(src);
+  }
+
+  function ensureFarkiItalic(line) {
+    var src = String(line || "").trim();
+    if (!src || !/Farkı\s*:/i.test(src)) return src;
+    if (/^\*[^*]+\*$/.test(src)) return src;
+    var idx = src.search(/Farkı\s*:/i);
+    if (idx < 0) return src;
+    var head = src.slice(0, idx).trim();
+    var tail = src.slice(idx).trim();
+    if (!/^\*/.test(tail)) tail = "*" + tail;
+    if (!/\*$/.test(tail)) tail = tail + "*";
+    return head ? head + " " + tail : tail;
   }
 
   function structurePreambleLines(lines) {
@@ -616,6 +675,7 @@
       .replace(/\r/g, "\n")
       .trim();
     if (!src) return src;
+    src = splitInlineOptionHeaders(src);
     src = formatPresenceTable(src);
     var lines = src.split("\n");
     var optionIdxs = [];
@@ -773,11 +833,23 @@
       return "§§M" + (holders.length - 1) + "§§";
     });
     // Açılış: harf/rakam/apostrof + ** veya __ (*** / ___ değil)
-    src = src.replace(/([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(\*\*)(?!\*)/g, "$1 $2");
-    src = src.replace(/([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(__)(?!_)/g, "$1 $2");
+    src = src.replace(
+      /([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(\*\*)(?!\*)(?=[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])/g,
+      "$1 $2"
+    );
+    src = src.replace(
+      /([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(__)(?!_)(?=[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])/g,
+      "$1 $2"
+    );
     // Kapanış: ** veya __ + harf/rakam
-    src = src.replace(/(\*\*)(?!\*)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g, "$1 $2");
-    src = src.replace(/(__)(?!_)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g, "$1 $2");
+    src = src.replace(
+      /(?<=[^\s*])(\*\*)(?!\*)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g,
+      "$1 $2"
+    );
+    src = src.replace(
+      /(?<=[^\s_])(__)(?!_)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g,
+      "$1 $2"
+    );
     src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
       return holders[Number(idx)] || "";
     });
@@ -802,6 +874,34 @@
     src = src.replace(/^\s*\*\*\s*$/gm, "");
     src = src.replace(/^\s*__\s*$/gm, "");
     return src;
+  }
+
+  function formatNamedSolutionSections(text) {
+    var src = String(text || "").trim();
+    if (!src) return src;
+    var label =
+      "(Mühimme\\s+Defteri\\s*:|Kimin\\s+Sorumluluğundadır\\s*\\?|" +
+      "(?:KPSS\\s+)?Hap\\s+Bilgi\\s*:)";
+    src = src.replace(
+      new RegExp("\\*\\*\\s*" + label + "\\s*\\*\\*", "gi"),
+      "$1"
+    );
+    src = src.replace(
+      new RegExp(
+        "([^\\n])\\s*(?=" +
+          "Mühimme\\s+Defteri\\s*:|Kimin\\s+Sorumluluğundadır\\s*\\?|" +
+          "KPSS\\s+Hap\\s+Bilgi\\s*:|(?<!KPSS\\s)Hap\\s+Bilgi\\s*:)",
+        "gi"
+      ),
+      "$1\n\n"
+    );
+    src = src.replace(
+      new RegExp("^[ \\t]*(?:[-•◦○–—]\\s+)?" + label + "[ \\t]*", "gim"),
+      function (_, sectionLabel) {
+        return "**" + sectionLabel.trim() + "** ";
+      }
+    );
+    return src.replace(/\n{3,}/g, "\n\n").trim();
   }
 
   function mdMarks(text) {
@@ -1011,6 +1111,7 @@
     if (displayInline && usesDisplayMath(displayInline[1].trim())) return true;
     if (/^(---|\*\*\*|___)$/.test(trimmed)) return true;
     if (/^#{1,3}\s+/.test(trimmed)) return true;
+    if (isOptionHeaderLine(trimmed)) return true;
     if (isStructuralLine(trimmed)) return true;
     if (/^\*\*\s*\d+\.\s+Adım:.+\*\*$/.test(trimmed)) return true;
     if (/^(?:\*\*)?(?:Payda|Pay|Kesrin değeri)\s*:/i.test(trimmed)) return true;
@@ -1055,6 +1156,9 @@
     var examMode = !!options.examMode;
     var solutionMode = !!options.solutionMode;
     var src = normalizeMarkup(String(text || ""));
+    if (solutionMode) {
+      src = formatNamedSolutionSections(src);
+    }
     src = structureSolutionOutline(restoreCollapsedBreaks(normalizeLatex(src)));
     if (solutionMode) {
       src = coalesceSoftLines(src);
@@ -1201,8 +1305,10 @@
     normalizeLatex: normalizeLatex,
     normalizeExamArrows: normalizeExamArrows,
     normalizeMarkup: normalizeMarkup,
+    formatNamedSolutionSections: formatNamedSolutionSections,
     mergeSplitInlineDollarMath: mergeSplitInlineDollarMath,
     restoreCollapsedBreaks: restoreCollapsedBreaks,
+    splitInlineOptionHeaders: splitInlineOptionHeaders,
     structureSolutionOutline: structureSolutionOutline,
     wrapBareLatex: wrapBareLatex,
     forceDisplaySizeAll: forceDisplaySizeAll,

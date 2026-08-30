@@ -931,6 +931,13 @@ class MobileUiConfig(models.Model):
         verbose_name="Stüdyo modülleri",
         help_text="Modül anahtarı → aktif. Boş sözlük = tüm modüller açık.",
     )
+    recommended_app_version = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        verbose_name="Önerilen uygulama sürümü",
+        help_text="Boş bırakılırsa güncelleme uyarısı gösterilmez. Örn: 1.0.2",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

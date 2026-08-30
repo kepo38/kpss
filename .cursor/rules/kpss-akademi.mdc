@@ -74,6 +74,14 @@ Ayrı iş = ayrı dosya. Harita, tablo/eşleştirme şıkları, yapıştırma, �
 
 Örnek: eşleştirme şıkları → `option-table.js` + `option-table.css` + `option_column_layout.dart`; önizleme yalnızca `KpssOptionTable.apply`.
 
+## Panel OCR (ayrı kural — burada tekrarlama yok)
+
+Panel OCR, soru formu, şık/çözüm önizlemesi veya `ocr_ingest` / `panel_views` / `question-preview.js` dokunulacaksa **önce** `.cursor/rules/panel-ocr-preview.mdc` oku.
+
+- O dosya glob ile otomatik bağlanır; akış, zorunlu helper’lar ve yasaklar orada.
+- Bu anayasa genel mimari içindir; OCR → JSON → form → önizleme zincirini burada yeniden yazma.
+- Değişiklik sonrası: panel düzenleme sayfasında şık + çözüm önizlemede görünsün; `content.ocr_ingest_tests` yeşil kalsın.
+
 ## Anayasa (onaysız sapma yok)
 
 - Kullanıcının söylediği iş tam olarak o iş; başka ekran/layout/metin/akış değiştirme.

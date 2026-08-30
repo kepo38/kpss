@@ -9,11 +9,13 @@ class QuestionViewResult {
   final int viewCount;
   final int attemptCount;
   final double? correctRate;
+  final Map<String, double>? optionPercentages;
 
   const QuestionViewResult({
     required this.viewCount,
     required this.attemptCount,
     this.correctRate,
+    this.optionPercentages,
   });
 }
 
@@ -22,8 +24,20 @@ class QuestionViewService {
   QuestionViewService._();
   static final QuestionViewService instance = QuestionViewService._();
 
-  /// Başarılıysa güncel görüntüleme + başarı oranı.
-  /// Oturum yoksa da sunucu `correctRate` dönebilir (sayaç artmaz).
+  static Map<String, double>? _parseOptionPercentages(Object? raw) {
+    if (raw is! Map) return null;
+    final out = <String, double>{};
+    for (final entry in raw.entries) {
+      final value = entry.value;
+      if (value is num) {
+        out[entry.key.toString()] = value.toDouble();
+      }
+    }
+    return out.isEmpty ? null : out;
+  }
+
+  /// Başarılıysa güncel görüntüleme + başarı oranı + şık yüzdeleri.
+  /// Oturum yoksa da sunucu istatistik dönebilir (sayaç artmaz).
   Future<QuestionViewResult?> recordView(String questionId) async {
     if (questionId.isEmpty) return null;
     try {
@@ -46,6 +60,7 @@ class QuestionViewService {
         viewCount: viewCount,
         attemptCount: (decoded['attemptCount'] as num?)?.toInt() ?? 0,
         correctRate: (decoded['correctRate'] as num?)?.toDouble(),
+        optionPercentages: _parseOptionPercentages(decoded['optionPercentages']),
       );
     } catch (_) {
       return null;

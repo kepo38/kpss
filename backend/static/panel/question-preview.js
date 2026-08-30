@@ -3,7 +3,74 @@
  */
 (function () {
   var MAP_PLACEHOLDER = "[HARITA]";
+  var OPTION_PLACEHOLDERS = { "": true, "—": true, "-": true, "Görsel şık": true };
   var scenarioCatalog = {};
+  var formBootstrap = { options: {}, solution: "", correct_option: "" };
+  var previewSeed = { stem: "", solution: "", options: {}, correct_option: "" };
+  var initialRenderDone = false;
+
+  function loadPreviewSeed() {
+    var el = document.getElementById("question-preview-seed");
+    if (!el) return;
+    try {
+      previewSeed = JSON.parse(el.textContent || "{}") || {};
+      if (!previewSeed.options) previewSeed.options = {};
+    } catch (err) {
+      previewSeed = { stem: "", solution: "", options: {}, correct_option: "" };
+    }
+  }
+
+  function normalizedFieldValue(text) {
+    var t = (text || "").trim();
+    return isPlaceholderOption(t) ? "" : t;
+  }
+
+  function markPreviewDirty(el) {
+    if (el) el.dataset.previewDirty = "1";
+  }
+
+  function captureServerFieldValues() {
+    var form = questionForm();
+    if (!form) return;
+    form.querySelectorAll("textarea, input[type=text], select").forEach(function (el) {
+      if (!el.name && !el.id) return;
+      el.setAttribute(
+        "data-server-value",
+        String(el.value != null ? el.value : "").trim()
+      );
+    });
+  }
+
+  function shouldKeepServerPreview(previewEl, formEl, liveText) {
+    if (!previewEl || previewEl.getAttribute("data-server-rendered") !== "1") {
+      return false;
+    }
+    if (formEl && formEl.dataset.previewDirty === "1") {
+      return false;
+    }
+    var seed = (previewEl.getAttribute("data-initial-text") || "").trim();
+    if (!seed) return false;
+    var serverVal = formEl
+      ? normalizedFieldValue(formEl.getAttribute("data-server-value") || "")
+      : "";
+    return normalizedFieldValue(liveText) === serverVal;
+  }
+
+  function previewSeedOption(letter) {
+    var opts = previewSeed.options || {};
+    return (opts[letter] || "").trim();
+  }
+
+  function loadFormBootstrap() {
+    var el = document.getElementById("question-form-bootstrap");
+    if (!el) return;
+    try {
+      formBootstrap = JSON.parse(el.textContent || "{}") || {};
+      if (!formBootstrap.options) formBootstrap.options = {};
+    } catch (err) {
+      formBootstrap = { options: {}, solution: "", correct_option: "" };
+    }
+  }
 
   function loadScenarioCatalog() {
     var el = document.getElementById("question-scenarios-data");
@@ -83,9 +150,224 @@
       .replace(/>/g, "&gt;");
   }
 
+  function questionForm() {
+    return document.getElementById("question-form");
+  }
+
+  function fieldEl(name) {
+    var form = questionForm();
+    var el = null;
+    if (form) {
+      el = form.querySelector('[name="' + name + '"]');
+    }
+    if (!el) {
+      el = document.querySelector('[name="' + name + '"]');
+    }
+    if (!el && /^option_[a-e]$/.test(name)) {
+      el = document.getElementById(
+        "option-" + name.replace("option_", "") + "-text"
+      );
+    }
+    if (!el && name === "solution") {
+      el = document.getElementById("question-solution");
+    }
+    if (!el && name === "stem") {
+      el = document.getElementById("question-stem");
+    }
+    return el;
+  }
+
+  function fieldText(name) {
+    var el = fieldEl(name);
+    if (!el) return "";
+    var live = String(el.value != null ? el.value : "").trim();
+    if (live) return live;
+    var fallback = String(el.defaultValue != null ? el.defaultValue : "").trim();
+    if (fallback) return fallback;
+    var bootAttr = el.getAttribute("data-bootstrap-value");
+    return bootAttr ? String(bootAttr).trim() : "";
+  }
+
+  /** Önizleme sync: yalnızca canlı textarea değeri (defaultValue/bootstrap yok). */
+  function liveFieldText(name) {
+    var el = fieldEl(name);
+    if (!el) return "";
+    return String(el.value != null ? el.value : "").trim();
+  }
+
+  function solutionFieldEl() {
+    return document.getElementById("question-solution") || fieldEl("solution");
+  }
+
   function val(name) {
-    var el = document.querySelector('[name="' + name + '"]');
-    return el ? (el.value || "").trim() : "";
+    return fieldText(name);
+  }
+
+  function bootstrapOption(letter) {
+    var opts = formBootstrap.options || {};
+    return (opts[letter] || "").trim();
+  }
+
+  function optionFieldEl(letter) {
+    var lower = letter.toLowerCase();
+    return (
+      document.getElementById("option-" + lower + "-text") ||
+      fieldEl("option_" + lower)
+    );
+  }
+
+  function optionValue(letter) {
+    var el = optionFieldEl(letter);
+    if (el) {
+      var live = String(el.value != null ? el.value : "").trim();
+      if (el.dataset.previewDirty === "1") {
+        return isPlaceholderOption(live) ? "" : live;
+      }
+      if (live && !isPlaceholderOption(live)) return live;
+    }
+    var pv = document.getElementById("pv-opt-text-" + letter);
+    if (pv) {
+      var seed = (pv.getAttribute("data-initial-text") || "").trim();
+      if (seed && !isPlaceholderOption(seed)) return seed;
+    }
+    var fromSeed = previewSeedOption(letter);
+    if (fromSeed && !isPlaceholderOption(fromSeed)) return fromSeed;
+    var fromBoot = bootstrapOption(letter);
+    if (fromBoot && !isPlaceholderOption(fromBoot)) return fromBoot;
+    return "";
+  }
+
+  function solutionValue() {
+    var el = solutionFieldEl();
+    if (el) {
+      var live = String(el.value != null ? el.value : "").trim();
+      if (el.dataset.previewDirty === "1") return live;
+      if (live) return live;
+    }
+    var solBody = document.getElementById("pv-solution-body");
+    if (solBody) {
+      var seed = (solBody.getAttribute("data-initial-text") || "").trim();
+      if (seed) return seed;
+    }
+    if ((previewSeed.solution || "").trim()) return previewSeed.solution.trim();
+    return (formBootstrap.solution || "").trim();
+  }
+
+  function seedPreviewElements() {
+    ["A", "B", "C", "D", "E"].forEach(function (letter) {
+      var el = document.getElementById("pv-opt-text-" + letter);
+      if (!el || el.getAttribute("data-initial-text")) return;
+      var seed = optionValue(letter) || bootstrapOption(letter);
+      if (seed && !isPlaceholderOption(seed)) {
+        el.setAttribute("data-initial-text", seed);
+      }
+    });
+    var solBody = document.getElementById("pv-solution-body");
+    if (solBody && !solBody.getAttribute("data-initial-text")) {
+      var solSeed = solutionValue() || (formBootstrap.solution || "").trim();
+      if (solSeed) solBody.setAttribute("data-initial-text", solSeed);
+    }
+  }
+
+  function hydrateFormFromBootstrap() {
+    var opts = formBootstrap.options || {};
+    ["A", "B", "C", "D", "E"].forEach(function (letter) {
+      var key = "option_" + letter.toLowerCase();
+      var el = fieldEl(key);
+      var boot = bootstrapOption(letter);
+      if (!el || !boot || isPlaceholderOption(boot)) return;
+      var cur = liveFieldText(key);
+      if (!cur || isPlaceholderOption(cur)) {
+        el.value = boot;
+      }
+    });
+    var solEl = solutionFieldEl();
+    var bootSol = (formBootstrap.solution || "").trim();
+    if (solEl && bootSol && !liveFieldText("solution")) {
+      solEl.value = bootSol;
+    }
+    var bootAnswer = (formBootstrap.correct_option || "").trim();
+    if (bootAnswer) {
+      var answerSel = fieldEl("correct_option");
+      if (answerSel && !(answerSel.value || "").trim()) {
+        answerSel.value = bootAnswer;
+      }
+    }
+  }
+
+  function isPlaceholderOption(text) {
+    return OPTION_PLACEHOLDERS.hasOwnProperty((text || "").trim());
+  }
+
+  function parseEmbeddedOptions(stem) {
+    var out = { A: "", B: "", C: "", D: "", E: "" };
+    if (!stem) return out;
+    var lines = String(stem).split(/\n/);
+    var current = "";
+    var buf = [];
+    function flush() {
+      if (current && buf.length) {
+        out[current] = buf.join(" ").replace(/\s+/g, " ").trim();
+      }
+      current = "";
+      buf = [];
+    }
+    lines.forEach(function (ln) {
+      var m = ln.match(/^\s*([A-E])\s*[\)\]\.\:\-]\s*(.*)$/i);
+      if (m) {
+        flush();
+        current = m[1].toUpperCase();
+        if ((m[2] || "").trim()) buf.push(m[2].trim());
+        return;
+      }
+      if (current && ln.trim()) buf.push(ln.trim());
+    });
+    flush();
+    return out;
+  }
+
+  function resolveOptionTexts(stem) {
+    var parsed = parseEmbeddedOptions(stem);
+    var out = {};
+    ["A", "B", "C", "D", "E"].forEach(function (k) {
+      out[k] = optionValue(k) || parsed[k] || "";
+    });
+    return out;
+  }
+
+  function peelStemForPreview(stem, optionTexts) {
+    var body = stem || "";
+    if (!body) return body;
+    var filled = ["A", "B", "C", "D", "E"].filter(function (k) {
+      return !isPlaceholderOption(optionTexts[k]);
+    });
+    if (filled.length < 3) return body;
+    var lines = body.split("\n");
+    var cut = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (/^\s*A\s*[\)\]\.\:\-]\s+/i.test(lines[i])) {
+        cut = i;
+        break;
+      }
+    }
+    if (cut >= 0) {
+      return lines.slice(0, cut).join("\n").trim();
+    }
+    return body;
+  }
+
+  function renderOptionPreviewText(el, text) {
+    if (!el) return;
+    var t = (text || "").trim();
+    if (!t || isPlaceholderOption(t)) {
+      el.textContent = "";
+      el.classList.add("is-empty");
+      return;
+    }
+    el.innerHTML = window.KpssMathRender
+      ? window.KpssMathRender.optionInline(t)
+      : escapeText(formatPlain(t));
+    el.classList.remove("is-empty");
   }
 
   function currentStemImageSrc() {
@@ -243,6 +525,16 @@
   }
 
   function sync() {
+    try {
+      syncPreview();
+    } catch (err) {
+      console.error("KpssQuestionPreview.sync failed", err);
+    }
+  }
+
+  function syncPreview() {
+    loadFormBootstrap();
+    seedPreviewElements();
     var stemEl = document.getElementById("pv-stem");
     var imgEl = document.getElementById("pv-img");
     var svgEl = document.getElementById("pv-svg");
@@ -252,9 +544,15 @@
 
     syncScenarioCard();
 
-    var stem = val("stem");
+    var stem = liveFieldText("stem") || val("stem");
+    var optionTexts = resolveOptionTexts(stem);
     if (window.KpssOptionTable && window.KpssOptionTable.visibleStem) {
-      stem = window.KpssOptionTable.visibleStem(stem);
+      stem = peelStemForPreview(
+        window.KpssOptionTable.visibleStem(stem),
+        optionTexts
+      );
+    } else {
+      stem = peelStemForPreview(stem, optionTexts);
     }
     var src = currentImageSrc();
     var rendered = stemWithInlineMap(stem, src);
@@ -298,6 +596,9 @@
     syncFigureSvg(svgEl, currentFigureSvg());
 
     var correct = val("correct_option");
+    if (!correct && (formBootstrap.correct_option || "").trim()) {
+      correct = (formBootstrap.correct_option || "").trim();
+    }
     var filled = [];
     ["A", "B", "C", "D", "E"].forEach(function (k) {
       var row = document.getElementById("pv-opt-" + k);
@@ -307,15 +608,21 @@
         k: k,
         row: row,
         text: text,
-        t: val("option_" + k.toLowerCase()),
+        t: optionTexts[k] || "",
       });
     });
     var optsRoot = document.querySelector("#question-preview .quiz-mock-opts");
     var previewHead = document.getElementById("pv-opt-col-head");
-    if (window.KpssOptionTable && !visualOpts) {
+    var tableMode =
+      window.KpssOptionTable && window.KpssOptionTable.readTableMode
+        ? window.KpssOptionTable.readTableMode()
+        : "none";
+    var tableApplied = false;
+    if (window.KpssOptionTable && !visualOpts && tableMode !== "none") {
+      tableApplied = true;
       window.KpssOptionTable.apply({
         stem: val("stem"),
-        stemEl: document.querySelector('[name="stem"]'),
+        stemEl: fieldEl("stem"),
         optionTexts: filled.map(function (item) {
           return item.t;
         }),
@@ -332,6 +639,7 @@
           return "Şık " + filled[index].k;
         },
         plainHtml: function (t) {
+          if (!t || isPlaceholderOption(t)) return "";
           return window.KpssMathRender
             ? window.KpssMathRender.optionInline(t)
             : escapeText(formatPlain(t));
@@ -373,26 +681,35 @@
           item.k +
           '">';
         item.text.classList.remove("is-empty");
+      } else if (
+        tableApplied &&
+        item.t &&
+        !isPlaceholderOption(item.t) &&
+        item.text.classList.contains("quiz-opt-cols")
+      ) {
+        item.text.classList.remove("is-empty");
+      } else if (item.t && !isPlaceholderOption(item.t)) {
+        var optFormEl = optionFieldEl(item.k);
+        if (shouldKeepServerPreview(item.text, optFormEl, item.t)) {
+          item.text.classList.remove("is-empty");
+        } else {
+          renderOptionPreviewText(item.text, item.t);
+          item.text.setAttribute("data-initial-text", item.t);
+        }
       } else if (visual) {
         item.text.textContent = "";
         item.text.classList.add("is-empty");
-      } else if (item.t) {
-        if (!window.KpssOptionTable) {
-          item.text.innerHTML = window.KpssMathRender
-            ? window.KpssMathRender.optionInline(item.t)
-            : escapeText(formatPlain(item.t));
-        }
-        item.text.classList.remove("is-empty");
       } else {
         item.text.textContent = "Şık " + item.k;
         item.text.classList.add("is-empty");
+        item.text.removeAttribute("data-initial-text");
       }
       item.text.classList.toggle("has-opt-img", showOptImg);
       item.row.classList.toggle("has-opt-img", showOptImg);
       item.row.classList.toggle("is-correct", correct === item.k);
     });
 
-    var sol = val("solution");
+    var sol = solutionValue();
     var solImgEl = document.getElementById("pv-solution-img");
     var solImgSrc = currentSolutionImageSrc();
     if (solWrap && solBody) {
@@ -408,13 +725,19 @@
         }
       }
       if (sol) {
-        solBody.innerHTML = window.KpssMathRender
-          ? (window.KpssMathRender.solutionDocumentHtml
-              ? window.KpssMathRender.solutionDocumentHtml(sol)
-              : window.KpssMathRender.examDocumentHtml(sol))
-          : stemToHtml(sol);
-      } else {
+        var solFormEl = solutionFieldEl();
+        if (!shouldKeepServerPreview(solBody, solFormEl, sol)) {
+          solBody.innerHTML = window.KpssMathRender
+            ? (window.KpssMathRender.solutionDocumentHtml
+                ? window.KpssMathRender.solutionDocumentHtml(sol)
+                : window.KpssMathRender.examDocumentHtml(sol))
+            : stemToHtml(sol);
+          solBody.setAttribute("data-initial-text", sol);
+        }
+        solBody.classList.remove("is-empty");
+      } else if (solBody.dataset.previewDirty !== "1") {
         solBody.textContent = "";
+        solBody.removeAttribute("data-initial-text");
       }
       if (sol || solImgSrc) {
         solWrap.classList.add("is-on");
@@ -430,15 +753,76 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
-    if (!document.getElementById("question-preview")) return;
-    var form = document.querySelector("form.form");
-    if (!form) return;
-    loadScenarioCatalog();
+  function bindRichTextSync(el) {
+    if (!el || el.dataset.previewSyncBound === "1") return;
+    el.dataset.previewSyncBound = "1";
+    ["input", "paste", "cut", "keyup", "compositionend", "change"].forEach(
+      function (evt) {
+        el.addEventListener(evt, function () {
+          markPreviewDirty(el);
+          sync();
+        });
+      }
+    );
+  }
 
-    form.addEventListener("input", sync);
-    form.addEventListener("change", sync);
+  function renderInitialPreview() {
+    if (initialRenderDone) return;
+    if (!window.KpssMathRender) return;
+    initialRenderDone = true;
+    sync();
+  }
+
+  function bindAllRichTextSync() {
+    var form = questionForm();
+    if (form) {
+      form.querySelectorAll("textarea.js-rich, input.js-rich").forEach(
+        bindRichTextSync
+      );
+    }
+    bindRichTextSync(document.getElementById("question-stem"));
+    bindRichTextSync(document.getElementById("question-solution"));
+    ["a", "b", "c", "d", "e"].forEach(function (k) {
+      bindRichTextSync(document.getElementById("option-" + k + "-text"));
+    });
+  }
+
+  function initPreview() {
+    if (!document.getElementById("question-preview")) return;
+    loadScenarioCatalog();
+    loadPreviewSeed();
+    loadFormBootstrap();
+    hydrateFormFromBootstrap();
+    captureServerFieldValues();
+    seedPreviewElements();
+    bindAllRichTextSync();
+
+    var form = questionForm();
+    if (form) {
+      form.addEventListener("input", function (ev) {
+        if (ev.target) markPreviewDirty(ev.target);
+        sync();
+      });
+      form.addEventListener("change", function (ev) {
+        if (ev.target) markPreviewDirty(ev.target);
+        sync();
+      });
+    }
+    document.addEventListener(
+      "input",
+      function (ev) {
+        var target = ev.target;
+        if (!target || !target.closest) return;
+        if (!target.closest("#question-form")) return;
+        markPreviewDirty(target);
+        sync();
+      },
+      true
+    );
     document.addEventListener("map-question-change", sync);
+    document.addEventListener("kpss-rich-field-ready", function (ev) {
+      if (ev.detail && ev.detail.el) bindRichTextSync(ev.detail.el);
+    });
 
     var file = document.getElementById("q-image");
     if (file) {
@@ -504,7 +888,22 @@
       el.addEventListener("change", sync);
     });
 
-    sync();
-    window.KpssQuestionPreview = { sync: sync };
-  });
+    if (window.KpssMathRender) {
+      renderInitialPreview();
+    } else {
+      window.addEventListener("load", renderInitialPreview);
+    }
+  }
+
+  window.KpssQuestionPreview = {
+    sync: sync,
+    hydrateFormFromBootstrap: hydrateFormFromBootstrap,
+    reloadBootstrap: loadFormBootstrap,
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initPreview);
+  } else {
+    initPreview();
+  }
 })();

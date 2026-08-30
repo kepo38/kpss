@@ -57,8 +57,12 @@
     var form = formEl();
     var toggle = visualToggle();
     if (!form || !toggle) return;
-    form.classList.toggle("is-visual-options", !!toggle.checked);
-    if (toggle.checked) {
+    var hasImages = hasStoredOptionImages();
+    if (toggle.checked && !hasImages) {
+      toggle.checked = false;
+    }
+    form.classList.toggle("is-visual-options", !!toggle.checked && hasImages);
+    if (toggle.checked && hasImages) {
       ["a", "b", "c", "d", "e"].forEach(function (k) {
         var field = document.getElementById("option-" + k + "-text");
         if (field && !(field.value || "").trim()) {
@@ -149,13 +153,19 @@
       if (hidden) hidden.value = url;
       setPreview(letter, url);
       var input = document.getElementById("option-" + key + "-image");
-      return dataUrlToFile(url, "option_" + letter + ".png").then(function (file) {
-        assignFileInput(input, file);
-        var clear = document.querySelector(
-          '[name="clear_option_' + key + '_image"]'
-        );
-        if (clear) clear.checked = false;
-      });
+      return dataUrlToFile(url, "option_" + letter + ".png")
+        .then(function (file) {
+          assignFileInput(input, file);
+          var clear = document.querySelector(
+            '[name="clear_option_' + key + '_image"]'
+          );
+          if (clear) clear.checked = false;
+        })
+        .catch(function () {
+          if (text) text.value = "";
+          if (hidden) hidden.value = "";
+          setPreview(letter, "");
+        });
     });
     return Promise.all(tasks).then(function () {
       if (window.KpssQuestionPreview) window.KpssQuestionPreview.sync();
@@ -229,9 +239,9 @@
       return storedOptionImageSrc(String(letter).toLowerCase());
     },
     isVisual: function () {
+      if (hasStoredOptionImages()) return true;
       var toggle = visualToggle();
-      if (toggle && toggle.checked) return true;
-      return hasStoredOptionImages();
+      return !!(toggle && toggle.checked && hasStoredOptionImages());
     },
     hasStoredOptionImages: hasStoredOptionImages,
   };

@@ -648,6 +648,7 @@ class QuestionViewRecordView(APIView):
                         if question.attempt_count
                         else None
                     ),
+                    "optionPercentages": question.option_percentages,
                 }
             )
         view_count = QuestionView.record_view(question=question, user=user)
@@ -663,6 +664,7 @@ class QuestionViewRecordView(APIView):
                     if question.attempt_count
                     else None
                 ),
+                "optionPercentages": question.option_percentages,
             }
         )
 
@@ -987,6 +989,7 @@ class MobileUiConfigView(APIView):
                 "wrongNotebookBubbleLabel": cfg.wrong_notebook_bubble_label,
                 "bannerAdsEnabled": cfg.banner_ads_enabled,
                 "studioModules": cfg.studio_modules_for_api(),
+                "recommendedAppVersion": cfg.recommended_app_version or "",
                 "updatedAt": cfg.updated_at,
             }
         )

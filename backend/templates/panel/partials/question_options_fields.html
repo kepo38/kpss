@@ -16,7 +16,8 @@
            name="option_{{ lower }}"
            id="option-{{ lower }}-text"
            required
-           value="{% if letter == 'A' %}{{ question.option_a|default:'' }}{% elif letter == 'B' %}{{ question.option_b|default:'' }}{% elif letter == 'C' %}{{ question.option_c|default:'' }}{% elif letter == 'D' %}{{ question.option_d|default:'' }}{% else %}{{ question.option_e|default:'' }}{% endif %}"
+           value="{% if form_options %}{% if letter == 'A' %}{{ form_options.A|escape }}{% elif letter == 'B' %}{{ form_options.B|escape }}{% elif letter == 'C' %}{{ form_options.C|escape }}{% elif letter == 'D' %}{{ form_options.D|escape }}{% else %}{{ form_options.E|escape }}{% endif %}{% elif letter == 'A' %}{{ question.option_a|default:''|escape }}{% elif letter == 'B' %}{{ question.option_b|default:''|escape }}{% elif letter == 'C' %}{{ question.option_c|default:''|escape }}{% elif letter == 'D' %}{{ question.option_d|default:''|escape }}{% else %}{{ question.option_e|default:''|escape }}{% endif %}"
+           data-bootstrap-value="{% if form_options %}{% if letter == 'A' %}{{ form_options.A|escape }}{% elif letter == 'B' %}{{ form_options.B|escape }}{% elif letter == 'C' %}{{ form_options.C|escape }}{% elif letter == 'D' %}{{ form_options.D|escape }}{% else %}{{ form_options.E|escape }}{% endif %}{% elif letter == 'A' %}{{ question.option_a|default:''|escape }}{% elif letter == 'B' %}{{ question.option_b|default:''|escape }}{% elif letter == 'C' %}{{ question.option_c|default:''|escape }}{% elif letter == 'D' %}{{ question.option_d|default:''|escape }}{% else %}{{ question.option_e|default:''|escape }}{% endif %}"
            class="js-rich js-option-text">
   </label>
   <div class="option-row__visual js-option-visual">

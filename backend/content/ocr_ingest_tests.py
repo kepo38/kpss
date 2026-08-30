@@ -1,6 +1,9 @@
 """OCR ingest — Gemini fallback logging ve onarım."""
 
+import json
 from unittest.mock import patch
+
+from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
@@ -9,8 +12,14 @@ from .ocr_gemini import GeminiSupplementResult, _format_ocr_context
 from .ocr_ingest import (
     _apply_gemini_supplement_after_fallback,
     _compose_fallback_log_error,
+    _count_corrupt_options,
     _merge_gemini_into_ocr,
+    _option_is_corrupt,
+    _question_needs_gemini_repair,
+    coalesce_ocr_options,
     normalize_correct_option,
+    panel_form_options,
+    question_form_bootstrap,
 )
 from .ocr_diagnostics import compose_error_message, new_diagnostics
 
@@ -150,3 +159,197 @@ class GeminiSupplementFallbackTests(SimpleTestCase):
         self.assertFalse(applied)
         self.assertFalse(meta["attempted"])
         mock_supplement.assert_not_called()
+
+    @patch("content.ocr_gemini.gemini_supplement_answer_solution")
+    def test_supplement_fills_missing_options(self, mock_supplement):
+        mock_supplement.return_value = GeminiSupplementResult(
+            correct_option="B",
+            solution="Çözüm",
+            model="gemini-2.0-flash",
+            attempts=[{"model": "gemini-2.0-flash", "ok": True, "error": ""}],
+            ok=True,
+            options={
+                "A": "Reaya : Halk",
+                "B": "Ulema : Din adamları",
+                "C": "Tımar : Dirlik",
+                "D": "Ocak : Yeniçeri ocağı",
+                "E": "Millet : Halk",
+            },
+        )
+        ocr = OcrQuestionResult(
+            stem="Tabloya göre hangi eşleştirme yanlıştır?",
+            options={"A": "—", "B": "—", "C": "—", "D": "—", "E": "—"},
+            raw_text="",
+            ok=True,
+            correct_option="",
+            solution="",
+            engine="tesseract",
+        )
+        applied, err, meta = _apply_gemini_supplement_after_fallback(
+            ocr, b"fake-image", mime="image/jpeg"
+        )
+        self.assertTrue(applied)
+        self.assertTrue(meta["got_options"])
+        self.assertEqual(ocr.options["B"], "Ulema : Din adamları")
+        mock_supplement.assert_called_once()
+        self.assertTrue(mock_supplement.call_args.kwargs.get("need_options"))
+
+
+class PanelFormOptionsTests(SimpleTestCase):
+    def test_hydrates_from_stem_when_placeholders(self):
+        question = SimpleNamespace(
+            stem=(
+                "Soru metni burada?\n"
+                "A) İkindi Divanı\n"
+                "B) Sefer Divanı\n"
+                "C) Ayak Divanı\n"
+                "D) Çarşamba Divanı\n"
+                "E) Galebe Divanı"
+            ),
+            option_a="—",
+            option_b="—",
+            option_c="—",
+            option_d="—",
+            option_e="—",
+        )
+        opts = panel_form_options(question)
+        self.assertEqual(opts["C"], "Ayak Divanı")
+        self.assertEqual(opts["A"], "İkindi Divanı")
+
+    def test_keeps_existing_options(self):
+        question = SimpleNamespace(
+            stem="Soru?",
+            option_a="İkindi Divanı",
+            option_b="Sefer Divanı",
+            option_c="Ayak Divanı",
+            option_d="Çarşamba Divanı",
+            option_e="Galebe Divanı",
+        )
+        opts = panel_form_options(question)
+        self.assertEqual(opts["C"], "Ayak Divanı")
+
+
+class CoalesceOcrOptionsTests(SimpleTestCase):
+    def test_parses_options_from_stem_when_api_empty(self):
+        stem = (
+            "1982 Anayasası sorusu?\n"
+            "A) Genelkurmay Başkanı\n"
+            "B) Cumhurbaşkanı\n"
+            "C) Milli Savunma Bakanı\n"
+            "D) TBMM Başkanı\n"
+            "E) Cumhurbaşkanı Yardımcısı"
+        )
+        out_stem, opts = coalesce_ocr_options(stem, {}, "")
+        self.assertIn("1982 Anayasası", out_stem)
+        self.assertNotIn("A)", out_stem)
+        self.assertEqual(opts["B"], "Cumhurbaşkanı")
+        self.assertEqual(opts["E"], "Cumhurbaşkanı Yardımcısı")
+
+    def test_coalesce_from_json_raw_with_dash_placeholders(self):
+        stem = "Tabloya göre hangi eşleştirme yanlıştır?"
+        placeholders = {k: "—" for k in "ABCDE"}
+        raw = json.dumps(
+            {
+                "soru_metni": stem,
+                "siklar": {
+                    "A": "Reaya : Halk",
+                    "B": "Ulema : Din adamları",
+                    "C": "Tımar : Dirlik",
+                    "D": "Ocak : Yeniçeri ocağı",
+                    "E": "Millet : Halk",
+                },
+            },
+            ensure_ascii=False,
+        )
+        _, opts = coalesce_ocr_options(stem, placeholders, raw)
+        self.assertEqual(opts["A"], "Reaya : Halk")
+        self.assertEqual(opts["D"], "Ocak : Yeniçeri ocağı")
+
+
+class QuestionFormBootstrapTests(SimpleTestCase):
+    def test_bootstrap_includes_options_and_meta(self):
+        question = SimpleNamespace(
+            stem="Soru?",
+            option_a="İkindi Divanı",
+            option_b="Sefer Divanı",
+            option_c="Ayak Divanı",
+            option_d="Çarşamba Divanı",
+            option_e="Galebe Divanı",
+            solution="Çözüm metni",
+            correct_option="C",
+        )
+        boot = question_form_bootstrap(question)
+        self.assertEqual(boot["options"]["C"], "Ayak Divanı")
+        self.assertEqual(boot["solution"], "Çözüm metni")
+        self.assertEqual(boot["correct_option"], "C")
+
+
+class CorruptOptionDetectionTests(SimpleTestCase):
+    def test_detects_tesseract_roman_pipe_garbage(self):
+        self.assertTrue(_option_is_corrupt("Yalnız |"))
+        self.assertTrue(_option_is_corrupt("Yalnız ll"))
+        self.assertTrue(_option_is_corrupt("| ve ll"))
+        self.assertFalse(_option_is_corrupt("Yalnız I"))
+        self.assertFalse(_option_is_corrupt("II ve III"))
+
+    def test_detects_ui_junk_in_option(self):
+        self.assertTrue(
+            _option_is_corrupt("1, Il ve İli Ss o. N oru sorun *& e. ipe Bs")
+        )
+
+    def test_count_corrupt_options(self):
+        opts = {
+            "A": "Yalnız |",
+            "B": "Yalnız II",
+            "C": "I ve III",
+            "D": "II ve III",
+            "E": "I, II ve III",
+        }
+        self.assertEqual(_count_corrupt_options(opts), 1)
+
+
+class QuestionNeedsGeminiRepairTests(SimpleTestCase):
+    def _question(self, **kwargs):
+        defaults = {
+            "pk": 1,
+            "is_published": False,
+            "submission_source": "telegram",
+            "image": object(),
+            "stem": "11:43 Soru: Metin",
+            "solution": "",
+            "source_image_hash": "abc",
+            "option_a": "Yalnız |",
+            "option_b": "Yalnız ll",
+            "option_c": "| ve ll",
+            "option_d": "Il ve İli",
+            "option_e": "1, Il ve İli Ss o. N oru",
+        }
+        defaults.update(kwargs)
+        return SimpleNamespace(**defaults)
+
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    @patch("content.ocr_ingest._ocr_log_was_tesseract_fallback", return_value=True)
+    def test_pending_telegram_with_corrupt_opts(self, *_mocks):
+        q = self._question()
+        self.assertTrue(_question_needs_gemini_repair(q))
+
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    @patch("content.ocr_ingest._ocr_log_was_tesseract_fallback", return_value=True)
+    def test_skips_when_published(self, *_mocks):
+        q = self._question(is_published=True)
+        self.assertFalse(_question_needs_gemini_repair(q))
+
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    @patch("content.ocr_ingest._ocr_log_was_tesseract_fallback", return_value=False)
+    def test_skips_clean_panel_question(self, *_mocks):
+        q = self._question(
+            submission_source="",
+            stem="Temiz soru metni",
+            option_a="Bir",
+            option_b="İki",
+            option_c="Üç",
+            option_d="Dört",
+            option_e="Beş",
+            solution="Çözüm var",
+        )
+        self.assertFalse(_question_needs_gemini_repair(q))

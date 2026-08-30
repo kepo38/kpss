@@ -28,6 +28,20 @@
   </fieldset>
 
   <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Play Store güncelleme uyarısı</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Kullanıcının yüklü sürümü bu değerden düşükse uygulama açılışında bir kez
+      güncelleme diyaloğu gösterilir. Boş bırakılırsa uyarı kapalıdır.
+      Sürüm formatı: <code>1.0.2</code> (build numarası yazmayın).
+    </p>
+    <label>Önerilen sürüm
+      <input type="text" name="recommended_app_version" maxlength="32"
+        value="{{ config.recommended_app_version|default:'' }}"
+        placeholder="1.0.2">
+    </label>
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
     <legend style="font-weight:600;margin-bottom:8px;">Quiz banner reklamları</legend>
     <p class="media-hint" style="margin-top:0;">
       Test ekranının altındaki AdMob banner’ı. Kapalıyken yalnızca banner gizlenir;

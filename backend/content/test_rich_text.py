@@ -1,7 +1,12 @@
 from django.test import SimpleTestCase, TestCase
 
 from content.models import Question, Subject, TelegramBotSession, Topic
-from content.rich_text_panel import normalize_pasted_solution
+from content.rich_text_panel import (
+    normalize_panel_paste_field,
+    normalize_pasted_option,
+    normalize_pasted_solution,
+    normalize_pasted_stem,
+)
 from content.rich_text_telegram import (
     normalize_telegram_solution,
     restore_collapsed_breaks,
@@ -57,6 +62,21 @@ class RichTextNormalizationTests(SimpleTestCase):
     def test_repair_latex_escapes(self):
         src = "$rac{1}{2}$"
         self.assertIn(r"\frac", repair_latex_escapes(src))
+
+    def test_normalize_pasted_stem_skips_solution_outline(self):
+        src = "**A) Bir**\nMetin devam"
+        out = normalize_pasted_stem(src)
+        self.assertIn("**A) Bir**", out)
+
+    def test_normalize_pasted_option_html_bold(self):
+        html = "<p><strong>Osmanlı</strong></p>"
+        out = normalize_pasted_option("", html=html)
+        self.assertIn("**Osmanlı**", out)
+
+    def test_normalize_panel_paste_field_routes_solution(self):
+        html = "<p><strong>KPSS Hap Bilgi:</strong> Özet</p>"
+        out = normalize_panel_paste_field("solution", "", html=html)
+        self.assertIn("**KPSS Hap Bilgi:**", out)
 
     def test_merge_split_inline_dollar_math(self):
         src = "$Y\n= 7$"
@@ -122,6 +142,25 @@ class RichTextNormalizationTests(SimpleTestCase):
         out = html_to_markdown(raw)
         self.assertIn("**KPSS Hap Bilgi:**", out)
         self.assertIn("__Önemli cümle__", out)
+
+    def test_panel_glued_named_sections_become_bold_paragraphs(self):
+        src = (
+            "Mühimme Defteri: Divan-ı Hümayun’da görüşülerek karara bağlanan "
+            "kararların tutulduğu resmî defterlerdir. Bu defterler mali harcamaları "
+            "değil, devletin en üst düzey yönetim kararlarını içerir."
+            "Kimin Sorumluluğundadır? Nişancı'ya bağlı çalışan Beylikçi (Amedi) "
+            "Kalemi tarafından tutulurdu."
+            "Hap Bilgi: Askerî mali kayıtlar Defterdarlık (Maliye) kalemleri "
+            "tarafından tutulurdu."
+        )
+
+        out = normalize_pasted_solution(src)
+
+        self.assertIn("**Mühimme Defteri:** ", out)
+        self.assertIn("\n\n**Kimin Sorumluluğundadır?** ", out)
+        self.assertIn("\n\n**Hap Bilgi:** ", out)
+        self.assertNotIn("- **Hap Bilgi:**", out)
+        self.assertEqual(normalize_pasted_solution(out), out)
 
     def test_exam_arrow_normalization(self):
         out = normalize_pasted_solution("A -> B sonucu")

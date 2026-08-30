@@ -47,6 +47,11 @@ urlpatterns = [
         name="panel_ocr_question",
     ),
     path(
+        "api/normalize-paste/",
+        panel_views.panel_normalize_paste,
+        name="panel_normalize_paste",
+    ),
+    path(
         "ders/<int:subject_id>/konular/",
         panel_views.panel_topic_options,
         name="panel_topic_options",

@@ -334,9 +334,6 @@
     if (htmlRich && htmlMd && !plainMd) return fromHtml;
     if (plainMd && !htmlMd) return fromPlain;
     if (htmlRich && htmlMd) return fromHtml;
-    if (structureScore(fromHtml) >= structureScore(fromPlain)) {
-      return fromHtml;
-    }
     var plainHas =
       window.KpssMathRender && window.KpssMathRender.hasLatex
         ? window.KpssMathRender.hasLatex(fromPlain)
@@ -347,6 +344,9 @@
         : /\$|\\frac|\\sqrt|\\\(/.test(fromHtml);
     if (plainHas && (!htmlHas || latexScore(fromPlain) >= latexScore(fromHtml))) {
       return fromPlain;
+    }
+    if (structureScore(fromHtml) >= structureScore(fromPlain)) {
+      return fromHtml;
     }
     return fromHtml || fromPlain;
   }
@@ -362,6 +362,83 @@
     el.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
+  function finalizeSolutionPaste(text) {
+    if (!window.KpssMathRender) return text;
+    var src = String(text || "");
+    if (window.KpssMathRender.normalizeMarkup) {
+      src = window.KpssMathRender.normalizeMarkup(src);
+    }
+    if (window.KpssMathRender.normalizeLatex) {
+      src = window.KpssMathRender.normalizeLatex(src);
+    }
+    if (window.KpssMathRender.formatNamedSolutionSections) {
+      src = window.KpssMathRender.formatNamedSolutionSections(src);
+    }
+    if (window.KpssMathRender.restoreCollapsedBreaks) {
+      src = window.KpssMathRender.restoreCollapsedBreaks(src);
+    }
+    if (window.KpssMathRender.formatNamedSolutionSections) {
+      src = window.KpssMathRender.formatNamedSolutionSections(src);
+    }
+    if (window.KpssMathRender.structureSolutionOutline) {
+      src = window.KpssMathRender.structureSolutionOutline(src);
+    }
+    return src;
+  }
+
+  function csrfToken() {
+    var el = document.querySelector("[name=csrfmiddlewaretoken]");
+    return el ? el.value : "";
+  }
+
+  function pasteFieldKind(el) {
+    if (!el) return "option";
+    if (el.id === "question-solution" || el.name === "solution") return "solution";
+    if (el.id === "question-stem" || el.name === "stem") return "stem";
+    return "option";
+  }
+
+  function normalizePasteLocally(fieldKind, plain, html) {
+    var converted = choosePasteText(plain, html);
+    if (fieldKind === "solution") {
+      return finalizeSolutionPaste(converted);
+    }
+    if (window.KpssMathRender && window.KpssMathRender.restoreCollapsedBreaks) {
+      converted = window.KpssMathRender.restoreCollapsedBreaks(converted);
+    }
+    return converted;
+  }
+
+  function normalizePasteViaServer(fieldKind, plain, html) {
+    var url = window.KPSS_NORMALIZE_PASTE_URL;
+    if (!url) {
+      return Promise.resolve(normalizePasteLocally(fieldKind, plain, html));
+    }
+    return fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken(),
+      },
+      body: JSON.stringify({
+        field: fieldKind,
+        text: plain || "",
+        html: html || "",
+      }),
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("normalize failed");
+        return res.json();
+      })
+      .then(function (data) {
+        return (data && data.text) || normalizePasteLocally(fieldKind, plain, html);
+      })
+      .catch(function () {
+        return normalizePasteLocally(fieldKind, plain, html);
+      });
+  }
+
   function bindPaste(el) {
     if (el.dataset.richPaste) return;
     el.dataset.richPaste = "1";
@@ -370,16 +447,12 @@
       if (!clip) return;
       var html = clip.getData("text/html");
       var plain = clip.getData("text/plain") || "";
-      var converted = choosePasteText(plain, html);
-      converted = window.KpssMathRender && window.KpssMathRender.restoreCollapsedBreaks
-        ? window.KpssMathRender.restoreCollapsedBreaks(converted)
-        : converted;
-      converted = window.KpssMathRender && window.KpssMathRender.structureSolutionOutline
-        ? window.KpssMathRender.structureSolutionOutline(converted)
-        : converted;
-      if (!converted) return;
+      var fieldKind = pasteFieldKind(el);
       e.preventDefault();
-      insertAtCursor(el, converted);
+      normalizePasteViaServer(fieldKind, plain, html).then(function (converted) {
+        if (!converted) return;
+        insertAtCursor(el, converted);
+      });
     });
   }
 
@@ -507,6 +580,9 @@
     wrap.appendChild(bar);
     wrap.appendChild(el);
     bindPaste(el);
+    document.dispatchEvent(
+      new CustomEvent("kpss-rich-field-ready", { detail: { el: el } })
+    );
 
     bar.addEventListener("mousedown", function (e) {
       // Odak kaybını engelle (seçim bozulmasın)
@@ -548,5 +624,6 @@
     htmlClipboardToText: htmlClipboardToText,
     choosePasteText: choosePasteText,
     extractClipboardHtml: extractClipboardHtml,
+    finalizeSolutionPaste: finalizeSolutionPaste,
   };
 })();

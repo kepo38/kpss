@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants/brand_constants.dart';
 import '../models/user_model.dart';
@@ -428,15 +429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         },
                       ),
                       const SizedBox(height: 14),
-                      Text(
-                        'Hedef Kamu · v1.0.0',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          letterSpacing: 1.4,
-                          color: _cyan.withValues(alpha: 0.72),
-                        ),
-                      ),
+                      const _AppVersionLabel(),
                       SizedBox(height: topPad > 0 ? 0 : 8),
                     ]),
                   ),
@@ -449,6 +442,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+}
+
+class _AppVersionLabel extends StatelessWidget {
+  const _AppVersionLabel();
+
+  static const _cyan = Color(0xFF7DD3FC);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final version = snapshot.data?.version ?? '…';
+        return Text(
+          '${BrandConstants.appName} · v$version',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 1.4,
+            color: _cyan.withValues(alpha: 0.72),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ProfileRateAction extends StatelessWidget {

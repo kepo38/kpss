@@ -733,6 +733,37 @@ def _strip_ocr_emphasis(text: str) -> str:
     return text
 
 
+_SINGLE_ITALIC = re.compile(r"(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)")
+
+
+def _sanitize_line_emphasis(line: str) -> str:
+    """Satırdaki yalnızca tek italik vurguyu düz metne çevir (OCR/Gemini false positive)."""
+    if "*" not in line:
+        return line
+    holders: list[str] = []
+
+    def _hold_math(match: re.Match[str]) -> str:
+        holders.append(match.group(0))
+        return f"\x00MATH{len(holders) - 1}\x00"
+
+    protected = re.sub(r"\$\$[\s\S]+?\$\$|\$[^$\n]+\$", _hold_math, line)
+    if not _SINGLE_ITALIC.search(protected):
+        return line
+    italic_spans = list(_SINGLE_ITALIC.finditer(protected))
+    if len(italic_spans) == 1:
+        protected = _SINGLE_ITALIC.sub(r"\1", protected, count=1)
+    for idx, chunk in enumerate(holders):
+        protected = protected.replace(f"\x00MATH{idx}\x00", chunk)
+    return protected
+
+
+def sanitize_ocr_emphasis(text: str) -> str:
+    """Görselde italik olmayan tek kelime/ifade vurgularını temizle."""
+    if not text or "*" not in text:
+        return text
+    return "\n".join(_sanitize_line_emphasis(ln) for ln in text.split("\n"))
+
+
 def _trim_equation_tail(eq: str) -> tuple[str, str | None]:
     m = re.search(r"(?i)\s+(eşitlikleri\s+veriliyor\.?)\s*$", eq)
     if m:
@@ -1372,6 +1403,7 @@ def extract_text_with_diagnostics(
     diag["ok"] = bool(final_text.strip())
     if not diag["ok"]:
         diag["error"] = "Görselden metin okunamadı."
+    final_text = sanitize_ocr_emphasis(final_text)
     return final_text, diag
 
 
@@ -1729,6 +1761,7 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
         )
 
     stem, options = parse_question_text(raw)
+    stem = sanitize_ocr_emphasis(stem)
     if _likely_geometry_question(stem, options, raw):
         from .ocr_gemini import _repair_geometry_payload
 
