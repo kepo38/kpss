@@ -32,6 +32,7 @@ import '../services/question_rating_service.dart';
 import '../services/question_view_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/exam_typography.dart';
+import '../utils/option_percentage_utils.dart';
 import '../utils/solution_preview.dart';
 import '../utils/tg_exam_subject_filter.dart';
 import '../utils/wrong_notebook_session_navigation.dart';
@@ -151,6 +152,8 @@ class _QuizScreenState extends State<QuizScreen>
   bool _errorReportLoading = false;
   bool _errorDailyLimitReached = false;
   final Map<String, QuestionAttemptSummary> _attemptSummaries = {};
+  /// Sunucuya kaydedilen ilk şık (tekrar denemede yüzdeleri şişirmemek için).
+  final Map<String, String> _sessionSubmittedOptions = {};
   final Set<String> _viewedIds = {};
   final Map<String, int> _viewCounts = {};
 
@@ -549,6 +552,17 @@ class _QuizScreenState extends State<QuizScreen>
       if (rate != null) {
         _liveCorrectRates[questionId] = rate;
       }
+      final optionPct = summary.optionPercentages;
+      if (optionPct != null && optionPct.isNotEmpty) {
+        _liveOptionPercentages[questionId] = optionPct;
+      }
+      if (summary.accepted) {
+        _sessionSubmittedOptions[questionId] =
+            selectedOption.trim().toUpperCase();
+      } else {
+        // Daha önce kaydedilmiş cevap — sunucu dağılımına güven, tahmin yapma.
+        _sessionSubmittedOptions[questionId] = '';
+      }
     });
   }
 
@@ -627,23 +641,6 @@ class _QuizScreenState extends State<QuizScreen>
 
   /// Doğru cevaplayan oranı — `Başarı: %49`. Veri yoksa `Başarı: —`.
   double? _successRatePercent() {
-    final live = _optionPercentages;
-    if (live != null && live.isNotEmpty) {
-      final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
-      double? livePct = live[correctKey] ?? live[_currentQuestion.dogruCevap];
-      if (livePct == null) {
-        for (final entry in live.entries) {
-          if (entry.key.trim().toUpperCase() == correctKey) {
-            livePct = entry.value;
-            break;
-          }
-        }
-      }
-      if (livePct != null) {
-        return livePct <= 1.0 ? livePct * 100 : livePct;
-      }
-    }
-
     final summaryRate = _attemptSummaries[_currentQuestion.id]?.correctRate;
     if (summaryRate != null) {
       return summaryRate <= 1.0 ? summaryRate * 100 : summaryRate;
@@ -657,6 +654,23 @@ class _QuizScreenState extends State<QuizScreen>
     final rate = _currentQuestion.correctRate;
     if (rate != null) {
       return rate <= 1.0 ? rate * 100 : rate;
+    }
+
+    final live = _visibleOptionPercentages;
+    if (live.isNotEmpty) {
+      final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
+      double? livePct = live[correctKey] ?? live[_currentQuestion.dogruCevap];
+      if (livePct == null) {
+        for (final entry in live.entries) {
+          if (entry.key.trim().toUpperCase() == correctKey) {
+            livePct = entry.value;
+            break;
+          }
+        }
+      }
+      if (livePct != null) {
+        return livePct <= 1.0 ? livePct * 100 : livePct;
+      }
     }
 
     return null;
@@ -676,10 +690,20 @@ class _QuizScreenState extends State<QuizScreen>
     return 0.7;
   }
 
-  Map<String, double>? get _optionPercentages =>
+  Map<String, double>? get _serverOptionPercentages =>
       _attemptSummaries[_currentQuestion.id]?.optionPercentages ??
       _liveOptionPercentages[_currentQuestion.id] ??
       _currentQuestion.optionPercentages;
+
+  int _resolvedSolvedCount(String questionId) {
+    final summary = _attemptSummaries[questionId];
+    if (summary != null && summary.solvedCount > 0) {
+      return summary.solvedCount;
+    }
+    final attempt = _currentQuestion.attemptCount;
+    if (attempt > 0) return attempt;
+    return 0;
+  }
 
   /// Canlı TG sınavında gizli; çözüm inceleme / defter / konu testinde göster.
   bool get _showOptionPercentages =>
@@ -687,8 +711,24 @@ class _QuizScreenState extends State<QuizScreen>
 
   /// Gerçek veri yokken debug APK'da şık yüzdelerini önizlemek için.
   Map<String, double> get _visibleOptionPercentages {
-    final live = _optionPercentages;
-    if (live != null && live.isNotEmpty) return live;
+    final qid = _currentQuestion.id;
+    final server = _serverOptionPercentages;
+    final selected = _selectedAnswer?.trim().toUpperCase();
+    final submitted = _sessionSubmittedOptions[qid];
+
+    if (selected != null &&
+        submitted == null &&
+        _showOptionPercentages &&
+        !ContentBankService.instance.isStatLockedForQuestion(qid)) {
+      return bumpOptionDistribution(
+        base: server,
+        solvedCount: _resolvedSolvedCount(qid),
+        selectedKey: selected,
+        optionKeys: _currentQuestion.siklar.keys,
+      );
+    }
+
+    if (server != null && server.isNotEmpty) return server;
     if (!kDebugMode) return const {};
 
     final keys = _currentQuestion.siklar.keys.toList();
@@ -1995,17 +2035,15 @@ class _QuizScreenState extends State<QuizScreen>
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
 
-    // Bitiş sesi reklamdan ÖNCE — interstitial ses odağını alınca efekt kayboluyordu.
-    // skipResultDialog: yanlış defteri tek soru / inceleme — ses yok.
-    // tgExamMode + dailyMini: sonuç diyaloğu yok ama bitiş efekti çalsın.
+    // Bitiş sesi reklamdan ÖNCE başlat — interstitial ses odağını alınca efekt kayboluyordu.
+    // Ses arka planda; sonuç diyaloğu ile eşzamanlı (ses bitmesi beklenmez).
     final playFinishSound = !widget.tgExamSolutionReview &&
         !widget.fromWrongNotebook &&
         (!widget.skipResultDialog ||
             widget.tgExamMode ||
             widget.dailyMiniRankingMode);
     if (playFinishSound) {
-      await AnswerFeedbackService.instance.playTestComplete();
-      if (!mounted) return;
+      unawaited(AnswerFeedbackService.instance.playTestComplete());
     }
 
     if (!widget.tgExamMode && !widget.adFreeExperience) {

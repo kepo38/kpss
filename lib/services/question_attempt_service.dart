@@ -121,12 +121,14 @@ class QuestionAttemptService {
 }
 
 class QuestionAttemptSummary {
+  final bool accepted;
   final int attemptCount;
   final int solvedCount;
   final double? correctRate;
   final Map<String, double>? optionPercentages;
 
   const QuestionAttemptSummary({
+    required this.accepted,
     required this.attemptCount,
     required this.solvedCount,
     this.correctRate,
@@ -136,6 +138,7 @@ class QuestionAttemptSummary {
   factory QuestionAttemptSummary.fromJson(Map<String, dynamic> json) {
     final raw = json['optionPercentages'];
     return QuestionAttemptSummary(
+      accepted: json['accepted'] == true,
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
       solvedCount: (json['solvedCount'] as num?)?.toInt() ?? 0,
       correctRate: (json['correctRate'] as num?)?.toDouble(),

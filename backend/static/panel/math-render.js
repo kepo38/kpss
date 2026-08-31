@@ -164,10 +164,67 @@
     });
   }
 
+  function repairInlineGluedBold(text) {
+    var src = String(text || "").replace(/(→)\s*\*\*\s*/g, "$1 **");
+    return src.replace(
+      /(?<=[a-zçğıöşüâîû])[ \t]*\*\*[ \t]+([^*\n]+?)\*\*/gi,
+      function (_, inner) {
+        return " **" + String(inner || "").trim() + "**";
+      }
+    );
+  }
+
+  function collapseItalicQuoteMarkerSpaces(text) {
+    return String(text || "").replace(/\*[ \t]+(")/g, "*$1");
+  }
+
+  function splitGluedSecenekHeaders(text) {
+    var src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (!/\([A-E]\s+seçeneği\)/i.test(src)) return src.trim();
+    src = src.replace(/([.!?])\*\*\s+/g, "$1\n\n**");
+    src = src.replace(
+      /\*\*\s+((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*/gi,
+      "**$1**"
+    );
+    src = repairInlineGluedBold(src);
+    src = src.replace(
+      /(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*/gi,
+      "$1\n\n- **"
+    );
+    return tightenMarkdownMarkers(src).trim();
+  }
+
+  function structureSecenekiSolutionOutline(text) {
+    var src = splitGluedSecenekHeaders(text);
+    var re = /\*\*((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*/gi;
+    var headers = [];
+    var m;
+    while ((m = re.exec(src)) !== null) {
+      headers.push({ index: m.index, end: re.lastIndex, title: m[1].trim() });
+    }
+    if (headers.length < 2) return src;
+    var out = [];
+    for (var i = 0; i < headers.length; i++) {
+      var bodyStart = headers[i].end;
+      var bodyEnd = i + 1 < headers.length ? headers[i + 1].index : src.length;
+      var body = src.slice(bodyStart, bodyEnd).trim();
+      out.push("- **" + headers[i].title + "**");
+      if (body) out.push("  - " + body);
+      out.push("");
+    }
+    return out.join("\n").replace(/^\s+|\s+$/g, "");
+  }
+
   function splitGoogleVerbalSolution(src) {
     src = String(src || "");
+    src = splitGluedSecenekHeaders(src);
     src = src.replace(/\*("[^"\n]+")[ \t]+\*(?!\*)/g, "*$1* ");
     src = src.replace(/(?<=[^\s*])\*[ \t]+("[^"\n]+")\*/g, " *$1*");
+    src = collapseItalicQuoteMarkerSpaces(src);
+    src = src.replace(
+      /(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*/gi,
+      "$1\n\n- **"
+    );
     src = src.replace(
       /(?:\*\*)?\s*(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri))\s*(?:\*\*)?\s*(?=(?:[-•*◦○–—]\s*)?(?:\*\*)?\s*[A-E]\s*\)\s*(?:\*\*)?)/gi,
       "\n\n**$1**\n"
@@ -309,6 +366,8 @@
     src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
       return holders[Number(idx)] || "";
     });
+    src = repairInlineGluedBold(src);
+    src = splitGluedSecenekHeaders(src);
     return src.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
   }
 
@@ -675,6 +734,15 @@
       .replace(/\r/g, "\n")
       .trim();
     if (!src) return src;
+    src = src.replace(
+      /(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*/gi,
+      "$1\n\n- **"
+    );
+    src = src.replace(/(→)\*\*\s+/g, "$1 **");
+    if (/\([A-E]\s+seçeneği\)/i.test(src)) {
+      var seceneki = structureSecenekiSolutionOutline(src);
+      if ((seceneki.match(/^- \*\*/gm) || []).length >= 2) return seceneki;
+    }
     src = splitInlineOptionHeaders(src);
     src = formatPresenceTable(src);
     var lines = src.split("\n");
@@ -803,19 +871,19 @@
       }
       return leadSpaces + open + body.trim() + close + trailSpaces;
     }
-    src = src.replace(/\*\*[ \t]+([\s\S]+?)[ \t]+\*\*/g, function (full, inner) {
+    src = src.replace(/(?<!\S)\*\*[ \t]+([^*\n]+?)[ \t]+\*\*/g, function (full, inner) {
       return peel("**", "**", full, inner);
     });
-    src = src.replace(/__[ \t]+([\s\S]+?)[ \t]+__/g, function (full, inner) {
+    src = src.replace(/__[ \t]+([^_\n]+?)[ \t]+__/g, function (full, inner) {
       return peel("__", "__", full, inner);
     });
-    src = src.replace(/(?<!\*)\*[ \t]+([\s\S]+?)[ \t]+\*(?!\*)/g, function (full, inner) {
+    src = src.replace(/(?<!\*)\*[ \t]+([^*\n]+?)[ \t]+\*(?!\*)/g, function (full, inner) {
       return peel("*", "*", full, inner);
     });
-    src = src.replace(/\*\*([\s\S]+?)[ \t]+\*\*/g, function (full, inner) {
+    src = src.replace(/(?<!\S)\*\*([^*\n]+?)[ \t]+\*\*/g, function (full, inner) {
       return peel("**", "**", full, inner);
     });
-    src = src.replace(/__([\s\S]+?)[ \t]+__/g, function (full, inner) {
+    src = src.replace(/__([^_\n]+?)[ \t]+__/g, function (full, inner) {
       return peel("__", "__", full, inner);
     });
     return src;
@@ -856,6 +924,32 @@
     return src;
   }
 
+  function peelBlockUnderline(line) {
+    var t = String(line || "").trim();
+    var m = t.match(/^__(.+?)__$/);
+    return m ? m[1].trim() : t;
+  }
+
+  /** ``__## 1. Aşama: …__`` → ``**1. Aşama: …**`` (Flutter demoteBlockUnderlineMarkup). */
+  function demoteBlockUnderlineMarkup(text) {
+    var src = String(text || "");
+    if (!src || src.indexOf("__") === -1) return src;
+    var headerInner = /^(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*)/i;
+    return src
+      .split("\n")
+      .map(function (line) {
+        var m = line.match(/^[ \t]*__(.+?)__[ \t]*$/);
+        if (!m) return line;
+        var inner = m[1].trim();
+        if (!headerInner.test(inner)) return line;
+        var body = inner.replace(/^#{1,3}\s+/, "");
+        var boldWrap = body.match(/^\*\*(.+)\*\*$/);
+        if (boldWrap) body = boldWrap[1].trim();
+        return "**" + body.trim() + "**";
+      })
+      .join("\n");
+  }
+
   /**
    * Flutter FormattedText.normalizeMarkup ile uyumlu ön işleme:
    * CRLF, ZWSP, tam genişlik ＊/＿, boşluklu markdown işaretleri.
@@ -867,6 +961,7 @@
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .replace(/＊/g, "*")
       .replace(/＿/g, "_");
+    src = demoteBlockUnderlineMarkup(src);
     src = tightenMarkdownMarkers(src);
     src = ensureMarkdownExteriorSpaces(src);
     src = repairSplitBoldLines(src);
@@ -966,25 +1061,41 @@
     return t;
   }
 
-  function forceDisplaySizeAll(tex) {
+  function normalizeFractionStyles(tex) {
+    var t = String(tex || "");
+    t = t.replace(/\\dfrac/g, "§§DFRAC§§");
+    t = t.replace(/\\tfrac/g, "§§DFRAC§§");
+    t = t.replace(/\\frac/g, "\\dfrac");
+    return t.replace(/§§DFRAC§§/g, "\\dfrac");
+  }
+
+  function forceDisplaySizeAll(tex, forceDisplayStyle) {
+    if (forceDisplayStyle === undefined) forceDisplayStyle = true;
     var t = String(tex || "").trim();
     if (!t) return t;
-    t = t.replace(/\\dfrac/g, "\\frac").replace(/\\tfrac/g, "\\frac");
+    t = t.replace(/\\ttfrac/g, "\\frac");
+    t = t.replace(/\\ddfrac/g, "\\frac");
     t = t.replace(/\{([^{}]+)\\over\s*([^{}]+)\}/g, function (_, a, b) {
       return "\\frac{" + a.trim() + "}{" + b.trim() + "}";
     });
-    var isTabular =
-      /\\begin\{array\}/.test(t) ||
-      /\\begin\{matrix\}/.test(t) ||
-      /\\begin\{pmatrix\}/.test(t);
-    if (!isTabular && !/\\displaystyle\b/.test(t)) {
-      t = "\\displaystyle " + t;
+    if (forceDisplayStyle) {
+      t = normalizeFractionStyles(t);
+      var isTabular =
+        /\\begin\{array\}/.test(t) ||
+        /\\begin\{matrix\}/.test(t) ||
+        /\\begin\{pmatrix\}/.test(t);
+      if (!isTabular && !/\\displaystyle\b/.test(t)) {
+        t = "\\displaystyle " + t;
+      }
     }
     return t;
   }
 
-  function prepareTex(tex) {
-    return forceDisplaySizeAll(replaceHlineWithColoredRule(String(tex || "")));
+  function prepareTex(tex, forceDisplayStyle) {
+    return forceDisplaySizeAll(
+      replaceHlineWithColoredRule(String(tex || "")),
+      forceDisplayStyle
+    );
   }
 
   function needsDisplayMathBlock(tex) {
@@ -1098,7 +1209,7 @@
 
   /** Flutter FormattedText._isStructuralLine — madde / başlık satırları. */
   function isStructuralLine(line) {
-    var t = String(line || "").trim();
+    var t = peelBlockUnderline(line);
     if (!t) return false;
     return /^(?:#{1,3}\s+|[-•*◦○–—]\s+|(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+|\*\*|---|\*\*\*|___)/.test(
       t
@@ -1106,11 +1217,15 @@
   }
 
   function isHardBreakLine(trimmed) {
+    if (/__/.test(trimmed) && !/^___$/.test(trimmed)) return true;
+    var peeled = peelBlockUnderline(trimmed);
+    if (/^- \*\*.+\([A-E]\s+seçeneği\)/i.test(trimmed)) return true;
+    if (/^\*\*.+\([A-E]\s+seçeneği\)\s*:\*\*$/i.test(trimmed)) return true;
     if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) return true;
     var displayInline = trimmed.match(/^\$([^$\n]+)\$$/);
     if (displayInline && usesDisplayMath(displayInline[1].trim())) return true;
     if (/^(---|\*\*\*|___)$/.test(trimmed)) return true;
-    if (/^#{1,3}\s+/.test(trimmed)) return true;
+    if (/^#{1,3}\s+/.test(peeled)) return true;
     if (isOptionHeaderLine(trimmed)) return true;
     if (isStructuralLine(trimmed)) return true;
     if (/^\*\*\s*\d+\.\s+Adım:.+\*\*$/.test(trimmed)) return true;
@@ -1160,6 +1275,8 @@
       src = formatNamedSolutionSections(src);
     }
     src = structureSolutionOutline(restoreCollapsedBreaks(normalizeLatex(src)));
+    src = repairInlineGluedBold(src);
+    src = collapseItalicQuoteMarkerSpaces(tightenMarkdownMarkers(src));
     if (solutionMode) {
       src = coalesceSoftLines(src);
     }

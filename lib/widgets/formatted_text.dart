@@ -39,12 +39,64 @@ class FormattedText extends StatelessWidget {
     this.solutionMode = false,
   });
 
-  static bool _isStructuralLine(String line) {
+  static bool _lineHasMidSentenceRoman(String line) {
     final t = line.trim();
     if (t.isEmpty) return false;
     return RegExp(
-          r'^(?:#{1,3}\s+|[-•*◦○–—]\s+|(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+|\*\*|---|\*\*\*|___)',
-        ).hasMatch(t);
+      r'(?<=.\s)(?:VIII|VII|III|VI|IV|IX|II|V|X)\.\s',
+    ).hasMatch(t);
+  }
+
+  static bool _isStructuralLine(String line) {
+    final t = _peelBlockUnderline(line.trim());
+    if (t.isEmpty) return false;
+    if (RegExp(
+          r'^(?:#{1,3}\s+|[-•*◦○–—]\s+|\*\*|---|\*\*\*|___)',
+        ).hasMatch(t)) {
+      return true;
+    }
+    if (RegExp(
+          r'^(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+',
+        ).hasMatch(t)) {
+      return !_lineHasMidSentenceRoman(t);
+    }
+    return false;
+  }
+
+  /// Tam satır ``__…__`` sarmalayıcısını ayırır (başlık/madde tanımı için).
+  static String _peelBlockUnderline(String line) {
+    final t = line.trim();
+    final match = RegExp(r'^__(.+?)__$').firstMatch(t);
+    return match?.group(1)?.trim() ?? t;
+  }
+
+  /// ``__## 1. Aşama: …__`` gibi blok altı çizgili başlıkları ``**…**`` yap.
+  static String demoteBlockUnderlineMarkup(String input) {
+    if (input.isEmpty || !input.contains('__')) return input;
+    final headerInner = RegExp(
+      r'^(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*)',
+      caseSensitive: false,
+    );
+    final out = <String>[];
+    for (final line in input.split('\n')) {
+      final match = RegExp(r'^[ \t]*__(.+?)__[ \t]*$').firstMatch(line);
+      if (match == null) {
+        out.add(line);
+        continue;
+      }
+      var inner = match.group(1)!.trim();
+      if (!headerInner.hasMatch(inner)) {
+        out.add(line);
+        continue;
+      }
+      inner = inner.replaceFirst(RegExp(r'^#{1,3}\s+'), '');
+      final boldWrapped = RegExp(r'^\*\*(.+)\*\*$', dotAll: true).firstMatch(inner);
+      if (boldWrapped != null) {
+        inner = boldWrapped.group(1)!.trim();
+      }
+      out.add('**$inner**');
+    }
+    return out.join('\n');
   }
 
   static String examFormat(String input) {
@@ -651,6 +703,7 @@ class FormattedText extends StatelessWidget {
 
     // Dönüştürülemeyen HTML etiketlerini kaldır (metni düz bırakma)
     text = text.replaceAll(RegExp(r'</?[a-zA-Z][^>]*>'), '');
+    text = demoteBlockUnderlineMarkup(text);
     text = _tightenMarkdownMarkers(text);
     text = _ensureMarkdownExteriorSpaces(text);
     text = _repairSplitBoldLines(text);
@@ -885,76 +938,16 @@ class FormattedText extends StatelessWidget {
     return _expandHolders(src, holders, r'§§F(\d+)§§');
   }
 
-  /// Dış kesirleri display, iç içe kesirleri text boyutunda tutar.
+  /// ÖSYM kitapçığı: tüm kesirler (iç içe dahil) gövde puntosunda kalsın.
   ///
-  /// Tüm kesirleri `\dfrac` yapmak, örneğin
-  /// `\frac{1+\frac14}{3-\frac12}` ifadesini aşırı yükseltip sonraki şık
-  /// kutusuna yaklaştırır. İç kesirler `\tfrac` ile kompakt ve birbirleriyle
-  /// tutarlı kalır.
+  /// TeX/KaTeX varsayılanında iç `\frac` scriptstyle (küçük) olur;
+  /// hepsini `\dfrac` yaparak `1/4`, `1/2` gibi iç kesirler de okunaklı kalır.
   static String _normalizeFractionStyles(String tex) {
-    int closingBrace(String source, int opening) {
-      var depth = 0;
-      for (var i = opening; i < source.length; i++) {
-        var slashCount = 0;
-        for (var j = i - 1; j >= 0 && source[j] == '\\'; j--) {
-          slashCount += 1;
-        }
-        if (slashCount.isOdd) continue;
-        if (source[i] == '{') depth += 1;
-        if (source[i] == '}') {
-          depth -= 1;
-          if (depth == 0) return i;
-        }
-      }
-      return -1;
-    }
-
-    String normalizeSegment(String source, {required bool fractionArgument}) {
-      final out = StringBuffer();
-      var i = 0;
-      while (i < source.length) {
-        String? command;
-        if (source[i] == '\\') {
-          for (final candidate in const [r'\dfrac', r'\tfrac', r'\frac']) {
-            if (source.startsWith(candidate, i)) {
-              command = candidate;
-              break;
-            }
-          }
-        }
-        if (command == null) {
-          out.write(source[i]);
-          i += 1;
-          continue;
-        }
-
-        out.write(fractionArgument ? r'\tfrac' : r'\dfrac');
-        i += command.length;
-        for (var argument = 0; argument < 2; argument++) {
-          while (i < source.length && source[i].trim().isEmpty) {
-            out.write(source[i]);
-            i += 1;
-          }
-          if (i >= source.length || source[i] != '{') break;
-          final close = closingBrace(source, i);
-          if (close < 0) {
-            out.write(source.substring(i));
-            return out.toString();
-          }
-          out
-            ..write('{')
-            ..write(normalizeSegment(
-              source.substring(i + 1, close),
-              fractionArgument: true,
-            ))
-            ..write('}');
-          i = close + 1;
-        }
-      }
-      return out.toString();
-    }
-
-    return normalizeSegment(tex, fractionArgument: false);
+    var t = tex;
+    t = t.replaceAll(r'\dfrac', '§§DFRAC§§');
+    t = t.replaceAll(r'\tfrac', '§§DFRAC§§');
+    t = t.replaceAll(r'\frac', r'\dfrac');
+    return t.replaceAll('§§DFRAC§§', r'\dfrac');
   }
 
   static String forceDisplaySizeAll(String tex, {bool forceDisplayStyle = true}) {
@@ -1217,17 +1210,7 @@ class FormattedText extends StatelessWidget {
       ),
       (_) => '\n',
     );
-    // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
-    final romanMatches = RegExp(r'\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s')
-        .allMatches(src)
-        .map((m) => m.group(0)!.trimRight())
-        .toSet();
-    if (romanMatches.length >= 2) {
-      src = src.replaceAllMapped(
-        RegExp(r'(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)'),
-        (m) => '\n',
-      );
-    }
+    src = _splitGluedRomanSections(src);
     src = _expandHolders(src, mdHolders, r'§§K(\d+)§§');
     src = src.replaceAllMapped(
       RegExp(r'(§§M\d+§§)\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))'),
@@ -2002,7 +1985,7 @@ class FormattedText extends StatelessWidget {
       r'__\*\*(.+?)\*\*__|'
       r'\*\*\*(.+?)\*\*\*|'
       r'\*\*(.+?)\*\*|'
-      r'__(.+?)__|'
+      r'__([^_\n]+?)__|'
       r'(?<!\*)\*(?!\*)\s*(.+?)\s*(?<!\*)\*(?!\*)',
       dotAll: true,
     );
@@ -2470,6 +2453,10 @@ class _DocumentText extends StatelessWidget {
     }
 
     bool isHardBreakLine(String trimmed) {
+      if (RegExp(r'__').hasMatch(trimmed) && !RegExp(r'^___$').hasMatch(trimmed)) {
+        return true;
+      }
+      final peeled = FormattedText._peelBlockUnderline(trimmed);
       if (RegExp(r'^\$\$[\s\S]+\$\$$').hasMatch(trimmed)) return true;
       final displayInline = RegExp(r'^\$([^$\n]+)\$$').firstMatch(trimmed);
       if (displayInline != null) {
@@ -2477,7 +2464,7 @@ class _DocumentText extends StatelessWidget {
         if (FormattedText.usesDisplayMath(raw)) return true;
       }
       if (RegExp(r'^(---|\*\*\*|___)$').hasMatch(trimmed)) return true;
-      if (RegExp(r'^#{1,3}\s+').hasMatch(trimmed)) return true;
+      if (RegExp(r'^#{1,3}\s+').hasMatch(peeled)) return true;
       if (FormattedText._isStructuralLine(trimmed)) return true;
       if (RegExp(r'^\*\*\s*\d+\.\s+Adım:.+\*\*$').hasMatch(trimmed)) {
         return true;

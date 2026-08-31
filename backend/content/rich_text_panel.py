@@ -11,6 +11,7 @@ from .rich_text_common import (
     _HTML_TAG_RE,
     choose_paste_text,
     collapse_bullet_prefixes,
+    collapse_italic_quote_marker_spaces,
     collapse_nested_marks,
     html_clipboard_to_text,
     html_to_markdown,
@@ -21,7 +22,9 @@ from .rich_text_common import (
     normalize_roman_solution_sections,
     repair_latex_escapes,
     restore_collapsed_breaks,
+    repair_inline_glued_bold,
     structure_solution_outline,
+    tighten_markdown_markers,
 )
 
 
@@ -87,6 +90,9 @@ def normalize_pasted_solution(
     chosen = _format_named_solution_sections(chosen)
     chosen = normalize_roman_solution_sections(chosen)
     chosen = structure_solution_outline(chosen)
+    chosen = repair_inline_glued_bold(chosen)
+    chosen = tighten_markdown_markers(chosen)
+    chosen = collapse_italic_quote_marker_spaces(chosen)
     return normalize_turkish_text(chosen).strip()
 
 

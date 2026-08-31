@@ -86,11 +86,17 @@ class AnswerFeedbackService {
   }
 
   /// Test bitince sonuç ekranı — kısa tamamlanma efekti (~2,5 sn).
+  ///
+  /// Ses arka planda çalar; sonuç diyaloğu bekletilmez (UI ile eşzamanlı).
   Future<void> playTestComplete() async {
     _testCompleteReady = false;
     await _ensureTestCompleteReady();
     await PomodoroService.instance.pauseForFeedback();
     HapticFeedback.mediumImpact();
+    unawaited(_playTestCompleteInBackground());
+  }
+
+  Future<void> _playTestCompleteInBackground() async {
     try {
       await _playAsset(
         _testCompletePlayer,

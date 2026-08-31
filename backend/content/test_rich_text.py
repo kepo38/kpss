@@ -14,10 +14,14 @@ from content.rich_text_telegram import (
 )
 from content.rich_text_common import (
     choose_paste_text,
+    demote_block_underline_markup,
     html_to_markdown,
     merge_split_inline_dollar_math,
+    needs_block_underline_repair,
     normalize_latex,
+    normalize_markup,
     normalize_paste_text,
+    repair_block_underline_solution,
     repair_latex_escapes,
     restore_collapsed_breaks,
 )
@@ -571,6 +575,90 @@ class RichTextNormalizationTests(SimpleTestCase):
             self.assertIn("\nSonucun tek", out)
             self.assertIn("\nBu durumda", out)
             self.assertIn(r"\mathbf{971}", out)
+
+    def test_google_seceneki_glued_telegram_paste(self):
+        src = (
+            "**Asya Hun Devleti (A seçeneği):** İlk düzenli orduyu (onlu sistemi) kuran "
+            "ve ikili teşkilatı ilk başlatan devlettir. Ancak soruda "
+            '*"ordu sistemini kuran devlet olma özelliğine sahip olmayan"* '
+            "dendiği için elenir.** I. Kök Türk Devleti (B seçeneği):** "
+            "Türk adını siyasi bir kimlik olarak** resmî devlet adı** "
+            "olarak kullanan ilk devlettir. Hunların ikili yönetim teşkilatı ve ordu "
+            "yapısı gibi geleneklerini aynen devam ettirmişlerdir. Sorudaki tüm "
+            "kriterleri tam olarak karşılar.** Uygurlar (C seçeneği):** "
+            "Yerleşik hayata geçen, mimari ve matbaada ilkleri başlatan devlettir."
+            "** İskitler (D seçeneği):** Tarihte bilinen ilk Türk topluluğudur ancak "
+            "teşkilatlı bir devlet yapısından ziyade topluluk özellikleriyle öne çıkar."
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("- **Asya Hun Devleti (A seçeneği):**", out)
+            self.assertIn("- **I. Kök Türk Devleti (B seçeneği):**", out)
+            self.assertIn("- **Uygurlar (C seçeneği):**", out)
+            self.assertIn("- **İskitler (D seçeneği):**", out)
+            self.assertIn("**resmî devlet adı**", out)
+            self.assertNotIn("** I.", out)
+            self.assertNotIn("** Uygurlar", out)
+            self.assertNotIn("elenir.**", out)
+
+    def test_demote_block_underline_stage_headers(self):
+        src = (
+            "__## 1. Aşama: Tarihsel Süreci İnceleme__\n"
+            "I. Kök Türk Devleti'nin 630 yılında kurulması.\n"
+            "__## 2. Aşama: Kahramanları Tanıma__\n"
+            "II. Mete Han ve Türk ordusunun kuruluşu.\n"
+            "Paragraf __önemli__ kelime\n"
+            "Alt satır devam ediyor."
+        )
+        out = normalize_markup(src)
+        self.assertIn("**1. Aşama: Tarihsel Süreci İnceleme**", out)
+        self.assertIn("**2. Aşama: Kahramanları Tanıma**", out)
+        self.assertNotIn("__##", out)
+        self.assertIn("__önemli__", out)
+        self.assertIn("\nAlt satır devam ediyor.", out)
+
+    def test_demote_block_underline_idempotent_in_telegram_pipeline(self):
+        src = (
+            "__## 1. Aşama: Tarihsel Süreci İnceleme__\n"
+            "I. Kök Türk Devleti'nin kurulması."
+        )
+        once = normalize_telegram_solution(src)
+        twice = normalize_telegram_solution(once)
+        self.assertEqual(once, twice)
+        self.assertIn("**1. Aşama: Tarihsel Süreci İnceleme**", once)
+        self.assertEqual(
+            demote_block_underline_markup(src),
+            "**1. Aşama: Tarihsel Süreci İnceleme**\n"
+            "I. Kök Türk Devleti'nin kurulması.",
+        )
+
+    def test_needs_block_underline_repair_scan(self):
+        self.assertTrue(
+            needs_block_underline_repair("__## 1. Aşama: Test__\nGövde")
+        )
+        self.assertTrue(
+            needs_block_underline_repair("__1. Adım: Toplama__\nDevam")
+        )
+        self.assertFalse(
+            needs_block_underline_repair("Paragraf __kelime__ altı çizgili")
+        )
+        self.assertFalse(
+            needs_block_underline_repair("__Bu normal bir not satırı__")
+        )
+
+    def test_repair_block_underline_idempotent_and_narrow(self):
+        src = (
+            "__## 1. Aşama: Başlık__\n"
+            "Paragraf __önemli__ kelime.\n"
+            "__Bu tam satır not__\n"
+            "Alt satır."
+        )
+        once = repair_block_underline_solution(src)
+        twice = repair_block_underline_solution(once)
+        self.assertEqual(once, twice)
+        self.assertIn("**1. Aşama: Başlık**", once)
+        self.assertIn("__önemli__", once)
+        self.assertIn("__Bu tam satır not__", once)
+        self.assertNotIn("__##", once)
 
 
 class TelegramSolutionNormalizationIntegrationTests(TestCase):

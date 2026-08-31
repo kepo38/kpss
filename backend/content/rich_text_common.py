@@ -55,11 +55,20 @@ _NESTED_MARK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 _TIGHTEN_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
-    (re.compile(r"\*\*[ \t]+(.+?)[ \t]+\*\*", re.DOTALL), "**", "**"),
-    (re.compile(r"__[ \t]+(.+?)[ \t]+__", re.DOTALL), "__", "__"),
-    (re.compile(r"(?<!\*)\*[ \t]+(.+?)[ \t]+\*(?!\*)", re.DOTALL), "*", "*"),
-    (re.compile(r"\*\*(.+?)[ \t]+\*\*", re.DOTALL), "**", "**"),
-    (re.compile(r"__(.+?)[ \t]+__", re.DOTALL), "__", "__"),
+    (
+        re.compile(
+            r"\*\*\s+([^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*",
+            re.IGNORECASE,
+        ),
+        "**",
+        "**",
+    ),
+    (re.compile(r"(?<!\S)\*\*\s+([^*\n]+?:)\*\*"), "**", "**"),
+    (re.compile(r"(?<!\S)\*\*[ \t]+([^*\n]+?)[ \t]+\*\*"), "**", "**"),
+    (re.compile(r"__[ \t]+([^_\n]+?)[ \t]+__"), "__", "__"),
+    (re.compile(r"(?<!\*)\*[ \t]+([^*\n]+?)[ \t]+\*(?!\*)"), "*", "*"),
+    (re.compile(r"(?<!\S)\*\*([^*\n]+?)[ \t]+\*\*"), "**", "**"),
+    (re.compile(r"__([^_\n]+?)[ \t]+__"), "__", "__"),
 )
 
 _EXTERIOR_BOLD_OPEN = re.compile(
@@ -459,6 +468,59 @@ def _ensure_markdown_exterior_spaces(text: str) -> str:
     return src
 
 
+_BLOCK_UNDERLINE_LINE_RE = re.compile(r"^[ \t]*__(.+?)__[ \t]*$")
+_BLOCK_UNDERLINE_HEADER_INNER_RE = re.compile(
+    r"^(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*)",
+    re.IGNORECASE,
+)
+
+
+def _strip_markdown_heading_marks(text: str) -> str:
+    return re.sub(r"^#{1,3}\s+", "", text.strip())
+
+
+def demote_block_underline_markup(text: str) -> str:
+    """Tam satır ``__…__`` ile sarılmış başlıkları ``**…**`` yap.
+
+    ``__## 1. Aşama: …__`` gibi blok altı çizgiler önizlemede bir sonraki satırla
+    birleşip layout bozuyor; kalın başlığa indirgenir.
+    """
+    if not text or "__" not in text:
+        return text
+    out: list[str] = []
+    for line in text.split("\n"):
+        match = _BLOCK_UNDERLINE_LINE_RE.match(line)
+        if not match:
+            out.append(line)
+            continue
+        inner = match.group(1).strip()
+        if not _BLOCK_UNDERLINE_HEADER_INNER_RE.match(inner):
+            out.append(line)
+            continue
+        body = _strip_markdown_heading_marks(inner)
+        bold_stripped = re.match(r"^\*\*(.+)\*\*$", body.strip(), re.DOTALL)
+        if bold_stripped:
+            body = bold_stripped.group(1).strip()
+        out.append(f"**{body.strip()}**")
+    return "\n".join(out)
+
+
+_BLOCK_UNDERLINE_SCAN_RE = re.compile(
+    r"(?m)^[ \t]*__(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*).+__\s*$",
+    re.IGNORECASE,
+)
+
+
+def needs_block_underline_repair(text: str) -> bool:
+    """Çözüm metninde ``__## …__`` / ``__1. Aşama …__`` gibi onarım gerektirir mi?"""
+    return bool(text and _BLOCK_UNDERLINE_SCAN_RE.search(text))
+
+
+def repair_block_underline_solution(text: str) -> str:
+    """Yalnızca blok altı çizgili başlıkları indirger — tam normalizasyon yapmaz."""
+    return demote_block_underline_markup(text or "")
+
+
 def normalize_markup(text: str) -> str:
     """math-render.js normalizeMarkup (+ HTML yedek dönüşümü)."""
     src = (
@@ -477,6 +539,7 @@ def normalize_markup(text: str) -> str:
     src = re.sub(r"</div\s*>", "\n", src, flags=re.I)
     src = re.sub(r"<div\b[^>]*>", "", src, flags=re.I)
     src = _replace_simple_html_tags(src)
+    src = demote_block_underline_markup(src)
     src = tighten_markdown_markers(src)
     src = _ensure_markdown_exterior_spaces(src)
     src = _SPLIT_BOLD_RE.sub(r"**\1\2**", src)
@@ -570,6 +633,14 @@ _DIGER_SECENEKLER_LINE_RE = re.compile(
     r"^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$",
     re.IGNORECASE,
 )
+_SECENEK_HEADER_INLINE_RE = re.compile(
+    r"\*\*((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*",
+    re.IGNORECASE,
+)
+_SECENEK_HEADER_LOOSE_RE = re.compile(
+    r"\*\*\s+((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*",
+    re.IGNORECASE,
+)
 _ROMAN_SECTION_LINE_RE = re.compile(
     r"^(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:"
 )
@@ -585,13 +656,73 @@ _ROMAN_TOKEN_RE = re.compile(
 )
 
 
+def collapse_italic_quote_marker_spaces(text: str) -> str:
+    """Google italik tırnak: ``* \"alıntı\"`` → ``*\"alıntı\"``."""
+    return re.sub(r'\*[ \t]+(")', r'*\1', text or "")
+
+
+def repair_inline_glued_bold(text: str) -> str:
+    """Kelimeye yapışık ``olarak** vurgu**`` → ``olarak **vurgu**``."""
+    src = re.sub(r"(→)\s*\*\*\s*", r"\1 **", text or "")
+    return re.sub(
+        r"(?<=[a-zçğıöşüâîû])[ \t]*\*\*[ \t]+([^*\n]+?)\*\*",
+        lambda m: f" **{m.group(1).strip()}**",
+        src,
+        flags=re.IGNORECASE,
+    )
+
+
+def split_glued_secenek_headers(text: str) -> str:
+    """Google/Telegram: yapışık **… (A seçeneği):** başlıklarını ayır ve sıkılaştır."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not re.search(r"\([A-E]\s+seçeneği\)", src, re.I):
+        return src.strip()
+    src = re.sub(r"([.!?])\*\*\s+", r"\1\n\n**", src)
+    src = _SECENEK_HEADER_LOOSE_RE.sub(r"**\1**", src)
+    src = repair_inline_glued_bold(src)
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    return tighten_markdown_markers(src).strip()
+
+
+def structure_seceneki_solution_outline(text: str) -> str:
+    """**(Ad) (A seçeneği):** kalın başlıklı Google çözüm → madde listesi."""
+    src = split_glued_secenek_headers(text)
+    headers = list(_SECENEK_HEADER_INLINE_RE.finditer(src))
+    if len(headers) < 2:
+        return src
+    out: list[str] = []
+    for i, match in enumerate(headers):
+        title = match.group(1).strip()
+        body_start = match.end()
+        body_end = headers[i + 1].start() if i + 1 < len(headers) else len(src)
+        body = src[body_start:body_end].strip()
+        out.append(f"- **{title}**")
+        if body:
+            out.append(f"  - {body}")
+        out.append("")
+    return tighten_markdown_markers("\n".join(out).strip())
+
+
 def _split_google_verbal_solution(src: str) -> str:
     """Google sözel çözüm: italik tırnak, 'Diğer Seçenekler', A)…E) yapışması.
 
     ``**…**`` koruması A) harflerini yutmasın diye markdown protect'ten önce.
     """
+    src = split_glued_secenek_headers(src)
     src = _ITALIC_QUOTE_TRAIL_RE.sub(r"*\1* ", src)
     src = _ITALIC_QUOTE_LEAD_RE.sub(r" *\1*", src)
+    src = collapse_italic_quote_marker_spaces(src)
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
     src = _DIGER_SECENEKLER_GLUE_RE.sub(r"\n\n**\1**\n", src)
     src = _GLUED_BOLD_LETTER_RE.sub(r"\n**\1)** ", src)
     src = _LINE_BOLD_LETTER_RE.sub(r"**\1)** ", src)
@@ -601,15 +732,28 @@ def _split_google_verbal_solution(src: str) -> str:
 
 
 def _split_glued_roman_sections(src: str) -> str:
-    """Google/Telegram yapıştırmasında yapışık I./II./III. satırlarını ayır."""
-    roman_tokens = _ROMAN_TOKEN_RE.findall(src)
-    if len(set(roman_tokens)) < 2:
+    """Yapışık Romen öncül/madde satırlarını ayır; düz metin (II. Mahmut, II. Kök Türk) korunur."""
+    if not src:
         return src
-    return re.sub(
-        r"(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)",
-        "\n",
-        src,
+    out = src
+    colon_romans = _ROMAN_TOKEN_RE.findall(out)
+    if len(set(colon_romans)) >= 2:
+        out = re.sub(
+            r"(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)",
+            "\n",
+            out,
+        )
+    math_romans = re.findall(
+        r"\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+(?:§§M\d+§§|\$|\\[\(\[])",
+        out,
     )
+    if len(set(math_romans)) >= 2:
+        out = re.sub(
+            r"(?:(?<=\$)|(?<=§§M\d+§§))(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)",
+            "\n",
+            out,
+        )
+    return out
 
 
 def normalize_roman_solution_sections(text: str) -> str:
@@ -801,9 +945,7 @@ def restore_collapsed_breaks(text: str) -> str:
         src,
         flags=re.I,
     )
-    roman_tokens = _ROMAN_TOKEN_RE.findall(src)
-    if len(set(token.rstrip() for token in roman_tokens)) >= 2:
-        src = _split_glued_roman_sections(src)
+    src = _split_glued_roman_sections(src)
     src = _restore_markdown_spans(src, md_holders)
     src = re.sub(
         r"§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))",
@@ -840,6 +982,8 @@ def restore_collapsed_breaks(text: str) -> str:
         src,
     )
     src = re.sub(r"\n{3,}", "\n\n", src)
+    src = repair_inline_glued_bold(src)
+    src = split_glued_secenek_headers(src)
     return src.lstrip("\n")
 
 
@@ -1087,6 +1231,17 @@ def structure_solution_outline(text: str) -> str:
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not src:
         return src
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(r"(→)\*\*\s+", r"\1 **", src)
+    if re.search(r"\([A-E]\s+seçeneği\)", src, re.I):
+        seceneki = structure_seceneki_solution_outline(src)
+        if len(re.findall(r"(?m)^- \*\*", seceneki)) >= 2:
+            return seceneki
     src = _format_presence_table(src)
     lines = src.split("\n")
     option_idxs = [
@@ -1316,6 +1471,7 @@ def is_structured_solution_outline(text: str) -> bool:
     structured_lines = re.findall(
         r"(?m)^\s*(?:-\s+)?\*\*(?:"
         r"[A-E]\)\s+[^*\n]+:|"
+        r"[^*\n]+\([A-E]\s+seçeneği\)\s*:|"
         r"(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^*\n]+:|"
         r"[^*\n]{3,80}:"
         r")\*\*",

@@ -449,26 +449,28 @@ void main() {
     expect(FormattedText.usesDisplayMath(r'{x \over y}'), isTrue);
   });
 
-  test('forceDisplaySizeAll keeps outer fraction large and nested compact', () {
+  test('forceDisplaySizeAll keeps nested fractions at body size', () {
     final out = FormattedText.forceDisplaySizeAll(
       r'\left(\frac{1 + \frac{1}{4}}{2 + \frac{1}{2}}\right)',
     );
-    expect(out, contains(r'\dfrac{1 + \tfrac{1}{4}}{2 + \tfrac{1}{2}}'));
+    expect(out, contains(r'\dfrac{1 + \dfrac{1}{4}}{2 + \dfrac{1}{2}}'));
+    expect(out, isNot(contains(r'\tfrac')));
     expect(out, startsWith(r'\displaystyle'));
   });
 
-  test('reported nested fraction uses compact inner fractions consistently', () {
+  test('reported nested fraction uses uniform display fractions', () {
     final out = FormattedText.forceDisplaySizeAll(
       r'\frac{1 + \frac{1}{4}}{3 - \frac{1}{2}}'
       r' \cdot (2 - \frac{3}{2})',
     );
     expect(
       out,
-      contains(r'\dfrac{1 + \tfrac{1}{4}}{3 - \tfrac{1}{2}}'),
+      contains(r'\dfrac{1 + \dfrac{1}{4}}{3 - \dfrac{1}{2}}'),
     );
     expect(out, contains(r'(2 - \dfrac{3}{2})'));
-    expect(out, isNot(contains(r'\dfrac{1}{4}')));
-    expect(out, isNot(contains(r'\dfrac{1}{2}')));
+    expect(out, contains(r'\dfrac{1}{4}'));
+    expect(out, contains(r'\dfrac{1}{2}'));
+    expect(out, isNot(contains(r'\tfrac')));
   });
 
   test('standalone one-quarter option keeps uniform display fraction', () {
@@ -1117,5 +1119,27 @@ Bu durum, ** sanayileşmenin ilişkisini kökten değiştirdiğini ** (D seçene
     expect(out, contains('- **E):**'));
     expect(out, contains('tepkisiz kaldığına'));
     expect(out, isNot(contains('-** A)**')));
+  });
+
+  test('demoteBlockUnderlineMarkup converts stage headers', () {
+    const src = '__## 1. Aşama: Tarihsel Süreci İnceleme__';
+    expect(
+      FormattedText.normalizeMarkup(src),
+      '**1. Aşama: Tarihsel Süreci İnceleme**',
+    );
+  });
+
+  test('prepareSolutionText demotes block underline stage headers', () {
+    const src = '''
+__## 1. Aşama: Tarihsel Süreci İnceleme__
+I. Kök Türk Devleti'nin 630 yılında kurulması.
+__## 2. Aşama: Kahramanları Tanıma__
+II. Mete Han ordusunu kurmuştur.
+''';
+    final out = FormattedText.prepareSolutionText(src);
+    expect(out, contains('**1. Aşama: Tarihsel Süreci İnceleme**'));
+    expect(out, contains('**2. Aşama: Kahramanları Tanıma**'));
+    expect(out, isNot(contains('__##')));
+    expect(out, contains("I. Kök Türk Devleti'nin"));
   });
 }
