@@ -23,6 +23,7 @@ from .question_fingerprint import (
     stem_fingerprint,
 )
 from .special_question_tags import apply_auto_tags
+from .rich_text_storage import normalize_question_for_storage
 from .svg_sanitize import sanitize_figure_svg
 from .topic_classifier import classify_topic_from_ocr
 
@@ -292,13 +293,16 @@ def maybe_backfill_question_options(question, *, save: bool = True) -> bool:
             setattr(question, f"option_{letter.lower()}", val)
             changed = True
     if changed and save:
+        normalize_question_for_storage(question)
         question.save(
             update_fields=[
+                "stem",
                 "option_a",
                 "option_b",
                 "option_c",
                 "option_d",
                 "option_e",
+                "solution",
                 "updated_at",
             ]
         )
@@ -839,6 +843,7 @@ def ingest_question_from_image(
             ContentFile(annotated_bytes),
             save=False,
         )
+    normalize_question_for_storage(question)
     question.save()
     if options_visual and option_crops:
         for letter, data in option_crops.items():
@@ -942,6 +947,7 @@ def repair_question_with_gemini(
     if not dry_run and updates:
         for field, value in updates.items():
             setattr(question, field, value)
+        normalize_question_for_storage(question)
         question.save()
         refresh_question_embedding(question)
 

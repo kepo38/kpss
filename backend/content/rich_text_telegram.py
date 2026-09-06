@@ -89,19 +89,6 @@ def normalize_telegram_solution(
     entities: list[dict] | None = None,
 ) -> str:
     """Telegram bot çözüm metni → kaydedilecek çözüm metni."""
-    raw = (text or "").strip()
-    if not raw:
-        return ""
-    if entities:
-        raw = telegram_entities_to_markdown(raw, entities)
-    raw = normalize_telegram_latex(raw)
-    chosen = choose_paste_text(raw, "")
-    if is_structured_solution_outline(chosen):
-        return normalize_turkish_text(normalize_paste_text(chosen)).strip()
-    chosen = restore_collapsed_breaks(chosen)
-    chosen = normalize_roman_solution_sections(chosen)
-    chosen = structure_solution_outline(chosen)
-    chosen = repair_inline_glued_bold(chosen)
-    chosen = tighten_markdown_markers(chosen)
-    chosen = collapse_italic_quote_marker_spaces(chosen)
-    return normalize_turkish_text(chosen).strip()
+    from .rich_text_storage import normalize_telegram_solution_for_storage
+
+    return normalize_telegram_solution_for_storage(text, entities=entities)

@@ -79,12 +79,8 @@ from .osym_cikmis import (
     osym_cikmis_suggestions,
     record_osym_cikmis_oneri,
 )
-from .rich_text_panel import (
-    normalize_panel_paste_field,
-    normalize_pasted_option,
-    normalize_pasted_solution,
-    normalize_pasted_stem,
-)
+from .rich_text_panel import normalize_panel_paste_field
+from .rich_text_storage import normalize_question_for_storage
 from .panel_context import (
     mark_question_error_reports_reviewed,
     pending_error_report_count,
@@ -2066,12 +2062,12 @@ def panel_question_edit(
             question.topic = target_topic
 
         question.subtopic = request.POST.get("subtopic", "").strip()
-        question.stem = normalize_pasted_stem(stem)
-        question.option_a = normalize_pasted_option(request.POST.get("option_a", ""))
-        question.option_b = normalize_pasted_option(request.POST.get("option_b", ""))
-        question.option_c = normalize_pasted_option(request.POST.get("option_c", ""))
-        question.option_d = normalize_pasted_option(request.POST.get("option_d", ""))
-        question.option_e = normalize_pasted_option(request.POST.get("option_e", ""))
+        question.stem = stem
+        question.option_a = request.POST.get("option_a", "")
+        question.option_b = request.POST.get("option_b", "")
+        question.option_c = request.POST.get("option_c", "")
+        question.option_d = request.POST.get("option_d", "")
+        question.option_e = request.POST.get("option_e", "")
         if not all(
             [
                 question.option_a,
@@ -2098,9 +2094,8 @@ def panel_question_edit(
                 "Yayınlamak için doğru cevabı (A–E) seçmelisiniz."
             )
         question.correct_option = correct_option
-        question.solution = normalize_pasted_solution(
-            request.POST.get("solution", "")
-        )
+        question.solution = request.POST.get("solution", "")
+        normalize_question_for_storage(question)
         question.is_published = request.POST.get("is_published") == "on"
         question.osym_sordu = request.POST.get("osym_sordu") == "on"
         osym_cikmis_raw = normalize_osym_cikmis_label(
