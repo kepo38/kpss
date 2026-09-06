@@ -144,7 +144,8 @@ class PublisherStats {
 class WeeklyPerformanceSummary {
   final int denemeSayisi;
   final double ortalamaNet;
-  final double netDegisim;
+  /// Geçen haftaya göre net farkı; karşılaştırma anlamlı değilse null.
+  final double? netDegisim;
   final int tekrarBekleyenSoru;
   final String enGucluDers;
   final String gelistirilmesiGerekenDers;

@@ -153,9 +153,12 @@ class PracticeExamService {
         : thisWeek.map((e) => e.toplamNet).reduce((a, b) => a + b) /
             thisWeek.length;
     final lastAvg = lastWeek.isEmpty
-        ? thisAvg
+        ? 0.0
         : lastWeek.map((e) => e.toplamNet).reduce((a, b) => a + b) /
             lastWeek.length;
+
+    final double? netDegisim =
+        thisWeek.isNotEmpty && lastWeek.isNotEmpty ? thisAvg - lastAvg : null;
 
     final bySubject = aggregateBySubject;
     String strongest = '-';
@@ -170,7 +173,7 @@ class PracticeExamService {
     return WeeklyPerformanceSummary(
       denemeSayisi: thisWeek.length,
       ortalamaNet: thisAvg,
-      netDegisim: thisAvg - lastAvg,
+      netDegisim: netDegisim,
       tekrarBekleyenSoru: 0,
       enGucluDers: strongest,
       gelistirilmesiGerekenDers: weakest,

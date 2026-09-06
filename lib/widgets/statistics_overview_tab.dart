@@ -155,9 +155,14 @@ class _WeeklySummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final change = summary.netDegisim;
-    final changeText = '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}';
-    final changeColor =
-        change >= 0 ? const Color(0xFF6EE7A8) : const Color(0xFFFF9B9B);
+    final changeText = change == null
+        ? '—'
+        : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}';
+    final changeColor = change == null
+        ? Colors.white.withValues(alpha: 0.55)
+        : change >= 0
+            ? const Color(0xFF6EE7A8)
+            : const Color(0xFFFF9B9B);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),

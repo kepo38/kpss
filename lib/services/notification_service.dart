@@ -223,13 +223,16 @@ class NotificationService {
     final bank = ContentBankService.instance;
     final wrongCount = bank.wrongQuestionCount;
     final topics = bank.wrongTopicsSummary(limit: 3);
-    final degisim = summary.netDegisim >= 0 ? '+' : '';
-
     final buffer = StringBuffer(
       'Bu hafta ${summary.denemeSayisi} deneme, '
-      'ort. ${summary.ortalamaNet.toStringAsFixed(1)} net '
-      '($degisim${summary.netDegisim.toStringAsFixed(1)}). ',
+      'ort. ${summary.ortalamaNet.toStringAsFixed(1)} net',
     );
+    final netDegisim = summary.netDegisim;
+    if (netDegisim != null) {
+      final degisim = netDegisim >= 0 ? '+' : '';
+      buffer.write(' ($degisim${netDegisim.toStringAsFixed(1)})');
+    }
+    buffer.write('. ');
 
     if (wrongCount == 0) {
       buffer.write('Yanlış defterin boş.');
