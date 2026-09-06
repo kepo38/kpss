@@ -364,26 +364,26 @@
 
   function finalizeSolutionPaste(text) {
     if (!window.KpssMathRender) return text;
+    var MR = window.KpssMathRender;
     var src = String(text || "");
-    if (window.KpssMathRender.normalizeMarkup) {
-      src = window.KpssMathRender.normalizeMarkup(src);
+    if (MR.normalizeMarkup) src = MR.normalizeMarkup(src);
+    if (MR.formatNamedSolutionSections) src = MR.formatNamedSolutionSections(src);
+    if (MR.restoreCollapsedBreaks) src = MR.restoreCollapsedBreaks(src);
+    if (MR.formatNamedSolutionSections) src = MR.formatNamedSolutionSections(src);
+    if (MR.normalizeRomanSolutionSections) src = MR.normalizeRomanSolutionSections(src);
+    if (MR.normalizeLatex) src = MR.normalizeLatex(src);
+    if (MR.structureSolutionOutline) src = MR.structureSolutionOutline(src);
+    if (MR.repairInlineGluedBold) src = MR.repairInlineGluedBold(src);
+    if (MR.tightenMarkdownMarkers) src = MR.tightenMarkdownMarkers(src);
+    if (MR.ensureMarkdownExteriorSpaces) src = MR.ensureMarkdownExteriorSpaces(src);
+    if (MR.collapseItalicQuoteMarkerSpaces) {
+      src = MR.collapseItalicQuoteMarkerSpaces(src);
     }
-    if (window.KpssMathRender.normalizeLatex) {
-      src = window.KpssMathRender.normalizeLatex(src);
-    }
-    if (window.KpssMathRender.formatNamedSolutionSections) {
-      src = window.KpssMathRender.formatNamedSolutionSections(src);
-    }
-    if (window.KpssMathRender.restoreCollapsedBreaks) {
-      src = window.KpssMathRender.restoreCollapsedBreaks(src);
-    }
-    if (window.KpssMathRender.formatNamedSolutionSections) {
-      src = window.KpssMathRender.formatNamedSolutionSections(src);
-    }
-    if (window.KpssMathRender.structureSolutionOutline) {
-      src = window.KpssMathRender.structureSolutionOutline(src);
-    }
-    return src;
+    src = src.replace(
+      /([^\n])\n(\*\*(?:Mühimme\s+Defteri:|Kimin\s+Sorumluluğundadır\?|(?:KPSS\s+)?Hap\s+Bilgi:)[^*\n]*\*\*)/gi,
+      "$1\n\n$2"
+    );
+    return src.trim();
   }
 
   function csrfToken() {
@@ -432,9 +432,18 @@
         return res.json();
       })
       .then(function (data) {
-        return (data && data.text) || normalizePasteLocally(fieldKind, plain, html);
+        return (data && data.text != null)
+          ? data.text
+          : normalizePasteLocally(fieldKind, plain, html);
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (html && fieldKind === "solution") {
+          console.warn(
+            "KPSS: çözüm yapıştırma sunucu normalizasyonu başarısız; " +
+              "lokal önizleme Python kaydı ile uyumlu olmayabilir.",
+            err
+          );
+        }
         return normalizePasteLocally(fieldKind, plain, html);
       });
   }

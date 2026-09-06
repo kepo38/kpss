@@ -68,6 +68,7 @@
   </aside>
 </div>
 
-<script src="{% static 'panel/rich-format.js' %}?v=5"></script>
+<script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
+<script src="{% static 'panel/rich-format.js' %}?v=10"></script>
 <script src="{% static 'panel/scenario-preview.js' %}?v=1"></script>
 {% endblock %}

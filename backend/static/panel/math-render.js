@@ -267,6 +267,39 @@
     return src;
   }
 
+  /** Yapışık Romen öncül/madde satırlarını ayır; düz metin (II. Mahmut, II. Kök Türk) korunur. */
+  function splitGluedRomanSections(src) {
+    var out = String(src || "");
+    if (!out) return out;
+    var colonMatches = out.match(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+[^:\n]{1,80}:/g) || [];
+    var colonUnique = {};
+    for (var ci = 0; ci < colonMatches.length; ci++) {
+      var cm = colonMatches[ci].match(/^(I|II|III|IV|V|VI|VII|VIII|IX|X)\./);
+      if (cm) colonUnique[cm[1]] = true;
+    }
+    if (Object.keys(colonUnique).length >= 2) {
+      out = out.replace(
+        /(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)/g,
+        "\n"
+      );
+    }
+    var mathMatches =
+      out.match(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+(?:§§M\d+§§|\$|\\\(|\\\[)/g) ||
+      [];
+    var mathUnique = {};
+    for (var mi = 0; mi < mathMatches.length; mi++) {
+      var mm = mathMatches[mi].match(/^(I|II|III|IV|V|VI|VII|VIII|IX|X)\./);
+      if (mm) mathUnique[mm[1]] = true;
+    }
+    if (Object.keys(mathUnique).length >= 2) {
+      out = out.replace(
+        /(?:(?<=\$)|(?<=§§M\d+§§))(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)/g,
+        "\n"
+      );
+    }
+    return out;
+  }
+
   /**
    * Google / sohbet kopyasında yutulan Enter'ları geri koy:
    * "...aynıdır ($a^b \\equiv a$).Verilen" → satır kırılır.
@@ -342,15 +375,7 @@
     src = restoreCollapsedPresenceTable(src);
     src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
     src = src.replace(/(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)/g, "$1\n");
-    // Yalnızca gerçek madde listesi: en az iki FARKLI Romen (I. + II. …).
-    var romanTokens = src.match(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s/g) || [];
-    var romanUnique = {};
-    for (var ri = 0; ri < romanTokens.length; ri++) {
-      romanUnique[romanTokens[ri].replace(/\s+$/, "")] = true;
-    }
-    if (Object.keys(romanUnique).length >= 2) {
-      src = src.replace(/(?<!\n)(?=\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s)/g, "\n");
-    }
+    src = splitGluedRomanSections(src);
     src = restoreMarkdownSpans(src, mdHolders);
     src = src.replace(/§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))/g, "§§M$1§§\n");
     src = src.replace(/§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))/g, "§§M$1§§\n");
@@ -727,6 +752,75 @@
     return out;
   }
 
+  function stripOuterBold(text) {
+    var src = String(text || "").trim();
+    if (
+      src.indexOf("**") === 0 &&
+      src.lastIndexOf("**") === src.length - 2 &&
+      (src.match(/\*\*/g) || []).length === 2
+    ) {
+      return src.slice(2, -2).trim();
+    }
+    return src;
+  }
+
+  /** Python normalize_roman_solution_sections — Romen öncül maddelerini kalın başlığa çevirir. */
+  function normalizeRomanSolutionSections(text) {
+    var src = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim();
+    if (!src) return src;
+    if (!/\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:/.test(src)) {
+      return src;
+    }
+    var inner = src;
+    if (
+      inner.indexOf("**") === 0 &&
+      inner.lastIndexOf("**") === inner.length - 2 &&
+      (inner.match(/\*\*/g) || []).length === 2
+    ) {
+      inner = inner.slice(2, -2).trim();
+    }
+    inner = splitGluedRomanSections(inner);
+    var parts = inner
+      .split(/(?<=[.!?])(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)/)
+      .map(function (part) {
+        return part.trim();
+      })
+      .filter(Boolean);
+    if (parts.length < 2) {
+      parts = inner
+        .split("\n")
+        .map(function (line) {
+          return line.trim();
+        })
+        .filter(Boolean);
+    }
+    if (parts.length < 2) return src;
+
+    var out = [];
+    var matched = 0;
+    var titleRe =
+      /^(\*{0,2})((?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]+:)(\*{0,2})\s*(.*)$/s;
+    for (var pi = 0; pi < parts.length; pi++) {
+      var part = parts[pi];
+      var title = part.match(titleRe);
+      if (!title) {
+        out.push(part);
+        continue;
+      }
+      matched += 1;
+      var header = stripOuterBold(title[2].trim());
+      var body = (title[4] || "").trim();
+      out.push("**" + header + "**");
+      if (body) out.push(body);
+      out.push("");
+    }
+    if (matched < 2) return src;
+    return out.join("\n").trim();
+  }
+
   /** Google çözüm: madde + A–E iç içe liste (rich_text_common.structure_solution_outline). */
   function structureSolutionOutline(text) {
     var src = String(text || "")
@@ -950,6 +1044,16 @@
       .join("\n");
   }
 
+  function stripPasteFragmentMarkers(text) {
+    var src = String(text || "");
+    if (!src || (src.indexOf("<!--") === -1 && src.indexOf("- →") === -1)) return src;
+    src = src.replace(/<!--\s*(?:Start|End)\s*Fragment-\s*→\s*/gi, "");
+    src = src.replace(/<!--TgQPHd\|\|\|\[\]-\s*→\s*/gi, "");
+    src = src.replace(/<!--TgQPHd[^>]*?-->/gi, "");
+    src = src.replace(/<!--\s*(?:Start|End)[^>]*?-->/gis, "");
+    return src.replace(/- →/g, "");
+  }
+
   /**
    * Flutter FormattedText.normalizeMarkup ile uyumlu ön işleme:
    * CRLF, ZWSP, tam genişlik ＊/＿, boşluklu markdown işaretleri.
@@ -961,6 +1065,7 @@
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .replace(/＊/g, "*")
       .replace(/＿/g, "_");
+    src = stripPasteFragmentMarkers(src);
     src = demoteBlockUnderlineMarkup(src);
     src = tightenMarkdownMarkers(src);
     src = ensureMarkdownExteriorSpaces(src);
@@ -1207,13 +1312,21 @@
     );
   }
 
+  function lineHasMidSentenceRoman(line) {
+    var t = String(line || "").trim();
+    if (!t) return false;
+    return /(?<=.\s)(?:VIII|VII|III|VI|IV|IX|II|V|X)\.\s/.test(t);
+  }
+
   /** Flutter FormattedText._isStructuralLine — madde / başlık satırları. */
   function isStructuralLine(line) {
     var t = peelBlockUnderline(line);
     if (!t) return false;
-    return /^(?:#{1,3}\s+|[-•*◦○–—]\s+|(?:I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+|\*\*|---|\*\*\*|___)/.test(
-      t
-    );
+    if (/^(?:#{1,3}\s+|[-•*◦○–—]\s+|\*\*|---|\*\*\*|___)/.test(t)) return true;
+    if (/^(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+/.test(t)) {
+      return !lineHasMidSentenceRoman(t);
+    }
+    return false;
   }
 
   function isHardBreakLine(trimmed) {
@@ -1270,15 +1383,23 @@
     options = options || {};
     var examMode = !!options.examMode;
     var solutionMode = !!options.solutionMode;
+    var preNormalized = !!options.preNormalized;
     var src = normalizeMarkup(String(text || ""));
-    if (solutionMode) {
-      src = formatNamedSolutionSections(src);
-    }
-    src = structureSolutionOutline(restoreCollapsedBreaks(normalizeLatex(src)));
-    src = repairInlineGluedBold(src);
-    src = collapseItalicQuoteMarkerSpaces(tightenMarkdownMarkers(src));
-    if (solutionMode) {
-      src = coalesceSoftLines(src);
+    if (preNormalized) {
+      src = normalizeLatex(src);
+      if (solutionMode) {
+        src = coalesceSoftLines(src);
+      }
+    } else {
+      if (solutionMode) {
+        src = formatNamedSolutionSections(src);
+      }
+      src = structureSolutionOutline(restoreCollapsedBreaks(normalizeLatex(src)));
+      src = repairInlineGluedBold(src);
+      src = collapseItalicQuoteMarkerSpaces(tightenMarkdownMarkers(src));
+      if (solutionMode) {
+        src = coalesceSoftLines(src);
+      }
     }
     if (!src.trim()) return "";
 
@@ -1417,6 +1538,16 @@
     return documentHtml(text, { solutionMode: true });
   }
 
+  /** DB / sunucu normalize edilmiş çözüm — tekrar outline uygulanmaz. */
+  function solutionStoredDocumentHtml(text) {
+    return documentHtml(text, { solutionMode: true, preNormalized: true });
+  }
+
+  /** DB normalize edilmiş soru/şık metni. */
+  function examStoredDocumentHtml(text) {
+    return documentHtml(text, { examMode: true, preNormalized: true });
+  }
+
   global.KpssMathRender = {
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
@@ -1425,8 +1556,13 @@
     formatNamedSolutionSections: formatNamedSolutionSections,
     mergeSplitInlineDollarMath: mergeSplitInlineDollarMath,
     restoreCollapsedBreaks: restoreCollapsedBreaks,
+    normalizeRomanSolutionSections: normalizeRomanSolutionSections,
     splitInlineOptionHeaders: splitInlineOptionHeaders,
     structureSolutionOutline: structureSolutionOutline,
+    repairInlineGluedBold: repairInlineGluedBold,
+    tightenMarkdownMarkers: tightenMarkdownMarkers,
+    ensureMarkdownExteriorSpaces: ensureMarkdownExteriorSpaces,
+    collapseItalicQuoteMarkerSpaces: collapseItalicQuoteMarkerSpaces,
     wrapBareLatex: wrapBareLatex,
     forceDisplaySizeAll: forceDisplaySizeAll,
     richInline: richInline,
@@ -1436,6 +1572,8 @@
     documentHtml: documentHtml,
     examDocumentHtml: examDocumentHtml,
     solutionDocumentHtml: solutionDocumentHtml,
+    solutionStoredDocumentHtml: solutionStoredDocumentHtml,
+    examStoredDocumentHtml: examStoredDocumentHtml,
     coalesceSoftLines: coalesceSoftLines,
   };
 })(window);

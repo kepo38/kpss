@@ -334,7 +334,7 @@
 
 <script src="{% static 'panel/paste-image.js' %}"></script>
 <script src="{% static 'panel/math-formulas.js' %}?v=1"></script>
-<script src="{% static 'panel/rich-format.js' %}?v=8"></script>
+<script src="{% static 'panel/rich-format.js' %}?v=10"></script>
 {{ map_markers_json|json_script:"map-markers-data" }}
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=2"></script>
@@ -345,7 +345,7 @@
 {{ preview_seed|json_script:"question-preview-seed" }}
 {{ scenarios_json|json_script:"question-scenarios-data" }}
 <script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
-<script src="{% static 'panel/question-preview.js' %}?v=25"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=26"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {

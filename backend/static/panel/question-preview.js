@@ -130,7 +130,9 @@
 
   function stemToHtml(text) {
     if (window.KpssMathRender) {
-      return window.KpssMathRender.examDocumentHtml(text);
+      return window.KpssMathRender.examStoredDocumentHtml
+        ? window.KpssMathRender.examStoredDocumentHtml(text)
+        : window.KpssMathRender.examDocumentHtml(text);
     }
     if (!text) return "";
     return "<p>" + richHtml(text) + "</p>";
@@ -728,9 +730,11 @@
         var solFormEl = solutionFieldEl();
         if (!shouldKeepServerPreview(solBody, solFormEl, sol)) {
           solBody.innerHTML = window.KpssMathRender
-            ? (window.KpssMathRender.solutionDocumentHtml
-                ? window.KpssMathRender.solutionDocumentHtml(sol)
-                : window.KpssMathRender.examDocumentHtml(sol))
+            ? (window.KpssMathRender.solutionStoredDocumentHtml
+                ? window.KpssMathRender.solutionStoredDocumentHtml(sol)
+                : window.KpssMathRender.solutionDocumentHtml
+                  ? window.KpssMathRender.solutionDocumentHtml(sol)
+                  : window.KpssMathRender.examDocumentHtml(sol))
             : stemToHtml(sol);
           solBody.setAttribute("data-initial-text", sol);
         }
