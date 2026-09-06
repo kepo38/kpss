@@ -46,6 +46,7 @@ _UNDERLINE_STYLE_RE = re.compile(
 )
 
 _NESTED_MARK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^\*{3,}(?=[^*])"), "**"),
     (re.compile(r"\*\*__\*\*([^*]+)\*\*__\*\*"), r"**__\1__**"),
     (re.compile(r"__\*\*__([^_]+)__\*\*__"), r"__**\1**__"),
     (re.compile(r"\*\*\s*\*\*([^*]+)\*\*\s*\*\*"), r"**\1**"),
@@ -521,6 +522,24 @@ def repair_block_underline_solution(text: str) -> str:
     return demote_block_underline_markup(text or "")
 
 
+_PASTE_FRAGMENT_MARKER_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"<!--\s*(?:Start|End)\s*Fragment-\s*→\s*", re.IGNORECASE),
+    re.compile(r"<!--TgQPHd\|\|\|\[\]-\s*→\s*", re.IGNORECASE),
+    re.compile(r"<!--TgQPHd[^>]*?-->", re.IGNORECASE),
+    re.compile(r"<!--\s*(?:Start|End)[^>]*?-->", re.IGNORECASE | re.DOTALL),
+)
+
+
+def strip_paste_fragment_markers(text: str) -> str:
+    """Google/panel yapıştırmasında kalan ``<!--TgQPHd...`` / Fragment artıklarını temizler."""
+    src = text or ""
+    if "<!--" not in src and "- →" not in src:
+        return src
+    for pattern in _PASTE_FRAGMENT_MARKER_RES:
+        src = pattern.sub("", src)
+    return src.replace("- →", "")
+
+
 def normalize_markup(text: str) -> str:
     """math-render.js normalizeMarkup (+ HTML yedek dönüşümü)."""
     src = (
@@ -529,6 +548,7 @@ def normalize_markup(text: str) -> str:
         .replace("\r", "\n")
     )
     src = _ZWSP_RE.sub("", src)
+    src = strip_paste_fragment_markers(src)
     src = src.replace("＊", "*").replace("＿", "_")
     src = re.sub(r"\$\\(?:long)?rightarrow\$", "→", src)
     src = src.replace(r"$\to$", "→")
@@ -749,8 +769,13 @@ def _split_glued_roman_sections(src: str) -> str:
     )
     if len(set(math_romans)) >= 2:
         out = re.sub(
-            r"(?:(?<=\$)|(?<=§§M\d+§§))(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)",
+            r"(?<=\$)(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)",
             "\n",
+            out,
+        )
+        out = re.sub(
+            r"(§§M\d+§§)(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)",
+            r"\1\n",
             out,
         )
     return out
@@ -1184,6 +1209,9 @@ def _is_option_header_line(line: str) -> bool:
     s = line.strip()
     if not s:
         return False
+    # Zaten ``- **A) …:**`` madde satırı — tekrar outline etme (idempotent koruma).
+    if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)", s):
+        return False
     if (
         _OPTION_HEADER_RE.match(s)
         or _OPTION_SECENEGI_ONLY_RE.match(s)
@@ -1193,7 +1221,9 @@ def _is_option_header_line(line: str) -> bool:
         return True
     trial = _OPTION_TRIAL_HEADER_RE.match(s)
     if trial and _OPTION_TRIAL_TITLE_RE.search(trial.group(2) or ""):
-        return True
+        title = (trial.group(2) or "").strip()
+        if len(title) <= 80:
+            return True
     return False
 
 
@@ -1301,7 +1331,11 @@ def _structure_preamble_lines(lines: list[str]) -> list[str]:
                     out.append(rest)
                 i += 1
                 continue
-            out.append(f"**{_strip_outer_bold(line)}**")
+            stripped = collapse_nested_marks(line.strip())
+            if re.match(r"^\*{2,}", stripped):
+                out.append(stripped)
+            else:
+                out.append(f"**{_strip_outer_bold(stripped)}**")
             out.append("")
             i += 1
             continue
@@ -1477,7 +1511,32 @@ def is_structured_solution_outline(text: str) -> bool:
         r")\*\*",
         src,
     )
-    return len(structured_lines) >= 2
+    if len(structured_lines) >= 2:
+        return True
+    # ``- **A) …`` madde listesi (kolon/başlık biçimi ne olursa olsun)
+    outlined_options = re.findall(r"(?m)^\s*-\s+\*\*[A-E]\)", src)
+    return len(outlined_options) >= 2
+
+
+def _touchup_storage_solution(text: str) -> str:
+    """Kayıtlı çözüm: outline atlama; ok/LaTeX/entity temizliği (idempotent)."""
+    src = _decode_entities(text or "")
+    src = normalize_exam_arrows(normalize_latex(repair_vert_groups(src)))
+    return src
+
+
+def looks_storage_normalized_solution(text: str) -> bool:
+    """DB'de kayıtlı, pipeline'dan geçmiş çözüm — yapıştırma adımını atla."""
+    src = (text or "").strip()
+    if not src:
+        return False
+    if is_structured_solution_outline(src):
+        return True
+    if re.search(r"(?m)^\*\*💡?\s*Adım Adım Çözüm\*\*", src, re.I):
+        return True
+    if re.search(r"(?m)^\*\*\d+\.\s+", src):
+        return True
+    return False
 
 
 def _align_list_to_plain(from_html: str, from_plain: str) -> str:

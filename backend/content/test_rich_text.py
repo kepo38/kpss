@@ -661,6 +661,39 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertNotIn("__##", once)
 
 
+    def test_restore_collapsed_breaks_plain_prose_dynasty_roman(self):
+        src = (
+            "I. Kök Türk Devleti'nin yıkılmasının ardından boylar yaşamıştır. "
+            "verip II. Kök Türk (Kutluk) Devleti'ni kurarak soru?"
+        )
+        out = restore_collapsed_breaks(src)
+        self.assertIn("verip II. Kök Türk", out)
+        self.assertNotIn("\nII.", out)
+
+    def test_restore_collapsed_breaks_colon_premise_still_splits(self):
+        src = (
+            "I. Birinci öncül metni: açıklama devam eder. "
+            "II. İkinci öncül metni: ikinci açıklama burada."
+        )
+        out = restore_collapsed_breaks(src)
+        self.assertIn("\nII.", out)
+
+    def test_strip_paste_fragment_markers_q_abe2d84408(self):
+        src = (
+            "<!--Start\nFragment- →\n"
+            "Adayların en çok düşeceği tuzak **Berlin Antlaşması<!--TgQPHd|||[]- →** "
+            "'dır (1878). Ancak Berlin Antlaşması; **genel, çok uluslu ve çok yönlü"
+            "<!--TgQPHd|||[]- →** bir kongre metnidir."
+            "<!--TgQPHd|||[]- → <!--TgQPHd|||[]- →\n"
+            "<!--End\nFragment- →"
+        )
+        out = normalize_markup(src)
+        self.assertNotIn("TgQPHd", out)
+        self.assertNotIn("<!--", out)
+        self.assertIn("**Berlin Antlaşması**", out)
+        self.assertIn("**genel, çok uluslu ve çok yönlü**", out)
+
+
 class TelegramSolutionNormalizationIntegrationTests(TestCase):
     def setUp(self):
         subject = Subject.objects.create(slug="tarih", name="Tarih")

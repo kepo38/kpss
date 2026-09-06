@@ -16,7 +16,10 @@ from .rich_text_common import (
     html_clipboard_to_text,
     html_to_markdown,
     is_structured_solution_outline,
+    looks_storage_normalized_solution,
     _format_named_solution_sections,
+    _touchup_storage_solution,
+    _ensure_markdown_exterior_spaces,
     normalize_latex,
     normalize_paste_text,
     normalize_roman_solution_sections,
@@ -77,6 +80,11 @@ def normalize_pasted_solution(
     html_src = (html or "").strip()
     if not raw and not html_src:
         return ""
+    if not html_src and not _HTML_TAG_RE.search(raw):
+        prestructured = _format_named_solution_sections(raw)
+        if looks_storage_normalized_solution(prestructured):
+            touched = _touchup_storage_solution(prestructured)
+            return normalize_turkish_text(touched).strip()
     if _HTML_TAG_RE.search(raw):
         chosen = choose_paste_text(raw, raw)
     elif html_src:
@@ -84,14 +92,16 @@ def normalize_pasted_solution(
     else:
         chosen = choose_paste_text(raw, "")
     chosen = _format_named_solution_sections(chosen)
-    if is_structured_solution_outline(chosen):
-        return normalize_turkish_text(chosen).strip()
+    if looks_storage_normalized_solution(chosen):
+        touched = _touchup_storage_solution(chosen)
+        return normalize_turkish_text(touched).strip()
     chosen = restore_collapsed_breaks(chosen)
     chosen = _format_named_solution_sections(chosen)
     chosen = normalize_roman_solution_sections(chosen)
     chosen = structure_solution_outline(chosen)
     chosen = repair_inline_glued_bold(chosen)
     chosen = tighten_markdown_markers(chosen)
+    chosen = _ensure_markdown_exterior_spaces(chosen)
     chosen = collapse_italic_quote_marker_spaces(chosen)
     return normalize_turkish_text(chosen).strip()
 
