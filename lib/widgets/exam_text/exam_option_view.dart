@@ -165,9 +165,10 @@ class ExamOptionView extends StatelessWidget {
     // Şıklarda soft hyphen (TDK heceleme) kullanılmaz — Android/Tinos satır
     // kırılınca harfler üst üste binip boşluklar kaybolabiliyor.
     final wrapped = FormattedText.wrapBareLatex(FormattedText.stripMarkup(text));
-    final prepared = FormattedText.prepareExamJustifyText(wrapped);
+    final prepared = FormattedText.prepareStoredExamJustifyText(wrapped);
     return FormattedText(
       prepared,
+      preNormalized: true,
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,

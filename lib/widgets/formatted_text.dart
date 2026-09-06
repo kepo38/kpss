@@ -25,6 +25,9 @@ class FormattedText extends StatelessWidget {
   /// true → çözüm metni pipeline'ı (Google yapıştırma, madde listesi).
   final bool solutionMode;
 
+  /// true → metin DB'de kayıt-tek-yol ile normalize edilmiş; yalnızca render hazırlığı.
+  final bool preNormalized;
+
   const FormattedText(
     this.data, {
     super.key,
@@ -37,6 +40,7 @@ class FormattedText extends StatelessWidget {
     this.examScaleDown = true,
     this.examWrap = false,
     this.solutionMode = false,
+    this.preNormalized = false,
   });
 
   static bool _lineHasMidSentenceRoman(String line) {
@@ -197,6 +201,40 @@ class FormattedText extends StatelessWidget {
     return out.join('\n');
   }
 
+  /// Yapışık Romen öncül/madde satırlarını ayır; düz metin (II. Mahmut, II. Kök Türk) korunur.
+  /// Python `_split_glued_roman_sections` ile aynı kurallar.
+  static String _splitGluedRomanSections(String src) {
+    if (src.isEmpty) return src;
+    var out = src;
+    final colonRomanRe = RegExp(
+      r'\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:',
+    );
+    final colonRomans =
+        colonRomanRe.allMatches(out).map((m) => m.group(1)!).toSet();
+    if (colonRomans.length >= 2) {
+      out = out.replaceAllMapped(
+        RegExp(
+          r'(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)',
+        ),
+        (_) => '\n',
+      );
+    }
+    final mathRomanRe = RegExp(
+      r'\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+(?:§§M\d+§§|\$|\\[\(\[])',
+    );
+    final mathRomans =
+        mathRomanRe.allMatches(out).map((m) => m.group(1)!).toSet();
+    if (mathRomans.length >= 2) {
+      out = out.replaceAllMapped(
+        RegExp(
+          r'(?:(?<=\$)|(?<=§§M\d+§§))(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)',
+        ),
+        (_) => '\n',
+      );
+    }
+    return out;
+  }
+
   static bool usesDisplayMath(String tex) {
     final t = tex;
     return t.contains(r'\frac') ||
@@ -267,6 +305,15 @@ class FormattedText extends StatelessWidget {
     return normalizeLatex(
       examFormat(normalizeMarkup(joinOrphanRomanNumeralLines(input))),
     );
+  }
+
+  /// DB'den gelen normalize edilmiş soru/şık — render öncesi dönüşüm yok.
+  static String prepareStoredExamDisplayText(String input) => input;
+
+  /// DB'den gelen normalize edilmiş soru kökü (justify öncesi).
+  static String prepareStoredExamJustifyText(String input) {
+    if (input.isEmpty) return input;
+    return input.replaceAll(RegExp(r'[ \t]{2,}'), ' ').trim();
   }
 
   /// Tek harfli değişken ($x$, $y$, $z$…) → Math değil gövde TextSpan.
@@ -660,13 +707,39 @@ class FormattedText extends StatelessWidget {
     );
   }
 
+  /// Google/panel yapıştırmasında kalan fragment artıklarını temizler.
+  static String stripPasteFragmentMarkers(String input) {
+    if (input.isEmpty) return input;
+    if (!input.contains('<!--') && !input.contains('- →')) return input;
+    var text = input
+        .replaceAll(
+          RegExp(r'<!--\s*(?:Start|End)\s*Fragment-\s*→\s*', caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'<!--TgQPHd\|\|\|\[\]-\s*→\s*', caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'<!--TgQPHd[^>]*?-->', caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'<!--\s*(?:Start|End)[^>]*?-->', caseSensitive: false, dotAll: true),
+          '',
+        );
+    return text.replaceAll('- →', '');
+  }
+
   static String normalizeMarkup(String input) {
     if (input.isEmpty) return input;
     var text = _decodeEntities(input)
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
         // Görünmez / tam genişlik biçim karakterlerini temizle
-        .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
+        .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '');
+    text = stripPasteFragmentMarkers(text);
+    text = text
         .replaceAll('＊', '*')
         .replaceAll('＿', '_')
         .replaceAll(RegExp(r'\$\\(?:long)?rightarrow\$'), '→')
@@ -833,6 +906,9 @@ class FormattedText extends StatelessWidget {
     if (input.isEmpty) return input;
     return structureSolutionOutline(normalizeForSolutionDisplay(input));
   }
+
+  /// DB'den gelen normalize edilmiş çözüm — tekrar normalize/outline yok.
+  static String prepareStoredSolutionText(String input) => input;
 
   static bool looksLikeMath(String input) {
     final t = input.trim();
@@ -1802,7 +1878,11 @@ class FormattedText extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = style ?? DefaultTextStyle.of(context).style;
     final String laidOut;
-    if (preserveLineBreaks) {
+    if (preNormalized) {
+      laidOut = examLayout && examWrap && !solutionMode
+          ? prepareStoredExamDisplayText(data)
+          : prepareStoredSolutionText(data);
+    } else if (preserveLineBreaks) {
       laidOut = examLayout && examWrap && !solutionMode
           ? prepareExamDisplayText(data)
           : prepareSolutionText(data);

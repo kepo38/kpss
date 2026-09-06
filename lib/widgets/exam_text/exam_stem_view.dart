@@ -17,7 +17,7 @@ class ExamStemView extends StatelessWidget {
     final wrapped = FormattedText.wrapBareLatex(
       FormattedText.stripMarkup(visible),
     );
-    final prepared = FormattedText.prepareExamJustifyText(wrapped);
+    final prepared = FormattedText.prepareStoredExamJustifyText(wrapped);
     // Matematik / LaTeX köklerde TDK hecelemesi yapma (şıklarla aynı kural).
     final cleaned = FormattedText.looksLikeMath(prepared) ||
             prepared.contains(r'$')
@@ -25,6 +25,7 @@ class ExamStemView extends StatelessWidget {
         : TurkishHyphenation.hyphenate(prepared);
     return FormattedText(
       cleaned,
+      preNormalized: true,
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,

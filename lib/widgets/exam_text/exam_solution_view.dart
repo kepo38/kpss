@@ -18,6 +18,7 @@ class ExamSolutionView extends StatelessWidget {
     }
     return FormattedText(
       text,
+      preNormalized: true,
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,
