@@ -1,0 +1,1939 @@
+"""Panel ve Telegram çözüm metni normalizasyonu — ortak yardımcılar.
+
+Panel (`rich_text_panel`) ve Telegram (`rich_text_telegram`) ayrı giriş
+noktalarına sahiptir; bu modül paylaşılan LaTeX/markdown/HTML dönüşümlerini içerir.
+"""
+
+from __future__ import annotations
+
+import re
+
+from .ocr import normalize_turkish_text
+
+_ZWSP_RE = re.compile(r"[\u200B-\u200D\uFEFF]")
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
+_BULLET_PREFIX_RE = re.compile(r"^(?:\s*[-•*◦○–—]\s+){2,}", re.MULTILINE)
+_BULLET_LINE_RE = re.compile(r"^\s*[-•*◦○–—]\s+", re.MULTILINE)
+_EMPTY_BULLET_RE = re.compile(r"^\s*[-•*◦○–—]\s*$", re.MULTILINE)
+_MULTI_NL_RE = re.compile(r"\n{3,}")
+_MATH_HOLDER_RE = re.compile(r"§§M(\d+)§§")
+_MD_HOLDER_RE = re.compile(r"§§K(\d+)§§")
+
+_ENTITY_DECODERS = (
+    ("&nbsp;", " "),
+    ("&amp;", "&"),
+    ("&lt;", "<"),
+    ("&gt;", ">"),
+    ("&quot;", '"'),
+    ("&#39;", "'"),
+    ("&apos;", "'"),
+    ("&rarr;", "→"),
+)
+_ENTITY_NUM_RE = re.compile(r"&#(\d+);")
+_ENTITY_HEX_RE = re.compile(r"&#x([0-9a-fA-F]+);", re.IGNORECASE)
+
+_BOLD_STYLE_RE = re.compile(
+    r"font-weight\s*:\s*(bold|bolder|[6-9]00)|"
+    r"mso-(?:bidi|ansi)-font-weight\s*:\s*bold",
+    re.IGNORECASE,
+)
+_ITALIC_STYLE_RE = re.compile(r"font-style\s*:\s*italic", re.IGNORECASE)
+_UNDERLINE_STYLE_RE = re.compile(
+    r"text-decoration(?:-line)?\s*:[^;]*underline|"
+    r"text-underline\s*:\s*single|"
+    r"mso-text-underline",
+    re.IGNORECASE,
+)
+
+_NESTED_MARK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^\*{3,}(?=[^*])"), "**"),
+    (re.compile(r"\*\*__\*\*([^*]+)\*\*__\*\*"), r"**__\1__**"),
+    (re.compile(r"__\*\*__([^_]+)__\*\*__"), r"__**\1**__"),
+    (re.compile(r"\*\*\s*\*\*([^*]+)\*\*\s*\*\*"), r"**\1**"),
+    (re.compile(r"__\s*__([^_]+)__\s*__"), r"__\1__"),
+    (re.compile(r"\*{4,}([^*\n]+)\*{4,}"), r"**\1**"),
+    (re.compile(r"_{4,}([^_\n]+)_{4,}"), r"__\1__"),
+)
+
+_TIGHTEN_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+    (
+        re.compile(
+            r"\*\*\s+([^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*",
+            re.IGNORECASE,
+        ),
+        "**",
+        "**",
+    ),
+    (re.compile(r"(?<!\S)\*\*\s+([^*\n]+?:)\*\*"), "**", "**"),
+    (re.compile(r"(?<!\S)\*\*[ \t]+([^*\n]+?)[ \t]+\*\*"), "**", "**"),
+    (re.compile(r"__[ \t]+([^_\n]+?)[ \t]+__"), "__", "__"),
+    (re.compile(r"(?<!\*)\*[ \t]+([^*\n]+?)[ \t]+\*(?!\*)"), "*", "*"),
+    (re.compile(r"(?<!\S)\*\*([^*\n]+?)[ \t]+\*\*"), "**", "**"),
+    (re.compile(r"__([^_\n]+?)[ \t]+__"), "__", "__"),
+)
+
+_EXTERIOR_BOLD_OPEN = re.compile(
+    r"([0-9A-Za-zĞğİıÖöŞşÜüÇç'’])(\*\*)(?!\*)(?=[0-9A-Za-zĞğİıÖöŞşÜüÇç'’])"
+)
+_EXTERIOR_BOLD_CLOSE = re.compile(
+    r"(?<=[^\s*])(\*\*)(?!\*)([0-9A-Za-zĞğİıÖöŞşÜüÇç'’])"
+)
+_EXTERIOR_UNDER_OPEN = re.compile(
+    r"([0-9A-Za-zĞğİıÖöŞşÜüÇç'’])(__)(?!_)(?=[0-9A-Za-zĞğİıÖöŞşÜüÇç'’])"
+)
+_EXTERIOR_UNDER_CLOSE = re.compile(
+    r"(?<=[^\s_])(__)(?!_)([0-9A-Za-zĞğİıÖöŞşÜüÇç'’])"
+)
+
+_SPLIT_BOLD_RE = re.compile(
+    r"(?<!\S)\*\*([^\n*][^\n*]*?)\n\s+([^\n*][^\n*]*?)\*\*"
+)
+
+_COMBINED_BOLD_UNDER_RE = re.compile(
+    r"<(?:strong|b)\b[^>]*>\s*<u\b[^>]*>([\s\S]*?)</u\s*>\s*</(?:strong|b)\s*>|"
+    r"<u\b[^>]*>\s*<(?:strong|b)\b[^>]*>([\s\S]*?)</(?:strong|b)\s*>\s*</u\s*>",
+    re.IGNORECASE,
+)
+
+_SIMPLE_TAG_RES: tuple[tuple[str, str], ...] = (
+    ("strong", "**"),
+    ("b", "**"),
+    ("em", "*"),
+    ("i", "*"),
+    ("u", "__"),
+)
+
+_SPAN_STYLE_RE = re.compile(
+    r"""<span\b([^>]*)>([\s\S]*?)</span\s*>""",
+    re.IGNORECASE,
+)
+
+_HAS_LATEX_RE = re.compile(
+    r"\$\$|\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sqrt|\\circ|\\cdot|\\left|\\right|\\begin\{|\\hline"
+)
+_LATEX_SCORE_FRAC_RE = re.compile(
+    r"\\(?:frac|sqrt|circ|cdot|left|right|text)"
+)
+
+_NAMED_SOLUTION_LABEL_RE = re.compile(
+    r"(Mühimme\s+Defteri\s*:|Kimin\s+Sorumluluğundadır\s*\?|"
+    r"(?:KPSS\s+)?Hap\s+Bilgi\s*:)",
+    re.IGNORECASE,
+)
+_NAMED_SOLUTION_SPLIT_RE = re.compile(
+    r"(?<!^)(?<!\n)\s*(?="
+    r"Mühimme\s+Defteri\s*:|Kimin\s+Sorumluluğundadır\s*\?|"
+    r"KPSS\s+Hap\s+Bilgi\s*:|(?<!KPSS\s)Hap\s+Bilgi\s*:)",
+    re.IGNORECASE,
+)
+
+
+def _format_named_solution_sections(text: str) -> str:
+    """Yapışık bilgi etiketlerini kalın, ayrı paragraflara dönüştür."""
+    src = (text or "").strip()
+    if not src:
+        return src
+
+    # Önceden eklenmiş dış markdown'ı kaldırıp tek, geçerli çift yıldız üret.
+    src = re.sub(
+        rf"\*\*\s*({_NAMED_SOLUTION_LABEL_RE.pattern})\s*\*\*",
+        r"\1",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = _NAMED_SOLUTION_SPLIT_RE.sub("\n\n", src)
+    src = re.sub(
+        rf"(?m)^[ \t]*(?:[-•◦○–—]\s+)?({_NAMED_SOLUTION_LABEL_RE.pattern})[ \t]*",
+        lambda match: f"**{match.group(1).strip()}** ",
+        src,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\n{3,}", "\n\n", src).strip()
+
+
+def _decode_entities(text: str) -> str:
+    out = text
+    for src, dst in _ENTITY_DECODERS:
+        out = out.replace(src, dst)
+    out = _ENTITY_NUM_RE.sub(
+        lambda m: chr(int(m.group(1))) if int(m.group(1)) < 0x110000 else m.group(0),
+        out,
+    )
+    out = _ENTITY_HEX_RE.sub(
+        lambda m: (
+            chr(int(m.group(1), 16))
+            if int(m.group(1), 16) < 0x110000
+            else m.group(0)
+        ),
+        out,
+    )
+    return out
+
+
+def _utf16_len(char: str) -> int:
+    return 2 if ord(char) > 0xFFFF else 1
+
+
+def _utf16_index_to_py(text: str, utf16_offset: int) -> int:
+    units = 0
+    for index, char in enumerate(text):
+        if units >= utf16_offset:
+            return index
+        units += _utf16_len(char)
+    return len(text)
+
+
+def _fully_wrapped(text: str, mark: str) -> bool:
+    n = len(mark)
+    if len(text) < n * 2:
+        return False
+    if not text.startswith(mark) or not text.endswith(mark):
+        return False
+    return mark not in text[n:-n]
+
+
+def _wrap_markdown_node(
+    text: str,
+    *,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+) -> str:
+    raw = text
+    lead = re.match(r"^[ \t]+", raw)
+    trail = re.search(r"[ \t]+$", raw)
+    lead_s = lead.group(0) if lead else ""
+    trail_s = trail.group(0) if trail else ""
+    core = raw[len(lead_s) : len(raw) - len(trail_s)].strip()
+    if not core:
+        return raw
+    if not italic and re.fullmatch(r"\*\*__.+__\*\*", core) and (bold or underline):
+        return raw
+    if bold and re.fullmatch(r"__\*\*.+\*\*__", core):
+        return raw
+    if underline and re.fullmatch(r"\*\*__.+__\*\*", core):
+        return raw
+    if bold and _fully_wrapped(core, "**"):
+        core = core[2:-2].strip()
+    if underline and _fully_wrapped(core, "__"):
+        core = core[2:-2].strip()
+    if italic and _fully_wrapped(core, "*") and not _fully_wrapped(core, "**"):
+        core = core[1:-1].strip()
+    if bold and underline and not italic:
+        core = f"**__{core}__**"
+    elif bold and italic:
+        core = f"***{core}***"
+    elif bold:
+        core = f"**{core}**"
+    elif italic:
+        core = f"*{core}*"
+    if underline and not (bold and underline and not italic):
+        core = f"__{core}__"
+    return f"{lead_s}{core}{trail_s}"
+
+
+def _replace_simple_html_tags(text: str) -> str:
+    text = _COMBINED_BOLD_UNDER_RE.sub(
+        lambda m: f"__**{(m.group(1) or m.group(2) or '').strip()}**__",
+        text,
+    )
+    for tag, marker in _SIMPLE_TAG_RES:
+        pattern = re.compile(
+            rf"<{tag}\b[^>]*>([\s\S]*?)</{tag}\s*>",
+            re.IGNORECASE,
+        )
+
+        def _tag_repl(match: re.Match[str], mk: str = marker) -> str:
+            return _wrap_markdown_node(
+                match.group(1) or "",
+                bold=mk == "**",
+                italic=mk == "*",
+                underline=mk == "__",
+            )
+
+        text = pattern.sub(_tag_repl, text)
+    for _ in range(8):
+        next_text = _SPAN_STYLE_RE.sub(_convert_span, text)
+        if next_text == text:
+            break
+        text = next_text
+    text = _HTML_TAG_RE.sub("", text)
+    return text
+
+
+def _convert_span(match: re.Match[str]) -> str:
+    attrs = match.group(1) or ""
+    inner = (match.group(2) or "").strip()
+    if not inner:
+        return ""
+    style_m = re.search(r"""style\s*=\s*["']([^"']*)["']""", attrs, re.I)
+    cls_m = re.search(r"""class\s*=\s*["']([^"']*)["']""", attrs, re.I)
+    style = (style_m.group(1) if style_m else "").lower()
+    cls = (cls_m.group(1) if cls_m else "").lower()
+    bold = bool(_BOLD_STYLE_RE.search(style)) or any(
+        token in cls for token in ("bold", "strong", "font-bold")
+    )
+    italic = bool(_ITALIC_STYLE_RE.search(style)) or "italic" in cls
+    underline = bool(_UNDERLINE_STYLE_RE.search(style)) or "underline" in cls
+    if not (bold or italic or underline):
+        return inner
+    return _wrap_markdown_node(inner, bold=bold, italic=italic, underline=underline)
+
+
+def html_to_markdown(html: str) -> str:
+    text = _decode_entities(html)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"</p\s*>", "\n\n", text, flags=re.I)
+    text = re.sub(r"<p\b[^>]*>", "", text, flags=re.I)
+    text = re.sub(r"</li\s*>", "\n", text, flags=re.I)
+    text = re.sub(r"<li\b[^>]*>", "\n- ", text, flags=re.I)
+    text = re.sub(r"</?(?:ul|ol)\b[^>]*>", "\n", text, flags=re.I)
+    text = re.sub(r"</div\s*>", "\n", text, flags=re.I)
+    text = re.sub(r"<div\b[^>]*>", "", text, flags=re.I)
+    text = re.sub(r"</h[1-4]\s*>", "\n\n", text, flags=re.I)
+    text = re.sub(r"<h[1-4]\b[^>]*>", "## ", text, flags=re.I)
+    text = _replace_simple_html_tags(text)
+    text = _HTML_TAG_RE.sub("", text)
+    text = text.replace("\u00a0", " ")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def html_clipboard_to_text(html: str) -> str:
+    """rich-format.js htmlClipboardToText — HTML yapıştırma sonrası metin."""
+    converted = html_to_markdown(html)
+    converted = converted.replace("\u00a0", " ")
+    converted = re.sub(r"[ \t]+\n", "\n", converted)
+    converted = re.sub(r"\n{3,}", "\n\n", converted).strip()
+    return collapse_bullet_prefixes(
+        collapse_nested_marks(normalize_paste_text(converted))
+    )
+
+
+def repair_latex_escapes(text: str) -> str:
+    """math-render.js repairLatexEscapes."""
+    src = repair_google_docs_vert_bars(
+        text.replace("\x0crac", r"\frac")
+        .replace("\x08eta", r"\beta")
+        .replace("\x08egin", r"\begin")
+        .replace("\x09ext{", r"\text{")
+        .replace("\x09imes", r"\times")
+        .replace("\x09heta", r"\theta")
+        .replace("\x09an", r"\tan")
+        .replace("\x0dight", r"\right")
+        .replace("\x0aeq", r"\neq")
+        .replace("$rac{", r"$\frac{")
+        .replace("$sqrt{", r"$\sqrt{")
+    )
+    if "frac" in src and r"\frac" not in src:
+        src = re.sub(r"(^|[^\\A-Za-z])frac\{", r"\1\\frac{", src)
+    return src
+
+
+def repair_google_docs_vert_bars(text: str) -> str:
+    r"""Google `\vert{}-3\vert{}` → `\lvert -3 \rvert`; `\(\vert{}\)` → `|`."""
+    src = text or ""
+    src = re.sub(r"\\\(\s*\\vert\{\}\s*\\\)", "|", src)
+    src = src.replace("(\\vert{})", "|")
+    src = re.sub(
+        r"\\vert\{\}([^\\]*?)\\vert\{\}",
+        lambda m: (
+            r"\lvert " + m.group(1).strip() + r" \rvert"
+            if m.group(1).strip()
+            else r"\vert"
+        ),
+        src,
+    )
+    return src
+
+
+def repair_vert_groups(text: str) -> str:
+    r"""Geçersiz `\vert{…\vert}` → `\lvert … \rvert` (ortak; Telegram modülü de kullanır)."""
+    src = repair_google_docs_vert_bars(text or "")
+    src = re.sub(
+        r"\\vert\s*\{([^{}]*?)\\vert(?:\{\})?\}",
+        lambda m: r"\lvert " + m.group(1).strip() + r" \rvert",
+        src,
+    )
+    return src
+
+
+def _inline_latex_body_to_dollars(body: str) -> str:
+    """\\(...\\) → $...$; tabular gövde $$...$$ (önizleme hizası)."""
+    cleaned = (body or "").strip()
+    if "\n" in cleaned:
+        cleaned = re.sub(r"\s*\n\s*", " ", cleaned).strip()
+    if re.search(r"\\begin\{(?:array|matrix|pmatrix|cases)\}", cleaned):
+        return f"$${cleaned}$$"
+    return f"${cleaned}$"
+
+
+def _display_latex_body_to_dollars(body: str) -> str:
+    return f"$${(body or '').strip()}$$"
+
+
+# Google yapıştırma: GösterimKitabın / sayfaİlk — 5A, pH, iPhone bölünmez.
+_COLLAPSED_WORD_BOUNDARY_RE = re.compile(
+    r"(?<=[a-zçğıöşüâîû]{2})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])"
+)
+
+
+def normalize_latex(text: str) -> str:
+    src = merge_split_inline_dollar_math(repair_latex_escapes(text or ""))
+    src = re.sub(
+        r"\\\[([\s\S]+?)\\\]",
+        lambda m: _display_latex_body_to_dollars(m.group(1)),
+        src,
+    )
+    src = re.sub(
+        r"\\\(([\s\S]+?)\\\)",
+        lambda m: _inline_latex_body_to_dollars(m.group(1)),
+        src,
+    )
+    return src
+
+
+def normalize_exam_arrows(text: str) -> str:
+    src = text or ""
+    src = re.sub(r"\$\\(?:long)?rightarrow\$", "→", src)
+    src = src.replace(r"$\to$", "→")
+    src = re.sub(r"\\(?:long)?rightarrow\b", "→", src)
+    src = re.sub(r"&#0*8594;|&rarr;", "→", src, flags=re.I)
+    src = re.sub(r"[ \t]*->[ \t]*", " → ", src)
+    return src
+
+
+def collapse_nested_marks(text: str) -> str:
+    src = text
+    while True:
+        prev = src
+        for pattern, repl in _NESTED_MARK_PATTERNS:
+            src = pattern.sub(repl, src)
+        if src == prev:
+            break
+    return src
+
+
+def _peel_markers(full: str, inner: str, open_m: str, close_m: str) -> str:
+    if "\n" in inner:
+        return full
+    lead_m = re.match(rf"^{re.escape(open_m)}([ \t]+)", full)
+    trail_m = re.search(rf"([ \t]+){re.escape(close_m)}$", full)
+    lead = lead_m.group(1) if lead_m else ""
+    trail = trail_m.group(1) if trail_m else ""
+    return f"{lead}{open_m}{inner.strip()}{close_m}{trail}"
+
+def tighten_markdown_markers(text: str) -> str:
+    src = collapse_nested_marks(text)
+    for pattern, open_m, close_m in _TIGHTEN_PATTERNS:
+        src = pattern.sub(
+            lambda m, o=open_m, c=close_m: _peel_markers(m.group(0), m.group(1), o, c),
+            src,
+        )
+    return src
+
+
+def _protect_markdown_spans(text: str, holders: list[str]) -> str:
+    def repl(match: re.Match[str]) -> str:
+        holders.append(match.group(0))
+        return f"§§K{len(holders) - 1}§§"
+
+    return re.sub(r"\*\*[\s\S]+?\*\*|__[\s\S]+?__", repl, text)
+
+
+def _restore_markdown_spans(text: str, holders: list[str]) -> str:
+    def repl(match: re.Match[str]) -> str:
+        idx = int(match.group(1))
+        return holders[idx] if 0 <= idx < len(holders) else match.group(0)
+
+    return _MD_HOLDER_RE.sub(repl, text)
+
+
+def _ensure_markdown_exterior_spaces(text: str) -> str:
+    holders: list[str] = []
+
+    def hold(match: re.Match[str]) -> str:
+        holders.append(match.group(0))
+        return f"§§M{len(holders) - 1}§§"
+
+    src = re.sub(r"\$\$[\s\S]+?\$\$|\$[^$\n]+\$", hold, text)
+    src = _EXTERIOR_BOLD_OPEN.sub(r"\1 \2", src)
+    src = _EXTERIOR_UNDER_OPEN.sub(r"\1 \2", src)
+    src = _EXTERIOR_BOLD_CLOSE.sub(r"\1 \2", src)
+    src = _EXTERIOR_UNDER_CLOSE.sub(r"\1 \2", src)
+    src = _MATH_HOLDER_RE.sub(
+        lambda m: holders[int(m.group(1))] if int(m.group(1)) < len(holders) else m.group(0),
+        src,
+    )
+    return src
+
+
+_BLOCK_UNDERLINE_LINE_RE = re.compile(r"^[ \t]*__(.+?)__[ \t]*$")
+_BLOCK_UNDERLINE_HEADER_INNER_RE = re.compile(
+    r"^(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*)",
+    re.IGNORECASE,
+)
+
+
+def _strip_markdown_heading_marks(text: str) -> str:
+    return re.sub(r"^#{1,3}\s+", "", text.strip())
+
+
+_ATX_HEADING_LINE_RE = re.compile(r"^[ \t]*(#{1,3})[ \t]+(.+?)[ \t]*#*[ \t]*$")
+
+
+def convert_atx_headings_to_bold(text: str) -> str:
+    """Gemini/ATX ``## Başlık`` satırlarını panel kanonik ``**Başlık**`` yap.
+
+    Panel paste / uygulama çözümü ``#`` başlık işaretini depolamaz; kalın satır
+    başlığı kullanır. Idempotent: zaten ``**…**`` olan satırlara dokunmaz.
+    """
+    if not text or "#" not in text:
+        return text
+    out: list[str] = []
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        match = _ATX_HEADING_LINE_RE.match(line)
+        if not match:
+            out.append(line)
+            continue
+        body = match.group(2).strip()
+        body = re.sub(r"\s+#+\s*$", "", body).strip()
+        bold_wrapped = re.match(r"^\*\*(.+)\*\*$", body, re.DOTALL)
+        if bold_wrapped:
+            body = bold_wrapped.group(1).strip()
+        if not body:
+            out.append(line)
+            continue
+        out.append(f"**{body}**")
+    return "\n".join(out)
+
+
+def demote_block_underline_markup(text: str) -> str:
+    """Tam satır ``__…__`` ile sarılmış başlıkları ``**…**`` yap.
+
+    ``__## 1. Aşama: …__`` gibi blok altı çizgiler önizlemede bir sonraki satırla
+    birleşip layout bozuyor; kalın başlığa indirgenir.
+    """
+    if not text or "__" not in text:
+        return text
+    out: list[str] = []
+    for line in text.split("\n"):
+        match = _BLOCK_UNDERLINE_LINE_RE.match(line)
+        if not match:
+            out.append(line)
+            continue
+        inner = match.group(1).strip()
+        if not _BLOCK_UNDERLINE_HEADER_INNER_RE.match(inner):
+            out.append(line)
+            continue
+        body = _strip_markdown_heading_marks(inner)
+        bold_stripped = re.match(r"^\*\*(.+)\*\*$", body.strip(), re.DOTALL)
+        if bold_stripped:
+            body = bold_stripped.group(1).strip()
+        out.append(f"**{body.strip()}**")
+    return "\n".join(out)
+
+
+_BLOCK_UNDERLINE_SCAN_RE = re.compile(
+    r"(?m)^[ \t]*__(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*).+__\s*$",
+    re.IGNORECASE,
+)
+
+
+def needs_block_underline_repair(text: str) -> bool:
+    """Çözüm metninde ``__## …__`` / ``__1. Aşama …__`` gibi onarım gerektirir mi?"""
+    return bool(text and _BLOCK_UNDERLINE_SCAN_RE.search(text))
+
+
+def repair_block_underline_solution(text: str) -> str:
+    """Yalnızca blok altı çizgili başlıkları indirger — tam normalizasyon yapmaz."""
+    return demote_block_underline_markup(text or "")
+
+
+_PASTE_FRAGMENT_MARKER_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"<!--\s*(?:Start|End)\s*Fragment-\s*→\s*", re.IGNORECASE),
+    re.compile(r"<!--TgQPHd\|\|\|\[\]-\s*→\s*", re.IGNORECASE),
+    re.compile(r"<!--TgQPHd[^>]*?-->", re.IGNORECASE),
+    re.compile(r"<!--\s*(?:Start|End)[^>]*?-->", re.IGNORECASE | re.DOTALL),
+)
+
+
+def strip_paste_fragment_markers(text: str) -> str:
+    """Google/panel yapıştırmasında kalan ``<!--TgQPHd...`` / Fragment artıklarını temizler."""
+    src = text or ""
+    if "<!--" not in src and "- →" not in src:
+        return src
+    for pattern in _PASTE_FRAGMENT_MARKER_RES:
+        src = pattern.sub("", src)
+    return src.replace("- →", "")
+
+
+def normalize_markup(text: str) -> str:
+    """math-render.js normalizeMarkup (+ HTML yedek dönüşümü)."""
+    src = (
+        _decode_entities(text or "")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    src = _ZWSP_RE.sub("", src)
+    src = strip_paste_fragment_markers(src)
+    src = src.replace("＊", "*").replace("＿", "_")
+    src = re.sub(r"\$\\(?:long)?rightarrow\$", "→", src)
+    src = src.replace(r"$\to$", "→")
+    src = re.sub(r"[ \t]*->[ \t]*", " → ", src)
+    src = re.sub(r"<br\s*/?>", "\n", src, flags=re.I)
+    src = re.sub(r"</p\s*>", "\n\n", src, flags=re.I)
+    src = re.sub(r"<p\b[^>]*>", "", src, flags=re.I)
+    src = re.sub(r"</div\s*>", "\n", src, flags=re.I)
+    src = re.sub(r"<div\b[^>]*>", "", src, flags=re.I)
+    src = _replace_simple_html_tags(src)
+    src = demote_block_underline_markup(src)
+    src = tighten_markdown_markers(src)
+    src = _ensure_markdown_exterior_spaces(src)
+    src = _SPLIT_BOLD_RE.sub(r"**\1\2**", src)
+    src = re.sub(r"^\s*\*\*\s*$", "", src, flags=re.MULTILINE)
+    src = re.sub(r"^\s*__\s*$", "", src, flags=re.MULTILINE)
+    return src.strip()
+
+
+def merge_split_inline_dollar_math(text: str) -> str:
+    """Panelde Enter ile bölünmüş `$Y\\n= 7$` → `$Y = 7$`."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src:
+        return src
+    display: list[str] = []
+    inline: list[str] = []
+
+    def stash_display(match: re.Match[str]) -> str:
+        display.append(match.group(0))
+        return f"§§D{len(display) - 1}§§"
+
+    def stash_inline(match: re.Match[str]) -> str:
+        inline.append(match.group(0))
+        return f"§§I{len(inline) - 1}§§"
+
+    src = re.sub(r"\$\$[\s\S]+?\$\$", stash_display, src)
+    src = re.sub(r"\$[^$\n]+\$", stash_inline, src)
+    prev = None
+    while prev != src:
+        prev = src
+        src = re.sub(
+            r"\$([^$\n]*)\n(\s*[^$\n]+)\$",
+            lambda m: (
+                f"${m.group(1).strip()} {m.group(2).strip()}$"
+                if m.group(1).strip()
+                else f"${m.group(2).strip()}$"
+            ),
+            src,
+        )
+    src = re.sub(
+        r"§§I(\d+)§§",
+        lambda m: inline[int(m.group(1))] if int(m.group(1)) < len(inline) else m.group(0),
+        src,
+    )
+    src = re.sub(
+        r"§§D(\d+)§§",
+        lambda m: display[int(m.group(1))] if int(m.group(1)) < len(display) else m.group(0),
+        src,
+    )
+    return src
+
+
+def _protect_math_spans(text: str, holders: list[str]) -> str:
+    """$...$ / $$...$$ / \\(...\\) / \\[...\\] bloklarını yer tutucu yap."""
+
+    def repl(match: re.Match[str]) -> str:
+        holders.append(match.group(0))
+        return f"§§M{len(holders) - 1}§§"
+
+    return re.sub(
+        r"\$\$[\s\S]+?\$\$|"
+        r"\$[^$\n]+\$|"
+        r"\\\([\s\S]+?\\\)|"
+        r"\\\[[\s\S]+?\\\]",
+        repl,
+        text,
+    )
+
+
+_ITALIC_QUOTE_TRAIL_RE = re.compile(r'\*("[^"\n]+")[ \t]+\*(?!\*)')
+_ITALIC_QUOTE_LEAD_RE = re.compile(r'(?<=[^\s*])\*[ \t]+("[^"\n]+")\*')
+_DIGER_SECENEKLER_GLUE_RE = re.compile(
+    r"(?:\*\*)?\s*(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri))\s*"
+    r"(?:\*\*)?\s*"
+    r"(?=(?:[-•*◦○–—]\s*)?(?:\*\*)?\s*[A-E]\s*\)\s*(?:\*\*)?)",
+    re.IGNORECASE,
+)
+_GLUED_OPTION_LETTER_RE = re.compile(
+    r"(?<=[.!?:;]|[a-zçğıöşüâîû”\"'])(?:\s*\*\*)?\s*(?=[A-E]\)\s)"
+)
+_GLUED_BOLD_LETTER_RE = re.compile(
+    r"(?<!\n)(?:\s*[-•*◦○–—])?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*"
+)
+_LINE_BOLD_LETTER_RE = re.compile(
+    r"^[ \t]*[-•*◦○–—]?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*",
+    re.MULTILINE,
+)
+_OPTION_TITLE_BODY_GLUE_RE = re.compile(
+    r"([A-E]\)[^\n*]{3,80}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ\"“«])"
+)
+_DIGER_SECENEKLER_LINE_RE = re.compile(
+    r"^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$",
+    re.IGNORECASE,
+)
+_SECENEK_HEADER_INLINE_RE = re.compile(
+    r"\*\*((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*",
+    re.IGNORECASE,
+)
+_SECENEK_HEADER_LOOSE_RE = re.compile(
+    r"\*\*\s+((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*",
+    re.IGNORECASE,
+)
+_ROMAN_SECTION_LINE_RE = re.compile(
+    r"^(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:"
+)
+_ROMAN_SECTION_TITLE_RE = re.compile(
+    r"^(\*{0,2})((?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]+:)(\*{0,2})\s*(.*)$",
+    re.DOTALL,
+)
+_ROMAN_SECTION_SPLIT_RE = re.compile(
+    r"(?<=[.!?])(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)",
+)
+_ROMAN_TOKEN_RE = re.compile(
+    r"\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:"
+)
+
+
+def collapse_italic_quote_marker_spaces(text: str) -> str:
+    """Google italik tırnak: ``* \"alıntı\"`` → ``*\"alıntı\"``."""
+    return re.sub(r'\*[ \t]+(")', r'*\1', text or "")
+
+
+def repair_inline_glued_bold(text: str) -> str:
+    """Kelimeye yapışık ``olarak** vurgu**`` → ``olarak **vurgu**``."""
+    src = re.sub(r"(→)\s*\*\*\s*", r"\1 **", text or "")
+    return re.sub(
+        r"(?<=[a-zçğıöşüâîû])[ \t]*\*\*[ \t]+([^*\n]+?)\*\*",
+        lambda m: f" **{m.group(1).strip()}**",
+        src,
+        flags=re.IGNORECASE,
+    )
+
+
+def split_glued_secenek_headers(text: str) -> str:
+    """Google/Telegram: yapışık **… (A seçeneği):** başlıklarını ayır ve sıkılaştır."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not re.search(r"\([A-E]\s+seçeneği\)", src, re.I):
+        return src.strip()
+    src = re.sub(r"([.!?])\*\*\s+", r"\1\n\n**", src)
+    src = _SECENEK_HEADER_LOOSE_RE.sub(r"**\1**", src)
+    src = repair_inline_glued_bold(src)
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    return tighten_markdown_markers(src).strip()
+
+
+def structure_seceneki_solution_outline(text: str) -> str:
+    """**(Ad) (A seçeneği):** kalın başlıklı Google çözüm → madde listesi."""
+    src = split_glued_secenek_headers(text)
+    headers = list(_SECENEK_HEADER_INLINE_RE.finditer(src))
+    if len(headers) < 2:
+        return src
+    out: list[str] = []
+    for i, match in enumerate(headers):
+        title = match.group(1).strip()
+        body_start = match.end()
+        body_end = headers[i + 1].start() if i + 1 < len(headers) else len(src)
+        body = src[body_start:body_end].strip()
+        out.append(f"- **{title}**")
+        if body:
+            out.append(f"  - {body}")
+        out.append("")
+    return tighten_markdown_markers("\n".join(out).strip())
+
+
+def _split_google_verbal_solution(src: str) -> str:
+    """Google sözel çözüm: italik tırnak, 'Diğer Seçenekler', A)…E) yapışması.
+
+    ``**…**`` koruması A) harflerini yutmasın diye markdown protect'ten önce.
+    """
+    src = split_glued_secenek_headers(src)
+    src = _ITALIC_QUOTE_TRAIL_RE.sub(r"*\1* ", src)
+    src = _ITALIC_QUOTE_LEAD_RE.sub(r" *\1*", src)
+    src = collapse_italic_quote_marker_spaces(src)
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = _DIGER_SECENEKLER_GLUE_RE.sub(r"\n\n**\1**\n", src)
+    src = _GLUED_BOLD_LETTER_RE.sub(r"\n**\1)** ", src)
+    src = _LINE_BOLD_LETTER_RE.sub(r"**\1)** ", src)
+    src = _GLUED_OPTION_LETTER_RE.sub("\n", src)
+    src = _OPTION_TITLE_BODY_GLUE_RE.sub(r"\1\n", src)
+    return src
+
+
+def _split_glued_roman_sections(src: str) -> str:
+    """Yapışık Romen öncül/madde satırlarını ayır; düz metin (II. Mahmut, II. Kök Türk) korunur."""
+    if not src:
+        return src
+    out = src
+    colon_romans = _ROMAN_TOKEN_RE.findall(out)
+    if len(set(colon_romans)) >= 2:
+        out = re.sub(
+            r"(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)",
+            "\n",
+            out,
+        )
+    math_romans = re.findall(
+        r"\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+(?:§§M\d+§§|\$|\\[\(\[])",
+        out,
+    )
+    if len(set(math_romans)) >= 2:
+        out = re.sub(
+            r"(?<=\$)(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)",
+            "\n",
+            out,
+        )
+        out = re.sub(
+            r"(§§M\d+§§)(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)",
+            r"\1\n",
+            out,
+        )
+    return out
+
+
+def normalize_roman_solution_sections(text: str) -> str:
+    """Roma rakamlı çözüm maddelerini satır + kalın başlığa dönüştür."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src:
+        return src
+    if not _ROMAN_TOKEN_RE.search(src):
+        return src
+
+    inner = src
+    if inner.startswith("**") and inner.endswith("**") and inner.count("**") == 2:
+        inner = inner[2:-2].strip()
+
+    inner = _split_glued_roman_sections(inner)
+    parts = [
+        part.strip()
+        for part in _ROMAN_SECTION_SPLIT_RE.split(inner)
+        if part.strip()
+    ]
+    if len(parts) < 2:
+        parts = [line.strip() for line in inner.split("\n") if line.strip()]
+    if len(parts) < 2:
+        return src
+
+    out: list[str] = []
+    matched = 0
+    for part in parts:
+        title = _ROMAN_SECTION_TITLE_RE.match(part)
+        if not title:
+            out.append(part)
+            continue
+        matched += 1
+        header = _strip_outer_bold(title.group(2).strip())
+        body = (title.group(4) or "").strip()
+        out.append(f"**{header}**")
+        if body:
+            out.append(body)
+        out.append("")
+
+    if matched < 2:
+        return src
+    return "\n".join(out).strip()
+
+
+def restore_collapsed_breaks(text: str) -> str:
+    """Google / sohbet kopyasında yutulan satır kırıklarını geri aç."""
+    src = merge_split_inline_dollar_math((text or "").replace("\r\n", "\n").replace("\r", "\n"))
+    if not src:
+        return src
+    math_holders: list[str] = []
+    src = _protect_math_spans(src, math_holders)
+    src = _split_google_verbal_solution(src)
+    md_holders: list[str] = []
+    src = _protect_markdown_spans(src, md_holders)
+    src = re.sub(
+        r"\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])",
+        r"\1. ",
+        src,
+    )
+    # Google günlük çözüm yapıştırması: 10.06.2024, Sonu:, Ayrımı:
+    src = re.sub(
+        r"(Çözüm Adımları)(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(?<=[a-zçğıöşüâîû])(?=\d{1,2}\.\d{1,2}\.\d{4})",
+        "\n",
+        src,
+    )
+    src = re.sub(
+        r"([.!?])(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})",
+        r"\1\n",
+        src,
+    )
+    date_holders: list[str] = []
+
+    def _protect_calendar_date(match: re.Match[str]) -> str:
+        date_holders.append(match.group(1))
+        return f"§§D{len(date_holders) - 1}§§"
+
+    src = re.sub(
+        r"(?<!\d)(\d{1,2}\.\d{1,2}\.\d{4})(?!\d)",
+        _protect_calendar_date,
+        src,
+    )
+    src = re.sub(
+        r"(Sonu:|Ayrımı:|Sonuç:|Başlangıcı ve Ayrımı:|Değerinin Bulunması:)(?!\n)(?=\S)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    # Cümle sonu → büyük harf / numaralı madde
+    src = re.sub(r"([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", r"\1\n", src)
+    src = re.sub(r":(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])", ":\n", src)
+    # Düz metindeki tek boşluklu kısa başlık/gövde birleşmesi.
+    src = re.sub(
+        r"(?m)^([A-ZÇĞİÖŞÜÂÎÛ][^.!?:\n]{2,79}:)[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ])",
+        r"\1\n",
+        src,
+    )
+    src = re.sub(r"([.!?])(?!\n)(?=\d+\.\s)", r"\1\n", src)
+    src = re.sub(r":(?!\n)(?=\d+\.\s)", ":\n", src)
+    # Noktalı virgül sonrası yeni cümle / matematik (korumalı veya ham)
+    src = re.sub(r";(?!\n)(?=§§M|[\$A-ZÇĞİÖŞÜÂÎÛ])", ";\n", src)
+    # Google mantık çözümü: A Seçeneği: / B Seçeneği: (yapışık paragraf)
+    src = re.sub(
+        r"(?<!\n)(?=[A-E]\s+Seçeneği\s*:)",
+        "\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(Adım Adım Çözüm:)(?!\n)(?=\S)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(şunlardır:)(?!\n)(?=Rakamlar)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(r"(§§M\d+§§\))(?!\n)(?=[A-ZÇĞİÖŞÜ])", r"\1\n", src)
+    src = re.sub(r"(§§M\d+§§)(?=§§M\d+§§)", r"\1\n", src)
+    src = re.sub(r"(§§M\d+§§)(?!\n)(?=[A-ZÇĞİÖŞÜ])", r"\1\n", src)
+    src = re.sub(r"(?<=[a-zçğıöşüâîû])(?=§§M)", "\n", src)
+    src = re.sub(
+        r"(§§M\d+§§)(?!\n)(?=(?:Rakamlar|Kendisi|Son maddede|Elde edilen|Kağıda|Şimdi |Bulduğumuz|Görüldüğü|Now:|Çarpım ))",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(?<!\n)(?=\d+\.\s+(?:Tek/|Kağıttaki))",
+        "\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(?<!\n)(?=[A-E]\)\s+(?:\d|[\'\u2019]|[A-Za-zÇĞİÖŞÜçğıöşü]))",
+        "\n",
+        src,
+    )
+    src = re.sub(r"([❌✅])(?!\n)(?=[A-E]\))", r"\1\n", src)
+    src = re.sub(
+        r"(olsaydı:)(?!\n)(?=[\$\\\(])",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(?<!\n)(?=(?:Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı|oranı))\s*:)",
+        "\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(\((?:Çift|Tek)\))(?!\n)(?=Rakamlar)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(\(Tek\))(?!\n)(?=Görüldüğü)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(\d+\.\s+[^:]+:)(\s*)(?=\\\(|\$|§§M)",
+        r"\1\n",
+        src,
+    )
+    src = re.sub(r"([a-zçğıöşüâîû]:)(?!\n)(?=\$)", r"\1\n", src, flags=re.I)
+    src = re.sub(r"(\$)(?!\n)(?=[A-ZÇĞİÖŞÜ])", r"\1\n", src)
+    # Cümle sonu + rakam (şeklindedir.2 - 3 …)
+    src = re.sub(r"([.!?])(?!\n)(?=\d+\s)", r"\1\n", src)
+    # camelCase birleşmeleri: GösterimKitabın, sayfaİlk (birim/kısaltma değil)
+    src = _COLLAPSED_WORD_BOUNDARY_RE.sub("\n", src)
+    src = _restore_collapsed_presence_table(src)
+    src = re.sub(r"(?<!\n)(\d+\.\s+Adım)", r"\n\1", src)
+    src = re.sub(
+        r"(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = _split_glued_roman_sections(src)
+    src = _restore_markdown_spans(src, md_holders)
+    src = re.sub(
+        r"§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))",
+        r"§§M\1§§\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))",
+        r"§§M\1§§\n",
+        src,
+        flags=re.I,
+    )
+    # Matematik sonrası numaralı adım: $…$3. Gün
+    src = re.sub(r"(§§M\d+§§)(?=\d+\.\s)", r"\1\n", src)
+    src = re.sub(r"([.!?])(?!\n)(?=§§M\d+§§)", r"\1\n", src)
+    src = re.sub(
+        r"(§§M\d+§§)(?!\n)(?=(?:Değerinin Bulunması|Sonuç)\s*:)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"§§D(\d+)§§",
+        lambda m: date_holders[int(m.group(1))]
+        if int(m.group(1)) < len(date_holders)
+        else m.group(0),
+        src,
+    )
+    src = _MATH_HOLDER_RE.sub(
+        lambda m: math_holders[int(m.group(1))]
+        if int(m.group(1)) < len(math_holders)
+        else m.group(0),
+        src,
+    )
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    src = repair_inline_glued_bold(src)
+    src = split_glued_secenek_headers(src)
+    return src.lstrip("\n")
+
+
+_PRESENCE_CELL_RE = re.compile(r"^(Yok|Var)\s*\(\s*[01]\s*\)$", re.IGNORECASE)
+_ALLCAPS_NAME_RE = re.compile(r"^[A-ZÇĞİÖŞÜÂÎÛ]{3,}$")
+_BIN_CODE_RE = re.compile(r"^[01]{3}$")
+
+
+def _restore_collapsed_presence_table(text: str) -> str:
+    """Google mantık tablosu: ÖğrenciH Harfi…AYNURYok (0)…000GÖZDE…"""
+    src = text
+    # HarfiE yapışıkken \b çalışmaz; önce başlıkları ayır.
+    src = re.sub(
+        r"(Öğrenci)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)",
+        r"\1\n",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r"(Harfi)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)",
+        r"\1\n",
+        src,
+    )
+    src = re.sub(r"(Harfi)(?=Oluşan\s+Benzersiz)", r"\1\n", src)
+    src = re.sub(r"(?<!\n)(?=Oluşan Benzersiz)", "\n", src)
+    src = re.sub(r"(\))(?=[A-ZÇĞİÖŞÜÂÎÛ]{3,})", r")\n", src)
+    src = re.sub(
+        r"(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=(?:Yok|Var)\s*\(\s*[01]\s*\))",
+        "\n",
+        src,
+    )
+    src = re.sub(
+        r"(\(\s*[01]\s*\))(?=(?:Yok|Var)\s*\()",
+        r"\1\n",
+        src,
+    )
+    src = re.sub(r"(\(\s*[01]\s*\))(?=[01]{3}(?:[A-ZÇĞİÖŞÜÂÎÛ]|$))", r"\1\n", src)
+    src = re.sub(r"([01]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ])", r"\1\n", src)
+    # ZEHRASeçeneklerde — BÜYÜK AD + Title Case
+    src = re.sub(
+        r"(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû]{3,})",
+        "\n",
+        src,
+    )
+    return src
+
+
+def _format_presence_table(text: str) -> str:
+    """Ayıklanmış Var/Yok satırlarını madde listesine çevir."""
+    lines = (text or "").split("\n")
+    start = None
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s == "Öğrenci" or re.search(r"\bHarfi\b", s) or "Benzersiz Kod" in s:
+            start = i
+            break
+    if start is None:
+        return text
+
+    headers: list[str] = []
+    i = start
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+        if _ALLCAPS_NAME_RE.match(s) or _PRESENCE_CELL_RE.match(s):
+            break
+        glued_header = re.match(
+            r"^(Öğrenci)\s*([A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)$",
+            s,
+            flags=re.I,
+        )
+        if glued_header:
+            headers.extend((glued_header.group(1), glued_header.group(2)))
+            i += 1
+            continue
+        headers.append(s)
+        i += 1
+    letter_headers = [
+        re.sub(r"\s*Harfi\s*$", "", h, flags=re.I).strip()
+        for h in headers
+        if h.lower() != "öğrenci" and "kod" not in h.lower()
+    ]
+    rows: list[tuple[str, list[str], str]] = []
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+        if not _ALLCAPS_NAME_RE.match(s):
+            break
+        name = s
+        i += 1
+        cells: list[str] = []
+        code = ""
+        while i < len(lines):
+            t = lines[i].strip()
+            if _PRESENCE_CELL_RE.match(t):
+                cells.append(t)
+                i += 1
+            elif _BIN_CODE_RE.match(t):
+                code = t
+                i += 1
+                break
+            else:
+                break
+        if not cells:
+            break
+        rows.append((name, cells, code))
+    if len(rows) < 2:
+        return text
+
+    block: list[str] = ["**Harf kodu:**"]
+    for name, cells, code in rows:
+        bits: list[str] = []
+        for idx, cell in enumerate(cells):
+            label = letter_headers[idx] if idx < len(letter_headers) else chr(72 + idx)
+            kind = "var" if cell.lower().startswith("var") else "yok"
+            bits.append(f"{label} {kind}")
+        tail = f" → **{code}**" if code else ""
+        block.append(f"- **{name}:** {', '.join(bits)}{tail}")
+
+    before = "\n".join(lines[:start]).rstrip()
+    after = "\n".join(lines[i:]).lstrip()
+    parts = [p for p in (before, "\n".join(block), after) if p]
+    return "\n\n".join(parts)
+
+
+_OPTION_HEADER_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?(?:\*\*)?"
+    r"([A-E])\)\s+"
+    r"([A-ZÇĞİÖŞÜÂÎÛİ][A-ZÇĞİÖŞÜÂÎÛİa-zçğıöşüâîû]*)"
+    r"\s*:?(?:\*\*)?\s*$"
+)
+# Cümle başlıklı şık: A) İnsanlar, … kalmıştır:
+_OPTION_TRIAL_HEADER_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?(?:\*\*)?"
+    r"([A-E])\)\s+"
+    r"(.+\S)\s*:?\s*(?:\*\*)?\s*$"
+)
+_OPTION_TRIAL_TITLE_RE = re.compile(r"[\s',\d]")
+_OPTION_BOLD_LETTER_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\s*\)\s*\*\*\s*(.+)$"
+)
+_OPTION_SECENEGI_INLINE_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?(?:\*\*)?"
+    r"([A-E])\s+Seçeneği"
+    r"\s*:\s*(.*)$",
+    re.IGNORECASE,
+)
+_OPTION_SECENEGI_ONLY_RE = re.compile(
+    r"^(?:[-•*◦○–—]\s+)?(?:\*\*)?"
+    r"([A-E])\s+Seçeneği"
+    r"\s*:?\s*(?:\*\*)?\s*$",
+    re.IGNORECASE,
+)
+_BULLET_LINE_STRIP_RE = re.compile(r"^(\s*)[-•*◦○–—]\s+")
+_KURAL_OZETI_RE = re.compile(r"^Kural\s+Özeti\s*:?\s*$", re.IGNORECASE)
+_FORMULA_LIST_LABEL_RE = re.compile(
+    r"^(Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı(?:nın mutlak değeri)?|oranı))\s*:\s*.+",
+    re.IGNORECASE,
+)
+_NUMBERED_SECTION_RE = re.compile(r"^\d+\.\s+.+\S")
+_NUMBERED_SECTION_TITLE_RE = re.compile(r"^(\d+\.\s+[^:]+:)(.*)$", re.DOTALL)
+_STEP_HEADER_RE = re.compile(r"^\d+\.\s+Adım:", re.IGNORECASE)
+_CONDITION_BULLET_RE = re.compile(r"^(?:Rakamlar\s|Son maddede)", re.IGNORECASE)
+_ADIM_ADIM_HEADER_RE = re.compile(
+    r"^(.*?Adım Adım Çözüm:)\s*(.*)$",
+    re.IGNORECASE,
+)
+_RESULT_TAIL_RE = re.compile(
+    r"(→\s*)(🧍\s*)?(Oturuyor|AYAKTA)\.?\s*$",
+    re.IGNORECASE,
+)
+_DESCRIPTIVE_HEADING_RE = re.compile(r"^[A-ZÇĞİÖŞÜÂÎÛ][^.!?:\n]{2,79}:$")
+
+
+def _emphasize_result_tail(line: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        arrow = match.group(1)
+        emoji = match.group(2) or ""
+        word = match.group(3)
+        # Preserve original casing for AYAKTA / Oturuyor
+        return f"{arrow}{emoji}**{word}**."
+
+    return _RESULT_TAIL_RE.sub(repl, line)
+
+
+def _strip_outer_bold(text: str) -> str:
+    src = text.strip()
+    if src.startswith("**") and src.endswith("**") and src.count("**") == 2:
+        return src[2:-2].strip()
+    return src
+
+
+def _clean_option_title(text: str) -> str:
+    """Şık başlığından sondaki ``:``, ``**`` artıklarını temizle."""
+    t = _strip_outer_bold((text or "").strip())
+    t = re.sub(r"\*+$", "", t).strip()
+    return t.rstrip(":").strip()
+
+
+def _is_option_header_line(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return False
+    # Tam biçimlenmiş ``- **A) …:**`` — tekrar outline etme (idempotent koruma).
+    if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", s) or re.match(
+        r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+\*\*\s*$", s
+    ):
+        return False
+    if re.match(r"^\*\*[A-E]\)\s+.+", s):
+        return True
+    if (
+        _OPTION_HEADER_RE.match(s)
+        or _OPTION_SECENEGI_ONLY_RE.match(s)
+        or _OPTION_SECENEGI_INLINE_RE.match(s)
+        or _OPTION_BOLD_LETTER_RE.match(s)
+    ):
+        return True
+    trial = _OPTION_TRIAL_HEADER_RE.match(s)
+    if trial and _OPTION_TRIAL_TITLE_RE.search(trial.group(2) or ""):
+        title = (trial.group(2) or "").strip()
+        if len(title) <= 80:
+            return True
+    return False
+
+
+def _parse_option_header(line: str) -> tuple[str, str, str | None]:
+    """Harf, kalın başlık (sondaki : hariç), aynı satırdaki gövde."""
+    s = line.strip()
+    bare = re.match(r"^\*\*([A-E])\)\s+(.+\S)\s*$", s)
+    if bare:
+        letter = bare.group(1).upper()
+        title = _strip_outer_bold(bare.group(2).strip()).rstrip(":").strip()
+        return letter, f"{letter}) {title}", None
+    m = _OPTION_HEADER_RE.match(s)
+    if m:
+        letter = m.group(1).upper()
+        return letter, f"{letter}) {m.group(2)}", None
+    m = _OPTION_SECENEGI_INLINE_RE.match(s)
+    if m:
+        letter = m.group(1).upper()
+        body = (m.group(2) or "").strip()
+        return letter, f"{letter} Seçeneği", body or None
+    m = _OPTION_SECENEGI_ONLY_RE.match(s)
+    if m:
+        letter = m.group(1).upper()
+        return letter, f"{letter} Seçeneği", None
+    m = _OPTION_BOLD_LETTER_RE.match(s)
+    if m:
+        letter = m.group(1).upper()
+        body = (m.group(2) or "").strip()
+        return letter, f"{letter})", body or None
+    m = _OPTION_TRIAL_HEADER_RE.match(s)
+    if m and _OPTION_TRIAL_TITLE_RE.search(m.group(2) or ""):
+        letter = m.group(1).upper()
+        title = _strip_outer_bold(m.group(2).strip()).rstrip(":").strip()
+        return letter, f"{letter}) {title}", None
+    raise ValueError(f"not an option header: {line!r}")
+
+
+def structure_solution_outline(text: str) -> str:
+    """Google çözüm yapısını geri kur: madde + A–E iç içe liste (idempotent)."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src:
+        return src
+    src = convert_atx_headings_to_bold(src)
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(r"(→)\*\*\s+", r"\1 **", src)
+    if re.search(r"\([A-E]\s+seçeneği\)", src, re.I):
+        seceneki = structure_seceneki_solution_outline(src)
+        if len(re.findall(r"(?m)^- \*\*", seceneki)) >= 2:
+            return seceneki
+    src = _format_presence_table(src)
+    lines = src.split("\n")
+    option_idxs: list[int] = []
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if _is_option_header_line(s):
+            option_idxs.append(i)
+        elif re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", s) or re.match(
+            r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+\*\*\s*$", s
+        ):
+            option_idxs.append(i)
+    if len(option_idxs) < 2:
+        preamble = _structure_preamble_lines(lines)
+        return "\n".join(preamble).strip() if preamble else src
+
+    out: list[str] = []
+    preamble = lines[: option_idxs[0]]
+    out.extend(_structure_preamble_lines(preamble))
+    if out and out[-1] != "":
+        out.append("")
+
+    for oi, start in enumerate(option_idxs):
+        end = option_idxs[oi + 1] if oi + 1 < len(option_idxs) else len(lines)
+        block = [ln for ln in lines[start:end] if ln.strip()]
+        if not block:
+            continue
+        head = block[0].strip()
+        # Tek satır ``- **A) Title:** body``
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s+\S", head):
+            out.append(head)
+            for child in block[1:]:
+                out.append(child)
+            out.append("")
+            continue
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", head) or re.match(
+            r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+\*\*\s*$", head
+        ):
+            bodies: list[str] = []
+            for child in block[1:]:
+                raw = child.strip()
+                raw = _BULLET_LINE_STRIP_RE.sub("", raw).strip()
+                raw = _strip_orphan_trailing_bold(_strip_outer_bold(raw))
+                if raw:
+                    bodies.append(_emphasize_result_tail(raw))
+            if len(bodies) == 1:
+                out.append(f"{head} {bodies[0]}")
+            elif not bodies:
+                out.append(head)
+            else:
+                out.append(head)
+                for body in bodies:
+                    out.append(f"  - {body}")
+            out.append("")
+            continue
+        try:
+            _letter, title, inline = _parse_option_header(head)
+        except ValueError:
+            continue
+        bodies = []
+        if inline:
+            body = _strip_orphan_trailing_bold(_strip_outer_bold(inline))
+            if body:
+                bodies.append(_emphasize_result_tail(body))
+        for child in block[1:]:
+            raw = child.strip()
+            raw = _BULLET_LINE_STRIP_RE.sub("", raw).strip()
+            raw = _strip_orphan_trailing_bold(_strip_outer_bold(raw))
+            if not raw:
+                continue
+            bodies.append(_emphasize_result_tail(raw))
+        title_clean = _clean_option_title(title)
+        if len(bodies) == 1:
+            out.append(f"- **{title_clean}:** {bodies[0]}")
+        elif not bodies:
+            out.append(f"- **{title_clean}:**")
+        else:
+            out.append(f"- **{title_clean}:**")
+            for body in bodies:
+                out.append(f"  - {body}")
+        out.append("")
+
+    return "\n".join(out).strip()
+
+
+def _structure_preamble_lines(lines: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        if i == 0 and "Adım Adım" in line:
+            hdr = _ADIM_ADIM_HEADER_RE.match(line)
+            if hdr:
+                out.append(f"**{hdr.group(1).strip()}**")
+                out.append("")
+                rest = hdr.group(2).strip()
+                if rest:
+                    out.append(rest)
+                i += 1
+                continue
+            stripped = collapse_nested_marks(line.strip())
+            if re.match(r"^\*{2,}", stripped):
+                out.append(stripped)
+            else:
+                out.append(f"**{_strip_outer_bold(stripped)}**")
+            out.append("")
+            i += 1
+            continue
+        if i == 0 and (
+            line.startswith("💡") or "Adim Adim" in line
+        ):
+            out.append(f"**{_strip_outer_bold(line)}**")
+            out.append("")
+            i += 1
+            continue
+        if _FORMULA_LIST_LABEL_RE.match(line):
+            while i < len(lines) and _FORMULA_LIST_LABEL_RE.match(lines[i].strip()):
+                out.append(f"- {lines[i].strip()}")
+                i += 1
+            out.append("")
+            continue
+        if (
+            _DESCRIPTIVE_HEADING_RE.match(line)
+            and len(line.split()) <= 8
+            and not _KURAL_OZETI_RE.match(line)
+            and not _DIGER_SECENEKLER_LINE_RE.match(line)
+            and not re.search(r"(?:elim|alım|şunlardır):$", line, re.IGNORECASE)
+        ):
+            body = ""
+            if i + 1 < len(lines):
+                candidate = lines[i + 1].strip()
+                if (
+                    candidate
+                    and not _DESCRIPTIVE_HEADING_RE.match(candidate)
+                    and not _is_option_header_line(candidate)
+                    and not _DIGER_SECENEKLER_LINE_RE.match(candidate)
+                    and not _FORMULA_LIST_LABEL_RE.match(candidate)
+                    and not _CONDITION_BULLET_RE.match(candidate)
+                    and not _STEP_HEADER_RE.match(candidate)
+                    and not _ROMAN_SECTION_LINE_RE.match(candidate)
+                    and not _NUMBERED_SECTION_RE.match(candidate)
+                ):
+                    body = candidate
+                    i += 1
+            suffix = f" {body}" if body else ""
+            out.append(f"- **{_strip_outer_bold(line)}**{suffix}")
+            out.append("")
+            i += 1
+            continue
+        if _CONDITION_BULLET_RE.match(line):
+            while i < len(lines) and _CONDITION_BULLET_RE.match(lines[i].strip()):
+                out.append(f"- {lines[i].strip()}")
+                i += 1
+            out.append("")
+            continue
+        if _STEP_HEADER_RE.match(line):
+            core = line.strip()
+            if core.startswith("**") and core.endswith("**"):
+                out.append(core)
+            else:
+                out.append(f"**{core}**")
+            out.append("")
+            i += 1
+            continue
+        if _ROMAN_SECTION_LINE_RE.match(line):
+            title = _ROMAN_SECTION_TITLE_RE.match(line)
+            if title and title.group(2).strip():
+                header = _strip_outer_bold(title.group(2).strip())
+                body = (title.group(4) or "").strip()
+                out.append(f"**{header}**")
+                if body:
+                    out.append(body)
+            else:
+                out.append(f"**{_strip_outer_bold(line)}**")
+            out.append("")
+            i += 1
+            continue
+        if _NUMBERED_SECTION_RE.match(line):
+            title = _NUMBERED_SECTION_TITLE_RE.match(line)
+            if title and title.group(2).strip():
+                out.append(f"**{title.group(1).strip()}**")
+                out.append("")
+                out.append(title.group(2).strip())
+            else:
+                out.append(f"**{line}**")
+            out.append("")
+            i += 1
+            continue
+        diger = _DIGER_SECENEKLER_LINE_RE.match(line)
+        if diger:
+            out.append(f"**{diger.group(1).strip()}**")
+            out.append("")
+            i += 1
+            continue
+        if _KURAL_OZETI_RE.match(line) or line.lower().startswith("kural özeti"):
+            out.append("**Kural Özeti:**")
+            i += 1
+            while i < len(lines):
+                nxt = lines[i].strip()
+                if not nxt:
+                    i += 1
+                    break
+                if (
+                    nxt.startswith("Şimdi ")
+                    or nxt.startswith("Bir öğrenci")
+                    or _is_option_header_line(nxt)
+                ):
+                    break
+                body = _BULLET_LINE_STRIP_RE.sub("", nxt).strip()
+                body = _strip_outer_bold(body)
+                if body:
+                    out.append(f"- {body}")
+                i += 1
+            out.append("")
+            continue
+        out.append(line)
+        i += 1
+    return out
+
+
+def normalize_paste_text(text: str) -> str:
+    """rich-format.js normalizePasteText."""
+    return normalize_markup(normalize_exam_arrows(normalize_latex(text)))
+
+
+def collapse_bullet_prefixes(text: str) -> str:
+    src = _BULLET_PREFIX_RE.sub("- ", text)
+    src = _EMPTY_BULLET_RE.sub("", src)
+    src = _MULTI_NL_RE.sub("\n\n", src)
+    return src.strip()
+
+
+def has_latex(text: str) -> bool:
+    return bool(_HAS_LATEX_RE.search(text or ""))
+
+
+def latex_score(text: str) -> int:
+    src = text or ""
+    dollars = len(re.findall(r"\$", src))
+    commands = len(_LATEX_SCORE_FRAC_RE.findall(src))
+    return dollars + commands * 2
+
+
+def _markdown_looks_rich(text: str) -> bool:
+    return bool(re.search(r"(\*\*|__|\{green\}|\{red\}|\{blue\})", text))
+
+
+def _html_looks_rich(html: str) -> bool:
+    return bool(
+        re.search(
+            r"<(?:strong|b|em|i|u)\b|"
+            r"font-weight\s*:\s*(?:bold|bolder|[6-9]00)|"
+            r"text-decoration(?:-line)?\s*:[^;\"']*underline",
+            html,
+            re.I,
+        )
+    )
+
+
+def _structure_score(text: str) -> int:
+    bolds = len(re.findall(r"\*\*", text))
+    unders = len(re.findall(r"__", text))
+    breaks = text.count("\n")
+    bullets = len(re.findall(r"^\s*[-•]", text, re.MULTILINE))
+    heads = len(re.findall(r"^## ", text, re.MULTILINE))
+    return bolds * 3 + unders * 3 + breaks + bullets * 2 + heads * 4
+
+
+def is_structured_solution_outline(text: str) -> bool:
+    """Daha önce biçimlenmiş çözümü ikinci normalizasyondan koru."""
+    src = text or ""
+    structured_lines = re.findall(
+        r"(?m)^\s*(?:-\s+)?\*\*(?:"
+        r"[A-E]\)\s+[^*\n]+:|"
+        r"[^*\n]+\([A-E]\s+seçeneği\)\s*:|"
+        r"(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^*\n]+:|"
+        r"[^*\n]{3,80}:"
+        r")\*\*",
+        src,
+    )
+    if len(structured_lines) >= 2:
+        return True
+    # ``- **A) …`` madde listesi (kolon/başlık biçimi ne olursa olsun)
+    outlined_options = re.findall(r"(?m)^\s*-\s+\*\*[A-E]\)", src)
+    return len(outlined_options) >= 2
+
+
+_OPTION_HEADER_ONLY_RE = re.compile(
+    r"^(\s*[-•*◦○–—]\s+)\*\*([A-E])\)\s+([^*\n]+?):\*\*\s*$"
+)
+_OPTION_NESTED_BODY_RE = re.compile(r"^(\s*[-•*◦○–—]\s+)(.+?)\s*$")
+_ORPHAN_TRAILING_BOLD_RE = re.compile(
+    r"(?m)^\s*[-•*◦○–—]\s+(?!\*\*)(.*\S)\*\*\s*$"
+)
+
+
+def _strip_orphan_trailing_bold(text: str) -> str:
+    """Satır sonundaki eşleşmeyen ``**`` kapanışını temizle."""
+    src = (text or "").strip()
+    if not src.endswith("**"):
+        return src
+    # Dengeli ``**…**`` sarımı koru; yalnız yetim kapanışı sil.
+    if src.startswith("**") and src.count("**") == 2:
+        return src
+    if src.count("**") % 2 == 1 or not src.startswith("**"):
+        return re.sub(r"\*\*\s*$", "", src).strip()
+    return src
+
+
+def solution_has_storage_defects(text: str) -> bool:
+    """Kayıtlı çözüm hâlâ yapışık/bozuk markdown içeriyor mu?"""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip():
+        return False
+    # Gemini ATX başlıkları — panel kanonik **Başlık** biçimine çevrilmeli
+    if re.search(r"(?m)^[ \t]*#{1,3}[ \t]+\S", src):
+        return True
+    if re.search(r"\*\*metin\*\*\s*$", src, re.IGNORECASE):
+        return True
+    if re.search(r"(?m)^\s*-\s*\*\*\s*$", src):
+        return True
+    # ``- body.**`` / ``  - body.**`` — kalın açılışı olmayan yetim kapanış
+    if _ORPHAN_TRAILING_BOLD_RE.search(src):
+        return True
+    # ``- **A) Title:**`` + tek çocuk gövde (``body.**`` dahil) → tek satır olmalı
+    lines = src.split("\n")
+    for i, line in enumerate(lines[:-1]):
+        if not _OPTION_HEADER_ONLY_RE.match(line):
+            continue
+        nxt = lines[i + 1]
+        body_m = _OPTION_NESTED_BODY_RE.match(nxt)
+        if not body_m:
+            continue
+        body = body_m.group(2).strip()
+        if re.match(r"^(?:\*\*)?[A-E]\)", body):
+            continue
+        extra_child = False
+        if i + 2 < len(lines):
+            mid = lines[i + 2]
+            mid_s = mid.strip()
+            if (
+                mid_s
+                and _OPTION_NESTED_BODY_RE.match(mid)
+                and not _OPTION_HEADER_ONLY_RE.match(mid)
+                and not re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)", mid_s)
+            ):
+                extra_child = True
+        if extra_child:
+            continue
+        return True
+    if re.search(r"[.!?]-\s*\*\*", src):
+        return True
+    if re.search(r"[^\n]:-\s*\*\*", src):
+        return True
+    if re.search(r"Diğer Seçenekler[^\n]+-\s*\*\*", src, re.IGNORECASE):
+        return True
+    if re.search(r"(?m)^\s*-\s+\*\*[A-E]\)[^:\n]+$", src):
+        return True
+    if re.search(r"\?-\s*\*\*", src, re.IGNORECASE):
+        return True
+    if re.search(r"[a-zçğıöşüâîû]\.- \*\*", src, re.IGNORECASE):
+        return True
+    if re.search(r"-\*\*\s+[A-E]\)", src, re.IGNORECASE):
+        return True
+    if re.search(r"(?m)^\s*-\s+\*\*\s+[A-E]\)", src):
+        return True
+    # Diğer Seçenekler bölümünde A–E şık satırları eksik veya yapışık
+    if re.search(r"Diğer Seçenekler", src, re.IGNORECASE):
+        option_hits = len(re.findall(r"(?m)^\s*-\s+\*\*[A-E]\)", src))
+        glued_options = len(re.findall(r"[A-E]\)\s+[A-ZÇĞİÖŞÜ]", src))
+        if glued_options >= 2 and option_hits < 2:
+            return True
+    return False
+
+
+def _collapse_option_header_body_lines(text: str) -> str:
+    """``- **A) Title:**\n  - body.**`` → ``- **A) Title:** body``."""
+    lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        header_m = _OPTION_HEADER_ONLY_RE.match(lines[i])
+        if header_m and i + 1 < len(lines):
+            body_m = _OPTION_NESTED_BODY_RE.match(lines[i + 1])
+            if body_m:
+                raw_body = body_m.group(2).strip()
+                if not re.match(r"^(?:\*\*)?[A-E]\)", raw_body) and not re.match(
+                    r"^\*\*[^*\n]+\*\*", raw_body
+                ):
+                    has_extra_child = False
+                    if i + 2 < len(lines):
+                        mid = lines[i + 2]
+                        mid_s = mid.strip()
+                        if (
+                            mid_s
+                            and _OPTION_NESTED_BODY_RE.match(mid)
+                            and not _OPTION_HEADER_ONLY_RE.match(mid)
+                            and not re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)", mid_s)
+                        ):
+                            has_extra_child = True
+                    if not has_extra_child:
+                        body = _strip_orphan_trailing_bold(raw_body)
+                        body = re.sub(r"^\*\*\s*", "", body).strip()
+                        letter = header_m.group(2)
+                        title = header_m.group(3).strip().rstrip(":").strip()
+                        if body:
+                            out.append(f"- **{letter}) {title}:** {body}")
+                        else:
+                            out.append(f"- **{letter}) {title}:**")
+                        i += 2
+                        continue
+        orphan = re.match(
+            r"^(\s*[-•*◦○–—]\s+)(?!\*\*[A-E]\))(.+?)\*\*\s*$",
+            lines[i],
+        )
+        if orphan:
+            cleaned = _strip_orphan_trailing_bold(orphan.group(2) + "**")
+            out.append(f"{orphan.group(1)}{cleaned}")
+            i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
+def _repair_broken_option_bold_blocks(text: str) -> str:
+    """``**A) Başlık\\nGövde\\n\\n**`` gibi yarım kalın şık bloklarını madde listesine çevir."""
+    lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        line = raw.strip()
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s+\S", line):
+            # Zaten tek satır ``- **A) Title:** body``
+            out.append(raw)
+            i += 1
+            continue
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", line):
+            out.append(raw)
+            i += 1
+            continue
+        m = re.match(r"^(?:-\s+)?\*\*([A-E])\)\s+(.+)$", line)
+        # Dengeli `**A) Başlık**` — sonraki maddeyle birleştirme
+        if m and line.startswith("**") and line.endswith("**") and line.count("**") == 2:
+            out.append(raw)
+            i += 1
+            continue
+        if m and i + 1 < len(lines):
+            nxt = lines[i + 1].strip()
+            child = re.match(r"^[-•*◦○–—]\s+(.+)$", nxt)
+            if child and (
+                re.match(r"^\*\*[A-E]\)", child.group(1).strip())
+                or re.match(r"^\*\*[^*\n]+\*\*", child.group(1).strip())
+            ):
+                child = None
+            if (
+                nxt
+                and nxt != "**"
+                and not re.match(r"^\*\*[A-E]\)", nxt)
+                and (child or not re.match(r"^[-•*◦○–—]", nxt))
+            ):
+                letter = m.group(1)
+                title = _clean_option_title(m.group(2))
+                body = child.group(1).strip() if child else nxt
+                body = _strip_orphan_trailing_bold(body)
+                out.append(f"- **{letter}) {title}:** {body}" if body else f"- **{letter}) {title}:**")
+                out.append("")
+                i += 2
+                if i < len(lines) and lines[i].strip() == "**":
+                    i += 1
+                continue
+        if line == "**":
+            i += 1
+            continue
+        out.append(raw)
+        i += 1
+    return "\n".join(out)
+
+
+def repair_solution_storage_defects(text: str) -> str:
+    """Yapışık ipucu/şık satırları ve bozuk madde işaretlerini onar."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src:
+        return src
+
+    src = convert_atx_headings_to_bold(src)
+    src = re.sub(r"\*\*metin\*\*\s*$", "", src, flags=re.IGNORECASE)
+    src = re.sub(r"(?m)^\s*-\s*\*\*\s*$", "", src)
+    src = re.sub(r"(?m)^\s*\*\*\s*$", "", src)
+    src = re.sub(r"(\S)(📌)", r"\1\n\n\2", src)
+    src = re.sub(r"([^\n]):-\s*\*\*", r"\1:\n\n**", src)
+    src = re.sub(
+        r"([a-zçğıöşüâîû])\.-\s*\*\*\s*([A-E])\)",
+        r"\1.\n\n- **\2)",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(📌\s*)?(Diğer Seçenekler[^\n-]+)-\s*\*\*\s*([A-E])\)\s+([^\n]+)",
+        lambda m: (
+            f"{m.group(1) or ''}**{m.group(2).strip()}**\n\n"
+            f"- **{m.group(3)}) {m.group(4).strip()}**"
+        ),
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(📌\s*)(Diğer Seçenekler[^\n-]+)(?=\s*-\s*\*\*)",
+        r"\1**\2**",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(r"\?-\s*\*\*\s*([A-E])\)", r"?\n\n- **\1)", src, flags=re.IGNORECASE)
+    src = re.sub(r"-\*\*\s+([A-E])\)", r"- **\1)", src, flags=re.IGNORECASE)
+    src = re.sub(r"(?m)^(\s*-\s*)\*\*\s+([A-E])\)", r"\1**\2)", src)
+    src = re.sub(r"([.!?])-\s*\*\*\"", r'\1\n\n**"', src)
+    src = re.sub(r"\.-\s*\*\*(?=\s*(?:\n|$))", ".\n\n", src)
+    src = re.sub(
+        r"\*\*\s*(Diğer Seçenekler(?:in)?[^\n*]+?)\s*\*\*",
+        r"**\1**",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(📌\s*)(Diğer Seçenekler[^\n?]+\?)",
+        r"\1**\2**",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-?\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = _repair_broken_option_bold_blocks(src)
+    src = _collapse_option_header_body_lines(src)
+    if re.search(r"Diğer Seçenekler", src, re.IGNORECASE) or len(
+        re.findall(r"(?m)^(?:-\s+)?\*\*[A-E]\)", src)
+    ) >= 2:
+        src = re.sub(
+            r"(?m)^(?:-\s*)?\*\*\s*([A-E])\s*\)\s*\*\*\s+(.+)$",
+            r"- **\1):** \2",
+            src,
+        )
+        src = re.sub(r"(?m)^\*\*([A-E])\)\s+", r"- **\1) ", src)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
+def _touchup_storage_solution(text: str) -> str:
+    """Kayıtlı çözüm: outline atlama; ok/LaTeX/entity temizliği (idempotent).
+
+    ``repair_solution_storage_defects`` burada çağrılmaz — kusursuz metinde
+    bilinçli biçim değişikliklerini (ör. liste işaretini kaldırma) geri yazardı.
+    Kusurlu metin ``normalize_pasted_solution`` içinde ayrıca onarılır.
+    """
+    src = _decode_entities(text or "")
+    src = convert_atx_headings_to_bold(src)
+    src = normalize_exam_arrows(normalize_latex(repair_vert_groups(src)))
+    return src
+
+
+def looks_storage_normalized_solution(text: str) -> bool:
+    """DB'de kayıtlı, pipeline'dan geçmiş çözüm — yapıştırma adımını atla."""
+    src = (text or "").strip()
+    if not src:
+        return False
+    if solution_has_storage_defects(src):
+        return False
+    if is_structured_solution_outline(src):
+        return True
+    if re.search(r"(?m)^\*\*💡?\s*Adım Adım Çözüm\*\*", src, re.I):
+        return True
+    if re.search(r"(?m)^\*\*\d+\.\s+", src):
+        return True
+    return False
+
+
+def _align_list_to_plain(from_html: str, from_plain: str) -> str:
+    html = collapse_bullet_prefixes(from_html)
+    plain_list = len(re.findall(r"^\s*[-•*]\s+", from_plain, re.MULTILINE))
+    html_list = len(re.findall(r"^\s*[-•*]\s+", html, re.MULTILINE))
+    if html_list > 0 and plain_list == 0:
+        return _BULLET_LINE_RE.sub("", html).strip()
+    return html
+
+
+def choose_paste_text(plain: str, html: str = "") -> str:
+    """rich-format.js choosePasteText — düz/HTML yapıştırma seçimi."""
+    from_plain = collapse_bullet_prefixes(
+        collapse_nested_marks(normalize_paste_text(plain or ""))
+    )
+    from_html = html_clipboard_to_text(html) if (html or "").strip() else ""
+    if from_html and from_plain:
+        from_html = _align_list_to_plain(from_html, from_plain)
+    if not from_html:
+        return from_plain
+    if not from_plain:
+        return collapse_bullet_prefixes(from_html)
+    html_rich = _html_looks_rich(html)
+    plain_md = _markdown_looks_rich(from_plain)
+    html_md = _markdown_looks_rich(from_html)
+    if html_rich and html_md and not plain_md:
+        return from_html
+    if plain_md and not html_md:
+        return from_plain
+    if html_rich and html_md:
+        return from_html
+    plain_has = has_latex(from_plain)
+    html_has = has_latex(from_html)
+    if plain_has and (not html_has or latex_score(from_plain) >= latex_score(from_html)):
+        return from_plain
+    if _structure_score(from_html) >= _structure_score(from_plain):
+        return from_html
+    return from_html or from_plain

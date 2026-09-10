@@ -7,14 +7,20 @@ import '../models/user_model.dart';
 import '../services/ad_manager.dart';
 import '../services/auth_service.dart';
 import '../services/content_bank_service.dart';
-import '../services/database_service.dart';import '../services/kpss_preference_service.dart';
+import '../services/database_service.dart';
+import '../services/kpss_preference_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
+import '../services/tg_exam_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_shell_top_bar.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/shell_ad_banner_slot.dart';
+import '../widgets/tg_exam_promo_bubble.dart';
+import '../widgets/wrong_notebook_promo_bubble.dart';
 import 'analytics_hub_screen.dart';
 import 'home_screen.dart';
+import 'premium/focus_mode_screen.dart';
 import 'premium/premium_paywall_screen.dart';
 import 'premium/statistics_screen.dart';
 import 'profile_screen.dart';
@@ -32,24 +38,30 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
-  final ValueNotifier<KpssType> _selectedType =
-      ValueNotifier(KpssType.lisans);
-  final ValueNotifier<bool> _isPremium =
-      ValueNotifier(PremiumService.instance.isPremium);
+  final ValueNotifier<KpssType> _selectedType = ValueNotifier(KpssType.lisans);
+  late final ValueNotifier<bool> _isPremium;
 
   @override
   void initState() {
     super.initState();
     _selectedType.value = KpssPreferenceService.instance.kpssType;
     KpssPreferenceService.instance.addListener(_onKpssPrefChanged);
-    AdManager.instance.setPremium(_isPremium.value);
     DatabaseService.instance.setCurrentUser(widget.user);
+    _isPremium = ValueNotifier(PremiumService.instance.isPremium);
+    AdManager.instance.setPremium(_isPremium.value);
     PlayBillingService.instance.premiumNotifier.addListener(_onPremiumChanged);
     AuthService.instance.addListener(_onPremiumChanged);
     SchedulerBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(milliseconds: 400), () {
         unawaited(ContentBankService.instance.initialize());
       });
+      // TG listesi / baloncuk — Deneme sekmesine gelmeden önce hazır olsun.
+      unawaited(
+        TgExamService.instance.initialize(
+          kpssType: KpssPreferenceService.instance.kpssType,
+        ),
+      );
+      AdManager.instance.ensureShellBanner();
     });
   }
 
@@ -80,6 +92,9 @@ class _MainShellState extends State<MainShell> {
     if (_isPremium.value == next) return;
     AdManager.instance.setPremium(next);
     _isPremium.value = next;
+    if (!next) {
+      AdManager.instance.ensureShellBanner();
+    }
   }
 
   Future<void> _openPaywall() async {
@@ -103,8 +118,9 @@ class _MainShellState extends State<MainShell> {
   }
 
   Future<void> _openMore() async {
-    await AdManager.instance.onPageTransition();
     if (!mounted) return;
+    // Stüdyo hub — geçiş reklamı yok (hemen açılsın).
+    AdManager.instance.skipNextPageTransition();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => HomeScreen(user: widget.user),
@@ -113,58 +129,105 @@ class _MainShellState extends State<MainShell> {
     _onPremiumChanged();
   }
 
+  /// Stüdyo «Odak · Pomodoro» ile aynı hedef — herkese açık.
+  Future<void> _openPomodoro() async {
+    if (!mounted) return;
+    AdManager.instance.skipNextPageTransition();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const FocusModeScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
-      body: Column(
+      body: Stack(
         children: [
-          AppShellTopBar(
-            topPad: topPad,
-            isPremium: _isPremium,
-            onPremiumTap: _openPaywall,
-            onMoreTap: _openMore,
-          ),
-          Expanded(
-            child: ValueListenableBuilder<KpssType>(
-              valueListenable: _selectedType,
-              builder: (context, type, _) {
-                switch (_index) {
-                  case 1:
-                    return StudyHubScreen(
-                      kpssType: type,
-                      embedded: true,
-                      pane: StudyHubPane.subjects,
-                      shellTopBarVisible: true,
+          Column(
+            children: [
+              AppShellTopBar(
+                topPad: topPad,
+                isPremium: _isPremium,
+                onPremiumTap: _openPaywall,
+                onMoreTap: _openMore,
+                selectedTabIndex: _index,
+                onPomodoroTap: _openPomodoro,
+              ),
+              Expanded(
+                child: ValueListenableBuilder<KpssType>(
+                  valueListenable: _selectedType,
+                  builder: (context, type, _) {
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _isPremium,
+                      builder: (context, premium, _) {
+                        return IndexedStack(
+                          index: _index,
+                          sizing: StackFit.expand,
+                          children: [
+                            StudyHubScreen(
+                              key: const PageStorageKey<String>('shell_home'),
+                              kpssType: type,
+                              embedded: true,
+                              pane: StudyHubPane.home,
+                              selectedType: _selectedType,
+                              onKpssTypeChanged: _onExamTypeChanged,
+                              isPremium: _isPremium,
+                              onPremiumTap: _openPaywall,
+                              onMoreTap: _openMore,
+                              shellTopBarVisible: true,
+                            ),
+                            StudyHubScreen(
+                              key: const PageStorageKey<String>(
+                                  'shell_subjects'),
+                              kpssType: type,
+                              embedded: true,
+                              pane: StudyHubPane.subjects,
+                              shellTopBarVisible: true,
+                            ),
+                            AnalyticsHubScreen(
+                              key: const PageStorageKey<String>(
+                                  'shell_analytics'),
+                              kpssType: type,
+                              embedded: true,
+                              isPremium: premium,
+                            ),
+                            const StatisticsScreen(
+                              key: PageStorageKey<String>('shell_stats'),
+                              embedded: true,
+                            ),
+                          ],
+                        );
+                      },
                     );
-                  case 2:
-                    return AnalyticsHubScreen(kpssType: type, embedded: true);
-                  case 3:
-                    return const StatisticsScreen(embedded: true);
-                  case 0:
-                  default:
-                    return StudyHubScreen(
-                      kpssType: type,
-                      embedded: true,
-                      pane: StudyHubPane.home,
-                      selectedType: _selectedType,
-                      onKpssTypeChanged: _onExamTypeChanged,
-                      isPremium: _isPremium,
-                      onPremiumTap: _openPaywall,
-                      onMoreTap: _openMore,
-                      shellTopBarVisible: true,
-                    );
-                }
-              },
-            ),
+                  },
+                ),
+              ),
+              const ShellAdBannerSlot(),
+            ],
           ),
+          // Balonlar içerik katmanının üstünde — dokunma ve görünürlük için.
+          WrongNotebookPromoBubble(homeVisible: _index == 0),
+          TgExamPromoBubble(subjectsTabVisible: _index == 1),
         ],
       ),
       bottomNavigationBar: _PremiumBottomBar(
         index: _index,
-        onChanged: (i) => setState(() => _index = i),
+        onChanged: (i) {
+          setState(() => _index = i);
+          AdManager.instance.ensureShellBanner();
+          if (i == 1 || i == 3) {
+            unawaited(
+              TgExamService.instance.initialize(
+                kpssType: KpssPreferenceService.instance.kpssType,
+              ),
+            );
+          }
+        },
         onProfileTap: _openProfile,
       ),
     );
@@ -246,9 +309,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = AppTheme.onPage(context);
-    final color = selected
-        ? on
-        : AppTheme.mutedOnPage(context);
+    final color = selected ? on : AppTheme.mutedOnPage(context);
 
     return Material(
       color: Colors.transparent,

@@ -8,10 +8,39 @@ from content.ocr import (
     _needs_gemini_fallback,
     _ocr_result_score,
 )
-from content.ocr_gemini import _extract_json, gemini_configured
+from content.ocr_gemini import _extract_json, gemini_configured, repair_json_latex_escapes
 
 
 class GeminiJsonExtractTests(SimpleTestCase):
+    def test_json_frac_single_backslash_repaired(self):
+        # Gemini tek \ döndürürse JSON \f → form feed yutar
+        raw = '{"soru_metni": "$\\frac{(0,4)^2 + (0,1)^3}{(0,5)^2 - 0,02}$ işleminin sonucu kaçtır?"}'
+        data = _extract_json(raw)
+        self.assertIn("\\frac", data["soru_metni"])
+        self.assertNotIn("$rac{", data["soru_metni"])
+        self.assertNotIn("\x0c", data["soru_metni"])
+
+    def test_json_sqrt_and_beta_repaired(self):
+        raw = r'{"stem": "$\sqrt{x} + \beta$"}'
+        data = _extract_json(raw)
+        self.assertIn("\\sqrt", data["stem"])
+        self.assertIn("\\beta", data["stem"])
+
+    def test_repair_visible_rac_corruption(self):
+        broken = "$rac{(0,4)^2}{(0,5)^2}$"
+        fixed = repair_json_latex_escapes(broken)
+        self.assertIn("\\frac", fixed)
+        self.assertNotIn("$rac{", fixed)
+
+    def test_json_begin_array_not_eaten_as_backspace(self):
+        # Gemini tek \begin / \end yazarsa JSON \b kaçışı bozar
+        raw = '{"soru_metni": "$$\\begin{array}{r}AB8\\\\-16C\\\\ \\hline CA3\\end{array}$$"}'
+        data = _extract_json(raw)
+        self.assertIn("soru_metni", data)
+        self.assertIn("\\begin{array}", data["soru_metni"])
+        self.assertIn("\\end{array}", data["soru_metni"])
+        self.assertNotIn("\x08", data["soru_metni"])
+
     def test_fence_json(self):
         raw = '```json\n{"stem": "test", "options": {"A": "1"}}\n```'
         data = _extract_json(raw)
@@ -43,6 +72,23 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertEqual(opts["A"], "1")
         self.assertEqual(opts["C"], "15")
         self.assertEqual(opts["E"], "21")
+
+    def test_options_visual_payload_keys(self):
+        from content.ocr_gemini import _payload_option_boxes, _payload_options_visual
+
+        self.assertTrue(_payload_options_visual({"optionsVisual": True}))
+        self.assertTrue(_payload_options_visual({"gorisel_siklar": "true"}))
+        self.assertFalse(_payload_options_visual({"gorisel_siklar": False}))
+        boxes = _payload_option_boxes(
+            {
+                "optionBoxes": {
+                    "A": [0.1, 0.5, 0.15, 0.3],
+                    "E": [0.8, 0.5, 0.15, 0.3],
+                }
+            }
+        )
+        self.assertEqual(set(boxes.keys()), {"A", "E"})
+        self.assertAlmostEqual(boxes["A"][0], 0.1)
 
     def test_strip_osym_watermark(self):
         from content.ocr import _strip_watermarks

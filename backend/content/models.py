@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import IntegrityError, models, transaction
+from django.db.models import F
 
 
 class Subject(models.Model):
@@ -9,6 +11,11 @@ class Subject(models.Model):
     name = models.CharField(max_length=120)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    requires_premium = models.BooleanField(
+        default=False,
+        verbose_name="Premium",
+        help_text="Açıkken bu ders premium olarak işaretlenir.",
+    )
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -34,6 +41,11 @@ class Topic(models.Model):
     )
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    requires_premium = models.BooleanField(
+        default=False,
+        verbose_name="Premium",
+        help_text="Açıkken bu konu premium olarak işaretlenir.",
+    )
     questions_per_test = models.PositiveIntegerField(default=20)
     time_limit_minutes = models.PositiveIntegerField(
         default=0, help_text="0 = süresiz"
@@ -122,6 +134,15 @@ class Question(models.Model):
     ]
     DIFFICULTY_MIN_ATTEMPTS = 1000
 
+    SUBMISSION_SOURCE_PANEL = ""
+    SUBMISSION_SOURCE_TELEGRAM = "telegram"
+    SUBMISSION_SOURCE_PANEL_OCR = "panel_ocr"
+    SUBMISSION_SOURCE_CHOICES = [
+        (SUBMISSION_SOURCE_PANEL, "Panel"),
+        (SUBMISSION_SOURCE_TELEGRAM, "Telegram"),
+        (SUBMISSION_SOURCE_PANEL_OCR, "Panel OCR"),
+    ]
+
     public_id = models.CharField(
         max_length=64,
         unique=True,
@@ -147,6 +168,19 @@ class Question(models.Model):
     image = models.ImageField(
         upload_to="questions/%Y/%m/", blank=True, null=True
     )
+    STEM_IMAGE_ABOVE = "above"
+    STEM_IMAGE_BELOW = "below"
+    STEM_IMAGE_POSITION_CHOICES = [
+        (STEM_IMAGE_ABOVE, "Üst"),
+        (STEM_IMAGE_BELOW, "Alt"),
+    ]
+    stem_image_position = models.CharField(
+        max_length=8,
+        choices=STEM_IMAGE_POSITION_CHOICES,
+        default=STEM_IMAGE_BELOW,
+        verbose_name="Soru görseli konumu",
+        help_text="Uygulamada görsel metnin üstünde mi altında mı gösterilsin.",
+    )
     figure_svg = models.TextField(
         blank=True,
         verbose_name="Şekil kodu (SVG)",
@@ -162,19 +196,78 @@ class Question(models.Model):
     map_markers = models.JSONField(
         default=list,
         blank=True,
-        help_text="Yüzde koordinatlı harita işaretleri.",
+        help_text="Harita işaretleri (elips/daire) ve boyalı iller.",
     )
     option_a = models.CharField(max_length=500)
     option_b = models.CharField(max_length=500)
     option_c = models.CharField(max_length=500)
     option_d = models.CharField(max_length=500)
     option_e = models.CharField(max_length=500)
+    options_are_images = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Görsel şıklar",
+        help_text="Şıklar metin yerine kırpılmış görsellerle gösterilir.",
+    )
+    option_a_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık A görseli",
+    )
+    option_b_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık B görseli",
+    )
+    option_c_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık C görseli",
+    )
+    option_d_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık D görseli",
+    )
+    option_e_image = models.ImageField(
+        upload_to="question_options/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Şık E görseli",
+    )
+    OPTION_TABLE_NONE = "none"
+    OPTION_TABLE_DUAL = "dual"
+    OPTION_TABLE_TRIPLE = "triple"
+    OPTION_TABLE_CHOICES = [
+        (OPTION_TABLE_NONE, "Yok"),
+        (OPTION_TABLE_DUAL, "İkili"),
+        (OPTION_TABLE_TRIPLE, "Üçlü"),
+    ]
+    CORRECT_OPTION_CHOICES = [("", "—")] + [(c, c) for c in "ABCDE"]
+    option_table = models.CharField(
+        max_length=8,
+        choices=OPTION_TABLE_CHOICES,
+        default=OPTION_TABLE_NONE,
+        verbose_name="Tablo sorusu",
+        help_text="Seçenekleri sütunlu göster (ikili/üçlü).",
+    )
     correct_option = models.CharField(
         max_length=1,
-        choices=[(c, c) for c in "ABCDE"],
-        default="A",
+        choices=CORRECT_OPTION_CHOICES,
+        default="",
+        blank=True,
     )
     solution = models.TextField(blank=True, verbose_name="Çözüm")
+    solution_image = models.ImageField(
+        upload_to="question_solutions/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Çözüm görseli",
+    )
     is_published = models.BooleanField(default=False)
     difficulty = models.CharField(
         max_length=12,
@@ -184,6 +277,7 @@ class Question(models.Model):
         verbose_name="Zorluk",
     )
     attempt_count = models.PositiveIntegerField(default=0, editable=False)
+    view_count = models.PositiveIntegerField(default=0)
     correct_count = models.PositiveIntegerField(default=0, editable=False)
     wrong_count = models.PositiveIntegerField(default=0, editable=False)
     blank_count = models.PositiveIntegerField(default=0, editable=False)
@@ -196,6 +290,31 @@ class Question(models.Model):
         default=False,
         verbose_name="ÖSYM sordu",
         help_text="İşaretlenirse uygulamada sorunun sağ üstünde ÖSYM rozeti görünür.",
+    )
+    osym_cikmis_adi = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        verbose_name="Çıkmış soru adı",
+        help_text="Panel içi etiket — uygulama testlerinde gösterilmez; yalnızca ÖSYM rozeti görünür.",
+    )
+    tag_kronoloji = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Özel test: Kronoloji",
+        help_text="Tarih Kronoloji özel test havuzuna dahil edilir.",
+    )
+    tag_padisah_antlasma = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Özel test: Padişahlar ve Antlaşmalar",
+        help_text="Padişahlar ve Antlaşmalar özel test havuzuna dahil edilir.",
+    )
+    tag_celdirici = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Özel test: Çeldiricisi güçlü",
+        help_text="Çeldiricisi güçlü / tuzak soru özel test havuzuna dahil edilir.",
     )
     content_hash = models.CharField(
         max_length=64,
@@ -240,6 +359,46 @@ class Question(models.Model):
     )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Son güncelleme")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Eklenme")
+    submission_source = models.CharField(
+        max_length=16,
+        choices=SUBMISSION_SOURCE_CHOICES,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="Kaynak",
+    )
+    telegram_chat_id = models.BigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Telegram sohbet",
+    )
+    telegram_message_id = models.BigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Telegram mesaj",
+    )
+    telegram_file_unique_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="Telegram dosya kimliği",
+        help_text="Aynı fotoğrafın ilet/re-send tekrarını engeller.",
+    )
+    last_used_in_tg_exam_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Son TG deneme kullanımı",
+        help_text="Son TG denemesinde yayınlandığı zaman.",
+    )
+    tg_exam_cooldown_counter = models.PositiveSmallIntegerField(
+        default=0,
+        db_index=True,
+        verbose_name="TG deneme cooldown",
+        help_text="Son kullanımdan bu yana yayınlanan TG deneme sayısı. "
+        "4 ve üzeri → kolay/orta soru tekrar seçilebilir.",
+    )
 
     class Meta:
         ordering = ["-updated_at"]
@@ -253,11 +412,51 @@ class Question(models.Model):
                 name="question_scenario_order_idx",
             ),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["telegram_file_unique_id"],
+                condition=models.Q(telegram_file_unique_id__gt=""),
+                name="question_telegram_file_uid_uniq",
+            ),
+        ]
         verbose_name = "Soru"
         verbose_name_plural = "Sorular"
 
     def __str__(self) -> str:
         return f"{self.public_id} — {self.stem[:48]}"
+
+    def delete(self, using=None, keep_parents=False):
+        """Kayıt silinince tarama / stem / şık görselleri diskte orphan kalmasın."""
+        image_names: list[tuple[str, object]] = []
+        for field_name in (
+            "image",
+            "option_a_image",
+            "option_b_image",
+            "option_c_image",
+            "option_d_image",
+            "option_e_image",
+        ):
+            field = getattr(self, field_name, None)
+            if field:
+                image_names.append((field.name, field.storage))
+        result = super().delete(using=using, keep_parents=keep_parents)
+        for image_name, storage in image_names:
+            if image_name and storage is not None:
+                try:
+                    storage.delete(image_name)
+                except Exception:  # noqa: BLE001
+                    pass
+        return result
+
+    def option_image_field(self, letter: str):
+        key = letter.strip().upper()
+        return {
+            "A": self.option_a_image,
+            "B": self.option_b_image,
+            "C": self.option_c_image,
+            "D": self.option_d_image,
+            "E": self.option_e_image,
+        }.get(key)
 
     def options_map(self) -> dict[str, str]:
         return {
@@ -270,6 +469,29 @@ class Question(models.Model):
 
     def save(self, *args, **kwargs):
         from .question_fingerprint import apply_fingerprints
+        from .special_question_tags import apply_auto_tags
+
+        if not (getattr(self, "stem_image_position", None) or "").strip():
+            self.stem_image_position = self.STEM_IMAGE_BELOW
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "stem_image_position" not in update_fields:
+                kwargs["update_fields"] = list(update_fields) + ["stem_image_position"]
+
+        update_fields = kwargs.get("update_fields")
+        content_fields = (
+            "stem",
+            "option_a",
+            "option_b",
+            "option_c",
+            "option_d",
+            "option_e",
+        )
+        if update_fields is None or any(f in update_fields for f in content_fields):
+            raised = apply_auto_tags(self, only_raise=True)
+            if update_fields is not None and raised:
+                kwargs["update_fields"] = list(
+                    set(update_fields) | raised | {"updated_at"}
+                )
 
         apply_fingerprints(self)
         super().save(*args, **kwargs)
@@ -293,6 +515,23 @@ class Question(models.Model):
     def correct_percentage(self) -> float | None:
         rate = self.correct_rate
         return round(rate * 100, 1) if rate is not None else None
+
+    @property
+    def option_percentages(self) -> dict[str, float] | None:
+        option_counts = {
+            "A": self.option_a_count,
+            "B": self.option_b_count,
+            "C": self.option_c_count,
+            "D": self.option_d_count,
+            "E": self.option_e_count,
+        }
+        solved_count = sum(option_counts.values())
+        if solved_count < 1:
+            return None
+        return {
+            option: round(count / solved_count * 100, 1)
+            for option, count in option_counts.items()
+        }
 
     @property
     def difficulty_visible(self) -> bool:
@@ -418,6 +657,38 @@ class QuestionAttempt(models.Model):
         return True
 
 
+class QuestionView(models.Model):
+    """Benzersiz kullanıcı başına soru görüntüleme (quiz'de açılma)."""
+
+    user = models.ForeignKey(
+        "AppUser", on_delete=models.CASCADE, related_name="question_views"
+    )
+    question = models.ForeignKey(
+        Question, on_delete=models.CASCADE, related_name="views"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("user", "question")]
+        verbose_name = "Soru görüntüleme"
+        verbose_name_plural = "Soru görüntülemeleri"
+
+    @classmethod
+    def record_view(cls, *, question: Question, user) -> int:
+        """İlk görüntülemede sayacı artır; tekrarlarda mevcut view_count döner."""
+        with transaction.atomic():
+            locked_question = Question.objects.select_for_update().get(pk=question.pk)
+            try:
+                cls.objects.create(user=user, question=locked_question)
+            except IntegrityError:
+                return locked_question.view_count
+            Question.objects.filter(pk=locked_question.pk).update(
+                view_count=F("view_count") + 1
+            )
+            locked_question.refresh_from_db(fields=["view_count"])
+            return locked_question.view_count
+
+
 class TopicTest(models.Model):
     """Konuya bağlı yayınlanmış test paketi."""
 
@@ -432,6 +703,11 @@ class TopicTest(models.Model):
         Question, related_name="tests", blank=True
     )
     is_published = models.BooleanField(default=False)
+    requires_premium = models.BooleanField(
+        default=False,
+        verbose_name="Premium",
+        help_text="Açıkken bu test premium olarak işaretlenir.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -475,6 +751,67 @@ class TopicLesson(models.Model):
 
     def __str__(self) -> str:
         return f"{self.topic.name} · {self.title}"
+
+
+SUMMARY_CARD_KIND_CHOICES = (
+    ("formula", "Formül"),
+    ("tip", "Püf nokta"),
+    ("osym", "ÖSYM buradan sorar"),
+)
+
+
+class TopicSummaryCard(models.Model):
+    """Konu detayında kaydırılan kısa özet / formül kartı."""
+
+    public_id = models.CharField(max_length=64, unique=True)
+    topic = models.ForeignKey(
+        Topic, on_delete=models.CASCADE, related_name="summary_cards"
+    )
+    kind = models.CharField(
+        max_length=16,
+        choices=SUMMARY_CARD_KIND_CHOICES,
+        default="tip",
+        verbose_name="Tür",
+    )
+    title = models.CharField(max_length=160, verbose_name="Başlık")
+    body = models.TextField(
+        verbose_name="Özet",
+        help_text="Kısa formül, kural veya ÖSYM ipucu.",
+    )
+    image = models.ImageField(
+        upload_to="summary_cards/%Y/%m/",
+        blank=True,
+        null=True,
+        verbose_name="Görsel",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "Özet konu kartı"
+        verbose_name_plural = "Özet konu kartları"
+
+    def __str__(self) -> str:
+        return f"{self.topic.name} · {self.title}"
+
+    @property
+    def has_content(self) -> bool:
+        return bool((self.body or "").strip()) or bool(self.image)
+
+    @classmethod
+    def for_mobile_pack(cls):
+        """Yayında ve içeriği olan kartlar — boş yuvalar uygulamaya gitmesin."""
+        from django.db.models import Q
+
+        return (
+            cls.objects.filter(is_published=True, topic__is_active=True)
+            .filter(Q(body__regex=r"\S") | (Q(image__isnull=False) & ~Q(image="")))
+            .select_related("topic", "topic__subject")
+            .order_by("sort_order", "id")
+        )
 
 
 class Announcement(models.Model):
@@ -555,6 +892,89 @@ class ContentRevision(models.Model):
         return f"v{self.version}"
 
 
+class MobileUiConfig(models.Model):
+    """Tek satırlık mobil arayüz ayarları — ana sayfa promosyon balonu vb."""
+
+    # (db_key, api_camel_key, panel_label, section)
+    STUDIO_MODULE_DEFS: tuple[tuple[str, str, str, str], ...] = (
+        ("offline_pack", "offlinePack", "Offline Paket", "premium"),
+        ("topic_tracking", "topicTracking", "Konu Takibi", "premium"),
+        ("task_management", "taskManagement", "Görev Yönetimi", "premium"),
+        ("cloud_sync", "cloudSync", "Bulut Senkron", "premium"),
+        ("leaderboard", "leaderboard", "Sıralama", "premium"),
+        ("micro_learning", "microLearning", "Mikro Öğrenme", "tools"),
+        ("favorites", "favorites", "Favorilerim", "tools"),
+        ("wrong_notebook", "wrongNotebook", "Yanlış Defteri", "tools"),
+        ("focus_pomodoro", "focusPomodoro", "Odak · Pomodoro", "tools"),
+        ("performance", "performance", "Performans", "tools"),
+        ("exam_analytics", "examAnalytics", "Deneme Analizi", "tools"),
+        ("special_notes", "specialNotes", "Özel Notlarım", "tools"),
+        ("badges", "badges", "Rozetler", "tools"),
+    )
+
+    wrong_notebook_bubble_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Yanlış defteri balonu aktif",
+    )
+    wrong_notebook_bubble_label = models.CharField(
+        max_length=48,
+        default="YANLIŞ DEFTERİM",
+        verbose_name="Balon metni",
+    )
+    banner_ads_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Quiz banner reklamları",
+    )
+    studio_modules = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Stüdyo modülleri",
+        help_text="Modül anahtarı → aktif. Boş sözlük = tüm modüller açık.",
+    )
+    recommended_app_version = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        verbose_name="Önerilen uygulama sürümü",
+        help_text="Boş bırakılırsa güncelleme uyarısı gösterilmez. Örn: 1.0.2",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mobil arayüz"
+        verbose_name_plural = "Mobil arayüz"
+
+    def __str__(self) -> str:
+        bubble = "açık" if self.wrong_notebook_bubble_enabled else "kapalı"
+        banner = "açık" if self.banner_ads_enabled else "kapalı"
+        disabled = [
+            label
+            for db_key, _, label, _ in self.STUDIO_MODULE_DEFS
+            if not self.is_studio_module_enabled(db_key)
+        ]
+        extra = f" · pasif: {', '.join(disabled)}" if disabled else ""
+        return f"Mobil arayüz · balon {bubble} · banner {banner}{extra}"
+
+    def is_studio_module_enabled(self, db_key: str) -> bool:
+        modules = self.studio_modules or {}
+        if not isinstance(modules, dict):
+            return True
+        if db_key not in modules:
+            return True
+        return bool(modules.get(db_key))
+
+    def studio_modules_for_api(self) -> dict[str, bool]:
+        return {
+            api_key: self.is_studio_module_enabled(db_key)
+            for db_key, api_key, _, _ in self.STUDIO_MODULE_DEFS
+        }
+
+
+def get_mobile_ui_config() -> MobileUiConfig:
+    obj, _ = MobileUiConfig.objects.get_or_create(pk=1)
+    return obj
+
+
 class AppUser(models.Model):
     """Mobil uygulama kullanıcısı — Google / Play Store hesabı."""
 
@@ -566,6 +986,11 @@ class AppUser(models.Model):
     email = models.EmailField(db_index=True, verbose_name="E-posta")
     display_name = models.CharField(
         max_length=160, blank=True, verbose_name="Ad"
+    )
+    display_name_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Son ad değişikliği",
     )
     photo_url = models.URLField(blank=True, max_length=512)
     is_anonymous = models.BooleanField(
@@ -589,6 +1014,13 @@ class AppUser(models.Model):
         verbose_name="Premium notu",
         help_text="Örn. hediye, kampanya, destek.",
     )
+    premium_product_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Premium ürün kimliği",
+        help_text="Örn. kpss_premium_yearly / kpss_premium_monthly",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Aktif",
@@ -604,6 +1036,13 @@ class AppUser(models.Model):
     )
     last_login_at = models.DateTimeField(
         null=True, blank=True, verbose_name="Son giriş"
+    )
+    last_active_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Son aktivite",
+        help_text="Uygulamada API kullanıldığı son an (canlı oturum için).",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Kayıt")
     updated_at = models.DateTimeField(auto_now=True)
@@ -629,6 +1068,20 @@ class AppUser(models.Model):
         from django.utils import timezone
 
         return self.premium_expires_at > timezone.now()
+
+    @property
+    def is_yearly_premium(self) -> bool:
+        if not self.premium_active:
+            return False
+        pid = (self.premium_product_id or "").strip().lower()
+        if "yearly" in pid or pid.endswith("_yillik") or "yillik" in pid:
+            return True
+        # Admin/promo lifetime-style: empty product + premium is NOT yearly
+        # unless grant note explicitly mentions yearly / yıllık.
+        note = (self.premium_grant_note or "").lower()
+        if "yearly" in note or "yıllık" in note or "yillik" in note:
+            return True
+        return False
 
     def block(self, reason: str = "") -> None:
         from .auth import new_api_token
@@ -656,20 +1109,39 @@ class AppUser(models.Model):
         *,
         expires_at=None,
         note: str = "",
+        product_id: str | None = None,
     ) -> None:
         """Admin / panel üzerinden ücretsiz premium."""
         from django.utils import timezone
 
+        now = timezone.now()
+        note_s = (note or "").strip()[:255]
+        pid = (product_id or "").strip()
+        if not pid:
+            note_l = note_s.lower()
+            yearly_note = (
+                "yearly" in note_l
+                or "yıllık" in note_l
+                or "yillik" in note_l
+            )
+            days_ok = False
+            if expires_at is not None:
+                days_ok = (expires_at - now).days >= 365
+            if yearly_note or days_ok:
+                pid = "kpss_premium_yearly"
+
         self.is_premium = True
-        self.premium_granted_at = timezone.now()
+        self.premium_granted_at = now
         self.premium_expires_at = expires_at
-        self.premium_grant_note = (note or "").strip()[:255]
+        self.premium_grant_note = note_s
+        self.premium_product_id = pid
         self.save(
             update_fields=[
                 "is_premium",
                 "premium_granted_at",
                 "premium_expires_at",
                 "premium_grant_note",
+                "premium_product_id",
                 "updated_at",
             ]
         )
@@ -678,10 +1150,12 @@ class AppUser(models.Model):
         """Ücretsiz premium kaldır (Play satın alması backend'de tutulmaz)."""
         self.is_premium = False
         self.premium_expires_at = None
+        self.premium_product_id = ""
         self.save(
             update_fields=[
                 "is_premium",
                 "premium_expires_at",
+                "premium_product_id",
                 "updated_at",
             ]
         )
@@ -750,6 +1224,70 @@ ERROR_REPORT_STATUS_CHOICES = [
 ]
 
 
+class TopicTestCompletion(models.Model):
+    """Kalıcı kullanıcının bitirdiği yayınlı konu testi (hata bildirimi kotası)."""
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="topic_test_completions",
+        verbose_name="Öğrenci",
+    )
+    topic_test = models.ForeignKey(
+        TopicTest,
+        on_delete=models.CASCADE,
+        related_name="completions",
+        verbose_name="Konu testi",
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "topic_test"],
+                name="unique_topic_test_completion_per_user",
+            ),
+        ]
+        verbose_name = "Konu testi tamamlama"
+        verbose_name_plural = "Konu testi tamamlamaları"
+
+    def __str__(self) -> str:
+        return f"{self.user_id} · {self.topic_test_id}"
+
+
+class DailySubjectFreeUsage(models.Model):
+    """Google hesabının ders başına günlük ücretsiz test hakkı (cihazlar arası)."""
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="daily_subject_free_usages",
+        verbose_name="Öğrenci",
+    )
+    subject_slug = models.SlugField(max_length=64, verbose_name="Ders slug")
+    day = models.DateField(verbose_name="Gün (İstanbul)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "subject_slug", "day"],
+                name="unique_daily_subject_free_usage",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "day"],
+                name="daily_free_user_day",
+            ),
+        ]
+        verbose_name = "Günlük ücretsiz ders hakkı"
+        verbose_name_plural = "Günlük ücretsiz ders hakları"
+
+    def __str__(self) -> str:
+        return f"{self.user_id} · {self.subject_slug} · {self.day}"
+
+
 class QuestionErrorReport(models.Model):
     """Öğrencinin soru hatası bildirimi — admin inceleme havuzu."""
 
@@ -797,6 +1335,140 @@ class QuestionErrorReport(models.Model):
 
     def __str__(self) -> str:
         return f"{self.question.public_id} · {self.get_category_display()} · {self.status}"
+
+
+class TelegramBotSession(models.Model):
+    """Telegram bot çok adımlı akış — fotoğraf sonrası çözüm yapıştırma vb."""
+
+    STEP_SOLUTION_YES_NO = "solution_yes_no"
+    STEP_SOLUTION_TEXT = "solution_text"
+    STEP_CHOICES = [
+        (STEP_SOLUTION_YES_NO, "Çözüm evet/hayır"),
+        (STEP_SOLUTION_TEXT, "Çözüm metni bekleniyor"),
+    ]
+
+    telegram_user_id = models.BigIntegerField(db_index=True)
+    chat_id = models.BigIntegerField()
+    step = models.CharField(max_length=32, choices=STEP_CHOICES)
+    question = models.OneToOneField(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="telegram_bot_session",
+    )
+    source_message_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Telegram fotoğraf mesajı",
+        help_text="Evet veya /iptal ile silinir; Hayır'da sohbette kalır",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Telegram bot oturumu"
+        verbose_name_plural = "Telegram bot oturumları"
+
+    def __str__(self) -> str:
+        return f"{self.telegram_user_id} · {self.step} · {self.question.public_id}"
+
+
+class TelegramPendingSolution(models.Model):
+    """Fotoğraf bazlı çözüm kararı — OCR öncesi Evet/Hayır, caption veya yanıt."""
+
+    telegram_user_id = models.BigIntegerField(db_index=True)
+    chat_id = models.BigIntegerField()
+    photo_message_id = models.BigIntegerField(
+        verbose_name="Yanıtlanan fotoğraf mesajı",
+    )
+    solution_text = models.TextField(blank=True, default="")
+    skip_solution = models.BooleanField(default=False)
+    awaiting_text = models.BooleanField(default=False)
+    prompt_sent = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Telegram bekleyen çözüm"
+        verbose_name_plural = "Telegram bekleyen çözümler"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["chat_id", "photo_message_id"],
+                name="unique_telegram_pending_solution_per_photo",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.chat_id}:{self.photo_message_id}"
+
+
+class OcrIngestLog(models.Model):
+    """Panel OCR ingest kayıtları — parse kalitesi, hata ve eşleşme izleme."""
+
+    STATUS_SUCCESS = "success"
+    STATUS_FAILED = "failed"
+    STATUS_FALLBACK_SUCCESS = "fallback_success"
+    STATUS_CHOICES = [
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_FALLBACK_SUCCESS, "Fallback Success"),
+    ]
+
+    image_path = models.CharField(max_length=512, blank=True, default="")
+    source_image_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    source_image_phash = models.CharField(max_length=16, blank=True, default="", db_index=True)
+    engine = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    used_model = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    status = models.CharField(
+        max_length=24,
+        choices=STATUS_CHOICES,
+        default=STATUS_SUCCESS,
+        db_index=True,
+    )
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_ingest_logs",
+    )
+    duplicate_question = models.ForeignKey(
+        Question,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_duplicate_logs",
+    )
+    duplicate_match = models.CharField(max_length=32, blank=True, default="")
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_ingest_logs",
+    )
+    ok = models.BooleanField(default=False)
+    error_message = models.TextField(blank=True, default="")
+    raw_response = models.TextField(blank=True, default="")
+    stem = models.TextField(blank=True, default="")
+    options = models.JSONField(default=dict, blank=True)
+    raw_text = models.TextField(blank=True, default="")
+    issue_formula_missing = models.BooleanField(default=False)
+    issue_char_drift = models.BooleanField(default=False)
+    diagnostics = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["engine", "-created_at"], name="ocrlog_engine_created"),
+            models.Index(fields=["ok", "-created_at"], name="ocrlog_ok_created"),
+            models.Index(fields=["duplicate_match"], name="ocrlog_dup_match"),
+            models.Index(fields=["status", "-created_at"], name="ocrlog_status_created"),
+        ]
+        verbose_name = "OCR ingest kaydı"
+        verbose_name_plural = "OCR ingest kayıtları"
+
+    def __str__(self) -> str:
+        state = "ok" if self.ok else "fail"
+        return f"{self.engine or 'ocr'} · {state} · {self.created_at:%Y-%m-%d %H:%M}"
 
 
 class UserMessage(models.Model):
@@ -903,6 +1575,72 @@ class DailyMiniExamAttempt(models.Model):
         return f"{self.user_id} · {self.exam_date} · {self.correct}/{self.total}"
 
 
+class DailyMiniRankingCampaign(models.Model):
+    """Mini deneme haftalık/aylık ödül kampanyası — tek satır (pk=1)."""
+
+    weekly_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Haftalık ödül aktif",
+    )
+    monthly_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Aylık ödül aktif",
+    )
+    rewards_visible = models.BooleanField(
+        default=True,
+        verbose_name="ÖDÜL ekranı uygulamada görünsün",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Mini deneme sıralama kampanyası"
+        verbose_name_plural = "Mini deneme sıralama kampanyası"
+
+    def __str__(self) -> str:
+        return "Mini deneme ödül kampanyası"
+
+
+class DailyMiniRankingWinner(models.Model):
+    """Finalize edilmiş dönemin ilk 3 kullanıcısı."""
+
+    PERIOD_KIND_CHOICES = (
+        ("weekly", "Haftalık"),
+        ("monthly", "Aylık"),
+    )
+
+    period_kind = models.CharField(max_length=10, choices=PERIOD_KIND_CHOICES)
+    period_start = models.DateField()
+    period_end = models.DateField()
+    kpss_type = models.CharField(max_length=20, choices=KPSS_TYPE_CHOICES)
+    rank = models.PositiveSmallIntegerField()
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="mini_ranking_wins",
+    )
+    total_correct = models.PositiveIntegerField(default=0)
+    total_duration_seconds = models.PositiveIntegerField(default=0)
+    premium_days = models.PositiveSmallIntegerField(default=0)
+    display_name = models.CharField(max_length=160, blank=True)
+    email_prefix = models.CharField(max_length=64, blank=True)
+    email_rest = models.CharField(max_length=120, blank=True)
+    finalized_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-period_start", "rank"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["period_kind", "period_start", "kpss_type", "rank"],
+                name="uniq_mini_ranking_period_rank",
+            ),
+        ]
+        verbose_name = "Mini deneme sıralama ödülü"
+        verbose_name_plural = "Mini deneme sıralama ödülleri"
+
+    def __str__(self) -> str:
+        return f"{self.period_kind} {self.period_start} #{self.rank}"
+
+
 EXAM_ICON_CHOICES = (
     ("school", "Okul"),
     ("book", "Kitap"),
@@ -981,6 +1719,218 @@ class ExamType(models.Model):
             "sortOrder": self.sort_order,
             "isActive": self.is_active,
         }
+
+
+class ExamDistributionTemplate(models.Model):
+    """Sınav tipine göre ders/konu soru dağılım şablonu — deneme paketi üretiminde kullanılır."""
+
+    exam_type = models.ForeignKey(
+        ExamType,
+        on_delete=models.CASCADE,
+        related_name="distribution_templates",
+        verbose_name="Sınav tipi",
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name="distribution_templates",
+        verbose_name="Ders",
+    )
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.CASCADE,
+        related_name="distribution_templates",
+        blank=True,
+        null=True,
+        verbose_name="Konu",
+        help_text="Boş bırakılırsa ders toplamı satırıdır.",
+    )
+    question_count = models.PositiveIntegerField(
+        verbose_name="Soru sayısı",
+        validators=[MinValueValidator(1), MaxValueValidator(200)],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["exam_type__sort_order", "subject__sort_order", "topic__sort_order"]
+        verbose_name = "Deneme dağılım şablonu"
+        verbose_name_plural = "Deneme dağılım şablonları"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exam_type", "subject", "topic"],
+                name="unique_exam_distribution_template",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        topic_label = self.topic.name if self.topic_id else "Toplam"
+        return f"{self.exam_type.name} · {self.subject.name} · {topic_label} ({self.question_count})"
+
+    def clean(self) -> None:
+        from django.core.exceptions import ValidationError
+
+        if self.topic_id and self.topic.subject_id != self.subject_id:
+            raise ValidationError({"topic": "Konu seçilen derse ait olmalı."})
+
+
+class ExamPack(models.Model):
+    """Satılabilir deneme paketi — Dersler vitrininde listelenir."""
+
+    PACK_KIND_FULL = "full"
+    PACK_KIND_BRANCH = "branch"
+    PACK_KIND_CHOICES = [
+        (PACK_KIND_FULL, "Tam deneme"),
+        (PACK_KIND_BRANCH, "Branş paketi"),
+    ]
+
+    public_id = models.CharField(max_length=64, unique=True)
+    exam_type = models.ForeignKey(
+        ExamType,
+        on_delete=models.CASCADE,
+        related_name="exam_packs",
+        verbose_name="Sınav tipi",
+    )
+    pack_kind = models.CharField(
+        max_length=16,
+        choices=PACK_KIND_CHOICES,
+        default=PACK_KIND_BRANCH,
+        verbose_name="Paket türü",
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name="exam_packs",
+        blank=True,
+        null=True,
+        verbose_name="Branş dersi",
+        help_text="Branş paketlerinde zorunlu; tam denemede boş.",
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    exam_count = models.PositiveIntegerField(
+        default=1,
+        verbose_name="Deneme sayısı",
+        validators=[MinValueValidator(1), MaxValueValidator(50)],
+    )
+    time_limit_minutes = models.PositiveIntegerField(
+        default=130,
+        verbose_name="Süre (dk)",
+    )
+    price_display = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="Vitrin fiyatı",
+        help_text="Örn. 149,99 ₺",
+    )
+    play_product_id = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="Play Store SKU",
+    )
+    is_published = models.BooleanField(
+        default=False,
+        verbose_name="Aktif",
+        help_text="Kapalıysa mobil Dersler vitrininde görünmez.",
+    )
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="Sıra")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "title"]
+        verbose_name = "Deneme paketi"
+        verbose_name_plural = "Deneme paketleri"
+
+    def __str__(self) -> str:
+        return self.title
+
+    def clean(self) -> None:
+        from django.core.exceptions import ValidationError
+
+        if self.pack_kind == self.PACK_KIND_BRANCH and not self.subject_id:
+            raise ValidationError({"subject": "Branş paketinde ders seçilmeli."})
+        if self.pack_kind == self.PACK_KIND_FULL and self.subject_id:
+            raise ValidationError({"subject": "Tam denemede branş dersi boş olmalı."})
+
+    @property
+    def questions_per_exam(self) -> int:
+        first = self.exams.order_by("index").first()
+        if first is None:
+            return 0
+        return first.question_count
+
+
+class ExamPackExam(models.Model):
+    """Paket içindeki tekil deneme oturumu."""
+
+    pack = models.ForeignKey(
+        ExamPack,
+        on_delete=models.CASCADE,
+        related_name="exams",
+        verbose_name="Paket",
+    )
+    index = models.PositiveIntegerField(
+        verbose_name="Sıra",
+        validators=[MinValueValidator(1), MaxValueValidator(50)],
+    )
+    title = models.CharField(max_length=200)
+    questions = models.ManyToManyField(
+        Question,
+        through="ExamPackExamQuestion",
+        related_name="exam_pack_exams",
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["index"]
+        verbose_name = "Paket denemesi"
+        verbose_name_plural = "Paket denemeleri"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pack", "index"],
+                name="unique_exam_pack_exam_index",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.pack.title} · {self.title}"
+
+    @property
+    def question_count(self) -> int:
+        return self.question_links.filter(question__is_published=True).count()
+
+
+class ExamPackExamQuestion(models.Model):
+    """Paket denemesindeki sıralı soru ataması."""
+
+    exam = models.ForeignKey(
+        ExamPackExam,
+        on_delete=models.CASCADE,
+        related_name="question_links",
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="exam_pack_links",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "Paket soru sırası"
+        verbose_name_plural = "Paket soru sıraları"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["exam", "question"],
+                name="unique_exam_pack_exam_question",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.exam.title} · #{self.sort_order} · {self.question.public_id}"
 
 
 class PromoCode(models.Model):
@@ -1091,5 +2041,159 @@ class PromoCodeRedemption(models.Model):
         return f"{self.promo_code.code} · {self.user.email}"
 
 
+class OsymCikmisOneri(models.Model):
+    """Panelde çıkmış soru adı yazarken otomatik tamamlama önerileri."""
+
+    label = models.CharField(max_length=200, unique=True)
+    use_count = models.PositiveIntegerField(default=1)
+    last_used = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-use_count", "-last_used", "label"]
+        verbose_name = "ÖSYM çıkmış soru önerisi"
+        verbose_name_plural = "ÖSYM çıkmış soru önerileri"
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class TgExam(models.Model):
+    """Türkiye Geneli aylık deneme — panelden planlanır, FCM ile duyurulur."""
+
+    title = models.CharField(max_length=200, verbose_name="Deneme adı")
+    kpss_type = models.CharField(
+        max_length=20,
+        choices=KPSS_TYPE_CHOICES,
+        verbose_name="KPSS tipi",
+    )
+    start_at = models.DateTimeField(verbose_name="Başlangıç")
+    end_at = models.DateTimeField(verbose_name="Bitiş")
+    duration_minutes = models.PositiveIntegerField(
+        default=130,
+        verbose_name="Süre (dk)",
+    )
+    question_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Yayınlanmış soru public_id listesi (sıralı).",
+    )
+    is_results_published = models.BooleanField(
+        default=False,
+        verbose_name="Sonuçlar açıklandı",
+    )
+    results_published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Sonuç yayın zamanı",
+    )
+    results_push_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Sonuç bildirimi gönderildi",
+    )
+    results_push_success_count = models.PositiveIntegerField(default=0)
+    results_push_fail_count = models.PositiveIntegerField(default=0)
+    announcement_push_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Duyuru bildirimi gönderildi",
+        help_text="Başlangıçtan 2 saat önce otomatik FCM duyurusu.",
+    )
+    announcement_push_success_count = models.PositiveIntegerField(default=0)
+    announcement_push_fail_count = models.PositiveIntegerField(default=0)
+    is_published = models.BooleanField(
+        default=False,
+        verbose_name="Yayında",
+        help_text="Kapalıysa mobil listede görünmez.",
+    )
+    tg_usage_recorded = models.BooleanField(
+        default=False,
+        verbose_name="Soru kullanımı kaydedildi",
+        help_text="Yayınlandığında soru cooldown metadatası bir kez işlendi.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-start_at"]
+        verbose_name = "TG denemesi"
+        verbose_name_plural = "TG denemeleri"
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def question_count(self) -> int:
+        return len(self.question_ids or [])
+
+    @property
+    def announcement_push_due_at(self):
+        from datetime import timedelta
+
+        return self.start_at - timedelta(hours=2)
+
+
+class TgExamAttempt(models.Model):
+    """Kullanıcının TG deneme oturumu — devam veya gönderilmiş."""
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="tg_exam_attempts",
+        verbose_name="Kullanıcı",
+    )
+    exam = models.ForeignKey(
+        TgExam,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+        verbose_name="Deneme",
+    )
+    answers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='{"q_public_id": "A"}',
+    )
+    current_index = models.PositiveIntegerField(default=0)
+    elapsed_seconds = models.PositiveIntegerField(default=0)
+    correct = models.PositiveSmallIntegerField(default=0)
+    wrong = models.PositiveSmallIntegerField(default=0)
+    blank = models.PositiveSmallIntegerField(default=0)
+    net = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=0,
+    )
+    subject_nets = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='{"tarih": 12.5, "cografya": 8.25}',
+    )
+    ranking = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Sıralama",
+    )
+    duration_seconds = models.PositiveIntegerField(default=0)
+    is_submitted = models.BooleanField(default=False, verbose_name="Gönderildi")
+    started_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [("user", "exam")]
+        ordering = ["-submitted_at", "-started_at"]
+        indexes = [
+            models.Index(
+                fields=["exam", "-net", "duration_seconds"],
+                name="tg_exam_rank_idx",
+            ),
+        ]
+        verbose_name = "TG deneme sonucu"
+        verbose_name_plural = "TG deneme sonuçları"
+
+    def __str__(self) -> str:
+        status = "gönderildi" if self.is_submitted else "devam"
+        return f"{self.user_id} · {self.exam_id} · {status}"
+
+
 def normalize_promo_code(raw: str) -> str:
-    return (raw or "").strip().upper().replace(" ", "")
+    return (raw or "").strip().upper().replace(" ", "")[:32]

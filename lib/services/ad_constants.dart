@@ -8,4 +8,18 @@ class AdConstants {
 
   /// Her kaç sayfa geçişinde bir interstitial gösterilecek.
   static const int pageTransitionAdInterval = 3;
+
+  /// Ücretsiz kullanıcı — günde en fazla N sorunun adım adım detaylı çözümü
+  /// (her biri ödüllü reklam ile; 6.+ Pro).
+  static const int freeDetailedSolutionsPerDay = 5;
+
+  /// @deprecated Oturum başına kota yerine [freeDetailedSolutionsPerDay] kullanılır.
+  static const int freeSolutionsPerTest = freeDetailedSolutionsPerDay;
+
+  /// Tam çözüm kilidi — UI'da gösterilen yaklaşık ödüllü reklam süresi (sn).
+  static const int solutionUnlockAdApproxSeconds = 30;
+
+  /// Yanlış defteri paylaşımı — günlük üst sınır (ekran görüntüsü yasağı bypass’ını keser).
+  static const int wrongNotebookSharesPerDayFree = 1;
+  static const int wrongNotebookSharesPerDayPremium = 3;
 }

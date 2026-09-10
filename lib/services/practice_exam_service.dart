@@ -17,6 +17,7 @@ class PracticeExamService {
   Future<void> initialize() async {
     if (_initialized) return;
 
+    await LocalDatabase.instance.initialize();
     _exams.clear();
     _exams.addAll(await LocalDatabase.instance.getAllExams());
 
@@ -42,9 +43,10 @@ class PracticeExamService {
 
   void setPublisherFilter(String? publisher) => _publisherFilter = publisher;
 
-  void addExam(PracticeExamModel exam) {
+  Future<void> addExam(PracticeExamModel exam) async {
+    await initialize();
     _exams.insert(0, exam);
-    LocalDatabase.instance.insertExam(exam);
+    await LocalDatabase.instance.insertExam(exam);
     unawaited(
       GamificationService.instance.onPracticeExamAdded(
         totalExams: _exams.length,
@@ -52,9 +54,10 @@ class PracticeExamService {
     );
   }
 
-  void deleteExam(String id) {
+  Future<void> deleteExam(String id) async {
+    await initialize();
     _exams.removeWhere((e) => e.id == id);
-    LocalDatabase.instance.deleteExam(id);
+    await LocalDatabase.instance.deleteExam(id);
   }
 
   List<double> get netTrend {
@@ -81,23 +84,32 @@ class PracticeExamService {
     return sorted.map((e) => e.denemeAdi).toList();
   }
 
+  /// Ders bazli ortalama D/Y/B (ve net) — toplam degil.
+  /// Yalnizca o derste kaydi olan denemeler ortalamaya dahil edilir.
+  /// avgD/Y/B = sum / examCount (yuvarlanmis); net = avgD - avgY/4.
   Map<String, DersSonuc> get aggregateBySubject {
-    final map = <String, DersSonuc>{};
+    final sumDogru = <String, int>{};
+    final sumYanlis = <String, int>{};
+    final sumBos = <String, int>{};
+    final counts = <String, int>{};
+
     for (final exam in exams) {
       exam.dersSonuclari.forEach((ders, sonuc) {
-        final existing = map[ders];
-        if (existing == null) {
-          map[ders] = sonuc;
-        } else {
-          map[ders] = DersSonuc(
-            dogru: existing.dogru + sonuc.dogru,
-            yanlis: existing.yanlis + sonuc.yanlis,
-            bos: existing.bos + sonuc.bos,
-          );
-        }
+        sumDogru[ders] = (sumDogru[ders] ?? 0) + sonuc.dogru;
+        sumYanlis[ders] = (sumYanlis[ders] ?? 0) + sonuc.yanlis;
+        sumBos[ders] = (sumBos[ders] ?? 0) + sonuc.bos;
+        counts[ders] = (counts[ders] ?? 0) + 1;
       });
     }
-    return map;
+
+    return {
+      for (final ders in counts.keys)
+        ders: DersSonuc(
+          dogru: (sumDogru[ders]! / counts[ders]!).round(),
+          yanlis: (sumYanlis[ders]! / counts[ders]!).round(),
+          bos: (sumBos[ders]! / counts[ders]!).round(),
+        ),
+    };
   }
 
   List<PublisherStats> get publisherStats {
@@ -141,9 +153,12 @@ class PracticeExamService {
         : thisWeek.map((e) => e.toplamNet).reduce((a, b) => a + b) /
             thisWeek.length;
     final lastAvg = lastWeek.isEmpty
-        ? thisAvg
+        ? 0.0
         : lastWeek.map((e) => e.toplamNet).reduce((a, b) => a + b) /
             lastWeek.length;
+
+    final double? netDegisim =
+        thisWeek.isNotEmpty && lastWeek.isNotEmpty ? thisAvg - lastAvg : null;
 
     final bySubject = aggregateBySubject;
     String strongest = '-';
@@ -158,7 +173,7 @@ class PracticeExamService {
     return WeeklyPerformanceSummary(
       denemeSayisi: thisWeek.length,
       ortalamaNet: thisAvg,
-      netDegisim: thisAvg - lastAvg,
+      netDegisim: netDegisim,
       tekrarBekleyenSoru: 0,
       enGucluDers: strongest,
       gelistirilmesiGerekenDers: weakest,

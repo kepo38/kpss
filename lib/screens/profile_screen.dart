@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants/brand_constants.dart';
 import '../models/user_model.dart';
@@ -18,17 +19,28 @@ import '../widgets/account_link_card.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/exam_track_picker_sheet.dart';
 import '../widgets/notification_settings_section.dart';
+import '../widgets/scale_button.dart';
 import '../widgets/theme_preference_picker.dart';
+import '../widgets/why_us_comparison_card.dart';
 import 'announcements_screen.dart';
 import 'premium/badges_screen.dart';
 import 'premium/premium_paywall_screen.dart';
+import 'support_contact_screen.dart';
 import 'user_messages_screen.dart';
 
 /// Öğrenci profili — ana sayfa ile aynı neon modül dili.
+///
+/// [embedded] true iken (ör. alt sekme) geri tuşu gizlenir; Navigator ile
+/// push edildiğinde [AppBackButton] gösterilir ve başlıkta avatar ikonu yok.
 class ProfileScreen extends StatefulWidget {
   final UserModel user;
+  final bool embedded;
 
-  const ProfileScreen({super.key, required this.user});
+  const ProfileScreen({
+    super.key,
+    required this.user,
+    this.embedded = false,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -41,8 +53,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   static const _cyan = AppTheme.neonEdge;
   static const _gold = AppTheme.neonGold;
-  static const _violet = Color(0xFFA78BFA);
-  static const _rose = Color(0xFFFB7185);
 
   @override
   void initState() {
@@ -83,56 +93,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     final current = _user.isim;
-    final controller = TextEditingController(text: current);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppTheme.inkSoft,
-          title: const Text(
-            'Adını düzenle',
-            style: TextStyle(color: Colors.white, fontFamily: 'serif'),
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 160,
-            style: const TextStyle(color: Colors.white),
-            cursorColor: _cyan,
-            textInputAction: TextInputAction.done,
-            decoration: InputDecoration(
-              hintText: 'Görünen ad',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35)),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.2),
-                ),
-              ),
-              focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: _cyan),
-              ),
-            ),
-            onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(
-                'İptal',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-              child: const Text('Kaydet', style: TextStyle(color: _cyan)),
-            ),
-          ],
-        );
-      },
+      barrierColor: const Color(0xCC070B14),
+      builder: (ctx) => _EditDisplayNameDialog(initialName: current),
     );
-    controller.dispose();
     if (newName == null || !mounted) return;
     if (newName.isEmpty || newName == current) return;
+
+    if (!_user.canChangeDisplayName) {
+      final at = _user.isimDegistirilebilirAt;
+      final label = at != null
+          ? '${at.day.toString().padLeft(2, '0')}.${at.month.toString().padLeft(2, '0')}.${at.year}'
+          : '';
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            label.isEmpty
+                ? 'Ad en fazla haftada bir kez değiştirilebilir.'
+                : 'Ad en fazla haftada bir kez değiştirilebilir. Tekrar: $label',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Dialog overlay animasyonu bitmeden ağ/notify tetikleme.
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
 
     final ok = await _auth.updateDisplayName(newName);
     if (!mounted) return;
@@ -223,6 +212,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final msgUnread = _messages.unreadCount;
     final annUnread = _announcements.unreadCount;
     final topPad = MediaQuery.paddingOf(context).top;
+    final routeCanPop = ModalRoute.of(context)?.canPop ?? false;
+    final showBack = !widget.embedded && routeCanPop;
+    final barBg = AppTheme.pageTop(context);
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
@@ -251,117 +243,148 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   pinned: true,
                   elevation: 0,
                   scrolledUnderElevation: 0,
-                  backgroundColor: Colors.transparent,
+                  // Opaque bar: transparent pinned bar let body text ("HESAP",
+                  // card titles) bleed under the "Profil" title as ghost layers.
+                  backgroundColor: barBg,
+                  surfaceTintColor: Colors.transparent,
                   foregroundColor: AppTheme.onPage(context),
-                  leading: const AppBackButton(),
-                  title: ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [_cyan, AppTheme.champagneLight],
-                    ).createShader(bounds),
-                    child: Text(
-                      'Profil',
-                      style: TextStyle(
-                        fontFamily: 'serif',
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.onPage(context),
+                  automaticallyImplyLeading: false,
+                  leading: showBack
+                      ? const AppBackButton()
+                      : null,
+                  leadingWidth: showBack ? null : 0,
+                  centerTitle: false,
+                  titleSpacing: showBack ? 0 : 16,
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!showBack) ...[
+                        Icon(
+                          Icons.person_rounded,
+                          size: 22,
+                          color: AppTheme.champagneLight
+                              .withValues(alpha: 0.95),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        'Profil',
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.onPage(context),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+                  actions: [
+                    if (!_auth.isAnonymous)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: _ProfileRateAction(
+                          onTap: StoreRatingService.openStoreListing,
+                        ),
+                      ),
+                  ],
                 ),
                 SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 4, 16, 32),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      _ProfileHero(
-                        user: user,
-                        displayName: displayName,
-                        email: _auth.isAnonymous ? 'Misafir oturum' : user.eposta,
-                        level: stats.seviye,
-                        xp: stats.xp,
-                        streak: stats.streak,
-                        onEditName: _auth.busy ? null : _editName,
-                        onPremiumTap: user.isPremium
-                            ? null
-                            : () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => const PremiumPaywallScreen(),
-                                  ),
-                                ),
-                      ),
-                      if (_auth.isAnonymous) ...[
-                        const SizedBox(height: 12),
-                        const AccountLinkCard(margin: EdgeInsets.zero),
-                      ],
-                      const SizedBox(height: 22),
-                      _SectionTitle(context, 'Hızlı erişim'),
-                      const SizedBox(height: 12),
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1.18,
+                      // NEDEN BİZ — hero kartının üst kenarına oturan rozet.
+                      Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.topCenter,
                         children: [
-                          _NeonTile(
-                            neon: _cyan,
-                            icon: Icons.forum_outlined,
-                            title: 'Mesajlar',
-                            subtitle: msgUnread > 0 ? '$msgUnread yeni' : 'Gelen kutusu',
-                            badge: msgUnread > 0 ? msgUnread : null,
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const UserMessagesScreen(),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: _ProfileHero(
+                              user: user.copyWith(
+                                isAnonymous:
+                                    user.isAnonymous || _auth.isAnonymous,
                               ),
-                            ),
-                          ),
-                          _NeonTile(
-                            neon: _gold,
-                            icon: Icons.campaign_outlined,
-                            title: 'Duyurular',
-                            subtitle:
-                                annUnread > 0 ? '$annUnread yeni' : 'ÖSYM & uygulama',
-                            badge: annUnread > 0 ? annUnread : null,
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const AnnouncementsScreen(),
-                              ),
-                            ),
-                          ),
-                          _NeonTile(
-                            neon: _violet,
-                            icon: Icons.military_tech_outlined,
-                            title: 'Rozetler',
-                            subtitle:
-                                'Lv.${stats.seviye} · ${stats.xp}/${stats.sonrakiSeviyeXp} XP',
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const BadgesScreen(),
-                              ),
-                            ),
-                          ),
-                          _NeonTile(
-                            neon: user.isPremium ? _rose : AppTheme.champagne,
-                            icon: user.isPremium
-                                ? Icons.star_rounded
-                                : Icons.auto_awesome_outlined,
-                            title: user.isPremium ? 'Değerlendir' : 'Premium',
-                            subtitle: user.isPremium
-                                ? '★★★★★ · Play Store'
-                                : 'Reklamsız & offline',
-                            onTap: user.isPremium
-                                ? () => StoreRatingService.openStoreListing()
-                                : () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const PremiumPaywallScreen(),
+                              displayName: displayName,
+                              email: _auth.isAnonymous
+                                  ? 'Misafir oturum'
+                                  : user.eposta,
+                              level: stats.seviye,
+                              xp: stats.xp,
+                              streak: stats.streak,
+                              sonrakiSeviyeXp: stats.sonrakiSeviyeXp,
+                              onEditName: _auth.busy ? null : _editName,
+                              onPremiumTap: user.isPremium
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              const PremiumPaywallScreen(),
+                                        ),
                                       ),
-                                    ),
+                              onBadgesTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const BadgesScreen(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Positioned(
+                            top: 0,
+                            child: WhyUsButton(height: 28),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
+                      if (_auth.isAnonymous) ...[
+                        const SizedBox(height: 8),
+                        const AccountLinkCard(margin: EdgeInsets.zero),
+                      ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _NeonTile(
+                              neon: _cyan,
+                              icon: Icons.forum_outlined,
+                              title: 'Mesajlar',
+                              subtitle:
+                                  msgUnread > 0 ? '$msgUnread yeni' : 'Gelen kutusu',
+                              badge: msgUnread > 0 ? msgUnread : null,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const UserMessagesScreen(),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _NeonTile(
+                              neon: _gold,
+                              icon: Icons.campaign_outlined,
+                              title: 'Duyurular',
+                              subtitle: annUnread > 0
+                                  ? '$annUnread yeni'
+                                  : 'ÖSYM & uygulama',
+                              badge: annUnread > 0 ? annUnread : null,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const AnnouncementsScreen(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
                       _SectionTitle(context, 'Kontrol merkezi'),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
+                      _ProfileModuleRow(
+                        neon: _gold,
+                        icon: Icons.notifications_active_outlined,
+                        title: 'Bildirim ayarları',
+                        subtitle: 'Hatırlatmalar ve çalışma uyarıları',
+                        onTap: _openNotificationSheet,
+                      ),
+                      const SizedBox(height: 10),
                       _ProfileModuleRow(
                         neon: _cyan,
                         icon: Icons.school_outlined,
@@ -383,28 +406,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 10),
                       _ProfileModuleRow(
-                        neon: _gold,
-                        icon: Icons.notifications_active_outlined,
-                        title: 'Bildirim ayarları',
-                        subtitle: 'Hatırlatmalar ve çalışma uyarıları',
-                        onTap: _openNotificationSheet,
-                      ),
-                      if (user.isPremium &&
-                          (user.premiumBitisTarihi != null ||
-                              user.premiumVerilisTarihi != null ||
-                              (user.premiumGrantNote?.trim().isNotEmpty ??
-                                  false))) ...[
-                        const SizedBox(height: 10),
-                        _ProfileModuleRow(
-                          neon: AppTheme.champagne,
-                          icon: Icons.verified_outlined,
-                          title: 'Premium bilgisi',
-                          subtitle: _premiumSubtitle(user),
-                          expanded: true,
-                          child: _PremiumMetaBody(user: user),
+                        neon: const Color(0xFF34D399),
+                        icon: Icons.support_agent_outlined,
+                        title: 'Destek ve İletişim',
+                        subtitle: '',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SupportContactScreen(),
+                          ),
                         ),
-                      ],
-                      const SizedBox(height: 28),
+                      ),
+                      const SizedBox(height: 10),
                       _SignOutButton(
                         label: _auth.isAnonymous
                             ? 'Misafir oturumu kapat'
@@ -417,15 +429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         },
                       ),
                       const SizedBox(height: 14),
-                      Text(
-                        'Hedef Kamu · v1.0.0',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          letterSpacing: 1.4,
-                          color: _cyan.withValues(alpha: 0.72),
-                        ),
-                      ),
+                      const _AppVersionLabel(),
                       SizedBox(height: topPad > 0 ? 0 : 8),
                     ]),
                   ),
@@ -438,11 +442,112 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  static String _premiumSubtitle(UserModel user) {
-    if (user.premiumBitisTarihi != null) {
-      return 'Bitiş: ${DateFormat('d MMM yyyy').format(user.premiumBitisTarihi!.toLocal())}';
-    }
-    return 'Aktif premium üyelik';
+}
+
+class _AppVersionLabel extends StatelessWidget {
+  const _AppVersionLabel();
+
+  static const _cyan = Color(0xFF7DD3FC);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final version = snapshot.data?.version ?? '…';
+        return Text(
+          '${BrandConstants.appName} · v$version',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 1.4,
+            color: _cyan.withValues(alpha: 0.72),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ProfileRateAction extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ProfileRateAction({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          splashColor: AppTheme.neonEdge.withValues(alpha: 0.22),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF1B4F8A),
+                  Color(0xFF0D6B6B),
+                  Color(0xFF148F6A),
+                ],
+              ),
+              border: Border.all(
+                color: AppTheme.neonEdge.withValues(alpha: 0.72),
+                width: 1.1,
+              ),
+              boxShadow: SubjectNeonPalette.glow(AppTheme.neonEdge, blur: 12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 5, 12, 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.thumb_up_alt_rounded,
+                        size: 13,
+                        color: Colors.white.withValues(alpha: 0.96),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Değerlendir',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.15,
+                          height: 1,
+                          color: Colors.white.withValues(alpha: 0.96),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(5, (i) {
+                      return Padding(
+                        padding: EdgeInsets.only(left: i == 0 ? 0 : 1.5),
+                        child: Icon(
+                          Icons.star_rounded,
+                          size: 8.5,
+                          color: AppTheme.neonGold.withValues(alpha: 0.95),
+                        ),
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -583,7 +688,7 @@ class _ProfileModuleRow extends StatefulWidget {
 }
 
 class _ProfileModuleRowState extends State<_ProfileModuleRow> {
-  bool _open = true;
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
@@ -650,14 +755,16 @@ class _ProfileModuleRowState extends State<_ProfileModuleRow> {
                                   color: Colors.white,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                widget.subtitle,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: widget.neon.withValues(alpha: 0.88),
+                              if (widget.subtitle.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  widget.subtitle,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: widget.neon.withValues(alpha: 0.88),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
@@ -764,6 +871,7 @@ class _NeonTile extends StatelessWidget {
             radius: 14,
           ),
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               Positioned(
                 top: -12,
@@ -782,32 +890,8 @@ class _NeonTile extends StatelessWidget {
                   ),
                 ),
               ),
-              if (badge != null)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: neon,
-                      borderRadius: BorderRadius.circular(999),
-                      boxShadow: SubjectNeonPalette.glow(neon, blur: 8),
-                    ),
-                    child: Text(
-                      '$badge',
-                      style: const TextStyle(
-                        color: AppTheme.ink,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
+                padding: const EdgeInsets.fromLTRB(10, 10, 14, 9),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -830,7 +914,7 @@ class _NeonTile extends StatelessWidget {
                       ),
                       child: Icon(icon, size: 20, color: neon),
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 10),
                     Text(
                       title,
                       maxLines: 1,
@@ -857,8 +941,56 @@ class _NeonTile extends StatelessWidget {
                   ],
                 ),
               ),
+              if (badge != null)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _UnreadCountBadge(count: badge!, neon: neon),
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnreadCountBadge extends StatelessWidget {
+  final int count;
+  final Color neon;
+
+  const _UnreadCountBadge({required this.count, required this.neon});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            neon,
+            AppTheme.champagneLight,
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.85),
+          width: 1.2,
+        ),
+        boxShadow: SubjectNeonPalette.glow(neon, blur: 10),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppTheme.ink,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+          height: 1,
         ),
       ),
     );
@@ -872,8 +1004,10 @@ class _ProfileHero extends StatelessWidget {
   final int level;
   final int xp;
   final int streak;
+  final int sonrakiSeviyeXp;
   final VoidCallback? onEditName;
   final VoidCallback? onPremiumTap;
+  final VoidCallback? onBadgesTap;
 
   const _ProfileHero({
     required this.user,
@@ -882,9 +1016,14 @@ class _ProfileHero extends StatelessWidget {
     required this.level,
     required this.xp,
     required this.streak,
+    required this.sonrakiSeviyeXp,
     this.onEditName,
     this.onPremiumTap,
+    this.onBadgesTap,
   });
+
+  static const _violet = Color(0xFFA78BFA);
+  static const _heroSide = 82.0;
 
   @override
   Widget build(BuildContext context) {
@@ -930,91 +1069,230 @@ class _ProfileHero extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _AvatarRing(
-                      user: user,
-                      displayName: displayName,
-                      neon: neon,
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          InkWell(
-                            onTap: onEditName,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    displayName,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.05,
-                                      color: Colors.white,
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: _heroSide,
+                          child: Center(
+                            child: _AvatarRing(
+                              user: user,
+                              displayName: displayName,
+                              neon: neon,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (onEditName != null)
+                                Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: onEditName,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Ink(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Colors.white.withValues(alpha: 0.07),
+                                            neon.withValues(alpha: 0.08),
+                                            AppTheme.ink.withValues(alpha: 0.12),
+                                          ],
+                                        ),
+                                        border: Border.all(
+                                          color: neon.withValues(alpha: 0.42),
+                                          width: 1.1,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: neon.withValues(alpha: 0.12),
+                                            blurRadius: 14,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          10,
+                                          10,
+                                          10,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    displayName,
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontFamily: 'serif',
+                                                      fontSize: 22,
+                                                      fontWeight: FontWeight.w700,
+                                                      height: 1.08,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Adını düzenle',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      letterSpacing: 0.55,
+                                                      color: neon.withValues(
+                                                        alpha: 0.78,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Container(
+                                              width: 32,
+                                              height: 32,
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                  colors: user.isPremium
+                                                      ? const [
+                                                          Color(0xFFFFF6E4),
+                                                          Color(0xFFE8CF98),
+                                                          Color(0xFFC9A86C),
+                                                        ]
+                                                      : [
+                                                          neon.withValues(
+                                                            alpha: 0.35,
+                                                          ),
+                                                          neon.withValues(
+                                                            alpha: 0.18,
+                                                          ),
+                                                        ],
+                                                ),
+                                                border: Border.all(
+                                                  color: user.isPremium
+                                                      ? const Color(0xFFD4AF6A)
+                                                      : neon.withValues(
+                                                          alpha: 0.55,
+                                                        ),
+                                                  width: 0.8,
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: neon.withValues(
+                                                      alpha: 0.22,
+                                                    ),
+                                                    blurRadius: 8,
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Icon(
+                                                Icons.edit_rounded,
+                                                size: 15,
+                                                color: user.isPremium
+                                                    ? AppTheme.ink
+                                                    : Colors.white,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (onEditName != null)
-                                  Icon(
-                                    Icons.edit_rounded,
-                                    size: 17,
-                                    color: neon.withValues(alpha: 0.95),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: neon.withValues(alpha: 0.82),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _StatChip(
-                                neon: AppTheme.neonEdge,
-                                label: 'Lv.$level',
-                              ),
-                              _StatChip(
-                                neon: AppTheme.neonGold,
-                                label: '$xp XP',
-                              ),
-                              _StatChip(
-                                neon: const Color(0xFF34D399),
-                                label: '$streak gün',
-                              ),
-                              if (user.isPremium)
-                                const _StatChip(
-                                  neon: AppTheme.champagne,
-                                  label: 'PREMIUM',
-                                  filled: true,
                                 )
                               else
-                                _StatChip(
-                                  neon: AppTheme.champagne,
-                                  label: 'Standart → Premium',
-                                  onTap: onPremiumTap,
+                                Text(
+                                  displayName,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: 'serif',
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.05,
+                                    color: Colors.white,
+                                  ),
                                 ),
+                              const SizedBox(height: 4),
+                              Text(
+                                email,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: neon.withValues(alpha: 0.82),
+                                ),
+                              ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: _heroSide,
+                          child: onBadgesTap == null
+                              ? const SizedBox.shrink()
+                              : _HeroBadgesButton(
+                                  neon: _violet,
+                                  level: level,
+                                  xp: xp,
+                                  sonrakiSeviyeXp: sonrakiSeviyeXp,
+                                  onTap: onBadgesTap!,
+                                ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  _StatChip(
+                                    neon: AppTheme.neonEdge,
+                                    label: 'Lv.$level',
+                                  ),
+                                  _StatChip(
+                                    neon: AppTheme.neonGold,
+                                    label: '$xp XP',
+                                  ),
+                                  _StatChip(
+                                    neon: const Color(0xFF34D399),
+                                    label: '$streak gün',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (user.isPremium)
+                                _PremiumStatChip(user: user)
+                              else
+                                _PremiumUpgradeCta(onTap: onPremiumTap),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1022,6 +1300,77 @@ class _ProfileHero extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeroBadgesButton extends StatelessWidget {
+  final Color neon;
+  final int level;
+  final int xp;
+  final int sonrakiSeviyeXp;
+  final VoidCallback onTap;
+
+  const _HeroBadgesButton({
+    required this.neon,
+    required this.level,
+    required this.xp,
+    required this.sonrakiSeviyeXp,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        splashColor: neon.withValues(alpha: 0.18),
+        child: Ink(
+          width: 82,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                neon.withValues(alpha: 0.22),
+                AppTheme.champagne.withValues(alpha: 0.08),
+              ],
+            ),
+            border: Border.all(color: neon.withValues(alpha: 0.55), width: 1.1),
+            boxShadow: SubjectNeonPalette.glow(neon, blur: 10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.military_tech_rounded, color: neon, size: 22),
+              const SizedBox(height: 4),
+              const Text(
+                'Rozetler',
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Lv.$level',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: neon.withValues(alpha: 0.92),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1058,14 +1407,22 @@ class _AvatarRing extends StatelessWidget {
           color: AppTheme.smokeDeep,
         ),
         clipBehavior: Clip.antiAlias,
-        child: photo != null && photo.isNotEmpty
-            ? Image.network(
-                photo,
+        child: user.isAnonymous
+            ? Image.asset(
+                BrandConstants.appIconAsset,
                 fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
                 errorBuilder: (_, __, ___) =>
                     _InitialsAvatar(name: displayName),
               )
-            : _InitialsAvatar(name: displayName),
+            : photo != null && photo.isNotEmpty
+                ? Image.network(
+                    photo,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _InitialsAvatar(name: displayName),
+                  )
+                : _InitialsAvatar(name: displayName),
       ),
     );
   }
@@ -1115,6 +1472,217 @@ class _InitialsAvatar extends StatelessWidget {
           .toUpperCase();
     }
     return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
+  }
+}
+
+void _showPremiumInfoSheet(BuildContext context, UserModel user) {
+  final hasMeta = user.premiumBitisTarihi != null ||
+      user.premiumVerilisTarihi != null ||
+      (user.premiumGrantNote?.trim().isNotEmpty ?? false);
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppTheme.inkSoft,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.verified_outlined,
+                  color: AppTheme.champagne,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Premium üyelik',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (hasMeta)
+              _PremiumMetaBody(user: user)
+            else
+              Text(
+                'Aktif premium üyelik',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _PremiumUpgradeCta extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _PremiumUpgradeCta({this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.18),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(14, 7, 10, 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.champagne.withValues(alpha: 0.32),
+                const Color(0xFF3A2E14).withValues(alpha: 0.92),
+                AppTheme.neonGold.withValues(alpha: 0.22),
+              ],
+            ),
+            border: Border.all(
+              color: AppTheme.champagneLight.withValues(alpha: 0.75),
+              width: 1.1,
+            ),
+            boxShadow: [
+              ...SubjectNeonPalette.glow(AppTheme.champagne, blur: 10),
+              BoxShadow(
+                color: AppTheme.neonGold.withValues(alpha: 0.14),
+                blurRadius: 12,
+                spreadRadius: -2,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.workspace_premium_rounded,
+                size: 14,
+                color: AppTheme.champagneLight,
+              ),
+              const SizedBox(width: 7),
+              const Text(
+                "Premium'a Geç",
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.15,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 9,
+                color: AppTheme.champagneLight.withValues(alpha: 0.85),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumStatChip extends StatelessWidget {
+  final UserModel user;
+
+  const _PremiumStatChip({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showPremiumInfoSheet(context, user),
+        borderRadius: BorderRadius.circular(999),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.18),
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.champagne.withValues(alpha: 0.38),
+                const Color(0xFF3A2E14).withValues(alpha: 0.92),
+                AppTheme.neonGold.withValues(alpha: 0.28),
+              ],
+            ),
+            border: Border.all(
+              color: AppTheme.champagneLight.withValues(alpha: 0.85),
+              width: 1.15,
+            ),
+            boxShadow: [
+              ...SubjectNeonPalette.glow(AppTheme.champagne, blur: 12),
+              BoxShadow(
+                color: AppTheme.neonGold.withValues(alpha: 0.18),
+                blurRadius: 16,
+                spreadRadius: -2,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.workspace_premium_rounded,
+                size: 15,
+                color: AppTheme.champagneLight,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'PREMIUM',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 20,
+                height: 20,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.inkSoft.withValues(alpha: 0.72),
+                  border: Border.all(
+                    color: AppTheme.champagneLight.withValues(alpha: 0.7),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.info_outline_rounded,
+                  size: 12,
+                  color: AppTheme.champagneLight,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1268,4 +1836,306 @@ class _SignOutButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Premium görünen ad düzenleme kartı.
+class _EditDisplayNameDialog extends StatefulWidget {
+  final String initialName;
+
+  const _EditDisplayNameDialog({required this.initialName});
+
+  @override
+  State<_EditDisplayNameDialog> createState() => _EditDisplayNameDialogState();
+}
+
+class _EditDisplayNameDialogState extends State<_EditDisplayNameDialog>
+    with SingleTickerProviderStateMixin {
+  late final TextEditingController _controller;
+  late final AnimationController _shine;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+    _shine = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _shine.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() => Navigator.of(context).pop(_controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+      child: AnimatedBuilder(
+        animation: _shine,
+        builder: (context, _) {
+          final pulse = 0.55 + 0.45 * math.sin(_shine.value * math.pi * 2);
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color:
+                      AppTheme.champagne.withValues(alpha: 0.18 + 0.18 * pulse),
+                  blurRadius: 28 + 8 * pulse,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: CustomPaint(
+                painter: _EditNameGoldBorderPainter(progress: _shine.value),
+                child: Padding(
+                  padding: const EdgeInsets.all(1.6),
+                  child: Material(
+                    color: const Color(0xFF16110A),
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF1E293B),
+                            Color(0xFF121C2E),
+                            Color(0xFF0C1424),
+                          ],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        AppTheme.champagne
+                                            .withValues(alpha: 0.28),
+                                        AppTheme.champagne
+                                            .withValues(alpha: 0.08),
+                                      ],
+                                    ),
+                                    border: Border.all(
+                                      color: AppTheme.champagne
+                                          .withValues(alpha: 0.45),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.badge_outlined,
+                                    size: 20,
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.95),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Adını düzenle',
+                                        style: TextStyle(
+                                          fontFamily: 'serif',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFF6E7C3),
+                                          height: 1.15,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Profilde görünen adın',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          height: 1.35,
+                                          color: Color(0x99F6E7C3),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: _controller,
+                              autofocus: true,
+                              maxLength: 160,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              cursorColor: AppTheme.champagne,
+                              textInputAction: TextInputAction.done,
+                              decoration: InputDecoration(
+                                counterStyle: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.38),
+                                  fontSize: 11,
+                                ),
+                                hintText: 'Görünen ad',
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.35),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white.withValues(alpha: 0.05),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.28),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.72),
+                                    width: 1.4,
+                                  ),
+                                ),
+                              ),
+                              onSubmitted: (_) => _save(),
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor:
+                                          Colors.white.withValues(alpha: 0.55),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'İptal',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  flex: 2,
+                                  child: ScaleButton(
+                                    onPressed: _save,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 13,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFF8E7C0),
+                                            Color(0xFFE2C998),
+                                            Color(0xFFC9A86C),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppTheme.champagne
+                                                .withValues(alpha: 0.38),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Text(
+                                        'Kaydet',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14.5,
+                                          color: Color(0xFF1A140C),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EditNameGoldBorderPainter extends CustomPainter {
+  final double progress;
+
+  _EditNameGoldBorderPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(22));
+    final shader = SweepGradient(
+      startAngle: 0,
+      endAngle: math.pi * 2,
+      transform: GradientRotation(progress * math.pi * 2),
+      colors: const [
+        Color(0xFFF8E7C0),
+        Color(0xFF8A6B32),
+        Color(0xFFE2C998),
+        Color(0xFFC9A86C),
+        Color(0xFFF8E7C0),
+      ],
+    ).createShader(rect);
+    final paint = Paint()
+      ..shader = shader
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    canvas.drawRRect(rrect.deflate(0.9), paint);
+  }
+
+  @override
+  bool shouldRepaint(_EditNameGoldBorderPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

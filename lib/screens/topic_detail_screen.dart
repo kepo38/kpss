@@ -10,17 +10,22 @@ import '../services/ad_manager.dart';
 import '../services/ad_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
+import '../services/daily_quota_service.dart';
 import '../services/question_fetch_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/last_study_session_service.dart';
 import '../services/premium_service.dart';
 import '../services/gamification_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/wrong_notebook_capacity_upsell.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/daily_test_quota_dialog.dart';
 import '../widgets/premium_gate.dart';
+import '../services/summary_card_progress_service.dart';
 import 'lesson_reader_screen.dart';
 import 'quiz_screen.dart';
+import 'topic_summary_study_screen.dart';
 
 class TopicDetailScreen extends StatefulWidget {
   final KpssType kpssType;
@@ -48,7 +53,16 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
   void initState() {
     super.initState();
     _bank.addListener(_onBankChanged);
+    unawaited(SummaryCardProgressService.instance.initialize());
     unawaited(_refreshContent(showSuccess: false));
+    unawaited(_refreshAccountQuota());
+  }
+
+  Future<void> _refreshAccountQuota() async {
+    await DailyQuotaService.instance.refreshFromServer(
+      subject: widget.subjectId,
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _refreshContent({bool showSuccess = true}) async {
@@ -89,6 +103,10 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final tests = _bank.testsForTopic(widget.kpssType, widget.topicId);
     final stats = _bank.topicStats(widget.topicId);
     final lessons = _bank.lessonsForTopic(widget.topicId);
+    final summaryCards = _bank.summaryCardsForTopic(widget.topicId);
+    final readySummaryCards =
+        summaryCards.where((card) => card.hasContent).toList();
+    final canLearn = readySummaryCards.isNotEmpty || lessons.isNotEmpty;
     final progress =
         _bank.topicQuestionProgress(widget.kpssType, widget.topicId);
 
@@ -115,25 +133,37 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
           children: [
             Text(
-              subject?.name ?? '',
+              (subject?.name ?? '').toUpperCase(),
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 12,
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.champagne.withValues(alpha: 0.8),
+                fontFamily: 'serif',
+                fontSize: 13,
+                height: 1.2,
+                letterSpacing: 3.2,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.champagneLight.withValues(alpha: 0.92),
+                shadows: [
+                  Shadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.28),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             Text(
               topic?.name ?? '',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'serif',
                 fontSize: 28,
+                height: 1.15,
                 fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             _StatStrip(
               accuracy: stats.averageAccuracy,
               attempts: stats.attemptCount,
@@ -141,79 +171,40 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
               unsolved: progress.unsolved,
               totalQuestions: progress.total,
             ),
-            const SizedBox(height: 24),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: lessons.isEmpty
-                    ? null
-                    : () => Navigator.of(context).push(
+            const SizedBox(height: 20),
+            _KonuyuOgrenButton(
+              enabled: canLearn,
+              subtitle: _learnButtonSubtitle(
+                readySummaryCount: readySummaryCards.length,
+                totalSummaryCount: summaryCards.length,
+                lessonCount: lessons.length,
+              ),
+              onTap: !canLearn
+                  ? null
+                  : () {
+                      if (readySummaryCards.isNotEmpty) {
+                        Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => LessonReaderScreen(
+                            builder: (_) => TopicSummaryStudyScreen(
                               topicName: topic?.name ?? 'Konu',
-                              lessons: lessons,
+                              cards: readySummaryCards,
                             ),
                           ),
+                        );
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => LessonReaderScreen(
+                            topicName: topic?.name ?? 'Konu',
+                            lessons: lessons,
+                          ),
                         ),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Konuyu öğren',
-                              style: TextStyle(
-                                fontFamily: 'serif',
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              lessons.isEmpty
-                                  ? 'Henüz bilgi kartı yok'
-                                  : '${lessons.length} bilgi kartı',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white.withValues(alpha: 0.45),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.menu_book_outlined,
-                        color: AppTheme.neonEdge.withValues(alpha: 0.8),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+                      );
+                    },
             ),
             const SizedBox(height: 20),
-            const Text(
-              'TESTLER',
-              style: TextStyle(
-                fontSize: 11,
-                letterSpacing: 2.2,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.champagne,
-              ),
-            ),
+            const _SectionHeader(title: 'TESTLER'),
             const SizedBox(height: 12),
             if (tests.isEmpty)
               Text(
@@ -223,6 +214,8 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
             else
               ...tests.map((test) {
                 final tStats = _bank.testStats(test.id);
+                final questionCount = _bank.catalogQuestionCount(test);
+                final isReady = questionCount > 0;
                 final isPremium = PremiumService.instance.isPremium;
                 final canWatchAd = !isPremium &&
                     _bank.canWatchAdForDailyTestBonus(
@@ -232,14 +225,17 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
                 return _TestRow(
                   test: test,
                   stats: tStats,
-                  quotaHint: !isPremium &&
+                  questionCount: questionCount,
+                  enabled: isReady,
+                  quotaHint: isReady &&
+                      !isPremium &&
                       !_bank.canStartDailySubjectTest(
                         widget.kpssType,
                         widget.subjectId,
                       ),
                   canWatchAdForBonus: canWatchAd,
                   busy: _startingTest,
-                  onStart: () => _startTest(test),
+                  onStart: isReady ? () => _startTest(test) : null,
                 );
               }),
           ],
@@ -302,7 +298,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     await _bank.grantAdBonusDailyTest(kpssType, subjectId);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('+1 test hakkı kazandınız!')),
+        const SnackBar(content: Text('Bu derste +1 test hakkı kazandınız!')),
       );
     }
     return _bank.canStartDailySubjectTest(kpssType, subjectId);
@@ -327,63 +323,19 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final subjectName = subject?.name ?? 'Bu ders';
 
     if (!mounted) return false;
-    final action = await showDialog<_DailyQuotaAction>(
+    final action = await showDailyTestQuotaDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.inkSoft,
-        title: const Text(
-          'Günlük test limiti',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          canWatchAd
-              ? '$subjectName dersinde bugünkü test hakkınızı kullandınız.\n\n'
-                  'Ücretsiz planda her dersten günde 1 test çözebilirsiniz. '
-                  '30 saniyelik reklam izleyerek +1 ek test hakkı kazanabilir '
-                  'veya Premium\'a geçebilirsiniz.'
-              : '$subjectName dersinde bugünkü test ve reklam bonusu '
-                  'hakkınızı kullandınız.\n\n'
-                  'Sınırsız test için Premium\'a geçin.',
-          style: TextStyle(
-            height: 1.45,
-            color: Colors.white.withValues(alpha: 0.75),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, _DailyQuotaAction.cancel),
-            child: const Text('Vazgeç'),
-          ),
-          if (canWatchAd)
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(context, _DailyQuotaAction.ad),
-              icon: const Icon(Icons.play_circle_outline, size: 18),
-              label: const Text('Reklam izle — +1 test hakkı kazan'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.neonEdge,
-                side:
-                    BorderSide(color: AppTheme.neonEdge.withValues(alpha: 0.6)),
-              ),
-            ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, _DailyQuotaAction.premium),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.champagne,
-              foregroundColor: AppTheme.ink,
-            ),
-            child: const Text('Premium'),
-          ),
-        ],
-      ),
+      subjectName: subjectName,
+      canWatchAd: canWatchAd,
     );
 
     switch (action) {
-      case _DailyQuotaAction.ad:
+      case DailyQuotaAction.ad:
         return _watchAdAndGrantBonus();
-      case _DailyQuotaAction.premium:
+      case DailyQuotaAction.premium:
         if (!mounted) return false;
         return PremiumGate.requirePremium(context);
-      case _DailyQuotaAction.cancel:
+      case DailyQuotaAction.cancel:
       case null:
         return false;
     }
@@ -448,14 +400,13 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
       );
       if (result == null || !result.completed) return;
 
-      unawaited(
-        QuestionAttemptService.instance.submit(
-          testId: test.id,
-          questionIds: result.questionIds,
-          selectedAnswers: result.selectedAnswers,
-        ),
+      await QuestionAttemptService.instance.submit(
+        testId: test.id,
+        questionIds: result.questionIds,
+        selectedAnswers: result.selectedAnswers,
+        excludeQuestionIds: _bank.statLockedWrongQuestionIds,
       );
-      await _bank.recordAttempt(
+      final capacity = await _bank.recordAttempt(
         TestAttemptModel(
           id: 'att_${DateTime.now().millisecondsSinceEpoch}',
           testId: test.id,
@@ -468,11 +419,9 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
           duration: result.duration,
           completedAt: DateTime.now(),
         ),
-        questionIds: [
-          ...result.correctQuestionIds,
-          ...result.wrongQuestionIds,
-        ],
+        questionIds: result.questionIds,
         wrongQuestionIds: result.wrongQuestionIds,
+        selectedAnswers: result.selectedAnswers,
       );
       unawaited(
         GamificationService.instance.recordTestCompleted(
@@ -482,6 +431,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
         ),
       );
       if (!mounted) return;
+      await WrongNotebookCapacityUpsell.maybeShowAfterAdd(context, capacity);
       setState(() {});
     } catch (e, st) {
       debugPrint('_startTest error: $e\n$st');
@@ -493,6 +443,137 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     } finally {
       if (mounted) setState(() => _startingTest = false);
     }
+  }
+
+  String? _learnButtonSubtitle({
+    required int readySummaryCount,
+    required int totalSummaryCount,
+    required int lessonCount,
+  }) {
+    // Yalnızca dolu kart sayısı — boş yuvalar (5 slot) kullanıcıya 6 gibi görünmesin.
+    if (readySummaryCount > 0) {
+      return '$readySummaryCount özet kart · kaydırarak çalış';
+    }
+    if (lessonCount > 0) {
+      return '$lessonCount bilgi kartı';
+    }
+    if (totalSummaryCount > 0) {
+      return 'Özet kartlar henüz hazır değil';
+    }
+    return null;
+  }
+}
+
+class _KonuyuOgrenButton extends StatelessWidget {
+  final bool enabled;
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  const _KonuyuOgrenButton({
+    required this.enabled,
+    this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = enabled
+        ? AppTheme.champagne.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.1);
+    final labelColor = enabled
+        ? AppTheme.champagneLight
+        : Colors.white.withValues(alpha: 0.35);
+    final chevronColor = enabled
+        ? AppTheme.champagne
+        : Colors.white.withValues(alpha: 0.22);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.12),
+        highlightColor: AppTheme.champagne.withValues(alpha: 0.06),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor, width: 1.15),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: enabled
+                  ? [
+                      AppTheme.champagne.withValues(alpha: 0.22),
+                      Colors.white.withValues(alpha: 0.06),
+                      AppTheme.inkSoft.withValues(alpha: 0.55),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: 0.03),
+                      Colors.white.withValues(alpha: 0.015),
+                    ],
+              stops: enabled ? const [0.0, 0.45, 1.0] : null,
+            ),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: AppTheme.champagne.withValues(alpha: 0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 28),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Konuyu Öğren',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 19,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4,
+                        height: 1.1,
+                        color: labelColor,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle!,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500,
+                          color: enabled
+                              ? Colors.white.withValues(alpha: 0.55)
+                              : Colors.white.withValues(alpha: 0.28),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 28,
+                color: chevronColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -587,17 +668,69 @@ class _StatStrip extends StatelessWidget {
       );
 }
 
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader({
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final line = Expanded(
+      child: Container(
+        height: 1,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.champagne.withValues(alpha: 0),
+              AppTheme.champagne.withValues(alpha: 0.55),
+              AppTheme.champagne.withValues(alpha: 0),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    return Row(
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'serif',
+              fontSize: 13,
+              letterSpacing: 3.4,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.champagne,
+              height: 1.1,
+            ),
+          ),
+        ),
+        line,
+      ],
+    );
+  }
+}
+
 class _TestRow extends StatelessWidget {
   final TopicTestModel test;
   final TestStatsSummary stats;
+  final int questionCount;
+  final bool enabled;
   final bool quotaHint;
   final bool canWatchAdForBonus;
   final bool busy;
-  final VoidCallback onStart;
+  final VoidCallback? onStart;
 
   const _TestRow({
     required this.test,
     required this.stats,
+    required this.questionCount,
+    this.enabled = true,
     this.quotaHint = false,
     this.canWatchAdForBonus = false,
     this.busy = false,
@@ -607,79 +740,203 @@ class _TestRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final metaParts = <String>[
-      '${ContentBankService.instance.catalogQuestionCount(test)} soru',
-      if (stats.attemptCount > 0) ...[
-        '${stats.attemptCount} deneme',
-        'en iyi %${(stats.bestAccuracy * 100).round()}',
-      ],
+      if (enabled) ...[
+        '$questionCount soru',
+        if (stats.attemptCount > 0) ...[
+          '${stats.attemptCount} deneme',
+          'en iyi %${(stats.bestAccuracy * 100).round()}',
+        ],
+      ] else
+        'Henüz soru eklenmedi',
     ];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 2),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+    final titleColor =
+        enabled ? Colors.white : Colors.white.withValues(alpha: 0.38);
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.62,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: enabled
+                ? AppTheme.champagne.withValues(alpha: 0.28)
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: enabled
+                ? [
+                    AppTheme.champagne.withValues(alpha: 0.10),
+                    Colors.white.withValues(alpha: 0.04),
+                    AppTheme.inkSoft.withValues(alpha: 0.55),
+                  ]
+                : [
+                    Colors.white.withValues(alpha: 0.03),
+                    Colors.white.withValues(alpha: 0.015),
+                  ],
+          ),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: AppTheme.champagne.withValues(alpha: 0.08),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      test.title,
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (metaParts.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        metaParts.join(' · '),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.45),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          test.title,
+                          style: TextStyle(
+                            fontFamily: 'serif',
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: titleColor,
+                          ),
                         ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: 72,
-                height: 36,
-                child: TextButton(
-                  onPressed: busy ? null : onStart,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.neonEdge,
-                  ),
-                  child: busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppTheme.neonEdge,
+                      if (stats.attemptCount > 0) ...[
+                        const SizedBox(width: 8),
+                        Semantics(
+                          label: '${test.title} tamamlandı',
+                          child: const Icon(
+                            Icons.check_circle_rounded,
+                            size: 20,
+                            color: Color(0xFF22C55E),
                           ),
-                        )
-                      : const Text('BAŞLA'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _PremiumStartButton(
+                  enabled: enabled,
+                  busy: busy,
+                  onPressed: enabled && !busy ? onStart : null,
+                ),
+              ],
+            ),
+            if (metaParts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                metaParts.join(' · '),
+                style: TextStyle(
+                  fontSize: 12,
+                  letterSpacing: 0.15,
+                  color: Colors.white.withValues(
+                    alpha: enabled ? 0.48 : 0.28,
+                  ),
                 ),
               ),
             ],
-          ),
-          if (quotaHint) ...[
-            const SizedBox(height: 10),
-            _DailyQuotaBanner(canWatchAdForBonus: canWatchAdForBonus),
+            if (enabled && quotaHint) ...[
+              const SizedBox(height: 10),
+              _DailyQuotaBanner(canWatchAdForBonus: canWatchAdForBonus),
+            ],
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Test satırı — başlıkla aynı hizada, champagne premium CTA.
+class _PremiumStartButton extends StatelessWidget {
+  final bool enabled;
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  const _PremiumStartButton({
+    required this.enabled,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = enabled ? 'Başla' : 'Pasif';
+    final borderColor = enabled
+        ? AppTheme.champagne.withValues(alpha: 0.7)
+        : Colors.white.withValues(alpha: 0.12);
+    final labelColor = enabled
+        ? AppTheme.champagneLight
+        : Colors.white.withValues(alpha: 0.32);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(22),
+        splashColor: AppTheme.champagne.withValues(alpha: 0.18),
+        highlightColor: AppTheme.champagne.withValues(alpha: 0.08),
+        child: Ink(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: borderColor, width: 1.1),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: enabled
+                  ? [
+                      AppTheme.champagne.withValues(alpha: 0.28),
+                      AppTheme.champagne.withValues(alpha: 0.08),
+                      Colors.white.withValues(alpha: 0.04),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: 0.04),
+                      Colors.white.withValues(alpha: 0.02),
+                    ],
+            ),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: AppTheme.champagne.withValues(alpha: 0.18),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: busy
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.champagneLight,
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      height: 1,
+                      color: labelColor,
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -731,5 +988,3 @@ class _DailyQuotaBanner extends StatelessWidget {
     );
   }
 }
-
-enum _DailyQuotaAction { cancel, ad, premium }

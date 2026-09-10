@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../constants/brand_constants.dart';
@@ -10,7 +10,7 @@ import '../widgets/app_back_button.dart';
 import '../widgets/scale_button.dart';
 import 'package:share_plus/share_plus.dart';
 
-/// Instagram hikayeleri tarzında güncel bilgiler sayfası.
+/// Hikaye-tarz özel notlar ekranı (swipe ile gezin).
 class CurrentInfoScreen extends StatefulWidget {
   const CurrentInfoScreen({super.key});
 
@@ -47,7 +47,7 @@ class _CurrentInfoScreenState extends State<CurrentInfoScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
-        title: const Text('Güncel Bilgiler'),
+        title: const Text('Özel Notlarım'),
       ),
       body: FutureBuilder<List<CurrentInfoModel>>(
         future: _infosFuture,
@@ -58,7 +58,7 @@ class _CurrentInfoScreenState extends State<CurrentInfoScreen> {
 
           final infos = snapshot.data ?? [];
           if (infos.isEmpty) {
-            return const Center(child: Text('Henüz güncel bilgi yok.'));
+            return const Center(child: Text('Henüz özel not yok.'));
           }
 
           return Column(
@@ -194,7 +194,7 @@ class _PlaceholderImage extends StatelessWidget {
       ),
       child: Center(
         child: Icon(
-          Icons.newspaper_outlined,
+          Icons.sticky_note_2_outlined,
           size: 64,
           color: AppTheme.lightAccent.withValues(alpha: 0.8),
         ),

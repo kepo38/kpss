@@ -15,6 +15,7 @@ class NotesService extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialized) return;
+    await LocalDatabase.instance.initialize();
     _notes
       ..clear()
       ..addAll(await LocalDatabase.instance.getAllStudyNotes());

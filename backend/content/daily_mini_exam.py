@@ -15,6 +15,41 @@ OPENS_HOUR = 6
 TURKCE_TOPIC_SLUGS = ("turkce_anlam", "turkce_dilbilgisi")
 VALID_KPSS_TYPES = ("lisans", "onLisans", "ortaogretim")
 SUBJECT_POOLS = ("tarih", "cografya", "vatandaslik")
+DEMO_EMAIL_PREFIX = "demo.mini"
+DEMO_GOOGLE_SUB_PREFIX = "demo-mini-leader-"
+
+
+def is_demo_mini_user(user) -> bool:
+    """seed_daily_mini_demo kayıtları — canlı kürsüde gösterilmez."""
+    if user is None:
+        return False
+    email = (getattr(user, "email", "") or "").strip().lower()
+    google_sub = (getattr(user, "google_sub", "") or "").strip()
+    return email.startswith(DEMO_EMAIL_PREFIX) or google_sub.startswith(
+        DEMO_GOOGLE_SUB_PREFIX
+    )
+
+
+def attempt_counts_for_ranking(attempt) -> bool:
+    """En az bir işaretlenmiş cevap yoksa sıralamaya girmez."""
+    if attempt is None:
+        return False
+    return (attempt.correct or 0) > 0 or (attempt.wrong or 0) > 0
+
+
+def attempts_for_leaderboard(exam_date: date, kpss_type: str):
+    from .models import DailyMiniExamAttempt
+
+    return (
+        DailyMiniExamAttempt.objects.filter(
+            exam_date=exam_date,
+            kpss_type=kpss_type,
+        )
+        .exclude(correct=0, wrong=0)
+        .exclude(user__email__startswith=DEMO_EMAIL_PREFIX)
+        .exclude(user__google_sub__startswith=DEMO_GOOGLE_SUB_PREFIX)
+        .select_related("user")
+    )
 
 
 def istanbul_now() -> datetime:
@@ -40,6 +75,18 @@ def is_exam_open(now: datetime | None = None) -> bool:
     return opens_at <= current < closes_at
 
 
+def guest_login_required(user, exam_date: date | None = None) -> bool:
+    """Misafir yalnızca kayıt gününde katılır; sonraki günlerde giriş zorunlu."""
+    if user is None or not getattr(user, "is_anonymous", False):
+        return False
+    created = getattr(user, "created_at", None)
+    if created is None:
+        return False
+    created_day = timezone.localtime(created).date()
+    day = exam_date or exam_date_for()
+    return day > created_day
+
+
 def seconds_until_deadline(now: datetime | None = None) -> int:
     """Açıkken gece yarısına, kapalıyken 06:00'e kalan saniye."""
     current, opens_at, closes_at = window_bounds(now)
@@ -48,17 +95,18 @@ def seconds_until_deadline(now: datetime | None = None) -> int:
 
 
 def split_frosted_email(email: str) -> tuple[str, str]:
-    """E-postanın ilk 4-5 harfi buzlu gösterim için ayrılır."""
+    """@ öncesinde ilk 3 harfi gösterir; kalanını @ işaretine kadar gizler."""
     value = (email or "").strip()
     if not value:
         return "", ""
-    if len(value) >= 5:
-        n = 5
-    elif len(value) >= 4:
-        n = 4
-    else:
-        n = len(value)
-    return value[:n], value[n:]
+    if "@" not in value:
+        prefix = value[:3]
+        masked = "•" * max(0, len(value) - len(prefix))
+        return prefix, masked
+    local, domain = value.split("@", 1)
+    if len(local) <= 3:
+        return local, f"@{domain}"
+    return local[:3], f"•••@{domain}"
 
 
 def _uint32_seed(exam_date: date, kpss_type: str) -> int:
@@ -136,23 +184,19 @@ def get_or_create_today_exam(kpss_type: str, now: datetime | None = None) -> Dai
 
 
 def leaderboard_rows(exam_date: date, kpss_type: str, *, limit: int = 20) -> list[dict]:
-    from .models import DailyMiniExamAttempt
-
     attempts = (
-        DailyMiniExamAttempt.objects.filter(
-            exam_date=exam_date,
-            kpss_type=kpss_type,
-        )
-        .select_related("user")
+        attempts_for_leaderboard(exam_date, kpss_type)
         .order_by("-correct", "duration_seconds", "completed_at")[:limit]
     )
     rows = []
     for index, attempt in enumerate(attempts, start=1):
         prefix, rest = split_frosted_email(attempt.user.email)
+        display = (attempt.user.display_name or "").strip()
         rows.append(
             {
                 "rank": index,
                 "userId": str(attempt.user_id),
+                "displayName": display,
                 "emailPrefix": prefix,
                 "emailRest": rest,
                 "correct": attempt.correct,
@@ -165,12 +209,9 @@ def leaderboard_rows(exam_date: date, kpss_type: str, *, limit: int = 20) -> lis
 
 
 def rank_for_user(exam_date: date, kpss_type: str, user_id: int) -> tuple[int | None, int]:
-    from .models import DailyMiniExamAttempt
-
-    qs = DailyMiniExamAttempt.objects.filter(
-        exam_date=exam_date,
-        kpss_type=kpss_type,
-    ).order_by("-correct", "duration_seconds", "completed_at")
+    qs = attempts_for_leaderboard(exam_date, kpss_type).order_by(
+        "-correct", "duration_seconds", "completed_at"
+    )
     total = qs.count()
     for index, attempt in enumerate(qs.only("user_id"), start=1):
         if attempt.user_id == user_id:

@@ -7,6 +7,9 @@ enum AdRewardKind {
   campaign,
   solutionUnlock,
   dailyTestBonus,
+  wrongNotebookShare,
+  wrongNotebookBatchPractice,
+  tgExamDetailedAnalysis,
 }
 
 class AdService {
@@ -15,6 +18,7 @@ class AdService {
   static Future<bool> showRewardedAd({
     AdRewardKind kind = AdRewardKind.dailyTestBonus,
     String? questionId,
+    int? examId,
     VoidCallback? onComplete,
   }) async {
     final ads = AdManager.instance;
@@ -23,6 +27,12 @@ class AdService {
       AdRewardKind.solutionUnlock =>
         await ads.requestSolutionUnlock(questionId ?? ''),
       AdRewardKind.dailyTestBonus => await ads.requestDailyTestBonus(),
+      AdRewardKind.wrongNotebookShare =>
+        await ads.requestWrongNotebookShareUnlock(),
+      AdRewardKind.wrongNotebookBatchPractice =>
+        await ads.requestWrongNotebookBatchPractice(),
+      AdRewardKind.tgExamDetailedAnalysis =>
+        await ads.requestTgExamAnalysisUnlock(examId ?? 0),
     };
     if (earned) onComplete?.call();
     return earned;

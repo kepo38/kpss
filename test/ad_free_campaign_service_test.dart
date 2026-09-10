@@ -114,4 +114,27 @@ void main() {
       'Sonraki reklam: 2s 15dk',
     );
   });
+
+  test('subtitle says campaign does not unlock premium tools', () {
+    expect(
+      AdFreeCampaignLogic.subtitleLabel(
+        adsWatchedToday: 0,
+        adFreeActive: false,
+        adFreeRemaining: null,
+        canWatch: true,
+        cooldownRemaining: null,
+      ),
+      contains('Premium araçlar açılmaz'),
+    );
+    expect(
+      AdFreeCampaignLogic.subtitleLabel(
+        adsWatchedToday: 0,
+        adFreeActive: true,
+        adFreeRemaining: const Duration(hours: 3),
+        canWatch: false,
+        cooldownRemaining: null,
+      ),
+      contains('Çözüm kilidi ve günlük kota açılmaz'),
+    );
+  });
 }

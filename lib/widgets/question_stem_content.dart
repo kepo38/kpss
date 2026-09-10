@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_theme.dart';
+import 'exam_text/exam_stem_view.dart';
+import 'exam_text/option_column_layout.dart';
 import 'cached_remote_image.dart';
 import 'formatted_text.dart';
+import 'watermark_widget.dart';
 
 /// Soru kökünde `[HARITA]` ile görseli metnin ortasına yerleştirir.
 class QuestionStemContent extends StatelessWidget {
@@ -11,15 +14,22 @@ class QuestionStemContent extends StatelessWidget {
 
   final String stem;
   final String? imageUrl;
+  final String stemImagePosition;
   final String? sekilKodu;
   final TextStyle? style;
+
+  /// Metin bloklarına (harita öncesi/sonrası) filigran uygula.
+  /// Harita/SVG kendi overlay filigranını ayrı tutar.
+  final bool watermarkOnText;
 
   const QuestionStemContent({
     super.key,
     required this.stem,
     this.imageUrl,
+    this.stemImagePosition = 'below',
     this.sekilKodu,
     this.style,
+    this.watermarkOnText = true,
   });
 
   static bool hasInlineImage(String stem) {
@@ -29,7 +39,7 @@ class QuestionStemContent extends StatelessWidget {
   /// Liste önizlemelerinde yer tutucuyu ve biçim işaretlerini gizler.
   static String previewText(String stem) {
     return FormattedText.stripMarkup(
-      stem
+      OptionColumnLayout.visibleStem(stem)
           .replaceAll(inlineImagePlaceholder, ' ')
           .replaceAll(RegExp(r'[ \t]+\n'), '\n')
           .replaceAll(RegExp(r'\n{3,}'), '\n\n')
@@ -40,16 +50,21 @@ class QuestionStemContent extends StatelessWidget {
   bool get _hasSvg => sekilKodu != null && sekilKodu!.isNotEmpty;
   bool get _hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
+  Widget _stemText(String text) {
+    final view = ExamStemView(text: text);
+    if (!watermarkOnText) return view;
+    // Harita ile aynı marka; metnin arkasında ortalanmış (overlay değil).
+    return WatermarkWidget(
+      fitToChild: true,
+      centered: true,
+      child: view,
+    );
+  }
+
+  bool get _imageAbove => stemImagePosition == 'above';
+
   @override
   Widget build(BuildContext context) {
-    final baseStyle = style ??
-        const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          height: 1.5,
-          color: Colors.white,
-        );
-
     final parts = stem.split(inlineImagePlaceholder);
     final inline = _hasImage && parts.length > 1;
 
@@ -57,16 +72,13 @@ class QuestionStemContent extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FormattedText(
-            stem,
-            paragraphLayout: true,
-            textAlign: TextAlign.start,
-            style: baseStyle,
-          ),
+          if (_imageAbove && _hasImage) _QuestionImage(url: imageUrl!),
+          if (_imageAbove && _hasImage) const SizedBox(height: 16),
+          _stemText(stem),
           if (_hasSvg) ...[
             const SizedBox(height: 16),
             _QuestionSvgFigure(svg: sekilKodu!),
-          ] else if (_hasImage) ...[
+          ] else if (!_imageAbove && _hasImage) ...[
             const SizedBox(height: 16),
             _QuestionImage(url: imageUrl!),
           ],
@@ -81,14 +93,7 @@ class QuestionStemContent extends StatelessWidget {
         if (children.isNotEmpty) {
           children.add(const SizedBox(height: 12));
         }
-        children.add(
-          FormattedText(
-            chunk,
-            paragraphLayout: true,
-            textAlign: TextAlign.start,
-            style: baseStyle,
-          ),
-        );
+        children.add(_stemText(chunk));
       }
       if (i < parts.length - 1) {
         if (children.isNotEmpty) {
@@ -115,21 +120,25 @@ class _QuestionSvgFigure extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 320),
-        child: ColoredBox(
-          color: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: SvgPicture.string(
-              svg,
-              width: double.infinity,
-              fit: BoxFit.contain,
-              semanticsLabel: 'Geometri şekli',
-              placeholderBuilder: (context) => const AspectRatio(
-                aspectRatio: 4 / 3,
-                child: Center(
-                  child: CircularProgressIndicator(color: AppTheme.champagne),
+      child: WatermarkWidget(
+        overlay: true,
+        fitToChild: true,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: ColoredBox(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SvgPicture.string(
+                svg,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                semanticsLabel: 'Geometri şekli',
+                placeholderBuilder: (context) => const AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppTheme.champagne),
+                  ),
                 ),
               ),
             ),
@@ -149,16 +158,20 @@ class _QuestionImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 320),
+      child: WatermarkWidget(
+        overlay: true,
+        fitToChild: true,
         child: ColoredBox(
-          color: Colors.white,
-          child: CachedRemoteImage(
-            imageUrl: url,
-            width: double.infinity,
-            height: 220,
-            fit: BoxFit.contain,
-            semanticLabel: 'Soru haritası veya görseli',
+          color: const Color(0xFFF8FAFC),
+          child: AspectRatio(
+            aspectRatio: 16 / 7,
+            child: CachedRemoteImage(
+              imageUrl: url,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.contain,
+              semanticLabel: 'Soru haritası veya görseli',
+            ),
           ),
         ),
       ),

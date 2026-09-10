@@ -1,4 +1,4 @@
-import '../models/current_info_model.dart';
+﻿import '../models/current_info_model.dart';
 import '../models/question_model.dart';
 import '../models/user_model.dart';
 import '../models/wrong_question_model.dart';
@@ -78,15 +78,15 @@ class DatabaseService {
   static final List<CurrentInfoModel> _mockCurrentInfos = [
     CurrentInfoModel(
       id: 'ci1',
-      baslik: '2026 KPSS Takvimi Açıklandı',
-      aciklama: 'ÖSYM, 2026 KPSS sınav tarihlerini resmi sitesinde duyurdu.',
+      baslik: 'Tekrar Listem',
+      aciklama: 'Anayasa maddeleri, idare hukuku kavramları ve tarih kronolojisi — tekrar edilecek konular.',
       imageUrl: null,
       eklenmeTarihi: DateTime.now().subtract(const Duration(hours: 2)),
     ),
     CurrentInfoModel(
       id: 'ci2',
-      baslik: 'Güncel İçtihat: Anayasa Mahkemesi',
-      aciklama: 'Anayasa Mahkemesi\'nin son kararı KPSS adayları için önem taşıyor.',
+      baslik: 'Bugün Çalışacaklarım',
+      aciklama: 'Türkçe: Cümle bilgisi · Matematik: Oran-orantı · Hedef: 3 deneme sınavı.',
       imageUrl: null,
       eklenmeTarihi: DateTime.now().subtract(const Duration(days: 1)),
     ),

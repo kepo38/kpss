@@ -1,0 +1,76 @@
+{% load static %}
+<section class="map-editor-box" id="map-question-editor"
+         data-map-src="{% static 'content/maps/turkiye_goller.png' %}"
+         data-provinces-src="{% static 'content/maps/turkiye_iller.json' %}">
+  <div class="media-title">Harita sorusu</div>
+  <p class="media-hint">Şablonu seçin. <strong>İl boya</strong> = tıkla, ili doldur. <strong>Akıllı Fırça</strong> = kalınlıklı serbest karalama; boya denize/çerçeveye yazılmaz (kara maskesi). <strong>Elips</strong>, <strong>Doğru</strong>, <strong>Işın</strong>, <strong>İl adı</strong>. Soru metninde <code>[HARITA]</code> yazın.</p>
+  <div class="map-editor-actions map-editor-actions-top">
+    <button type="button" class="btn btn-ghost" id="map-insert-placeholder">Metne [HARITA] ekle</button>
+    <span class="media-hint" id="map-insert-status"></span>
+  </div>
+  <label>Harita şablonu
+    <select name="map_template" id="map-template">
+      <option value="">Harita yok</option>
+      {% for map_id, map_title in map_template_choices %}
+      {% if map_id %}
+      <option value="{{ map_id }}" {% if question and question.map_template == map_id %}selected{% endif %}>{{ map_title }}</option>
+      {% endif %}
+      {% endfor %}
+    </select>
+  </label>
+  <input type="hidden" name="map_markers" id="map-markers" value="[]">
+  <div class="map-editor-body" id="map-editor-body" hidden>
+    <div class="map-canvas-wrap" id="map-canvas-wrap">
+      <img src="{% static 'content/maps/turkiye_goller_editor.png' %}"
+           alt="İl sınırlı ve isimli düzenleme haritası (Tuz Gölü ve Van Gölü)"
+           id="map-base-image" draggable="false">
+      <div class="map-fit-plane" id="map-fit-plane">
+        <svg class="map-fill-layer" id="map-fill-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <svg class="map-brush-layer" id="map-brush-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <clipPath id="map-land-clip" clipPathUnits="userSpaceOnUse"></clipPath>
+          </defs>
+          <g id="map-brush-clipped" clip-path="url(#map-land-clip)">
+            <g id="map-brush-strokes"></g>
+            <path id="map-brush-live" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+          </g>
+        </svg>
+        <div class="map-brush-cursor" id="map-brush-cursor" hidden></div>
+        <div class="map-marker-layer" id="map-marker-layer"></div>
+      </div>
+    </div>
+    <div class="map-editor-actions">
+      <button type="button" class="btn btn-ghost" id="map-paint-toggle">İl boya</button>
+      <button type="button" class="btn btn-ghost" id="map-brush-toggle" title="Kalınlıklı serbest fırça; kara dışına taşmaz">Akıllı Fırça</button>
+      <label class="map-fill-color" id="map-fill-color-wrap" hidden>
+        Boya rengi
+        <input type="color" id="map-fill-color" value="#111827">
+      </label>
+      <label class="map-brush-width" id="map-brush-width-wrap" hidden>
+        Fırça kalınlığı
+        <input type="range" id="map-brush-width" min="0.8" max="6" step="0.1" value="2.2">
+        <span id="map-brush-width-val">2.2</span>
+      </label>
+      <button type="button" class="btn btn-ghost" id="map-zoom-expand">%170</button>
+      <button type="button" class="btn btn-ghost" id="map-add-marker">Elips ekle</button>
+      <button type="button" class="btn btn-ghost" id="map-add-circle">Daire ekle</button>
+      <button type="button" class="btn btn-ghost" id="map-add-line">Doğru çiz</button>
+      <button type="button" class="btn btn-ghost" id="map-add-spoke">Işın çiz</button>
+      <button type="button" class="btn btn-ghost" id="map-add-city-label">İl adı</button>
+      <label class="map-line-count" id="map-line-count-wrap" hidden>
+        Kaç doğru?
+        <input type="number" id="map-line-count" min="1" max="12" value="3" step="1">
+        <button type="button" class="btn btn-primary" id="map-line-count-ok">Tamam</button>
+      </label>
+      <button type="button" class="btn btn-ghost" id="map-city-labels-toggle" hidden aria-pressed="true">Şehir adları: açık</button>
+      <label class="map-line-width" id="map-line-width-wrap" hidden>
+        Kalınlık
+        <input type="range" id="map-line-width" min="0.4" max="4" step="0.1" value="0.5">
+        <span id="map-line-width-val">0.5</span>
+      </label>
+      <button type="button" class="btn btn-ghost" id="map-clear-markers">Tümünü sil</button>
+      <span class="media-hint" id="map-editor-status"></span>
+    </div>
+    <div class="map-marker-controls" id="map-marker-controls"></div>
+  </div>
+</section>

@@ -6,40 +6,52 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'constants/brand_constants.dart';
 import 'config/api_config.dart';
+import 'layout/app_content_frame.dart';
 import 'navigation/app_entry.dart';
 import 'navigation/app_navigator.dart';
 import 'screens/security_warning_modal.dart';
 import 'services/ad_free_campaign_service.dart';
 import 'services/ad_manager.dart';
+import 'services/app_update_service.dart';
 import 'services/boot_store.dart';
 import 'services/offline_pack_service.dart';
 import 'services/smart_review_service.dart';
 import 'services/announcement_service.dart';
+import 'services/app_config_service.dart';
 import 'services/auth_service.dart';
 import 'services/content_bank_service.dart';
 import 'services/content_sync_service.dart';
+import 'services/api_diag_log.dart';
 import 'services/database_bootstrap.dart';
 import 'services/database_service.dart';
 import 'services/favorites_service.dart';
+import 'services/summary_card_progress_service.dart';
 import 'services/gamification_service.dart';
 import 'services/last_study_session_service.dart';
 import 'services/local_database.dart';
 import 'services/notes_service.dart';
+import 'services/question_note_service.dart';
+import 'services/wrong_notebook_drawing_service.dart';
 import 'services/exam_catalog_service.dart';
 import 'services/kpss_preference_service.dart';
 import 'services/theme_preference_service.dart';
 import 'services/user_savings_insight_service.dart';
 import 'services/daily_mini_exam_service.dart';
+import 'services/daily_mini_ranking_service.dart';
+import 'services/network_security_gate.dart';
 import 'services/network_security_service.dart';
 import 'services/notification_preference_service.dart';
 import 'services/notification_service.dart';
 import 'services/orientation_policy.dart';
 import 'services/play_billing_service.dart';
+import 'services/premium_sync_service.dart';
 import 'services/practice_exam_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/tg_exam_service.dart';
 import 'services/user_message_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/boot_splash_screen.dart';
@@ -63,36 +75,103 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   final NetworkSecurityService _networkSecurity = NetworkSecurityService();
   bool _isConnectionBlocked = false;
   bool _securityChecked = false;
+  bool _vpnModalShown = false;
 
   /// Auth hazır → hemen ana sayfa (ağır servisler arka planda).
   bool _bootReady = false;
+  bool _showLaunchSplash = true;
+  bool _minSplashDone = false;
+  bool _bootDataReady = false;
+  bool _showAssignmentSplash = false;
+  bool? _routedSignedIn;
+  String? _routedUserId;
+  bool? _routedHasChosenExam;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AuthService.instance.addListener(_onAuthChanged);
+    KpssPreferenceService.instance.addListener(_onKpssRouteChanged);
+    PlayBillingService.instance.premiumNotifier
+        .addListener(_liftVpnLockIfPremium);
+    // Varsayılan tercihler — ilk karede UI çizebilsin.
+    final defaults = BootSnapshot.defaults();
+    ThemePreferenceService.instance.applyBootSnapshot(defaults);
+    KpssPreferenceService.instance.applyBootSnapshot(defaults);
     unawaited(OrientationPolicy.apply());
     unawaited(_boot());
+    unawaited(_minLaunchSplash());
     unawaited(_checkNetworkSecurity());
+  }
+
+  Future<void> _minLaunchSplash() async {
+    await Future<void>.delayed(kAssignmentSplashDuration);
+    _minSplashDone = true;
+    _tryDismissLaunchSplash();
+  }
+
+  void _tryDismissLaunchSplash() {
+    if (!mounted) return;
+    final needsExamChoice = !KpssPreferenceService.instance.hasChosenExam;
+    if (needsExamChoice) {
+      setState(() => _showLaunchSplash = false);
+      FlutterNativeSplash.remove();
+      unawaited(AppUpdateService.maybeShowOnLaunch());
+      return;
+    }
+    if (!_minSplashDone || !_bootDataReady) return;
+    setState(() => _showLaunchSplash = false);
+    FlutterNativeSplash.remove();
+    unawaited(AppUpdateService.maybeShowOnLaunch());
+  }
+
+  void _beginAssignmentSplash() {
+    if (!mounted) return;
+    setState(() => _showAssignmentSplash = true);
+  }
+
+  void _finishAssignmentSplash() {
+    if (!mounted) return;
+    setState(() => _showAssignmentSplash = false);
   }
 
   @override
   void dispose() {
     AuthService.instance.removeListener(_onAuthChanged);
+    KpssPreferenceService.instance.removeListener(_onKpssRouteChanged);
+    PlayBillingService.instance.premiumNotifier
+        .removeListener(_liftVpnLockIfPremium);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   void _onAuthChanged() {
+    _liftVpnLockIfPremium();
     if (!mounted || !_bootReady) return;
-    final user = AuthService.instance.user;
+    final auth = AuthService.instance;
+    final user = auth.user;
     if (user != null) {
       DatabaseService.instance.setCurrentUser(user);
       SchedulerBinding.instance.addPostFrameCallback((_) {
         unawaited(AppNavigator.consumePending());
       });
     }
+    // İsim/premium gibi profil güncellemelerinde kök ağacı yeniden kurma.
+    final signedIn = auth.isSignedIn;
+    final userId = user?.id;
+    if (signedIn == _routedSignedIn && userId == _routedUserId) return;
+    _routedSignedIn = signedIn;
+    _routedUserId = userId;
+    setState(() {});
+  }
+
+  /// Yalnızca sınav seçimi kapısı değişince kök home'u yenile.
+  void _onKpssRouteChanged() {
+    if (!mounted || !_bootReady) return;
+    final chosen = KpssPreferenceService.instance.hasChosenExam;
+    if (chosen == _routedHasChosenExam) return;
+    _routedHasChosenExam = chosen;
     setState(() {});
   }
 
@@ -104,101 +183,83 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (AuthService.instance.isLocalGuest) {
-        unawaited(AuthService.instance.ensureAnonymousSession());
+      final auth = AuthService.instance;
+      if (auth.hasPermanentAccount) {
+        unawaited(auth.refreshProfile());
+      } else if (auth.isLocalGuest) {
+        unawaited(auth.ensureAnonymousSession());
       }
       unawaited(ExamCatalogService.instance.refresh());
       unawaited(NotificationService.instance.ensureScheduled());
+      unawaited(PremiumSyncService.instance.syncIfYearlyActive());
+      if (TgExamService.instance.isInitialized) {
+        unawaited(TgExamService.instance.refresh());
+      }
     }
   }
 
   Future<void> _boot() async {
     final sw = Stopwatch()..start();
+    unawaited(_finishAuthBoot());
+
     try {
-      if (await BootStore.exists()) {
-        final snap = await BootStore.load();
-        ThemePreferenceService.instance.applyBootSnapshot(snap);
-        KpssPreferenceService.instance.applyBootSnapshot(snap);
-        if (kDebugMode) {
-          debugPrint('Boot fast-path: ${sw.elapsedMilliseconds}ms');
-        }
-        if (!mounted) return;
-        setState(() => _bootReady = true);
-        FlutterNativeSplash.remove();
-        unawaited(_finishFullBoot());
-      } else {
-        // BootStore yok: onboarding'i hemen göster; ağır SharedPreferences arka planda.
-        final defaults = BootSnapshot.defaults();
-        ThemePreferenceService.instance.applyBootSnapshot(defaults);
-        KpssPreferenceService.instance.applyBootSnapshot(defaults);
-        if (kDebugMode) {
-          debugPrint('Boot optimistic UI: ${sw.elapsedMilliseconds}ms');
-        }
-        if (!mounted) return;
-        setState(() => _bootReady = true);
-        FlutterNativeSplash.remove();
-        unawaited(_legacyFirstBoot(sw));
+      await _loadBootPreferences();
+      if (kDebugMode) {
+        debugPrint(
+          'Boot prefs-ready: ${sw.elapsedMilliseconds}ms '
+          'chosen=${KpssPreferenceService.instance.hasChosenExam}',
+        );
       }
     } catch (e, st) {
       debugPrint('Boot init error: $e\n$st');
-      if (!mounted) return;
-      setState(() => _bootReady = true);
-      FlutterNativeSplash.remove();
-      unawaited(_finishFullBoot());
     }
+
+    if (!mounted) return;
+    final needsExamChoice = !KpssPreferenceService.instance.hasChosenExam;
+    final auth = AuthService.instance;
+    setState(() {
+      _bootReady = true;
+      _bootDataReady = true;
+      _routedHasChosenExam = !needsExamChoice;
+      _routedSignedIn = auth.isSignedIn;
+      _routedUserId = auth.user?.id;
+      if (needsExamChoice) _showLaunchSplash = false;
+    });
+    if (needsExamChoice) {
+      FlutterNativeSplash.remove();
+    } else {
+      _tryDismissLaunchSplash();
+    }
+
+    unawaited(_finishFullBoot());
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
       unawaited(AppNavigator.consumePending());
     });
   }
 
-  /// BootStore yokken — SharedPreferences bir kez yüklenir, sonra boot dosyası yazılır.
-  Future<void> _legacyFirstBoot(Stopwatch sw) async {
-    try {
-      await Future.wait([
-        ThemePreferenceService.instance.initialize(),
-        KpssPreferenceService.instance.initialize(),
-      ]);
-      await BootStore.syncFrom(
-        hasChosenExam: KpssPreferenceService.instance.hasChosenExam,
-        themePreference: ThemePreferenceService.instance.preference.name,
-        examTrackId: KpssPreferenceService.instance.examTrackId,
-      );
-      if (kDebugMode) {
-        debugPrint('Boot legacy-path done: ${sw.elapsedMilliseconds}ms');
-      }
-    } catch (e, st) {
-      debugPrint('Boot legacy error: $e\n$st');
+  Future<void> _loadBootPreferences() async {
+    if (await BootStore.exists()) {
+      final snap = await BootStore.load();
+      ThemePreferenceService.instance.applyBootSnapshot(snap);
+      KpssPreferenceService.instance.applyBootSnapshot(snap);
     }
-    if (!mounted) return;
-    setState(() => _bootReady = true);
-    FlutterNativeSplash.remove();
-    unawaited(_finishFullBoot());
+    await Future.wait([
+      ThemePreferenceService.instance.initialize(),
+      KpssPreferenceService.instance.initialize(),
+    ]);
+    await BootStore.syncFrom(
+      hasChosenExam: KpssPreferenceService.instance.hasChosenExam,
+      themePreference: ThemePreferenceService.instance.preference.name,
+      examTrackId: KpssPreferenceService.instance.examTrackId,
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _finishFullBoot() async {
-    unawaited(_finishAuthBoot());
+    await initializeDateFormatting('tr', null);
     unawaited(_initializeHeavyInBackground());
     unawaited(_initFirebaseInBackground());
-    if (!KpssPreferenceService.instance.isInitialized ||
-        !ThemePreferenceService.instance.isInitialized) {
-      try {
-        await Future.wait([
-          if (!ThemePreferenceService.instance.isInitialized)
-            ThemePreferenceService.instance.initialize(),
-          if (!KpssPreferenceService.instance.isInitialized)
-            KpssPreferenceService.instance.initialize(),
-        ]);
-        await BootStore.syncFrom(
-          hasChosenExam: KpssPreferenceService.instance.hasChosenExam,
-          themePreference: ThemePreferenceService.instance.preference.name,
-          examTrackId: KpssPreferenceService.instance.examTrackId,
-        );
-        if (mounted) setState(() {});
-      } catch (e, st) {
-        debugPrint('Boot prefs sync error: $e\n$st');
-      }
-    }
   }
 
   Future<void> _finishAuthBoot() async {
@@ -239,15 +300,21 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       await DailyMiniExamService.instance.initialize(
         kpssType: KpssPreferenceService.instance.kpssType,
       );
+      // ÖDÜL flag early — default hidden until API confirms rewardsVisible.
+      unawaited(DailyMiniRankingService.instance.refresh());
       // Hafif local servisler paralel
       await Future.wait([
         PracticeExamService.instance.initialize(),
         NotesService.instance.initialize(),
+        QuestionNoteService.instance.initialize(),
+        WrongNotebookDrawingService.instance.initialize(),
         FavoritesService.instance.initialize(),
+        SummaryCardProgressService.instance.initialize(),
         AdFreeCampaignService.instance.initialize(),
         SmartReviewService.instance.initialize(),
         OfflinePackService.instance.initialize(),
         AnnouncementService.instance.initialize(),
+        AppConfigService.instance.initialize(),
         UserMessageService.instance.initialize(),
       ]);
       await UserSavingsInsightService.instance.initialize();
@@ -263,10 +330,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
 
     // Ağ / SDK — ana sayfadan sonra, birbirini bekletmeden
     unawaited(_safeInit(() => AdManager.instance.initialize(), 'ads'));
-    unawaited(
-        _safeInit(() => PlayBillingService.instance.initialize(), 'billing'));
-    unawaited(
-        _safeInit(() => NotificationService.instance.initialize(), 'notif'));
+    unawaited(_safeInit(() => PlayBillingService.instance.initialize(), 'billing'));
+    await _safeInit(() => NotificationService.instance.initialize(), 'notif');
     unawaited(
         _safeInit(() => PushNotificationService.instance.initialize(), 'push'));
     unawaited(_syncContentInBackground());
@@ -283,56 +348,108 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
   Future<void> _syncContentInBackground() async {
     try {
       final ok = await ContentSyncService.instance.syncCatalog(force: true);
-      debugPrint(
-        ok
-            ? 'Content sync on launch OK v${ContentBankService.instance.packVersion}'
-            : 'Content sync on launch FAILED (API: ${ApiConfig.baseUrl})',
-      );
+      if (ok) {
+        debugPrint(
+          'Content sync on launch OK v${ContentBankService.instance.packVersion}',
+        );
+        return;
+      }
+      final entry = ApiDiagLog.lastEntry.value;
+      final tip = entry?.shortMessage ??
+          'İçerik senkronu başarısız (API: ${ApiConfig.baseUrl}).';
+      debugPrint('Content sync on launch FAILED — $tip');
+      _showSyncFailSnack(tip);
     } catch (e, st) {
+      await ApiDiagLog.record(
+        event: 'catalog_launch',
+        ok: false,
+        error: e,
+      );
       debugPrint('Content sync on launch error: $e\n$st');
+      _showSyncFailSnack(ApiDiagLog.classify(e).tip);
     }
+  }
+
+  void _showSyncFailSnack(String tip) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = AppNavigator.key.currentContext;
+      if (ctx == null) return;
+      final messenger = ScaffoldMessenger.maybeOf(ctx);
+      messenger?.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(tip),
+        ),
+      );
+    });
   }
 
   Future<void> _checkNetworkSecurity() async {
-    final unsafe = await _networkSecurity.hasUnsafeConnection();
+    final blocked = await NetworkSecurityGate.shouldBlock(_networkSecurity);
     if (!mounted) return;
     setState(() {
-      _isConnectionBlocked = unsafe;
+      _isConnectionBlocked = blocked;
       _securityChecked = true;
     });
-    if (unsafe) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final navigatorContext = AppNavigator.key.currentContext;
-        if (mounted && navigatorContext != null) {
-          showSecurityWarningModal(navigatorContext);
-        }
+    if (!blocked) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isConnectionBlocked || _vpnModalShown) return;
+      final navigatorContext = AppNavigator.key.currentContext;
+      if (navigatorContext == null) return;
+      _vpnModalShown = true;
+      showSecurityWarningModal(navigatorContext).whenComplete(() {
+        _vpnModalShown = false;
       });
-    }
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final auth = AuthService.instance;
+  void _liftVpnLockIfPremium() {
+    if (!NetworkSecurityGate.isPremiumExempt) return;
+    if (!_isConnectionBlocked && !_vpnModalShown) return;
+    if (mounted) {
+      setState(() => _isConnectionBlocked = false);
+    } else {
+      _isConnectionBlocked = false;
+    }
+    if (!_vpnModalShown) return;
+    final nav = AppNavigator.key.currentState;
+    if (nav != null && nav.canPop()) nav.pop();
+  }
 
-    Widget home;
+  Widget _buildRoutedHome() {
+    final auth = AuthService.instance;
     if (_isConnectionBlocked && _securityChecked) {
-      home = const _BlockedHomeScreen();
-    } else if (!_bootReady) {
-      home = const BootSplashScreen();
-    } else if (!KpssPreferenceService.instance.hasChosenExam) {
-      home = const AppEntry();
-    } else if (!auth.isSignedIn) {
-      home = _SessionRetryScreen(
+      return const _BlockedHomeScreen();
+    }
+    if (!_bootReady) {
+      return const SizedBox.shrink();
+    }
+    if (_showLaunchSplash) {
+      return const BootSplashScreen();
+    }
+    if (_showAssignmentSplash) {
+      return BootSplashScreen(onComplete: _finishAssignmentSplash);
+    }
+    if (!KpssPreferenceService.instance.hasChosenExam) {
+      return AppEntry(onExamChosen: _beginAssignmentSplash);
+    }
+    if (!auth.isSignedIn) {
+      return _SessionRetryScreen(
         message: auth.lastError,
         onRetry: () async {
           await auth.ensureAnonymousSession();
           if (mounted) setState(() {});
         },
       );
-    } else {
-      home = const AppEntry();
     }
+    return const AppEntry();
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    // Tema değişince yalnızca MaterialApp (themeMode); Auth/KPSS kapısı
+    // setState ile — profil notify'ları tüm ağacı yeniden kurmaz.
     return ListenableBuilder(
       listenable: ThemePreferenceService.instance,
       builder: (context, _) {
@@ -343,28 +460,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: ThemePreferenceService.instance.themeMode,
-          builder: (context, child) {
-            if (!kIsWeb || child == null) {
-              return child ?? const SizedBox.shrink();
-            }
-            final dark = Theme.of(context).brightness == Brightness.dark;
-            return ColoredBox(
-              color: dark ? const Color(0xFF0A101C) : const Color(0xFFD8DEE8),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 430),
-                  child: Material(
-                    elevation: 12,
-                    shadowColor: Colors.black26,
-                    borderRadius: BorderRadius.circular(28),
-                    clipBehavior: Clip.antiAlias,
-                    child: child,
-                  ),
-                ),
-              ),
-            );
-          },
-          home: home,
+          builder: (context, child) => AppContentFrame(child: child),
+          home: _buildRoutedHome(),
         );
       },
     );

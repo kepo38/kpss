@@ -60,7 +60,10 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
     }
   }
 
-  void _onUiStateChanged() => setState(() {});
+  void _onUiStateChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   ProductDetails? get _selectedProduct {
     return _selected == _PlanKind.yearly
@@ -103,6 +106,14 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
 
   Future<void> _redeemPromo() async {
     if (_redeemingPromo) return;
+    if (AuthService.instance.isAnonymous) {
+      await AccountLinkCard.prompt(
+        context,
+        title: 'Kod için giriş yap',
+        subtitle: 'Promosyon kodunu kullanmak için Google hesabını bağla.',
+      );
+      return;
+    }
     setState(() => _redeemingPromo = true);
     try {
       final result =
@@ -157,6 +168,7 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final offlineOn = PremiumService.instance.isOfflinePackModuleEnabled;
     final monthly = _billing.monthlyProduct;
     final yearly = _billing.yearlyProduct;
     final loading =
@@ -264,7 +276,9 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
                       ),
                     ),
                     const SizedBox(height: 32),
-                    ...PremiumService.features.map(
+                    ...PremiumService.features
+                        .where((f) => offlineOn || !f.yearlyOnly)
+                        .map(
                       (f) => _FeatureRow(
                         icon: _iconFor(f.iconName),
                         title: f.title,
@@ -306,10 +320,10 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
                     const SizedBox(height: 12),
                     _PlanCard(
                       title: '1 yıllık abonelik',
-                      subtitle: _yearlySubtitle(yearly),
+                      subtitle: _yearlySubtitle(yearly, offlineOn: offlineOn),
                       price: _yearlyPrice(yearly),
                       priceCaption: 'yıllık · otomatik yenilenir',
-                      badge: 'Offline paket dahil',
+                      badge: offlineOn ? 'Offline paket dahil' : 'En avantajlı paket',
                       selected: _selected == _PlanKind.yearly,
                       loading: loading && yearly == null,
                       onTap: () => setState(() => _selected = _PlanKind.yearly),
@@ -330,7 +344,7 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
                       ),
                     ],
                     if (!PremiumService.instance.isPremium &&
-                        AuthService.instance.hasBackendSession) ...[
+                        AuthService.instance.hasPermanentAccount) ...[
                       const SizedBox(height: 20),
                       _PromoCodeSection(
                         controller: _promoController,
@@ -426,11 +440,12 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
     return IapConstants.yearlyFallbackPrice;
   }
 
-  String _yearlySubtitle(ProductDetails? product) {
-    if (product != null) {
-      return 'En avantajlı paket · offline kütüphane dahil';
-    }
-    return 'En avantajlı paket · offline kütüphane dahil';
+  String _yearlySubtitle(ProductDetails? product, {required bool offlineOn}) {
+    final hint = offlineOn
+        ? 'En avantajlı paket · offline kütüphane dahil'
+        : 'En avantajlı paket · tüm premium özellikler';
+    if (product != null) return hint;
+    return hint;
   }
 
   PricingPhaseWrapper? _introPhase(ProductDetails? product) {
@@ -644,12 +659,14 @@ class _PromoCodeSection extends StatelessWidget {
                 child: TextField(
                   controller: controller,
                   enabled: !busy,
+                  maxLength: 32,
                   textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(
                     hintText: 'Kodu gir',
                     isDense: true,
                     filled: true,
                     fillColor: Colors.white,
+                    counterText: '',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),

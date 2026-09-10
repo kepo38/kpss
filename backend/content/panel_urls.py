@@ -1,6 +1,6 @@
-from django.urls import path
+from django.urls import include, path
 
-from . import panel_views
+from . import panel_osym_archive_views, panel_views
 
 urlpatterns = [
     path("", panel_views.panel_home, name="panel_home"),
@@ -14,6 +14,16 @@ urlpatterns = [
         "hata-bildirimi/<int:report_id>/durum/",
         panel_views.panel_error_report_status,
         name="panel_error_report_status",
+    ),
+    path(
+        "onay-bekleyen-sorular/",
+        panel_views.panel_pending_questions,
+        name="panel_pending_questions",
+    ),
+    path(
+        "onay-bekleyen-sorular/<int:question_id>/reddet/",
+        panel_views.panel_pending_question_reject,
+        name="panel_pending_question_reject",
     ),
     path("haritalar/", panel_views.panel_maps, name="panel_maps"),
     path(
@@ -35,6 +45,11 @@ urlpatterns = [
         "api/ocr-question/",
         panel_views.panel_ocr_question,
         name="panel_ocr_question",
+    ),
+    path(
+        "api/normalize-paste/",
+        panel_views.panel_normalize_paste,
+        name="panel_normalize_paste",
     ),
     path(
         "ders/<int:subject_id>/konular/",
@@ -95,6 +110,31 @@ urlpatterns = [
         "bilgi/<int:lesson_id>/sil/",
         panel_views.panel_lesson_delete,
         name="panel_lesson_delete",
+    ),
+    path(
+        "konu/<int:topic_id>/ozet/yeni/",
+        panel_views.panel_summary_card_edit,
+        name="panel_summary_card_new",
+    ),
+    path(
+        "konu/<int:topic_id>/ozet/<int:card_id>/",
+        panel_views.panel_summary_card_edit,
+        name="panel_summary_card_edit",
+    ),
+    path(
+        "ozet-kart/",
+        panel_views.panel_summary_card_studio,
+        name="panel_summary_card_studio",
+    ),
+    path(
+        "ozet-kart/<int:card_id>/",
+        panel_views.panel_summary_card_studio,
+        name="panel_summary_card_studio_edit",
+    ),
+    path(
+        "ozet/<int:card_id>/sil/",
+        panel_views.panel_summary_card_delete,
+        name="panel_summary_card_delete",
     ),
     path(
         "konu/<int:topic_id>/soru/yeni/",
@@ -177,6 +217,16 @@ urlpatterns = [
         name="panel_announcement_send",
     ),
     path(
+        "mobil-arayuz/",
+        panel_views.panel_mobile_ui,
+        name="panel_mobile_ui",
+    ),
+    path(
+        "mini-deneme-odulleri/",
+        panel_views.panel_daily_mini_ranking,
+        name="panel_daily_mini_ranking",
+    ),
+    path(
         "sinavlar/",
         panel_views.panel_exam_type_list,
         name="panel_exam_type_list",
@@ -196,7 +246,74 @@ urlpatterns = [
         panel_views.panel_exam_type_delete,
         name="panel_exam_type_delete",
     ),
+    path(
+        "deneme-sablon/",
+        panel_views.panel_exam_distribution_list,
+        name="panel_exam_distribution_list",
+    ),
+    path(
+        "deneme-sablon/yeni/",
+        panel_views.panel_exam_distribution_edit,
+        name="panel_exam_distribution_new",
+    ),
+    path(
+        "deneme-sablon/<int:template_id>/",
+        panel_views.panel_exam_distribution_edit,
+        name="panel_exam_distribution_edit",
+    ),
+    path(
+        "deneme-sablon/<int:template_id>/sil/",
+        panel_views.panel_exam_distribution_delete,
+        name="panel_exam_distribution_delete",
+    ),
+    path(
+        "deneme-paket/",
+        panel_views.panel_exam_pack_list,
+        name="panel_exam_pack_list",
+    ),
+    path(
+        "deneme-paket/yeni/",
+        panel_views.panel_exam_pack_edit,
+        name="panel_exam_pack_new",
+    ),
+    path(
+        "deneme-paket/<int:pack_id>/",
+        panel_views.panel_exam_pack_edit,
+        name="panel_exam_pack_edit",
+    ),
+    path(
+        "deneme-paket/<int:pack_id>/toggle/",
+        panel_views.panel_exam_pack_toggle,
+        name="panel_exam_pack_toggle",
+    ),
+    path(
+        "deneme-paket/<int:pack_id>/sil/",
+        panel_views.panel_exam_pack_delete,
+        name="panel_exam_pack_delete",
+    ),
+    path("", include("content.tg_exam.panel_urls")),
+    path(
+        "osym-cikmis/",
+        panel_osym_archive_views.panel_osym_archive,
+        name="panel_osym_archive",
+    ),
+    path(
+        "osym-cikmis/detay/<path:label>/",
+        panel_osym_archive_views.panel_osym_archive_detail,
+        name="panel_osym_archive_detail",
+    ),
+    path("uygulama-durumu/", panel_views.panel_app_stats, name="panel_app_stats"),
     path("kullanicilar/", panel_views.panel_users, name="panel_users"),
+    path(
+        "kullanicilar/toplu-sil/",
+        panel_views.panel_user_bulk_delete,
+        name="panel_user_bulk_delete",
+    ),
+    path(
+        "kullanicilar/misafirleri-temizle/",
+        panel_views.panel_user_purge_guests,
+        name="panel_user_purge_guests",
+    ),
     path(
         "kullanici/<int:user_id>/premium/",
         panel_views.panel_user_grant_premium,
@@ -206,6 +323,27 @@ urlpatterns = [
         "kullanici/<int:user_id>/premium/kaldir/",
         panel_views.panel_user_revoke_premium,
         name="panel_user_revoke_premium",
+    ),
+    path("promosyon/", panel_views.panel_promo_list, name="panel_promo_list"),
+    path(
+        "promosyon/yeni/",
+        panel_views.panel_promo_edit,
+        name="panel_promo_new",
+    ),
+    path(
+        "promosyon/<int:promo_id>/",
+        panel_views.panel_promo_edit,
+        name="panel_promo_edit",
+    ),
+    path(
+        "promosyon/<int:promo_id>/sil/",
+        panel_views.panel_promo_delete,
+        name="panel_promo_delete",
+    ),
+    path(
+        "promosyon/<int:promo_id>/toggle/",
+        panel_views.panel_promo_toggle,
+        name="panel_promo_toggle",
     ),
     path(
         "konu/<int:topic_id>/",

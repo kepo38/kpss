@@ -5,7 +5,7 @@
     <a href="{% url 'panel_home' %}">Dersler</a> / İncelenecek sorular
   </div>
   <h1>İncelenecek sorular</h1>
-  <p class="lead">Öğrencilerin “Soruda hata bildir” ile gönderdiği bildirimler. Açık: <strong>{{ open_count }}</strong></p>
+  <p class="lead">Öğrencilerin “Soruda hata bildir” ile gönderdiği bildirimler. İncelenecek: {% if open_count %}<span class="pending-count">{{ open_count }}</span>{% else %}<strong>0</strong>{% endif %}</p>
 </header>
 
 <div class="panel-card quality-card">

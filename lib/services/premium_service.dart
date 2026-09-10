@@ -1,4 +1,6 @@
 import 'database_service.dart';
+import 'app_config_service.dart';
+import '../constants/studio_modules.dart';
 import 'play_billing_service.dart';
 
 /// Premium erişim kontrolü — tüm premium modüller bu servis üzerinden doğrulanır.
@@ -7,14 +9,22 @@ class PremiumService {
   static final PremiumService instance = PremiumService._();
 
   bool get isPremium {
-    if (PlayBillingService.instance.premiumNotifier.value) return true;
-    return DatabaseService.instance.currentUser?.isPremium ?? false;
+    final user = DatabaseService.instance.currentUser;
+    if (user?.isPremium ?? false) return true;
+    return PlayBillingService.instance.premiumNotifier.value;
   }
 
-  /// Offline paket yalnızca yıllık abonelikte.
-  bool get isYearlyPremium => PlayBillingService.instance.isYearlyPremium;
+  /// Offline paket yalnızca yıllık abonelikte (Play veya sunucu grant).
+  bool get isYearlyPremium {
+    final user = DatabaseService.instance.currentUser;
+    if (user?.isYearlyPremium ?? false) return true;
+    return PlayBillingService.instance.isYearlyPremium;
+  }
 
-  bool get canUseOfflinePack => isYearlyPremium;
+  bool get isOfflinePackModuleEnabled =>
+      AppConfigService.instance.isStudioModuleEnabled(StudioModules.offlinePack);
+
+  bool get canUseOfflinePack => isYearlyPremium && isOfflinePackModuleEnabled;
 
   bool checkAccess() => isPremium;
 
@@ -34,17 +44,6 @@ class PremiumService {
       description: 'ÖSYM müfredatında ilerlemenizi işaretleyin ve görün.',
     ),
     PremiumFeature(
-      iconName: 'timer',
-      title: 'Odak Modu & Pomodoro',
-      description: '25/50/90 dk odak seansları, ortam sesleri, mola hatırlatıcı.',
-    ),
-    PremiumFeature(
-      iconName: 'analytics',
-      title: 'Deneme Analizi Pro',
-      description:
-          'GK/GY ayrımı, yayın evi karşılaştırma, çizgi grafikler, haftalık özet bildirimi.',
-    ),
-    PremiumFeature(
       iconName: 'task',
       title: 'Görev Yönetimi',
       description: 'Haftalık plan, ders etiketleri ve öncelik seviyeleri.',
@@ -57,7 +56,23 @@ class PremiumService {
     PremiumFeature(
       iconName: 'leaderboard',
       title: 'Sıralama',
-      description: 'Haftalık ve aylık XP sıralaması.',
+      description: 'Haftalık ve aylık toplam doğru sıralaması.',
+    ),
+    PremiumFeature(
+      iconName: 'repeat',
+      title: 'Akıllı Tekrar',
+      description:
+          'Yanlış defteri, telafi konuları ve zayıf konulardan günlük SRS oturumu.',
+    ),
+    PremiumFeature(
+      iconName: 'similar',
+      title: 'Benzer Sorular',
+      description: 'Yanlış defterinden embedding ile benzer soru seti.',
+    ),
+    PremiumFeature(
+      iconName: 'unlimited',
+      title: 'Sınırsız Konu Testi',
+      description: 'Günlük ders kotası ve reklam zorunluluğu kalkar.',
     ),
   ];
 }

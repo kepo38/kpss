@@ -62,7 +62,7 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
             TextButton(
               onPressed: () => _svc.markAllRead(),
               child: const Text(
-                'Tümünü okundu',
+                'Hepsini Oku',
                 style: TextStyle(color: AppTheme.champagne, fontSize: 13),
               ),
             ),

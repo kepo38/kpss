@@ -24,6 +24,7 @@ class PerformanceSummaryService {
       final weakFromTests = <String, int>{};
 
       for (final a in bank.attemptsForType(type)) {
+        if (!ContentBankService.countsTowardDailyHomework(a)) continue;
         if (!topicIds.contains(a.topicId)) continue;
         correct += a.correct;
         wrong += a.wrong;
@@ -105,6 +106,7 @@ class PerformanceSummaryService {
 
     for (final kpssType in KpssType.values) {
       for (final a in bank.attemptsForType(kpssType)) {
+        if (!ContentBankService.countsTowardDailyHomework(a)) continue;
         if (!topicIds.contains(a.topicId)) continue;
         final testTitle = bank.testById(a.testId)?.title ?? 'Test';
         final topicName = topicNameById[a.topicId] ?? a.topicId;

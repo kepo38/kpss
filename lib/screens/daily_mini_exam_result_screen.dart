@@ -1,24 +1,56 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../constants/daily_mini_exam_constants.dart';
 import '../constants/savings_constants.dart';
+import '../screens/daily_mini_rewards_screen.dart';
 import '../screens/premium/premium_paywall_screen.dart';
 import '../services/daily_mini_exam_service.dart';
+import '../services/daily_mini_ranking_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/daily_mini_exam_logic.dart';
+import '../widgets/daily_mini_exam/daily_mini_odul_button.dart';
 import '../widgets/frosted_email.dart';
 import '../widgets/scale_button.dart';
 
-/// Günün Mini Denemesi tam sıralama ekranı.
-class DailyMiniExamResultScreen extends StatelessWidget {
+/// Günün Mini Denemesi tam sıralama ekranı (günlük liste; hafta/ay ÖDÜL ayrı).
+class DailyMiniExamResultScreen extends StatefulWidget {
   const DailyMiniExamResultScreen({super.key});
+
+  @override
+  State<DailyMiniExamResultScreen> createState() =>
+      _DailyMiniExamResultScreenState();
+}
+
+class _DailyMiniExamResultScreenState extends State<DailyMiniExamResultScreen> {
+  bool _loadingBoard = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadTodayRanking());
+      unawaited(DailyMiniRankingService.instance.refresh());
+    });
+  }
+
+  Future<void> _loadTodayRanking() async {
+    setState(() => _loadingBoard = true);
+    await DailyMiniExamService.instance.refresh();
+    if (!mounted) return;
+    setState(() => _loadingBoard = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: DailyMiniExamService.instance,
+      listenable: Listenable.merge([
+        DailyMiniExamService.instance,
+        DailyMiniRankingService.instance,
+      ]),
       builder: (context, _) {
         final service = DailyMiniExamService.instance;
         final attempt = service.attempt;
@@ -32,28 +64,58 @@ class DailyMiniExamResultScreen extends StatelessWidget {
         }
         final participantCount = service.participantCount;
         final leaderboard = service.leaderboard;
-        final rankLine = attempt.rank != null && participantCount > 0
-            ? '${attempt.rank}. sıra · ${formatTrInt(participantCount)} kişi'
-            : null;
+        final rank = service.rankForCurrentUser() ?? attempt.rank;
+        final showRank = rank != null && rank > 0 && participantCount > 0;
+        final boardEmpty = leaderboard.isEmpty;
+        final showOdul = DailyMiniRankingService.instance.rewardsVisible;
 
         return Scaffold(
-      backgroundColor: AppTheme.ink,
-      appBar: AppBar(
-        backgroundColor: AppTheme.ink,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Günün Sıralaması',
-          style: TextStyle(
-            fontFamily: 'serif',
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
+          backgroundColor: AppTheme.ink,
+          appBar: AppBar(
+            backgroundColor: AppTheme.ink,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            title: const Text(
+              'Günün Sıralaması',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+              ),
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Yenile',
+                onPressed: _loadingBoard ? null : _loadTodayRanking,
+                icon: _loadingBoard
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.champagne,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
+              if (showOdul)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Center(
+                    child: DailyMiniOdulButton(
+                      size: 44,
+                      onPressed: () => showDailyMiniOdulInfoCard(context),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(22, 8, 22, 40),
-        children: [
+          body: Column(
+            children: [
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
+                  children: [
           Text(
             'BUGÜNKÜ SKOR',
             textAlign: TextAlign.center,
@@ -102,41 +164,96 @@ class DailyMiniExamResultScreen extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.5),
             ),
           ),
-          if (rankLine != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.champagne.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.champagne.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('🏆', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      'Senin Sıran: $rankLine',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.champagneLight,
-                      ),
-                    ),
-                  ),
-                ],
+          if (attempt.durationSeconds > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Süre: ${formatExamDuration(attempt.durationSeconds)}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.champagne.withValues(alpha: 0.85),
               ),
             ),
           ],
+          if (showRank) ...[
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('🏆', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
+                    Text(
+                      '$rank. sıradasın',
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.champagneLight,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Gün içinde sürekli güncellenmektedir',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                    color: Colors.white.withValues(alpha: 0.78),
+                    height: 1.25,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const DailyMiniRewardsScreen(),
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.champagneLight,
+              side: BorderSide(
+                color: AppTheme.champagne.withValues(alpha: 0.55),
+              ),
+              minimumSize: const Size.fromHeight(42),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'TÜM SIRALAMAYI GÖR',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.emoji_events_outlined, size: 18),
+              ],
+            ),
+          ),
           const SizedBox(height: 28),
           Text(
-            'EN BAŞARILI ADAYLAR',
+            'GÜNÜN SIRALAMASI',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 10,
               letterSpacing: 1.8,
@@ -145,9 +262,18 @@ class DailyMiniExamResultScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if (leaderboard.isEmpty)
+          if (_loadingBoard && boardEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: CircularProgressIndicator(color: AppTheme.champagne),
+              ),
+            )
+          else if (boardEmpty)
             Text(
-              'Sıralama verileri yenileniyor. Kısa süre sonra tekrar bakabilirsin.',
+              service.rankingSubmitPending
+                  ? 'Sıralaman sunucuya iletiliyor. Biraz sonra yenile.'
+                  : 'Bugün henüz sıralama kaydı yok veya veriler yüklenemedi.',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.5),
               ),
@@ -162,7 +288,7 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     color: Colors.white.withValues(alpha: 0.04),
                     border: Border.all(
-                      color: row.rank == attempt.rank
+                      color: row.rank == rank
                           ? AppTheme.champagne.withValues(alpha: 0.45)
                           : Colors.white.withValues(alpha: 0.06),
                     ),
@@ -184,65 +310,120 @@ class DailyMiniExamResultScreen extends StatelessWidget {
                         ),
                       ),
                       Expanded(
-                        child: FrostedEmail(
-                          prefix: row.emailPrefix,
-                          rest: row.emailRest,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.9),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (row.displayName.isNotEmpty)
+                              Text(
+                                row.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            FrostedEmail(
+                              prefix: row.emailPrefix,
+                              rest: row.emailRest,
+                              style: TextStyle(
+                                fontSize: row.displayName.isNotEmpty ? 11 : 13,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white.withValues(
+                                  alpha: row.displayName.isNotEmpty ? 0.55 : 0.9,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        '${row.correct}/${DailyMiniExamConstants.questionCount}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${row.correct}/${DailyMiniExamConstants.questionCount}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          if (row.durationSeconds > 0)
+                            Text(
+                              formatExamDuration(row.durationSeconds),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          const SizedBox(height: 8),
+        ],
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 10, 22, 14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ValueListenableBuilder<bool>(
+                        valueListenable:
+                            PlayBillingService.instance.premiumNotifier,
+                        builder: (context, billingPremium, _) {
+                          final isPremium = billingPremium ||
+                              PremiumService.instance.isPremium;
+                          if (isPremium) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _PdfUpsellRow(
+                              onTap: () => Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const PremiumPaywallScreen(),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: FilledButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: AppTheme.champagne,
+                          foregroundColor: AppTheme.ink,
+                          minimumSize: const Size.fromHeight(48),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.borderRadius,
+                            ),
+                          ),
+                        ),
+                        child: const Text(
+                          'Devam Et',
+                          style: TextStyle(
+                            fontFamily: 'serif',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-          const SizedBox(height: 22),
-          ValueListenableBuilder<bool>(
-            valueListenable: PlayBillingService.instance.premiumNotifier,
-            builder: (context, billingPremium, _) {
-              final isPremium =
-                  billingPremium || PremiumService.instance.isPremium;
-              if (isPremium) return const SizedBox.shrink();
-              return Column(
-                children: [
-                  _PdfUpsellRow(
-                    onTap: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PremiumPaywallScreen(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              );
-            },
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.champagne,
-              foregroundColor: AppTheme.ink,
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              'Tamam',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
         );
       },
     );
@@ -262,62 +443,53 @@ class _PdfUpsellRow extends StatelessWidget {
       onPressed: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        height: 48,
+        padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFFEDB0),
-              Color(0xFFE8C878),
-              AppTheme.champagne,
-            ],
-          ),
+          borderRadius: BorderRadius.circular(AppTheme.borderRadius),
+          color: AppTheme.inkSoft,
           border: Border.all(
-            color: const Color(0xFFFFE5A0).withValues(alpha: 0.85),
+            color: AppTheme.champagne.withValues(alpha: 0.45),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.neonGold.withValues(alpha: 0.2),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.picture_as_pdf_rounded,
-              color: AppTheme.ink,
-              size: 22,
+              color: AppTheme.champagneLight.withValues(alpha: 0.95),
+              size: 20,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             const Expanded(
               child: Text(
                 'Bu ayın yanlış çözümleri',
                 style: TextStyle(
                   fontFamily: 'serif',
                   fontSize: 14,
-                  height: 1.25,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.ink,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 0.1,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.ink,
+                color: AppTheme.champagne.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.champagne.withValues(alpha: 0.35),
+                ),
               ),
-              child: Text(
+              child: const Text(
                 '$priceTl TL',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: AppTheme.champagneLight,
+                  letterSpacing: 0.2,
                 ),
               ),
             ),

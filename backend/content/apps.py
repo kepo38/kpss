@@ -10,6 +10,7 @@ class ContentConfig(AppConfig):
     def ready(self) -> None:
         # Sinyaller: soru/test değişince içerik sürümü + FCM
         from . import revision  # noqa: F401
+        from .tg_exam import signals  # noqa: F401
 
         _patch_admin_context()
 

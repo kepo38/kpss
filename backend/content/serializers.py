@@ -1,7 +1,11 @@
 from rest_framework import serializers
 
-from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicTest, UserMessage
-from .test_grouping import order_questions_keeping_scenarios
+from .models import Announcement, DeviceToken, Question, Subject, Topic, TopicLesson, TopicSummaryCard, TopicTest, UserMessage
+from .models import ExamPack, ExamPackExam
+from .test_grouping import (
+    interleave_osym_questions,
+    order_questions_keeping_scenarios,
+)
 
 
 class TopicSerializer(serializers.ModelSerializer):
@@ -38,15 +42,22 @@ class QuestionSerializer(serializers.ModelSerializer):
     altKonuAdi = serializers.CharField(source="subtopic")
     soruMetni = serializers.CharField(source="stem")
     imageUrl = serializers.SerializerMethodField()
+    stemImagePosition = serializers.CharField(source="stem_image_position")
     sekilKodu = serializers.CharField(source="figure_svg", allow_blank=True)
     siklar = serializers.SerializerMethodField()
+    optionsAreImages = serializers.BooleanField(source="options_are_images")
+    optionImageUrls = serializers.SerializerMethodField()
+    optionTable = serializers.CharField(source="option_table")
     dogruCevap = serializers.CharField(source="correct_option")
     cozumMetni = serializers.CharField(source="solution")
+    cozumImageUrl = serializers.SerializerMethodField()
     guncellenmeTarihi = serializers.DateTimeField(source="updated_at")
     osymSordu = serializers.BooleanField(source="osym_sordu")
     difficulty = serializers.CharField()
     attemptCount = serializers.IntegerField(source="attempt_count")
+    viewCount = serializers.IntegerField(source="view_count", read_only=True)
     correctRate = serializers.SerializerMethodField()
+    optionPercentages = serializers.SerializerMethodField()
     difficultyVisible = serializers.BooleanField(source="difficulty_visible")
     qualityScore = serializers.SerializerMethodField()
     ratingCount = serializers.SerializerMethodField()
@@ -64,15 +75,22 @@ class QuestionSerializer(serializers.ModelSerializer):
             "altKonuAdi",
             "soruMetni",
             "imageUrl",
+            "stemImagePosition",
             "sekilKodu",
             "siklar",
+            "optionsAreImages",
+            "optionImageUrls",
+            "optionTable",
             "dogruCevap",
             "cozumMetni",
+            "cozumImageUrl",
             "guncellenmeTarihi",
             "osymSordu",
             "difficulty",
             "attemptCount",
+            "viewCount",
             "correctRate",
+            "optionPercentages",
             "difficultyVisible",
             "qualityScore",
             "ratingCount",
@@ -86,10 +104,30 @@ class QuestionSerializer(serializers.ModelSerializer):
         return obj.options_map()
 
     def get_imageUrl(self, obj: Question) -> str | None:
-        request = self.context.get("request")
-        if not obj.image:
+        # Görsel şıklarda tam sayfa kaynağı gösterme (çift şık / A–E tekrarı).
+        if obj.options_are_images and any(
+            getattr(obj, f"option_{k}_image") for k in "abcde"
+        ):
             return None
-        url = obj.image.url
+        return self._absolute_media_url(obj.image, obj)
+
+    def get_optionImageUrls(self, obj: Question) -> dict[str, str | None]:
+        return {
+            "A": self._absolute_media_url(obj.option_a_image, obj),
+            "B": self._absolute_media_url(obj.option_b_image, obj),
+            "C": self._absolute_media_url(obj.option_c_image, obj),
+            "D": self._absolute_media_url(obj.option_d_image, obj),
+            "E": self._absolute_media_url(obj.option_e_image, obj),
+        }
+
+    def get_cozumImageUrl(self, obj: Question) -> str | None:
+        return self._absolute_media_url(obj.solution_image, obj)
+
+    def _absolute_media_url(self, field, obj: Question) -> str | None:
+        request = self.context.get("request")
+        if not field:
+            return None
+        url = field.url
         if request is not None:
             url = request.build_absolute_uri(url)
         ts = int(obj.updated_at.timestamp()) if obj.updated_at else 0
@@ -100,6 +138,9 @@ class QuestionSerializer(serializers.ModelSerializer):
         rate = obj.correct_rate
         return round(rate, 4) if rate is not None else None
 
+    def get_optionPercentages(self, obj: Question) -> dict[str, float] | None:
+        return obj.option_percentages
+
     def get_qualityScore(self, obj: Question) -> float | None:
         from django.db.models import Avg
 
@@ -109,22 +150,19 @@ class QuestionSerializer(serializers.ModelSerializer):
     def get_ratingCount(self, obj: Question) -> int:
         return obj.ratings.count()
 
-    def _published_scenario(self, obj: Question):
-        scenario = getattr(obj, "scenario", None)
-        if scenario is None or not scenario.is_published:
-            return None
-        return scenario
+    def _attached_scenario(self, obj: Question):
+        return getattr(obj, "scenario", None)
 
     def get_scenarioId(self, obj: Question) -> str | None:
-        scenario = self._published_scenario(obj)
+        scenario = self._attached_scenario(obj)
         return str(scenario.id) if scenario is not None else None
 
     def get_scenarioTitle(self, obj: Question) -> str | None:
-        scenario = self._published_scenario(obj)
+        scenario = self._attached_scenario(obj)
         return scenario.title if scenario is not None else None
 
     def get_scenarioStem(self, obj: Question) -> str | None:
-        scenario = self._published_scenario(obj)
+        scenario = self._attached_scenario(obj)
         return scenario.stem if scenario is not None else None
 
 
@@ -158,7 +196,9 @@ class TopicTestSerializer(serializers.ModelSerializer):
             for q in obj.questions.all()
             if q.is_published and q.topic_id == obj.topic_id
         ]
-        return order_questions_keeping_scenarios(published)
+        return interleave_osym_questions(
+            order_questions_keeping_scenarios(published)
+        )
 
     def get_questionIds(self, obj: TopicTest) -> list[str]:
         return [q.public_id for q in self._published_questions(obj)]
@@ -194,6 +234,40 @@ class TopicLessonSerializer(serializers.ModelSerializer):
         return url
 
 
+class TopicSummaryCardSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="public_id")
+    topicId = serializers.CharField(source="topic.slug")
+    subjectId = serializers.CharField(source="topic.subject.slug")
+    subjectName = serializers.CharField(source="topic.subject.name")
+    topicName = serializers.CharField(source="topic.name")
+    sortOrder = serializers.IntegerField(source="sort_order")
+    imageUrl = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TopicSummaryCard
+        fields = (
+            "id",
+            "topicId",
+            "subjectId",
+            "subjectName",
+            "topicName",
+            "kind",
+            "title",
+            "body",
+            "imageUrl",
+            "sortOrder",
+        )
+
+    def get_imageUrl(self, obj: TopicSummaryCard) -> str | None:
+        request = self.context.get("request")
+        if not obj.image:
+            return None
+        url = obj.image.url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
+
+
 class ContentPackSerializer(serializers.Serializer):
     """Mobil uygulamanın indirdiği yayın paketi."""
 
@@ -203,6 +277,7 @@ class ContentPackSerializer(serializers.Serializer):
     questions = QuestionSerializer(many=True)
     tests = TopicTestSerializer(many=True)
     lessons = TopicLessonSerializer(many=True)
+    summaryCards = TopicSummaryCardSerializer(many=True)
 
 
 class ContentCatalogSerializer(serializers.Serializer):
@@ -213,6 +288,7 @@ class ContentCatalogSerializer(serializers.Serializer):
     subjects = SubjectSerializer(many=True)
     tests = TopicTestSerializer(many=True)
     lessons = TopicLessonSerializer(many=True)
+    summaryCards = TopicSummaryCardSerializer(many=True)
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
@@ -271,3 +347,77 @@ class DeviceTokenSerializer(serializers.Serializer):
             defaults=defaults,
         )
         return obj
+
+
+class ExamPackExamSummarySerializer(serializers.ModelSerializer):
+    index = serializers.IntegerField()
+    title = serializers.CharField()
+    questionCount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamPackExam
+        fields = ("index", "title", "questionCount")
+
+    def get_questionCount(self, obj: ExamPackExam) -> int:
+        return obj.question_count
+
+
+class ExamPackSerializer(serializers.ModelSerializer):
+    id = serializers.CharField(source="public_id")
+    examTypeId = serializers.CharField(source="exam_type.slug")
+    packKind = serializers.CharField(source="pack_kind")
+    subjectId = serializers.SerializerMethodField()
+    subjectName = serializers.SerializerMethodField()
+    examCount = serializers.IntegerField(source="exam_count")
+    timeLimitMinutes = serializers.IntegerField(source="time_limit_minutes")
+    priceDisplay = serializers.CharField(source="price_display")
+    playProductId = serializers.CharField(source="play_product_id")
+    published = serializers.BooleanField(source="is_published")
+    sortOrder = serializers.IntegerField(source="sort_order")
+    questionsPerExam = serializers.SerializerMethodField()
+    exams = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamPack
+        fields = (
+            "id",
+            "examTypeId",
+            "packKind",
+            "subjectId",
+            "subjectName",
+            "title",
+            "description",
+            "examCount",
+            "timeLimitMinutes",
+            "priceDisplay",
+            "playProductId",
+            "published",
+            "sortOrder",
+            "questionsPerExam",
+            "exams",
+        )
+
+    def get_subjectId(self, obj: ExamPack) -> str | None:
+        return obj.subject.slug if obj.subject_id else None
+
+    def get_subjectName(self, obj: ExamPack) -> str | None:
+        return obj.subject.name if obj.subject_id else None
+
+    def get_questionsPerExam(self, obj: ExamPack) -> int:
+        return obj.questions_per_exam
+
+    def get_exams(self, obj: ExamPack) -> list:
+        include_exams = self.context.get("include_exams", False)
+        if not include_exams:
+            return []
+        qs = obj.exams.all().order_by("index")
+        return ExamPackExamSummarySerializer(qs, many=True).data
+
+
+class ExamPackListSerializer(ExamPackSerializer):
+    class Meta(ExamPackSerializer.Meta):
+        fields = tuple(
+            f
+            for f in ExamPackSerializer.Meta.fields
+            if f != "exams"
+        )

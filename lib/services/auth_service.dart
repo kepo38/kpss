@@ -9,13 +9,23 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
+import 'content_bank_service.dart';
+import 'daily_mini_exam_service.dart';
+import 'daily_mini_ranking_service.dart';
+import 'daily_quota_service.dart';
 import '../models/user_model.dart';
 import 'ad_manager.dart';
 import 'app_preferences.dart';
 import 'database_service.dart';
 import 'play_billing_service.dart';
 import 'premium_service.dart';
+import 'premium_sync_service.dart';
+import 'manual_question_service.dart';
 import 'question_rating_service.dart';
+import 'question_note_service.dart';
+import 'wrong_notebook_drawing_service.dart';
+import 'summary_card_progress_service.dart';
+import 'tg_exam_service.dart';
 
 /// Firebase anonim oturum + isteğe bağlı Google hesabı bağlama.
 class AuthService extends ChangeNotifier {
@@ -61,6 +71,7 @@ class AuthService extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_ready) return;
+    debugPrint('[ApiConfig] baseUrl = ${ApiConfig.baseUrl}');
     final prefs = await AppPreferences.instance;
     _token = prefs.getString(_kToken);
     final raw = prefs.getString(_kUser);
@@ -86,12 +97,25 @@ class AuthService extends ChangeNotifier {
     if (_user != null) {
       _syncPremiumSideEffects();
     }
-    if (hasBackendSession) {
+    if (hasPermanentAccount) {
+      // Profil yenile; 401 olsa bile Google oturumu silinmez — sessiz yenile.
+      unawaited(_refreshOrRestorePermanentSession());
+    } else if (hasBackendSession) {
       refreshProfile().then((_) {}, onError: (_) {});
-    }
-    if (!hasBackendSession) {
+    } else {
       unawaited(ensureAnonymousSession());
     }
+  }
+
+  Future<void> _refreshOrRestorePermanentSession() async {
+    final ok = await refreshProfile();
+    if (ok || hasPermanentAccount) {
+      if (!ok) {
+        await _trySilentGoogleRestore();
+      }
+      return;
+    }
+    await _trySilentGoogleRestore();
   }
 
   void _seedLocalGuestSession(SharedPreferences prefs) {
@@ -116,6 +140,7 @@ class AuthService extends ChangeNotifier {
     _lastError = hint;
     await _persist();
     notifyListeners();
+    _notifyUserScopedServices();
     return true;
   }
 
@@ -169,7 +194,8 @@ class AuthService extends ChangeNotifier {
 
       return _activateLocalGuestSession(
         hint: _lastError ??
-            'Sunucuya ulaşılamadı. Çevrimdışı misafir modundasın.',
+            'Sunucuya ulaşılamadı (${ApiConfig.baseUrl}). '
+            'basla-telefon.bat çalıştırın; PC ve telefon aynı Wi-Fi ağında olsun.',
       );
     } on FirebaseAuthException catch (e) {
       debugPrint('Anonim giriş: $e');
@@ -199,11 +225,19 @@ class AuthService extends ChangeNotifier {
     if (isLocalGuest) return false;
     final t = _token;
     if (t == null || t.isEmpty) return false;
+    final keepPermanent = _shouldKeepPermanentSession;
     try {
       final res = await http
           .get(ApiConfig.meUri(), headers: authHeaders)
           .timeout(const Duration(seconds: 12));
       if (res.statusCode == 401) {
+        // Profil’den çıkış yapılmadıkça Google oturumunu otomatik silme.
+        if (keepPermanent) {
+          debugPrint(
+            'Profil 401: kalıcı Google oturumu korunuyor (sessiz yenileme).',
+          );
+          return false;
+        }
         await _clearLocal();
         notifyListeners();
         return false;
@@ -220,6 +254,14 @@ class AuthService extends ChangeNotifier {
       debugPrint('Profil yenileme: $e');
       return false;
     }
+  }
+
+  /// Yerelde kayıtlı kalıcı (Google) hesap — uygulama kapanınca da tutulur.
+  bool get _shouldKeepPermanentSession {
+    if (isLocalGuest) return false;
+    final u = _user;
+    if (u == null) return false;
+    return !u.isAnonymous;
   }
 
   Future<bool> updateDisplayName(String name) async {
@@ -241,7 +283,6 @@ class AuthService extends ChangeNotifier {
     }
     _busy = true;
     _lastError = null;
-    notifyListeners();
     try {
       final res = await http
           .patch(
@@ -254,19 +295,33 @@ class AuthService extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 12));
       if (res.statusCode == 401) {
+        if (_shouldKeepPermanentSession) {
+          _lastError = 'Oturum doğrulanamadı. Bağlantıyı kontrol edin.';
+          unawaited(_trySilentGoogleRestore());
+          return false;
+        }
         await _clearLocal();
         _lastError = 'Oturum sona erdi. Tekrar giriş yapın.';
         return false;
       }
       if (res.statusCode != 200) {
         String detail = 'Ad güncellenemedi.';
+        DateTime? nextAllowed;
         try {
           final body = jsonDecode(utf8.decode(res.bodyBytes));
           if (body is Map && body['detail'] != null) {
             detail = body['detail'].toString();
           }
+          if (body is Map && body['isimDegistirilebilirAt'] != null) {
+            nextAllowed =
+                DateTime.tryParse('${body['isimDegistirilebilirAt']}');
+          }
         } catch (_) {}
         _lastError = detail;
+        if (nextAllowed != null && _user != null) {
+          _user = _user!.copyWith(isimDegistirilebilirAt: nextAllowed);
+          await _persist();
+        }
         return false;
       }
       final json = jsonDecode(utf8.decode(res.bodyBytes));
@@ -293,45 +348,79 @@ class AuthService extends ChangeNotifier {
     _busy = true;
     _lastError = null;
     notifyListeners();
+    String? guestSubForMerge;
     try {
-      final googleUser = await _googleSignIn.signIn();
+      final fbBefore = FirebaseAuth.instance.currentUser;
+      if (fbBefore != null && fbBefore.isAnonymous) {
+        guestSubForMerge = fbBefore.uid;
+      }
+      final googleUser = await _googleSignIn
+          .signIn()
+          .timeout(const Duration(seconds: 15));
       if (googleUser == null) {
         _lastError = 'Giriş iptal edildi.';
         return false;
       }
 
-      final googleAuth = await googleUser.authentication;
+      final googleAuth = await googleUser.authentication
+          .timeout(const Duration(seconds: 15));
       var idToken = googleAuth.idToken;
       final accessToken = googleAuth.accessToken;
 
+      OAuthCredential? credential;
       try {
         if (accessToken != null || idToken != null) {
-          final credential = GoogleAuthProvider.credential(
+          credential = GoogleAuthProvider.credential(
             accessToken: accessToken,
             idToken: idToken,
           );
           final fbUser = FirebaseAuth.instance.currentUser;
           final UserCredential cred;
           if (fbUser != null && fbUser.isAnonymous) {
-            cred = await fbUser.linkWithCredential(credential);
+            cred = await fbUser
+                .linkWithCredential(credential)
+                .timeout(const Duration(seconds: 15));
           } else {
-            cred = await FirebaseAuth.instance.signInWithCredential(credential);
+            cred = await FirebaseAuth.instance
+                .signInWithCredential(credential)
+                .timeout(const Duration(seconds: 15));
           }
-          final fbToken = await cred.user?.getIdToken(true);
-          if (fbToken != null && fbToken.isNotEmpty) {
-            idToken = fbToken;
+          final fbUserSigned = cred.user;
+          if (fbUserSigned != null) {
+            final fbToken = await fbUserSigned
+                .getIdToken(true)
+                .timeout(const Duration(seconds: 15));
+            if (fbToken != null && fbToken.isNotEmpty) {
+              idToken = fbToken;
+            }
           }
         }
       } catch (e) {
+        if (e is TimeoutException) rethrow;
         debugPrint('FirebaseAuth: $e');
         final msg = e.toString();
         if (msg.contains('credential-already-in-use') ||
             msg.contains('email-already-in-use')) {
-          _lastError =
-              'Bu Google hesabı zaten kayıtlı. O hesapla giriş yapın.';
-          return false;
-        }
-        if (!isAnonymous) {
+          try {
+            final cred2 = await FirebaseAuth.instance
+                .signInWithCredential(credential!)
+                .timeout(const Duration(seconds: 15));
+            final fbUser2 = cred2.user;
+            if (fbUser2 != null) {
+              final fbToken = await fbUser2
+                  .getIdToken(true)
+                  .timeout(const Duration(seconds: 15));
+              if (fbToken != null && fbToken.isNotEmpty) {
+                idToken = fbToken;
+              }
+            }
+          } catch (e2) {
+            if (e2 is TimeoutException) rethrow;
+            debugPrint('FirebaseAuth fallback signIn: $e2');
+            _lastError = 'Google hesabı bağlanamadı. Tekrar deneyin.';
+            return false;
+          }
+        } else if (!isAnonymous) {
           debugPrint('FirebaseAuth atlandı: $e');
         } else {
           _lastError = 'Google hesabı bağlanamadı. Tekrar deneyin.';
@@ -349,21 +438,30 @@ class AuthService extends ChangeNotifier {
       return _exchangeWithBackend(
         idToken: idToken,
         accessToken: accessToken,
+        displayName: googleUser.displayName,
+        guestSub: guestSubForMerge,
       );
+    } on TimeoutException {
+      debugPrint('Google giriş: timeout');
+      _lastError =
+          'Giriş zaman aşımına uğradı (${ApiConfig.baseUrl}). '
+          'PC ve telefon aynı Wi-Fi ağında olsun; basla-telefon.bat çalışsın.';
+      return false;
     } catch (e) {
       debugPrint('Google giriş: $e');
       final msg = e.toString();
       if (msg.contains('ApiException: 10') || msg.contains('sign_in_failed')) {
-        _lastError =
-            'Google girişi yapılandırılmamış. '
-            'android/app/google-services.json dosyasını Firebase’den indirip '
-            'SHA-1 ekleyin (GOOGLE_GIRIS.md).';
+        _lastError = 'Google girişi yapılandırılmamış (SHA-1 / OAuth). '
+            'Güncel google-services.json ile uygulamayi-yukle.bat çalıştırın. '
+            'Detay: GOOGLE_GIRIS.md';
       } else if (msg.contains('SocketException') ||
           msg.contains('Failed host lookup') ||
           msg.contains('Connection refused') ||
-          msg.contains('Timed out')) {
+          msg.contains('Timed out') ||
+          msg.contains('TimeoutException')) {
         _lastError =
-            'Sunucuya ulaşılamadı (${ApiConfig.baseUrl}). PC ve telefon aynı Wi‑Fi’de olsun; basla.bat çalışsın.';
+            'Sunucuya ulaşılamadı (${ApiConfig.baseUrl}). '
+            'PC ve telefon aynı Wi-Fi ağında olsun; basla-telefon.bat çalışsın.';
       } else {
         _lastError = 'Giriş başarısız. Tekrar deneyin.';
       }
@@ -377,31 +475,47 @@ class AuthService extends ChangeNotifier {
   Future<bool> _exchangeWithBackend({
     String? idToken,
     String? accessToken,
+    String? displayName,
+    String? guestSub,
   }) async {
     try {
+      final trimmedName = displayName?.trim();
+      final trimmedGuestSub = guestSub?.trim();
       final res = await http
           .post(
             ApiConfig.authGoogleUri(),
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
+              if (hasBackendSession && isAnonymous && (_token?.isNotEmpty ?? false))
+                'Authorization': 'Bearer $_token',
             },
             body: jsonEncode({
               if (idToken != null && idToken.isNotEmpty) 'id_token': idToken,
               if (accessToken != null && accessToken.isNotEmpty)
                 'access_token': accessToken,
+              if (trimmedName != null && trimmedName.isNotEmpty)
+                'display_name': trimmedName,
+              if (trimmedGuestSub != null && trimmedGuestSub.isNotEmpty)
+                'guest_sub': trimmedGuestSub,
             }),
           )
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 15));
 
       if (res.statusCode != 200) {
-        String detail = 'Sunucu girişi reddetti (${res.statusCode}).';
+        // Body'deki `detail` yoksa: 4xx giriş, 5xx gerçek sunucu hatası.
+        String detail = res.statusCode >= 500
+            ? 'Sunucu hatası (${res.statusCode}).'
+            : 'Giriş reddedildi (${res.statusCode}).';
         try {
           final body = jsonDecode(utf8.decode(res.bodyBytes));
           if (body is Map && body['detail'] != null) {
             detail = body['detail'].toString();
           }
         } catch (_) {}
+        debugPrint(
+          'Auth exchange HTTP ${res.statusCode} @ ${ApiConfig.baseUrl}: $detail',
+        );
         _lastError = detail;
         return false;
       }
@@ -417,16 +531,73 @@ class AuthService extends ChangeNotifier {
         _lastError = 'Eksik oturum bilgisi.';
         return false;
       }
+      final previousUserId = _user?.id;
       _token = token;
       _user = UserModel.fromJson(Map<String, dynamic>.from(userJson));
       await _persist();
       _syncPremiumSideEffects();
       notifyListeners();
+      await _relayUserScopedServices(previousUserId: previousUserId);
+      unawaited(PremiumSyncService.instance.syncIfYearlyActive());
       return true;
     } catch (e) {
-      debugPrint('Auth exchange: $e');
+      debugPrint('Auth exchange @ ${ApiConfig.baseUrl}: $e');
       _lastError =
-          'Sunucuya bağlanılamadı (${ApiConfig.baseUrl}). basla.bat ile paneli açın.';
+          'Sunucuya bağlanılamadı (${ApiConfig.baseUrl}). '
+          'basla-telefon.bat çalıştırın; PC ve telefon aynı Wi-Fi ağında olsun.';
+      return false;
+    }
+  }
+
+  /// Uygulama yeniden açılınca Google’ı arka planda yenile (UI yok).
+  Future<bool> _trySilentGoogleRestore() async {
+    if (isLocalGuest && !_shouldKeepPermanentSession) return false;
+    try {
+      await _ensureFirebaseReady();
+      final fbUser = FirebaseAuth.instance.currentUser;
+      if (fbUser != null && !fbUser.isAnonymous) {
+        final idToken = await fbUser.getIdToken(true);
+        if (idToken != null &&
+            idToken.isNotEmpty &&
+            await _exchangeWithBackend(idToken: idToken)) {
+          return true;
+        }
+      }
+
+      final googleUser = await _googleSignIn.signInSilently();
+      if (googleUser == null) return false;
+      final googleAuth = await googleUser.authentication;
+      var idToken = googleAuth.idToken;
+      final accessToken = googleAuth.accessToken;
+
+      if (accessToken != null || idToken != null) {
+        final credential = GoogleAuthProvider.credential(
+          accessToken: accessToken,
+          idToken: idToken,
+        );
+        final cred =
+            await FirebaseAuth.instance.signInWithCredential(credential);
+        final signed = cred.user;
+        if (signed != null) {
+          final fbToken = await signed.getIdToken(true);
+          if (fbToken != null && fbToken.isNotEmpty) {
+            idToken = fbToken;
+          }
+        }
+      }
+
+      if ((idToken == null || idToken.isEmpty) &&
+          (accessToken == null || accessToken.isEmpty)) {
+        return false;
+      }
+
+      return _exchangeWithBackend(
+        idToken: idToken,
+        accessToken: accessToken,
+        displayName: googleUser.displayName,
+      );
+    } catch (e) {
+      debugPrint('Silent Google restore: $e');
       return false;
     }
   }
@@ -449,6 +620,7 @@ class AuthService extends ChangeNotifier {
     await _clearLocal();
     notifyListeners();
     await ensureAnonymousSession();
+    await _relayUserScopedServices();
   }
 
   Future<void> _persist() async {
@@ -477,5 +649,33 @@ class AuthService extends ChangeNotifier {
     if (!PlayBillingService.instance.premiumNotifier.value) {
       AdManager.instance.setPremium(PremiumService.instance.isPremium);
     }
+  }
+
+  void _notifyUserScopedServices() {
+    unawaited(_relayUserScopedServices());
+  }
+
+  Future<void> relayUserScopedServices({String? previousUserId}) async {
+    await _relayUserScopedServices(previousUserId: previousUserId);
+  }
+
+  Future<void> _relayUserScopedServices({String? previousUserId}) async {
+    await ContentBankService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
+    await DailyQuotaService.instance.onUserSessionChanged();
+    await ManualQuestionService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
+    await QuestionNoteService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
+    await WrongNotebookDrawingService.instance.onUserSessionChanged(
+      previousUserId: previousUserId,
+    );
+    await SummaryCardProgressService.instance.onUserSessionChanged();
+    await DailyMiniExamService.instance.onAuthSessionChanged();
+    await TgExamService.instance.onAuthSessionChanged();
+    await DailyMiniRankingService.instance.onAuthSessionChanged();
   }
 }

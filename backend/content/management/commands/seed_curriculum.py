@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from content.models import Question, Subject, Topic, TopicTest
+from content.topic_slots import ensure_all_topic_slots
 
 # Flutter `lib/data/kpss_curriculum.dart` ile aynı çekirdek.
 CURRICULUM = [
@@ -176,6 +177,16 @@ CURRICULUM = [
                     "Yumuşama (Detant) Dönemi ve Sonrası (1960'lar - 1980'ler)",
                     "Küreselleşen Dünya (1990'lardan Günümüze)",
                 ],
+            },
+            {
+                "slug": "tarih_kronoloji",
+                "name": "Tarih Kronoloji",
+                "subtopics": [],
+            },
+            {
+                "slug": "tarih_padisah_antlasma",
+                "name": "Padişahlar ve Antlaşmalar",
+                "subtopics": [],
             },
         ],
     },
@@ -491,10 +502,12 @@ class Command(BaseCommand):
         )
         test.questions.set(created_qs)
 
+        slot_stats = ensure_all_topic_slots(migrate_legacy_tests=True)
         self.stdout.write(
             self.style.SUCCESS(
                 f"Müfredat hazır. Sorular: {Question.objects.count()}, "
                 f"testler: {TopicTest.objects.count()} "
-                f"(mat örnek: {q_mat.public_id})"
+                f"(mat örnek: {q_mat.public_id}) · "
+                f"{slot_stats['topics']} konuda 5+5 yuva"
             )
         )

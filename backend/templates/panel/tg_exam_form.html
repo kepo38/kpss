@@ -1,0 +1,147 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_tg_exam_list' %}">TG Deneme Oluşturucu</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">
+  1) Temel ayarları kaydedin · 2) <strong>Sınavı Oluştur</strong> ile havuzdan soru çekin ·
+  3) Önizlemede değiştirin · 4) <strong>Yayınla</strong>.
+</p>
+
+<form class="form" method="post" style="max-width:720px;margin-bottom:28px;">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="save">
+  <label>Deneme adı *
+    <input type="text" name="title" required maxlength="200"
+      value="{{ exam.title|default:'' }}"
+      placeholder='Örn. Ağustos 2026 TG'>
+  </label>
+  <label>KPSS tipi
+    <select name="kpss_type">
+      {% for value, label in kpss_types %}
+      <option value="{{ value }}" {% if exam.kpss_type == value or not exam and value == 'lisans' %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <label>Başlangıç *
+      <input type="datetime-local" name="start_at" required
+        value="{% if exam.start_at %}{{ exam.start_at|date:'Y-m-d\\TH:i' }}{% endif %}">
+    </label>
+    <label>Bitiş *
+      <input type="datetime-local" name="end_at" required
+        value="{% if exam.end_at %}{{ exam.end_at|date:'Y-m-d\\TH:i' }}{% endif %}">
+    </label>
+  </div>
+  <label>Süre (dakika)
+    <input type="number" name="duration_minutes" min="30" max="300"
+      value="{{ exam.duration_minutes|default:130 }}">
+  </label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+    <button class="btn btn-primary" type="submit">Temel ayarları kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_tg_exam_list' %}">Liste</a>
+  </div>
+</form>
+
+{% if exam and exam.pk %}
+<section style="margin-bottom:28px;">
+  <h2 style="font-size:1.15rem;margin-bottom:8px;">Otomatik soru çekme</h2>
+  <p class="hint" style="margin-bottom:12px;">
+    Varsayılan dağılım: Türkçe 30, Mat 30, Tarih 27, Coğrafya 18 (alt konu etiketli),
+    Vatandaşlık 9, Güncel 6 — toplam {{ expected_total }} soru.
+    Son {{ 4 }} TG denemesinde sorulmuş <strong>kolay/orta</strong> sorular otomatik hariç tutulur;
+    5. denemeden itibaren havuza geri döner.
+  </p>
+  <form method="post" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="generate">
+    <input type="hidden" name="title" value="{{ exam.title }}">
+    <input type="hidden" name="kpss_type" value="{{ exam.kpss_type }}">
+    <input type="hidden" name="start_at" value="{{ exam.start_at|date:'Y-m-d\\TH:i' }}">
+    <input type="hidden" name="end_at" value="{{ exam.end_at|date:'Y-m-d\\TH:i' }}">
+    <input type="hidden" name="duration_minutes" value="{{ exam.duration_minutes }}">
+    <button class="btn btn-primary" type="submit"
+      onclick="return confirm('Mevcut soru listesi yeniden oluşturulacak. Devam?');">
+      Sınavı Oluştur
+    </button>
+  </form>
+</section>
+
+{% if question_rows %}
+<section style="margin-bottom:28px;">
+  <h2 style="font-size:1.15rem;margin-bottom:8px;">Önizleme ve manuel müdahale</h2>
+  <p class="hint">{{ question_rows|length }} soru · beğenmediğiniz satırda rastgele değiştirin.</p>
+  <div class="list" style="margin-top:12px;">
+    {% for row in question_rows %}
+    <div class="row" style="align-items:flex-start;flex-wrap:wrap;gap:10px;">
+      <div class="name" style="flex:1;min-width:280px;">
+        <strong>#{{ row.index|add:1 }}</strong>
+        <span class="hint"> · {{ row.subject }}{% if row.subtopic %} · {{ row.subtopic }}{% endif %}</span>
+        <div class="hint" style="margin-top:4px;">{{ row.public_id }} · {{ row.difficulty }}{% if row.tg_cooldown %} · cooldown {{ row.tg_cooldown }}{% endif %}</div>
+        <div style="margin-top:6px;font-size:13px;line-height:1.45;">{{ row.stem_preview }}</div>
+      </div>
+      {% if not exam.is_published %}
+      <form method="post" action="{% url 'panel_tg_exam_replace' exam.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="question_id" value="{{ row.public_id }}">
+        <button class="btn btn-ghost" type="submit">Rastgele Değiştir</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2 style="font-size:1.15rem;margin-bottom:8px;">Yayınla</h2>
+  {% if exam.is_published %}
+  <p class="hint">Bu deneme şu an mobil uygulamada görünüyor.</p>
+  {% if exam.announcement_push_sent_at %}
+  <p class="hint">Duyuru bildirimi {{ exam.announcement_push_sent_at|date:"d.m.Y H:i" }} tarihinde gönderildi.</p>
+  {% else %}
+  <p class="hint">
+    Tüm kullanıcılara duyuru bildirimi
+    <strong>{{ exam.announcement_push_due_at|date:"d.m.Y H:i" }}</strong>
+    tarihinde (sınavdan 2 saat önce) otomatik gidecek.
+  </p>
+  {% endif %}
+  <form method="post" action="{% url 'panel_tg_exam_unpublish' exam.id %}" style="display:inline;">
+    {% csrf_token %}
+    <button class="btn btn-ghost" type="submit">Yayından kaldır</button>
+  </form>
+  {% else %}
+  <form method="post" action="{% url 'panel_tg_exam_publish' exam.id %}" class="form" style="max-width:480px;">
+    {% csrf_token %}
+    <p class="hint" style="margin-bottom:12px;">
+      Yayınlandığında mobil uygulamada görünür. Duyuru bildirimi
+      <strong>{{ exam.announcement_push_due_at|date:"d.m.Y H:i" }}</strong>
+      tarihinde (başlangıçtan 2 saat önce) tüm kullanıcılara otomatik gider.
+    </p>
+    <button class="btn btn-primary" type="submit"
+      {% if not question_rows %}disabled{% endif %}>
+      Yayınla
+    </button>
+  </form>
+  {% endif %}
+
+  {% if not exam.attempts.exists %}
+  <form method="post" action="{% url 'panel_tg_exam_delete' exam.id %}" style="margin-top:16px;"
+    onsubmit="return confirm('Deneme kalıcı olarak silinsin mi?');">
+    {% csrf_token %}
+    <button class="btn btn-danger" type="submit">Denemeyi sil</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
+<p class="hint">Henüz soru atanmadı. «Sınavı Oluştur» ile havuzdan çekin.</p>
+{% endif %}
+{% endif %}
+
+<details class="hint" style="margin-top:24px;padding:12px;border:1px solid var(--hairline);border-radius:8px;">
+  <summary style="cursor:pointer;font-weight:600;">Dağılım şeması (backend)</summary>
+  <pre style="margin:12px 0 0;font-size:12px;overflow:auto;">{{ distribution_json }}</pre>
+</details>
+{% endblock %}

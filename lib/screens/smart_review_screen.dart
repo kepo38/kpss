@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../data/kpss_curriculum.dart';
 import '../models/quiz_result.dart';
+import '../models/subject_performance.dart';
 import '../services/ad_manager.dart';
+import '../services/premium_service.dart';
 import '../services/smart_review_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/subject_neon_palette.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/scale_button.dart';
 import '../widgets/study_empty_cta.dart';
 import 'quiz_screen.dart';
 import 'study_hub_screen.dart';
 
-/// Günlük 15 soruluk akıllı tekrar (spaced repetition).
+/// Günlük akıllı tekrar (spaced repetition) — yanlış defteri + zayıf konular.
 class SmartReviewScreen extends StatefulWidget {
   final KpssType kpssType;
 
@@ -27,6 +31,7 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
   SmartReviewPack? _pack;
   bool _loading = true;
   bool _starting = false;
+  String? _subjectId;
 
   @override
   void initState() {
@@ -35,13 +40,35 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final pack = await _service.ensureTodayPack(widget.kpssType);
     if (!mounted) return;
-    setState(() {
-      _pack = pack;
-      _loading = false;
-    });
+    setState(() => _loading = true);
+    try {
+      final pack = await _service.ensureTodayPack(
+        widget.kpssType,
+        subjectId: _subjectId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pack = pack;
+        _loading = false;
+      });
+    } catch (e, st) {
+      debugPrint('SmartReview _load error: $e\n$st');
+      if (!mounted) return;
+      setState(() {
+        _pack = null;
+        _loading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Akıllı tekrar paketi yüklenemedi.')),
+      );
+    }
+  }
+
+  void _selectSubject(String? subjectId) {
+    if (_subjectId == subjectId) return;
+    setState(() => _subjectId = subjectId);
+    _load();
   }
 
   Future<void> _start() async {
@@ -49,42 +76,62 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
     final pack = _pack;
     if (pack == null || pack.isEmpty) return;
 
+    final allowed = await PremiumGate.requirePremium(context);
+    if (!allowed || !mounted) return;
+
     setState(() => _starting = true);
-    final questions =
-        await _service.fetchQuestionsForTodayPack(widget.kpssType);
-    if (!mounted) return;
-    if (questions.isEmpty) {
-      setState(() => _starting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bugün için soru bulunamadı.')),
-      );
-      return;
-    }
+    try {
+      final questions =
+          await _service.fetchQuestionsForTodayPack(widget.kpssType);
+      if (!mounted) return;
+      if (questions.isEmpty) {
+        setState(() => _starting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bugün için soru bulunamadı.')),
+        );
+        return;
+      }
 
-    AdManager.instance.skipNextPageTransition();
-    final result = await Navigator.of(context).push<QuizResult>(
-      MaterialPageRoute<QuizResult>(
-        builder: (_) => QuizScreen(
-          title: 'Akıllı Tekrar',
-          questions: questions,
+      AdManager.instance.skipNextPageTransition();
+      final result = await Navigator.of(context).push<QuizResult>(
+        MaterialPageRoute<QuizResult>(
+          builder: (_) => QuizScreen(
+            title: 'Akıllı Tekrar',
+            questions: questions,
+            suppressWrongNotebookHint: true,
+          ),
         ),
-      ),
-    );
-
-    if (result != null && result.completed) {
-      await _service.recordSessionOutcome(
-        correctIds: result.correctQuestionIds,
-        wrongIds: result.wrongQuestionIds,
       );
+
+      if (result != null && result.completed) {
+        await _service.recordSessionOutcome(
+          correctIds: result.correctQuestionIds,
+          wrongIds: result.wrongQuestionIds,
+        );
+      }
+    } catch (e, st) {
+      debugPrint('SmartReview _start error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Akıllı tekrar başlatılamadı.')),
+        );
+      }
     }
     if (!mounted) return;
     setState(() => _starting = false);
     await _load();
   }
 
+  String? get _selectedSubjectName {
+    final id = _subjectId;
+    if (id == null) return null;
+    return KpssCurriculum.findSubject(widget.kpssType, id)?.name;
+  }
+
   @override
   Widget build(BuildContext context) {
     final pack = _pack;
+    final subjectName = _selectedSubjectName;
 
     return Scaffold(
       backgroundColor: AppTheme.page(context),
@@ -114,14 +161,27 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                 child: CircularProgressIndicator(color: AppTheme.champagne),
               )
             : pack == null || pack.isEmpty
-                ? StudyEmptyCta(
-                    icon: Icons.auto_awesome_outlined,
-                    title: 'Henüz tekrar seti yok',
-                    message:
-                        'Yanlış yaptığın veya düşük başarı gösterdiğin '
-                        'konulardan günlük ${SmartReviewService.dailyTarget} '
-                        'soruluk set oluşur. Önce bir konu testi çöz.',
-                    kpssType: widget.kpssType,
+                ? ListView(
+                    padding: const EdgeInsets.fromLTRB(22, 12, 22, 40),
+                    children: [
+                      _SubjectFilterRow(
+                        kpssType: widget.kpssType,
+                        selectedId: _subjectId,
+                        onSelected: _selectSubject,
+                      ),
+                      const SizedBox(height: 16),
+                      StudyEmptyCta(
+                        icon: Icons.auto_awesome_outlined,
+                        title: 'Henüz tekrar seti yok',
+                        message: subjectName != null
+                            ? '$subjectName için yanlış veya düşük başarı '
+                                'konusu yok. Başka ders seç veya önce konu '
+                                'testi çöz.'
+                            : 'Yanlış yaptığın veya düşük başarı gösterdiğin '
+                                'konulardan set oluşur. Önce bir konu testi çöz.',
+                        kpssType: widget.kpssType,
+                      ),
+                    ],
                   )
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(22, 12, 22, 40),
@@ -148,8 +208,13 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                             Text(
                               pack.completed
                                   ? 'Bugünkü tekrarı tamamladın. Yarın yeni set hazır.'
-                                  : 'Yanlış defteri ve düşük başarı konularından '
-                                      'seçilmiş ${pack.size} soru.',
+                                  : subjectName != null
+                                      ? '$subjectName · yanlış defteri, telafi '
+                                          've düşük başarı konularından '
+                                          '${pack.size} soru.'
+                                      : 'Yanlış defteri, en çok yanlış yaptığın konular '
+                                          've düşük başarı konularından '
+                                          'seçilmiş ${pack.size} soru.',
                               style: TextStyle(
                                 height: 1.4,
                                 color: Colors.white.withValues(alpha: 0.72),
@@ -174,6 +239,21 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                                 ),
                               ],
                             ),
+                            if (pack.topWeakTopics.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Telafi odaklı konular',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: Color(0xFFFF8A96),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              for (final topic in pack.topWeakTopics)
+                                _TopWeakTopicRow(stat: topic),
+                            ],
                           ],
                         ),
                       ),
@@ -195,17 +275,28 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                       const _HowRow(
                         index: '2',
                         text:
-                            'Başarı oranı %60 altındaki konulardan sorular eklenir.',
+                            'En çok yanlış yaptığın 3 konudan telafi soruları eklenir.',
                       ),
                       const _HowRow(
                         index: '3',
                         text:
+                            'Başarı oranı %60 altındaki konulardan sorular tamamlanır.',
+                      ),
+                      const _HowRow(
+                        index: '4',
+                        text:
                             'Doğru bildiklerin ertelenir; yanlışlar yarın tekrar gelir.',
+                      ),
+                      const SizedBox(height: 18),
+                      _SubjectFilterRow(
+                        kpssType: widget.kpssType,
+                        selectedId: _subjectId,
+                        onSelected: _selectSubject,
                       ),
                       const SizedBox(height: 24),
                       ScaleButton(
                         onPressed: pack.completed || _starting ? null : _start,
-                        child: FilledButton.icon(
+                        child: FilledButton(
                           onPressed:
                               pack.completed || _starting ? null : _start,
                           style: FilledButton.styleFrom(
@@ -214,8 +305,9 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                             disabledBackgroundColor:
                                 AppTheme.ink.withValues(alpha: 0.08),
                             minimumSize: const Size(double.infinity, 52),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                           ),
-                          icon: _starting
+                          child: _starting
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
@@ -223,18 +315,65 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : Icon(
-                                  pack.completed
-                                      ? Icons.check_circle_outline
-                                      : Icons.play_arrow_rounded,
-                                ),
-                          label: Text(
-                            pack.completed
-                                ? 'Bugün tamamlandı'
-                                : _starting
-                                    ? 'Hazırlanıyor…'
-                                    : 'Tekrara başla · ${pack.size} soru',
-                          ),
+                              : pack.completed
+                                  ? const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.check_circle_outline),
+                                        SizedBox(width: 8),
+                                        Text('Bugün tamamlandı'),
+                                      ],
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          PremiumService.instance.isPremium
+                                              ? Icons.play_arrow_rounded
+                                              : Icons.lock_rounded,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Flexible(
+                                          child: Text(
+                                            'AKILLI TEKRARI BAŞLAT',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        if (!PremiumService.instance.isPremium) ...[
+                                          const SizedBox(width: 10),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 7,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              color: AppTheme.ink
+                                                  .withValues(alpha: 0.12),
+                                              border: Border.all(
+                                                color: AppTheme.ink
+                                                    .withValues(alpha: 0.22),
+                                              ),
+                                            ),
+                                            child: const Text(
+                                              'PRO',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 0.8,
+                                                color: AppTheme.ink,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -258,6 +397,99 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                       ),
                     ],
                   ),
+      ),
+    );
+  }
+}
+
+class _SubjectFilterRow extends StatelessWidget {
+  final KpssType kpssType;
+  final String? selectedId;
+  final ValueChanged<String?> onSelected;
+
+  const _SubjectFilterRow({
+    required this.kpssType,
+    required this.selectedId,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subjects = KpssCurriculum.subjectsFor(kpssType);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Ders seç',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            color: AppTheme.slate.withValues(alpha: 0.85),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _SubjectChip(
+              label: 'Tümü',
+              selected: selectedId == null,
+              onTap: () => onSelected(null),
+            ),
+            for (final subject in subjects)
+              _SubjectChip(
+                label: subject.name,
+                selected: selectedId == subject.id,
+                onTap: () => onSelected(subject.id),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SubjectChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SubjectChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: selected ? AppTheme.champagne : Colors.transparent,
+            border: Border.all(
+              color: selected
+                  ? AppTheme.champagne
+                  : AppTheme.champagne.withValues(alpha: 0.45),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: selected ? AppTheme.ink : AppTheme.onPage(context),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -346,6 +578,50 @@ class _HowRow extends StatelessWidget {
                 height: 1.35,
                 color: AppTheme.slate.withValues(alpha: 0.9),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TopWeakTopicRow extends StatelessWidget {
+  final WeakTopicStat stat;
+
+  const _TopWeakTopicRow({required this.stat});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: Color(0xFFF87171),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              stat.topicName,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+          ),
+          Text(
+            '${stat.wrongCount} yanlış',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFF87171).withValues(alpha: 0.92),
             ),
           ),
         ],

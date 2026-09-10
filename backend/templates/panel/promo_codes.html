@@ -1,0 +1,45 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Promosyon kodları</div>
+<h1>Promosyon kodları</h1>
+<p class="lead">
+  Uygulamadaki Premium ekranından girilen kodlar. Misafir hesap kullanamaz;
+  her kullanıcı aynı kodu bir kez kullanır.
+</p>
+
+<div class="toolbar">
+  <strong>{{ promos|length }} kod</strong>
+  <a class="btn btn-primary" href="{% url 'panel_promo_new' %}">Yeni kod</a>
+</div>
+
+<div class="list">
+  {% for p in promos %}
+  <div class="row" style="align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <div class="name" style="flex:1;min-width:220px;">
+      <a href="{% url 'panel_promo_edit' p.id %}"><strong>{{ p.code }}</strong></a>
+      {% if p.title %}<div class="hint">{{ p.title }}</div>{% endif %}
+      <div class="hint">
+        Kullanım: {{ p.used_count }}/{{ p.max_redemptions }}
+        · Premium: {{ p.premium_duration_days }} gün
+        · Bitiş: {{ p.valid_until|date:"d.m.Y H:i" }}
+        {% if p.valid_from %}
+        · Başlangıç: {{ p.valid_from|date:"d.m.Y H:i" }}
+        {% endif %}
+      </div>
+    </div>
+    {% if p.is_active %}<span class="badge on">Aktif</span>{% else %}<span class="badge off">Pasif</span>{% endif %}
+    <a class="btn btn-ghost" href="{% url 'panel_promo_edit' p.id %}">Düzenle</a>
+    <form method="post" action="{% url 'panel_promo_toggle' p.id %}">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit">{% if p.is_active %}Pasifleştir{% else %}Aktifleştir{% endif %}</button>
+    </form>
+    <form method="post" action="{% url 'panel_promo_delete' p.id %}" onsubmit="return confirm('{{ p.code }} silinsin mi? Kullanım kayıtları da silinir.');">
+      {% csrf_token %}
+      <button class="btn btn-danger" type="submit">Sil</button>
+    </form>
+  </div>
+  {% empty %}
+  <div class="empty">Henüz promosyon kodu yok. Yeni kod oluşturun.</div>
+  {% endfor %}
+</div>
+{% endblock %}

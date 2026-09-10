@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import types
 import uuid
 
@@ -16,6 +17,7 @@ from django.db.models import Avg, Count, Sum
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
 from django.templatetags.static import static
+from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -25,22 +27,46 @@ from .models import (
     ERROR_REPORT_CATEGORY_CHOICES,
     ERROR_REPORT_STATUS_CHOICES,
     ExamType,
+    ExamDistributionTemplate,
+    ExamPack,
     MapTemplate,
+    OcrIngestLog,
+    PromoCode,
     Question,
     QuestionErrorReport,
     QuestionScenario,
     Subject,
     Topic,
     TopicLesson,
+    TopicSummaryCard,
     TopicTest,
+    get_mobile_ui_config,
+    normalize_promo_code,
+    SUMMARY_CARD_KIND_CHOICES,
 )
 from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
-from .svg_sanitize import extract_svg, is_safe_svg
+from .ocr_gemini import gemini_configured, ocr_question_image_gemini
+from .ocr_ingest import (
+    coalesce_ocr_options,
+    normalize_correct_option,
+    _option_is_corrupt,
+    _run_ocr,
+    _compose_fallback_log_error,
+    panel_form_options,
+    prepare_question_for_panel,
+    question_form_bootstrap,
+    maybe_backfill_question_options,
+    maybe_auto_repair_question_on_panel_get,
+)
+from .topic_classifier import classify_topic_from_ocr
+from .ocr_diagnostics import compose_error_message, log_ocr_event
+from .svg_sanitize import sanitize_figure_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
     content_fingerprint,
+    duplicate_flash_html,
     duplicate_payload,
     find_duplicate_question,
     image_fingerprint,
@@ -48,6 +74,21 @@ from .question_fingerprint import (
     stem_fingerprint,
 )
 from .embeddings import refresh_question_embedding
+from .osym_cikmis import (
+    normalize_osym_cikmis_label,
+    osym_cikmis_suggestions,
+    record_osym_cikmis_oneri,
+)
+from .rich_text_panel import normalize_panel_paste_field
+from .rich_text_storage import normalize_question_for_storage
+from .panel_context import (
+    mark_question_error_reports_reviewed,
+    pending_error_report_count,
+    pending_telegram_question_count,
+    pending_telegram_questions_qs,
+    telegram_solution_hold_question_ids,
+)
+from .telegram_panel import build_pending_telegram_rows
 from .test_grouping import (
     assign_question_to_test,
     rebalance_topic_tests,
@@ -61,6 +102,95 @@ def _pid(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
 
 
+def _detect_formula_missing(stem: str, options: dict[str, str], raw_text: str) -> bool:
+    text = f"{stem}\n" + "\n".join((options or {}).values())
+    raw = raw_text or ""
+    raw_has_math = bool(
+        re.search(r"[=^√]|\\frac|\\sqrt|\d+\s*/\s*\d+|\d+\s*-\s*\d+\s*/\s*\d+", raw)
+    )
+    has_latex = "$" in text or r"\frac" in text or r"\sqrt" in text
+    return raw_has_math and not has_latex
+
+
+def _detect_char_drift(stem: str, options: dict[str, str], raw_text: str) -> bool:
+    text = f"{stem}\n{raw_text}\n" + "\n".join((options or {}).values())
+    if "�" in text:
+        return True
+    # OCR kaynaklı bozulma sinyalleri: çoklu ? ve anlamsız symbol zincirleri.
+    return bool(re.search(r"\?{2,}|[<>]{2,}|[|/\\-]{4,}", text))
+
+
+def _log_ocr_ingest(
+    request: HttpRequest,
+    *,
+    topic: Topic | None = None,
+    image_path: str = "",
+    source_image_hash: str = "",
+    source_image_phash: str = "",
+    result=None,
+    duplicate_question: Question | None = None,
+    duplicate_match: str = "",
+    error_message: str = "",
+    status: str | None = None,
+    raw_response: str = "",
+    gemini_error: str = "",
+) -> None:
+    try:
+        stem = (getattr(result, "stem", "") or "") if result is not None else ""
+        options = (getattr(result, "options", {}) or {}) if result is not None else {}
+        raw_text = (getattr(result, "raw_text", "") or "") if result is not None else ""
+        ok = bool(getattr(result, "ok", False)) if result is not None else False
+        engine = (getattr(result, "engine", "") or "") if result is not None else ""
+        used_model = ""
+        if engine.startswith("gemini:"):
+            used_model = engine.split(":", 1)[1]
+            engine = "gemini"
+        elif engine:
+            used_model = engine
+        computed_status = status or (
+            OcrIngestLog.STATUS_SUCCESS if ok else OcrIngestLog.STATUS_FAILED
+        )
+        err = compose_error_message(
+            (getattr(result, "diagnostics", None) if result is not None else None),
+            error_message
+            or _compose_fallback_log_error(gemini_error, result)
+            or (getattr(result, "error", "") or ""),
+        )
+        diagnostics = getattr(result, "diagnostics", None) if result is not None else {}
+        if not isinstance(diagnostics, dict):
+            diagnostics = {}
+        OcrIngestLog.objects.create(
+            image_path=image_path or "",
+            source_image_hash=source_image_hash or "",
+            source_image_phash=source_image_phash or "",
+            engine=engine,
+            used_model=used_model,
+            status=computed_status,
+            topic=topic,
+            duplicate_question=duplicate_question,
+            duplicate_match=duplicate_match or "",
+            initiated_by=request.user if request.user.is_authenticated else None,
+            ok=ok,
+            error_message=err,
+            raw_response=raw_response or raw_text,
+            stem=stem,
+            options=options if isinstance(options, dict) else {},
+            raw_text=raw_text,
+            issue_formula_missing=_detect_formula_missing(stem, options, raw_text),
+            issue_char_drift=_detect_char_drift(stem, options, raw_text),
+            diagnostics=diagnostics,
+        )
+        log_ocr_event(
+            diagnostics=diagnostics,
+            image_path=image_path,
+            ok=ok,
+            status=computed_status,
+        )
+    except Exception:
+        # OCR logu ana akışı bozmamalı.
+        return
+
+
 def _store_ocr_draft(
     request: HttpRequest,
     *,
@@ -69,7 +199,7 @@ def _store_ocr_draft(
     options: dict[str, str],
     figure_svg: str = "",
     solution: str = "",
-    correct_option: str = "A",
+    correct_option: str = "",
     source_image_hash: str = "",
     source_image_phash: str = "",
     test_assignment: str = "auto",
@@ -172,7 +302,13 @@ def _question_from_draft(draft: dict) -> types.SimpleNamespace:
         option_c=draft.get("option_c", ""),
         option_d=draft.get("option_d", ""),
         option_e=draft.get("option_e", ""),
-        correct_option=draft.get("correct_option", "A") or "A",
+        options_are_images=bool(draft.get("options_are_images")),
+        option_a_image=None,
+        option_b_image=None,
+        option_c_image=None,
+        option_d_image=None,
+        option_e_image=None,
+        correct_option=normalize_correct_option(draft.get("correct_option", "")),
         solution=draft.get("solution", ""),
         figure_svg=draft.get("figure_svg", ""),
         source_image_hash=draft.get("source_image_hash", ""),
@@ -185,16 +321,82 @@ def _question_from_draft(draft: dict) -> types.SimpleNamespace:
     )
 
 
+def _apply_option_images_from_request(question: Question, request: HttpRequest) -> None:
+    """Görsel şık checkbox + A–E ImageField yükleme / temizleme."""
+    from .option_image_crop import VISUAL_OPTION_PLACEHOLDER, data_url_to_bytes
+
+    visual = request.POST.get("options_are_images") == "on"
+    question.options_are_images = visual
+    for letter in "ABCDE":
+        key = letter.lower()
+        field_name = f"option_{key}_image"
+        clear = request.POST.get(f"clear_{field_name}") == "on"
+        uploaded = request.FILES.get(field_name)
+        data_url = (request.POST.get(f"{field_name}_data") or "").strip()
+        current = getattr(question, field_name)
+        if clear:
+            if current:
+                try:
+                    current.delete(save=False)
+                except Exception:  # noqa: BLE001
+                    pass
+            setattr(question, field_name, None)
+            continue
+        payload = None
+        filename = ""
+        if uploaded:
+            payload = uploaded
+            filename = f"opt_{letter}_{question.public_id}_{uploaded.name}"
+        else:
+            raw = data_url_to_bytes(data_url) if data_url else None
+            if raw:
+                payload = ContentFile(raw)
+                filename = f"opt_{letter}_{question.public_id}.png"
+        if payload is None:
+            continue
+        if current:
+            try:
+                current.delete(save=False)
+            except Exception:  # noqa: BLE001
+                pass
+        getattr(question, field_name).save(filename, payload, save=False)
+    if visual:
+        for attr in ("option_a", "option_b", "option_c", "option_d", "option_e"):
+            if not (getattr(question, attr) or "").strip():
+                setattr(question, attr, VISUAL_OPTION_PLACEHOLDER)
+    else:
+        for letter in "ABCDE":
+            field_name = f"option_{letter.lower()}_image"
+            current = getattr(question, field_name)
+            if current and request.POST.get(f"clear_{field_name}") != "on":
+                # Görsel mod kapalıysa mevcut crop'ları silmeyiz; yalnızca bayrak kapanır.
+                pass
+
+
 def _discard_question_image(question: Question) -> None:
-    """Soru görselini diskten sil — OCR sonrası yer kaplamasın."""
-    if question.image:
+    """Soru görselini diskten sil — OCR / Telegram tarama fotoğrafı kalmasın."""
+    if not question.image:
+        return
+    try:
         question.image.delete(save=False)
-        question.image = None
+    except Exception:  # noqa: BLE001 — dosya yoksa yine alanı temizle
+        pass
+    question.image = None
+
+
+def _discard_solution_image(question: Question) -> None:
+    """Çözüm görselini diskten sil."""
+    if not question.solution_image:
+        return
+    try:
+        question.solution_image.delete(save=False)
+    except Exception:  # noqa: BLE001
+        pass
+    question.solution_image = None
 
 
 def _sanitize_figure_svg(raw: str) -> str:
-    code = extract_svg(raw or "")
-    return code if is_safe_svg(code) else ""
+    return sanitize_figure_svg(raw)
 
 
 @login_required
@@ -207,11 +409,32 @@ def panel_home(request: HttpRequest) -> HttpResponse:
         )
         .order_by("sort_order", "name")
     )
+    today_start = timezone.localtime().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    hold_ids = telegram_solution_hold_question_ids()
+    today_qs = Question.objects.filter(created_at__gte=today_start)
+    if hold_ids:
+        today_qs = today_qs.exclude(pk__in=hold_ids)
+    today_questions = list(
+        today_qs.select_related("topic", "topic__subject").order_by("-created_at")[:100]
+    )
+    today_pending_count = sum(
+        1
+        for q in today_questions
+        if (
+            not q.is_published
+            and q.submission_source == Question.SUBMISSION_SOURCE_TELEGRAM
+        )
+    )
     return render(
         request,
         "panel/subjects.html",
         {
             "subjects": subjects,
+            "today_questions": today_questions,
+            "today_question_count": today_qs.count(),
+            "today_pending_count": today_pending_count,
             "page_title": "Dersler",
         },
     )
@@ -238,6 +461,8 @@ def _map_templates_for_editor() -> dict[str, dict[str, str]]:
             editor_asset = entry.get("editor_asset")
             if editor_asset:
                 item["editor_asset"] = static(editor_asset)
+        if entry.get("paint"):
+            item["paint"] = True
         result[map_id] = item
     return result
 
@@ -564,7 +789,7 @@ def panel_error_reports(request: HttpRequest) -> HttpResponse:
             "status_choices": ERROR_REPORT_STATUS_CHOICES,
             "category_choices": ERROR_REPORT_CATEGORY_CHOICES,
             "status_counts": status_counts,
-            "open_count": status_counts.get("open", 0),
+            "open_count": pending_error_report_count(),
         },
     )
 
@@ -588,6 +813,70 @@ def panel_error_report_status(
         f"{report.get_status_display()}.",
     )
     next_url = request.POST.get("next") or reverse("panel_error_reports")
+    return redirect(next_url)
+
+
+@login_required
+@staff_required
+def panel_pending_questions(request: HttpRequest) -> HttpResponse:
+    """Telegram (ve benzeri) kaynaklı onay bekleyen sorular."""
+    filter_key = (request.GET.get("filter") or "all").strip().lower()
+    if filter_key not in {"all", "risky", "ok"}:
+        filter_key = "all"
+
+    base_qs = pending_telegram_questions_qs().select_related(
+        "topic", "topic__subject"
+    )
+    all_rows = build_pending_telegram_rows(base_qs, filter_key="all")
+    risky_count = sum(1 for row in all_rows if row.flags.is_risky)
+    if filter_key == "risky":
+        rows = [row for row in all_rows if row.flags.is_risky]
+    elif filter_key == "ok":
+        rows = [row for row in all_rows if not row.flags.is_risky]
+    else:
+        rows = all_rows
+
+    paginator = Paginator(rows, 30)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    page_query = request.GET.copy()
+    page_query.pop("page", None)
+
+    return render(
+        request,
+        "panel/pending_questions.html",
+        {
+            "page_title": "Onay bekleyen sorular",
+            "rows": page_obj,
+            "question_count": paginator.count,
+            "risky_count": risky_count,
+            "filter_key": filter_key,
+            "page_query": page_query.urlencode(),
+            "pending_count": pending_telegram_question_count(),
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_pending_question_reject(
+    request: HttpRequest, question_id: int
+) -> HttpResponse:
+    question = get_object_or_404(
+        Question,
+        pk=question_id,
+        submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+        is_published=False,
+    )
+    public_id = question.public_id
+    # Model.delete görseli de siler; önce açıkça boşalt (orphan media olmasın).
+    _discard_question_image(question)
+    question.delete()
+    messages.success(
+        request,
+        f"{public_id} reddedildi; kayıt ve kaynak görsel sunucudan silindi.",
+    )
+    next_url = request.POST.get("next") or reverse("panel_pending_questions")
     return redirect(next_url)
 
 
@@ -654,14 +943,22 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
         else:
             topic = get_object_or_404(Topic, pk=topic_id, is_active=True)
             try:
-                img_hash = image_fingerprint(image)
                 if hasattr(image, "seek"):
                     image.seek(0)
-                img_phash = image_phash(image)
-                if hasattr(image, "seek"):
-                    image.seek(0)
-                ocr = ocr_question_image(image)
+                mime = getattr(image, "content_type", "image/png") or "image/png"
+                ocr, img_hash, img_phash, gemini_attempted, gemini_failed, gemini_error = (
+                    _run_ocr(image, mime=mime)
+                )
             except Exception:  # noqa: BLE001
+                _log_ocr_ingest(
+                    request,
+                    topic=topic,
+                    image_path=getattr(image, "name", "") or "",
+                    source_image_hash=img_hash if "img_hash" in locals() else "",
+                    source_image_phash=img_phash if "img_phash" in locals() else "",
+                    error_message="OCR sırasında beklenmeyen hata",
+                    status=OcrIngestLog.STATUS_FAILED,
+                )
                 messages.error(
                     request,
                     "OCR sırasında beklenmeyen bir hata oluştu. "
@@ -676,6 +973,15 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                     (ocr.stem or "").strip() or (ocr.raw_text or "").strip()
                 )
                 if hard_fail:
+                    _log_ocr_ingest(
+                        request,
+                        topic=topic,
+                        image_path=getattr(image, "name", "") or "",
+                        source_image_hash=img_hash,
+                        source_image_phash=img_phash,
+                        result=ocr,
+                        status=OcrIngestLog.STATUS_FAILED,
+                    )
                     messages.error(
                         request,
                         ocr.error
@@ -707,11 +1013,9 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                     figure_svg = _sanitize_figure_svg(
                         getattr(ocr, "figure_svg", "") or ""
                     )
-                    correct_option = (
-                        getattr(ocr, "correct_option", "") or "A"
+                    correct_option = normalize_correct_option(
+                        getattr(ocr, "correct_option", "")
                     )
-                    if correct_option not in "ABCDE":
-                        correct_option = "A"
                     solution = (getattr(ocr, "solution", "") or "").strip()
 
                     c_hash = content_fingerprint(
@@ -731,17 +1035,43 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                         require_options=bool(
                             option_a and option_b and option_c
                         ),
+                        stem=stem,
+                        option_a=option_a,
+                        option_b=option_b,
+                        option_c=option_c,
+                        option_d=option_d,
+                        option_e=option_e,
+                    )
+                    _log_ocr_ingest(
+                        request,
+                        topic=topic,
+                        image_path=getattr(image, "name", "") or "",
+                        source_image_hash=img_hash,
+                        source_image_phash=img_phash,
+                        result=ocr,
+                        duplicate_question=dup,
+                        duplicate_match=match,
+                        status=(
+                            OcrIngestLog.STATUS_FALLBACK_SUCCESS
+                            if gemini_attempted and gemini_failed and ocr.ok
+                            else OcrIngestLog.STATUS_SUCCESS
+                        ),
+                        gemini_error=gemini_error,
                     )
                     if dup and not force_duplicate:
                         duplicate = duplicate_payload(dup, match)
                         error = (
                             "Bu soruyu daha önce yüklediniz. "
-                            "Tüm sorular benzersiz olmalı. "
-                            f"Mevcut kayıt: {duplicate['subject_name']} · "
-                            f"{duplicate['topic_name']} · "
-                            f"{duplicate['public_id']}"
+                            "Tüm sorular benzersiz olmalı."
                         )
-                        messages.error(request, error)
+                        messages.error(
+                            request,
+                            duplicate_flash_html(
+                                duplicate,
+                                prefix=error,
+                            ),
+                            extra_tags="html",
+                        )
                     else:
                         _store_ocr_draft(
                             request,
@@ -847,16 +1177,26 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
 
     exclude_raw = request.POST.get("exclude_question_id") or ""
     exclude_pk = int(exclude_raw) if exclude_raw.isdigit() else None
+    topic_raw = request.POST.get("topic_id") or ""
+    topic = Topic.objects.filter(pk=topic_raw, is_active=True).first() if topic_raw else None
 
     try:
-        img_hash = image_fingerprint(image)
         if hasattr(image, "seek"):
             image.seek(0)
-        img_phash = image_phash(image)
-        if hasattr(image, "seek"):
-            image.seek(0)
-        result = ocr_question_image(image)
+        mime = getattr(image, "content_type", "image/png") or "image/png"
+        result, img_hash, img_phash, gemini_attempted, gemini_failed, gemini_error = (
+            _run_ocr(image, mime=mime)
+        )
     except Exception:  # noqa: BLE001
+        _log_ocr_ingest(
+            request,
+            topic=topic,
+            image_path=getattr(image, "name", "") or "",
+            source_image_hash=img_hash if "img_hash" in locals() else "",
+            source_image_phash=img_phash if "img_phash" in locals() else "",
+            error_message="OCR sırasında beklenmeyen hata",
+            status=OcrIngestLog.STATUS_FAILED,
+        )
         messages.error(
             request,
             "OCR sırasında beklenmeyen bir hata oluştu. "
@@ -877,6 +1217,15 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
     )
     if hard_fail:
         err = result.error or "Görselden metin okunamadı."
+        _log_ocr_ingest(
+            request,
+            topic=topic,
+            image_path=getattr(image, "name", "") or "",
+            source_image_hash=img_hash,
+            source_image_phash=img_phash,
+            result=result,
+            status=OcrIngestLog.STATUS_FAILED,
+        )
         messages.error(request, err)
         return JsonResponse(
             {
@@ -892,16 +1241,20 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             charset="utf-8",
         )
 
-    opts = result.options or {}
-    c_hash = content_fingerprint(
+    stem_out, opts = coalesce_ocr_options(
         result.stem or "",
+        result.options or {},
+        result.raw_text or "",
+    )
+    c_hash = content_fingerprint(
+        stem_out,
         opts.get("A", ""),
         opts.get("B", ""),
         opts.get("C", ""),
         opts.get("D", ""),
         opts.get("E", ""),
     )
-    s_hash = stem_fingerprint(result.stem or "")
+    s_hash = stem_fingerprint(stem_out)
     dup, match = find_duplicate_question(
         content_hash=c_hash,
         stem_hash=s_hash,
@@ -913,13 +1266,54 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             and (opts.get("B") or "").strip()
             and (opts.get("C") or "").strip()
         ),
+        stem=stem_out,
+        option_a=opts.get("A", ""),
+        option_b=opts.get("B", ""),
+        option_c=opts.get("C", ""),
+        option_d=opts.get("D", ""),
+        option_e=opts.get("E", ""),
     )
+    classified = classify_topic_from_ocr(
+        stem_out,
+        opts,
+        result.raw_text or "",
+        topic_slug_hint=getattr(result, "topic_slug", "") or "",
+        subject_slug_hint=getattr(result, "subject_slug", "") or "",
+        fallback=topic,
+    )
+    _log_ocr_ingest(
+        request,
+        topic=topic,
+        image_path=getattr(image, "name", "") or "",
+        source_image_hash=img_hash,
+        source_image_phash=img_phash,
+        result=result,
+        duplicate_question=dup,
+        duplicate_match=match,
+        status=(
+            OcrIngestLog.STATUS_FALLBACK_SUCCESS
+            if gemini_attempted and gemini_failed and result.ok
+            else OcrIngestLog.STATUS_SUCCESS
+        ),
+        gemini_error=gemini_error,
+    )
+    from .option_image_crop import crops_to_data_urls
+
+    option_crops = getattr(result, "option_image_bytes", None) or {}
+    options_visual = bool(getattr(result, "options_visual", False) and option_crops)
+    option_data_urls: dict[str, str] = {}
+    if options_visual:
+        try:
+            option_data_urls = crops_to_data_urls(option_crops)
+        except Exception:  # noqa: BLE001
+            options_visual = False
+            option_data_urls = {}
     payload = {
         "ok": result.ok,
-        "stem": result.stem,
-        "options": result.options,
-        "soru_metni": result.stem,
-        "siklar": result.options,
+        "stem": stem_out,
+        "options": opts,
+        "soru_metni": stem_out,
+        "siklar": opts,
         "sekil_kodu": getattr(result, "figure_svg", "") or "",
         "figure_svg": getattr(result, "figure_svg", "") or "",
         "dogru_cevap": getattr(result, "correct_option", "") or "",
@@ -933,7 +1327,20 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         "image_phash": img_phash,
         "content_hash": c_hash,
         "duplicate": duplicate_payload(dup, match) if dup else None,
+        "optionsVisual": options_visual,
+        "options_are_images": options_visual,
+        "optionImageDataUrls": option_data_urls,
+        "optionBoxes": {
+            k: list(v)
+            for k, v in (getattr(result, "option_boxes", None) or {}).items()
+        },
     }
+    if classified is not None and classified.source != "fallback":
+        payload["suggested_topic_id"] = classified.topic.id
+        payload["suggested_subject_id"] = classified.topic.subject_id
+        payload["suggested_topic_name"] = classified.topic.name
+        payload["topic_confidence"] = classified.confidence
+        payload["topic_source"] = classified.source
     return JsonResponse(
         payload,
         json_dumps_params={"ensure_ascii": False},
@@ -1170,6 +1577,50 @@ def panel_topic_capacity(request: HttpRequest, topic_id: int) -> HttpResponse:
     return redirect("panel_topic", topic_id=topic.id, tab="tests")
 
 
+def _build_question_list_blocks(questions_qs):
+    """Olay grubu sorularını liste ekranında görsel bloklar halinde grupla."""
+    questions = list(questions_qs)
+    by_scenario: dict[int, list] = {}
+    standalone: list = []
+    for q in questions:
+        if q.scenario_id:
+            by_scenario.setdefault(q.scenario_id, []).append(q)
+        else:
+            standalone.append(q)
+
+    blocks: list[dict] = []
+    if by_scenario:
+        scenario_ids = list(by_scenario.keys())
+        totals = dict(
+            QuestionScenario.objects.filter(pk__in=scenario_ids)
+            .annotate(cnt=Count("questions"))
+            .values_list("id", "cnt")
+        )
+        scenarios = QuestionScenario.objects.filter(pk__in=scenario_ids).order_by(
+            "sort_order", "id"
+        )
+        for scenario in scenarios:
+            group = sorted(
+                by_scenario[scenario.id],
+                key=lambda q: (q.scenario_order, q.id),
+            )
+            total = totals.get(scenario.id, len(group))
+            blocks.append(
+                {
+                    "type": "scenario",
+                    "scenario": scenario,
+                    "questions": group,
+                    "shown_count": len(group),
+                    "total_count": total,
+                }
+            )
+
+    for q in sorted(standalone, key=lambda q: q.updated_at, reverse=True):
+        blocks.append({"type": "single", "question": q})
+
+    return blocks
+
+
 @login_required
 @staff_required
 def panel_topic(
@@ -1178,16 +1629,42 @@ def panel_topic(
     topic = get_object_or_404(
         Topic.objects.select_related("subject"), pk=topic_id
     )
-    if tab not in {"lessons", "questions", "tests", "scenarios"}:
+    if tab not in {"lessons", "summary", "questions", "tests", "scenarios"}:
         tab = "lessons"
 
     lessons = topic.lessons.order_by("sort_order", "id")
-    questions = topic.questions.select_related("scenario").order_by("-updated_at")
-    tests = topic.tests.prefetch_related("questions").order_by("-created_at")
+    summary_cards = topic.summary_cards.order_by("sort_order", "id")
+    questions = topic.questions.select_related("scenario").prefetch_related(
+        "tests"
+    ).order_by("-updated_at")
+    if tab == "tests":
+        from .test_grouping import merge_duplicate_titled_tests
+        from .topic_slots import ensure_topic_test_slots
+
+        merge_duplicate_titled_tests(topic)
+        ensure_topic_test_slots(topic, migrate_legacy=True)
+    tests = topic.tests.prefetch_related("questions").order_by("created_at", "id")
     scenarios = topic.question_scenarios.annotate(
         question_count=Count("questions")
     ).order_by("sort_order", "id")
+
+    selected_test_id = (request.GET.get("test_id") or "").strip()
+    selected_test = None
+    questions_filter_label = "Tümü"
+    if tab == "questions" and selected_test_id:
+        if selected_test_id == "none":
+            questions = questions.filter(tests__isnull=True)
+            questions_filter_label = "Teste atanmamış"
+        elif selected_test_id.isdigit():
+            selected_test = topic.tests.filter(pk=int(selected_test_id)).first()
+            if selected_test is not None:
+                questions = questions.filter(tests=selected_test).distinct()
+                questions_filter_label = selected_test.title
+
     questions_published_count = questions.filter(is_published=True).count()
+    question_blocks = (
+        _build_question_list_blocks(questions) if tab == "questions" else []
+    )
 
     return render(
         request,
@@ -1197,10 +1674,15 @@ def panel_topic(
             "subject": topic.subject,
             "tab": tab,
             "lessons": lessons,
+            "summary_cards": summary_cards,
             "questions": questions,
+            "question_blocks": question_blocks,
             "questions_published_count": questions_published_count,
             "tests": tests,
             "scenarios": scenarios,
+            "selected_test": selected_test,
+            "selected_test_id": selected_test_id,
+            "questions_filter_label": questions_filter_label,
             "page_title": topic.name,
         },
     )
@@ -1263,6 +1745,136 @@ def panel_lesson_delete(request: HttpRequest, lesson_id: int) -> HttpResponse:
 @login_required
 @staff_required
 @require_http_methods(["GET", "POST"])
+def panel_summary_card_edit(
+    request: HttpRequest, topic_id: int, card_id: int | None = None
+) -> HttpResponse:
+    """Konu workspace linkleri → stüdyo formuna yönlendir."""
+    get_object_or_404(Topic, pk=topic_id)
+    if card_id:
+        return redirect("panel_summary_card_studio_edit", card_id=card_id)
+    url = reverse("panel_summary_card_studio")
+    return redirect(f"{url}?topic={topic_id}")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_summary_card_studio(
+    request: HttpRequest, card_id: int | None = None
+) -> HttpResponse:
+    """Sol menü: ders + konu seçimli özet kart formu ve uygulama önizlemesi."""
+    card = (
+        get_object_or_404(
+            TopicSummaryCard.objects.select_related("topic__subject"),
+            pk=card_id,
+        )
+        if card_id
+        else None
+    )
+
+    selected_subject_id: int | None = None
+    selected_topic_id: int | None = None
+    if card is not None:
+        selected_subject_id = card.topic.subject_id
+        selected_topic_id = card.topic_id
+    else:
+        topic_raw = (request.GET.get("topic") or "").strip()
+        if topic_raw.isdigit():
+            topic_hint = (
+                Topic.objects.filter(pk=int(topic_raw))
+                .select_related("subject")
+                .first()
+            )
+            if topic_hint is not None:
+                selected_topic_id = topic_hint.id
+                selected_subject_id = topic_hint.subject_id
+
+    if request.method == "POST":
+        topic_raw = (request.POST.get("topic_id") or "").strip()
+        title = (request.POST.get("title") or "").strip()
+        body = (request.POST.get("body") or "").strip()
+        kind = (request.POST.get("kind") or "tip").strip()
+        if kind not in {c[0] for c in SUMMARY_CARD_KIND_CHOICES}:
+            kind = "tip"
+        sort_order = int(request.POST.get("sort_order") or 0)
+        is_published = request.POST.get("is_published") == "on"
+        clear_image = request.POST.get("clear_image") == "on"
+
+        if not topic_raw.isdigit():
+            messages.error(request, "Ders ve konu seçin.")
+        elif not title or not body:
+            messages.error(request, "Başlık ve özet zorunlu.")
+        else:
+            topic = get_object_or_404(Topic, pk=int(topic_raw))
+            if card is None:
+                card = TopicSummaryCard(topic=topic, public_id=_pid("sum"))
+            else:
+                card.topic = topic
+            card.title = title
+            card.body = body
+            card.kind = kind
+            card.sort_order = sort_order
+            card.is_published = is_published
+            if clear_image and card.image:
+                card.image.delete(save=False)
+                card.image = None
+            elif request.FILES.get("image"):
+                card.image = request.FILES["image"]
+            card.save()
+            messages.success(request, "Özet kart kaydedildi.")
+            return redirect(
+                "panel_summary_card_studio_edit", card_id=card.pk
+            )
+
+        selected_subject_id = (
+            int(request.POST.get("subject_id"))
+            if (request.POST.get("subject_id") or "").isdigit()
+            else selected_subject_id
+        )
+        selected_topic_id = (
+            int(topic_raw) if topic_raw.isdigit() else selected_topic_id
+        )
+
+    subjects = Subject.objects.filter(is_active=True).order_by(
+        "sort_order", "name"
+    )
+    topics_for_subject = (
+        Topic.objects.filter(
+            subject_id=selected_subject_id, is_active=True
+        ).order_by("sort_order", "name")
+        if selected_subject_id
+        else Topic.objects.none()
+    )
+
+    return render(
+        request,
+        "panel/summary_card_studio.html",
+        {
+            "card": card,
+            "subjects": subjects,
+            "topics": topics_for_subject,
+            "selected_subject_id": selected_subject_id,
+            "selected_topic_id": selected_topic_id,
+            "kind_choices": SUMMARY_CARD_KIND_CHOICES,
+            "page_title": "Özet kart düzenle" if card else "Konu kartı ekle",
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_summary_card_delete(request: HttpRequest, card_id: int) -> HttpResponse:
+    card = get_object_or_404(TopicSummaryCard, pk=card_id)
+    topic_id = card.topic_id
+    card.delete()
+    messages.success(request, "Özet kart silindi.")
+    return redirect("panel_topic", topic_id=topic_id, tab="summary")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
 def panel_scenario_edit(
     request: HttpRequest, topic_id: int, scenario_id: int | None = None
 ) -> HttpResponse:
@@ -1294,6 +1906,9 @@ def panel_scenario_edit(
         messages.success(request, "Olay grubu kaydedildi.")
         return redirect("panel_topic", topic_id=topic.id, tab="scenarios")
 
+    linked_question_count = (
+        scenario.questions.count() if scenario is not None else 0
+    )
     return render(
         request,
         "panel/scenario_form.html",
@@ -1301,6 +1916,7 @@ def panel_scenario_edit(
             "topic": topic,
             "subject": topic.subject,
             "scenario": scenario,
+            "linked_question_count": linked_question_count,
             "page_title": "Olay grubu" if scenario else "Yeni olay grubu",
         },
     )
@@ -1336,6 +1952,61 @@ def _apply_question_scenario(
         question.scenario_order = 0
 
 
+def _preview_field_options(question, form_options: dict | None) -> dict[str, str]:
+    """Önizleme — placeholder veya bozuk OCR olmayan şık metinleri."""
+    placeholders = {"", "—", "-", "Görsel şık"}
+    out: dict[str, str] = {}
+    for letter in "ABCDE":
+        raw = ""
+        if isinstance(form_options, dict):
+            raw = (form_options.get(letter) or "").strip()
+        elif question:
+            raw = (getattr(question, f"option_{letter.lower()}", "") or "").strip()
+        if raw in placeholders or _option_is_corrupt(raw):
+            out[letter] = ""
+        else:
+            out[letter] = raw
+    return out
+
+
+def _preview_solution_text(question, form_bootstrap: dict | None) -> str:
+    boot = form_bootstrap or {}
+    raw = (boot.get("solution") if isinstance(boot, dict) else "") or ""
+    if not raw and question:
+        raw = getattr(question, "solution", "") or ""
+    return str(raw).strip()
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_normalize_paste(request: HttpRequest) -> JsonResponse:
+    """Panel yapıştırma — Python normalizasyon (tek kaynak)."""
+    import json
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Geçersiz JSON"}, status=400)
+    field = str(payload.get("field") or "solution").strip()
+    text = str(payload.get("text") or "")
+    html = str(payload.get("html") or "")
+    try:
+        normalized = normalize_panel_paste_field(field, text, html=html)
+    except Exception:  # noqa: BLE001
+        return JsonResponse({"error": "Normalizasyon başarısız"}, status=500)
+    return JsonResponse({"text": normalized})
+
+
+def _is_pending_telegram_question(question: Question | None) -> bool:
+    return bool(
+        question
+        and question.pk
+        and question.submission_source == Question.SUBMISSION_SOURCE_TELEGRAM
+        and not question.is_published
+    )
+
+
 @login_required
 @staff_required
 @require_http_methods(["GET", "POST"])
@@ -1347,6 +2018,11 @@ def panel_question_edit(
         get_object_or_404(Question, pk=question_id) if question_id else None
     )
     topic = question.topic if question else url_topic
+    if request.method == "GET":
+        prepare_question_for_panel(question)
+        if question and question.pk:
+            maybe_backfill_question_options(question)
+            maybe_auto_repair_question_on_panel_get(question)
 
     subjects = Subject.objects.filter(is_active=True).order_by(
         "sort_order", "name"
@@ -1356,6 +2032,7 @@ def panel_question_edit(
     )
 
     if request.method == "POST":
+        was_pending_telegram = _is_pending_telegram_question(question)
         stem = request.POST.get("stem", "").strip()
         force_duplicate = request.POST.get("force_duplicate") == "1"
         map_template = request.POST.get("map_template", "").strip()
@@ -1386,11 +2063,11 @@ def panel_question_edit(
 
         question.subtopic = request.POST.get("subtopic", "").strip()
         question.stem = stem
-        question.option_a = request.POST.get("option_a", "").strip()
-        question.option_b = request.POST.get("option_b", "").strip()
-        question.option_c = request.POST.get("option_c", "").strip()
-        question.option_d = request.POST.get("option_d", "").strip()
-        question.option_e = request.POST.get("option_e", "").strip()
+        question.option_a = request.POST.get("option_a", "")
+        question.option_b = request.POST.get("option_b", "")
+        question.option_c = request.POST.get("option_c", "")
+        question.option_d = request.POST.get("option_d", "")
+        question.option_e = request.POST.get("option_e", "")
         if not all(
             [
                 question.option_a,
@@ -1401,12 +2078,60 @@ def panel_question_edit(
             ]
         ):
             return HttpResponseBadRequest("KPSS soruları A–E beş şık gerektirir.")
-        question.correct_option = request.POST.get("correct_option", "A")
-        question.solution = request.POST.get("solution", "").strip()
+        option_table = (request.POST.get("option_table") or Question.OPTION_TABLE_NONE).strip()
+        if option_table not in {
+            Question.OPTION_TABLE_NONE,
+            Question.OPTION_TABLE_DUAL,
+            Question.OPTION_TABLE_TRIPLE,
+        }:
+            option_table = Question.OPTION_TABLE_NONE
+        question.option_table = option_table
+        correct_option = normalize_correct_option(
+            request.POST.get("correct_option", "")
+        )
+        if request.POST.get("is_published") == "on" and not correct_option:
+            return HttpResponseBadRequest(
+                "Yayınlamak için doğru cevabı (A–E) seçmelisiniz."
+            )
+        question.correct_option = correct_option
+        question.solution = request.POST.get("solution", "")
+        normalize_question_for_storage(question)
         question.is_published = request.POST.get("is_published") == "on"
         question.osym_sordu = request.POST.get("osym_sordu") == "on"
+        osym_cikmis_raw = normalize_osym_cikmis_label(
+            request.POST.get("osym_cikmis_adi", "")
+        )
+        if question.osym_sordu and not osym_cikmis_raw:
+            return HttpResponseBadRequest(
+                "ÖSYM sordu işaretli — hangi çıkmış soru olduğunu yazın."
+            )
+        if question.osym_sordu and osym_cikmis_raw:
+            from .osym_archive import resolve_to_catalog_key
+
+            osym_cikmis_raw = resolve_to_catalog_key(osym_cikmis_raw) or osym_cikmis_raw
+        question.osym_cikmis_adi = osym_cikmis_raw if question.osym_sordu else ""
+        question.tag_kronoloji = request.POST.get("tag_kronoloji") == "on"
+        question.tag_padisah_antlasma = (
+            request.POST.get("tag_padisah_antlasma") == "on"
+        )
+        question.tag_celdirici = request.POST.get("tag_celdirici") == "on"
+        from .special_question_tags import apply_auto_tags
+
+        apply_auto_tags(question, only_raise=True)
+        stem_image_position = request.POST.get(
+            "stem_image_position", Question.STEM_IMAGE_BELOW
+        )
+        if stem_image_position not in {
+            Question.STEM_IMAGE_ABOVE,
+            Question.STEM_IMAGE_BELOW,
+        }:
+            stem_image_position = Question.STEM_IMAGE_BELOW
         question.map_template = map_template
         question.map_markers = map_markers
+        if map_template:
+            question.stem_image_position = Question.STEM_IMAGE_BELOW
+        else:
+            question.stem_image_position = stem_image_position
         figure_svg = _sanitize_figure_svg(
             request.POST.get("figure_svg", "")
         )
@@ -1440,13 +2165,19 @@ def panel_question_edit(
             require_options=bool(
                 question.option_a and question.option_b and question.option_c
             ),
+            stem=question.stem,
+            option_a=question.option_a,
+            option_b=question.option_b,
+            option_c=question.option_c,
+            option_d=question.option_d,
+            option_e=question.option_e,
         )
         if dup and not force_duplicate:
             info = duplicate_payload(dup, match)
             messages.error(
                 request,
-                "Bu soruyu daha önce yüklediniz — kayıt yapılmadı. "
-                f"{info['message']}",
+                duplicate_flash_html(info),
+                extra_tags="html",
             )
             if question.pk:
                 return redirect(
@@ -1465,7 +2196,9 @@ def panel_question_edit(
                 save=False,
             )
         else:
+            # OCR alanı name="image" — asla kalıcı saklanmaz (yalnızca stem_image veya keep).
             stem_image = request.FILES.get("stem_image")
+            keep_existing = request.POST.get("keep_image") == "1"
             if stem_image:
                 _discard_question_image(question)
                 question.image.save(
@@ -1473,12 +2206,30 @@ def panel_question_edit(
                     stem_image,
                     save=False,
                 )
-            elif not request.POST.get("keep_image"):
+            elif not keep_existing:
+                # «Mevcut görseli koru» yoksa Telegram/OCR fotoğrafı diskten silinir.
+                # Geometri için figure_svg (vektör) yeterli; tarama PNG'si tutulmaz.
                 _discard_question_image(question)
 
+        solution_image = request.FILES.get("solution_image")
+        keep_solution_image = request.POST.get("keep_solution_image") == "1"
+        if solution_image:
+            _discard_solution_image(question)
+            question.solution_image.save(
+                f"solution_{question.public_id}_{solution_image.name}",
+                solution_image,
+                save=False,
+            )
+        elif not keep_solution_image:
+            _discard_solution_image(question)
+
+        _apply_option_images_from_request(question, request)
         _apply_question_scenario(question, target_topic, request.POST)
         question.save()
+        if question.osym_sordu and question.osym_cikmis_adi:
+            record_osym_cikmis_oneri(question.osym_cikmis_adi)
         refresh_question_embedding(question)
+        reviewed_reports = mark_question_error_reports_reviewed(question)
 
         assignment = request.POST.get("test_assignment", "auto")
         test = assign_question_to_test(question, target_topic, assignment)
@@ -1488,11 +2239,35 @@ def panel_question_edit(
                 request,
                 f"Uyarı: benzer soru varken kaydedildi (önceki: {dup.public_id}).",
             )
+        reviewed_suffix = (
+            f" {reviewed_reports} hata bildirimi incelendi olarak işaretlendi."
+            if reviewed_reports
+            else ""
+        )
+        if was_pending_telegram:
+            if question.is_published:
+                messages.success(
+                    request,
+                    f"{question.public_id} yayınlandı → {test.title} "
+                    f"({test.questions.count()}/{target_topic.questions_per_test or 20}). "
+                    "Onay bekleyen listeden çıktı."
+                    + reviewed_suffix,
+                )
+            else:
+                messages.success(
+                    request,
+                    f"{question.public_id} taslak kaydedildi — yayınlamak için "
+                    "«Yayında» işaretleyip tekrar kaydedin."
+                    + reviewed_suffix,
+                )
+            return redirect("panel_pending_questions")
+
         messages.success(
             request,
             f"Soru kaydedildi → {test.title} "
             f"({test.questions.count()}/{target_topic.questions_per_test or 20}). "
-            "Uygulamalar birkaç saniye içinde güncellenir.",
+            "Uygulamalar birkaç saniye içinde güncellenir."
+            + reviewed_suffix,
         )
         return redirect("panel_topic", topic_id=target_topic.id, tab="questions")
 
@@ -1534,6 +2309,22 @@ def panel_question_edit(
         for t in Topic.objects.filter(is_active=True).only("pk", "subtopics")
     }
 
+    form_bootstrap = question_form_bootstrap(question) if question else {}
+    form_options = form_bootstrap.get("options") if form_bootstrap else None
+    if not form_options and question:
+        form_options = panel_form_options(question)
+    preview_options = _preview_field_options(question, form_options)
+    preview_solution = _preview_solution_text(question, form_bootstrap)
+
+    preview_seed = {
+        "stem": (question.stem or "").strip() if question else "",
+        "solution": preview_solution,
+        "options": preview_options,
+        "correct_option": (form_bootstrap.get("correct_option") or "")
+        if form_bootstrap
+        else "",
+    }
+
     return render(
         request,
         "panel/question_form.html",
@@ -1545,6 +2336,10 @@ def panel_question_edit(
             "question": question,
             "test_dd": test_dd,
             "scenarios": scenarios,
+            "scenarios_json": [
+                {"id": s.id, "title": s.title, "stem": s.stem}
+                for s in scenarios
+            ],
             "current_test": current_test,
             "topic_subtopics_json": topic_subtopics,
             "map_markers_json": list(question.map_markers or [])
@@ -1557,6 +2352,17 @@ def panel_question_edit(
             else ("Görselden soru" if entry_mode == "ocr" else "Manuel soru ekle"),
             "selected_test_assignment": selected_test_assignment,
             "entry_mode": entry_mode,
+            "pending_telegram_review": _is_pending_telegram_question(question),
+            "osym_cikmis_suggestions": osym_cikmis_suggestions(),
+            "form_options": form_options,
+            "form_bootstrap": form_bootstrap,
+            "preview_options": preview_options,
+            "preview_solution": preview_solution,
+            "preview_option_items": [
+                {"letter": letter, "text": preview_options.get(letter, "")}
+                for letter in "ABCDE"
+            ],
+            "preview_seed": preview_seed,
         },
     )
 
@@ -1598,6 +2404,57 @@ def _copy_question_image(source: Question, dest: Question) -> None:
     )
 
 
+def _copy_option_images(source: Question, dest: Question) -> None:
+    """Kaynak sorunun A–E şık görsellerini yeni kayda kopyala."""
+    for letter in "ABCDE":
+        field_name = f"option_{letter.lower()}_image"
+        src_field = getattr(source, field_name)
+        if not src_field:
+            continue
+        try:
+            src_field.open("rb")
+            data = src_field.read()
+        except Exception:  # noqa: BLE001
+            continue
+        finally:
+            try:
+                src_field.close()
+            except Exception:  # noqa: BLE001
+                pass
+        if not data:
+            continue
+        name = src_field.name.rsplit("/", 1)[-1]
+        getattr(dest, field_name).save(
+            f"copy_{dest.public_id}_{name}",
+            ContentFile(data),
+            save=False,
+        )
+
+
+def _copy_solution_image(source: Question, dest: Question) -> None:
+    """Kaynak sorunun çözüm görselini yeni kayda kopyala."""
+    if not source.solution_image:
+        return
+    try:
+        source.solution_image.open("rb")
+        data = source.solution_image.read()
+    except Exception:  # noqa: BLE001
+        return
+    finally:
+        try:
+            source.solution_image.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if not data:
+        return
+    name = source.solution_image.name.rsplit("/", 1)[-1]
+    dest.solution_image.save(
+        f"copy_{dest.public_id}_{name}",
+        ContentFile(data),
+        save=False,
+    )
+
+
 @login_required
 @staff_required
 @require_POST
@@ -1611,6 +2468,7 @@ def panel_question_copy(
         topic=source.topic,
         subtopic=source.subtopic,
         stem=source.stem,
+        stem_image_position=source.stem_image_position,
         figure_svg=source.figure_svg,
         map_template=source.map_template,
         map_markers=list(source.map_markers or []),
@@ -1619,11 +2477,17 @@ def panel_question_copy(
         option_c=source.option_c,
         option_d=source.option_d,
         option_e=source.option_e,
+        options_are_images=source.options_are_images,
+        option_table=source.option_table,
         correct_option=source.correct_option,
         solution=source.solution,
         is_published=source.is_published,
         difficulty=Question.DIFFICULTY_MEDIUM,
         osym_sordu=source.osym_sordu,
+        osym_cikmis_adi=source.osym_cikmis_adi,
+        tag_kronoloji=source.tag_kronoloji,
+        tag_padisah_antlasma=source.tag_padisah_antlasma,
+        tag_celdirici=source.tag_celdirici,
         content_hash=source.content_hash,
         stem_hash=source.stem_hash,
         source_image_hash=source.source_image_hash,
@@ -1631,6 +2495,8 @@ def panel_question_copy(
         scenario_order=(source.scenario_order + 1) if source.scenario_id else 0,
     )
     _copy_question_image(source, copy)
+    _copy_option_images(source, copy)
+    _copy_solution_image(source, copy)
     copy.save()
     refresh_question_embedding(copy)
     test = assign_question_to_test(copy, source.topic, "auto")
@@ -1694,6 +2560,26 @@ def panel_test_edit(
         if not title:
             return HttpResponseBadRequest("Başlık zorunlu.")
 
+        # Aynı konuda aynı başlık → mevcut teste birleştir / üzerine yaz
+        clash = (
+            topic.tests.filter(title__iexact=title)
+            .exclude(pk=test.pk if test else None)
+            .order_by("-is_published", "id")
+            .first()
+        )
+        if clash is not None and test is None:
+            test = clash
+        elif clash is not None and test is not None and clash.pk != test.pk:
+            # Düzenlenen testin sorularını çakışan kayda taşı, çakışanı koru
+            clash.questions.add(*test.questions.all())
+            test.questions.clear()
+            test.delete()
+            test = clash
+            messages.warning(
+                request,
+                f"«{title}» zaten vardı — sorular tek testte birleştirildi.",
+            )
+
         if test is None:
             test = TopicTest(topic=topic, public_id=_pid("test"))
 
@@ -1706,6 +2592,9 @@ def panel_test_edit(
         test.save()
         selected = request.POST.getlist("questions")
         test.questions.set(Question.objects.filter(pk__in=selected, topic=topic))
+        from .test_grouping import merge_duplicate_titled_tests
+
+        merge_duplicate_titled_tests(topic)
         return redirect("panel_topic", topic_id=topic.id, tab="tests")
 
     selected_ids = set()
@@ -1724,7 +2613,7 @@ def panel_test_edit(
                 "D": q.option_d or "",
                 "E": q.option_e or "",
             },
-            "correct": q.correct_option or "A",
+            "correct": q.correct_option or "",
             "solution": q.solution or "",
         }
         for q in pool
@@ -1861,9 +2750,34 @@ def _send_and_redirect(request: HttpRequest, item: Announcement) -> HttpResponse
 
 @login_required
 @staff_required
+def panel_app_stats(request: HttpRequest) -> HttpResponse:
+    """Kurulum / canlı kullanıcı / premium özeti."""
+    from .app_live_stats import ACTIVE_WINDOW, collect_app_live_stats
+
+    stats = collect_app_live_stats()
+    return render(
+        request,
+        "panel/app_stats.html",
+        {
+            "page_title": "Uygulama durumu",
+            "stats": stats,
+            "active_window_minutes": int(ACTIVE_WINDOW.total_seconds() // 60),
+        },
+    )
+
+
+@login_required
+@staff_required
 def panel_users(request: HttpRequest) -> HttpResponse:
     q = (request.GET.get("q") or "").strip()
+    scope = (request.GET.get("scope") or "all").strip().lower()
+    if scope not in {"all", "guest", "account"}:
+        scope = "all"
     users = AppUser.objects.all().order_by("-last_login_at", "-created_at")
+    if scope == "guest":
+        users = users.filter(is_anonymous=True)
+    elif scope == "account":
+        users = users.filter(is_anonymous=False)
     if q:
         from django.db.models import Q
 
@@ -1874,6 +2788,7 @@ def panel_users(request: HttpRequest) -> HttpResponse:
         )
     paginator = Paginator(users, 40)
     page = paginator.get_page(request.GET.get("page") or 1)
+    guest_count = AppUser.objects.filter(is_anonymous=True).count()
     return render(
         request,
         "panel/users.html",
@@ -1881,8 +2796,62 @@ def panel_users(request: HttpRequest) -> HttpResponse:
             "page_title": "Kullanıcılar",
             "page_obj": page,
             "query": q,
+            "scope": scope,
+            "guest_count": guest_count,
         },
     )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_user_bulk_delete(request: HttpRequest) -> HttpResponse:
+    """Seçili uygulama kullanıcılarını toplu sil."""
+    raw_ids = request.POST.getlist("ids")
+    ids: list[int] = []
+    for raw in raw_ids:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    next_q = (request.POST.get("return_q") or "").strip()
+    next_scope = (request.POST.get("return_scope") or "all").strip()
+    url = reverse("panel_users")
+    params = []
+    if next_q:
+        params.append(f"q={next_q}")
+    if next_scope and next_scope != "all":
+        params.append(f"scope={next_scope}")
+    if params:
+        url = f"{url}?{'&'.join(params)}"
+
+    if not ids:
+        messages.warning(request, "Silmek için en az bir kullanıcı seçin.")
+        return redirect(url)
+
+    qs = AppUser.objects.filter(pk__in=ids)
+    count = qs.count()
+    if count:
+        qs.delete()
+        messages.success(request, f"{count} kullanıcı silindi.")
+    else:
+        messages.warning(request, "Seçilen kullanıcılar bulunamadı.")
+    return redirect(url)
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_user_purge_guests(request: HttpRequest) -> HttpResponse:
+    """Tüm misafir (anonim) AppUser kayıtlarını sil."""
+    qs = AppUser.objects.filter(is_anonymous=True)
+    count = qs.count()
+    if count:
+        qs.delete()
+        messages.success(request, f"{count} misafir kullanıcı silindi.")
+    else:
+        messages.info(request, "Silinecek misafir kullanıcı yok.")
+    return redirect("panel_users")
 
 
 @login_required
@@ -1920,6 +2889,120 @@ def panel_user_revoke_premium(request: HttpRequest, user_id: int) -> HttpRespons
     if next_q:
         url = f"{url}?q={next_q}"
     return redirect(url)
+
+
+def _parse_panel_datetime(raw: str):
+    from django.utils.dateparse import parse_datetime
+
+    value = (raw or "").strip()
+    if not value:
+        return None
+    # datetime-local → "2026-08-20T14:30"
+    if "T" in value and len(value) == 16:
+        value = f"{value}:00"
+    return parse_datetime(value)
+
+
+def _promo_from_post(request: HttpRequest, item: PromoCode | None) -> PromoCode:
+    obj = item or PromoCode()
+    obj.code = normalize_promo_code(request.POST.get("code") or "")
+    obj.title = (request.POST.get("title") or "").strip()[:120]
+    try:
+        obj.max_redemptions = max(1, int(request.POST.get("max_redemptions") or 1))
+    except (TypeError, ValueError):
+        obj.max_redemptions = 1
+    try:
+        obj.premium_duration_days = max(
+            1, int(request.POST.get("premium_duration_days") or 1)
+        )
+    except (TypeError, ValueError):
+        obj.premium_duration_days = 1
+    obj.valid_from = _parse_panel_datetime(request.POST.get("valid_from") or "")
+    obj.valid_until = _parse_panel_datetime(request.POST.get("valid_until") or "")
+    obj.is_active = request.POST.get("is_active") == "on"
+    return obj
+
+
+@login_required
+@staff_required
+def panel_promo_list(request: HttpRequest) -> HttpResponse:
+    items = (
+        PromoCode.objects.annotate(used_count=Count("redemptions"))
+        .order_by("-created_at")
+    )
+    return render(
+        request,
+        "panel/promo_codes.html",
+        {
+            "page_title": "Promosyon kodları",
+            "promos": items,
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_promo_edit(
+    request: HttpRequest, promo_id: int | None = None
+) -> HttpResponse:
+    item = get_object_or_404(PromoCode, pk=promo_id) if promo_id else None
+    if request.method == "POST":
+        obj = _promo_from_post(request, item)
+        if not obj.code:
+            messages.error(request, "Kod gerekli.")
+            item = obj
+        elif not obj.valid_until:
+            messages.error(request, "Geçerlilik bitişi gerekli.")
+            item = obj
+        elif (
+            PromoCode.objects.filter(code=obj.code)
+            .exclude(pk=obj.pk or 0)
+            .exists()
+        ):
+            messages.error(request, "Bu kod zaten kayıtlı.")
+            item = obj
+        else:
+            try:
+                obj.save()
+            except Exception as exc:  # noqa: BLE001
+                messages.error(request, f"Kaydedilemedi: {exc}")
+                item = obj
+            else:
+                messages.success(request, f"{obj.code} kaydedildi.")
+                return redirect("panel_promo_list")
+
+    return render(
+        request,
+        "panel/promo_code_form.html",
+        {
+            "page_title": "Promosyon düzenle" if promo_id else "Yeni promosyon kodu",
+            "promo": item,
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_promo_delete(request: HttpRequest, promo_id: int) -> HttpResponse:
+    item = get_object_or_404(PromoCode, pk=promo_id)
+    code = item.code
+    item.delete()
+    messages.success(request, f"{code} silindi.")
+    return redirect("panel_promo_list")
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_promo_toggle(request: HttpRequest, promo_id: int) -> HttpResponse:
+    item = get_object_or_404(PromoCode, pk=promo_id)
+    item.is_active = not item.is_active
+    item.save(update_fields=["is_active", "updated_at"])
+    state = "aktif" if item.is_active else "pasif"
+    messages.success(request, f"{item.code} artık {state}.")
+    return redirect("panel_promo_list")
 
 
 @login_required
@@ -2034,3 +3117,319 @@ def panel_exam_type_delete(request: HttpRequest, exam_id: int) -> HttpResponse:
     item.delete()
     messages.success(request, f"{label} silindi.")
     return redirect("panel_exam_type_list")
+
+
+@login_required
+@staff_required
+def panel_exam_distribution_list(request: HttpRequest) -> HttpResponse:
+    exam_type_id = request.GET.get("exam_type")
+    items = ExamDistributionTemplate.objects.select_related(
+        "exam_type", "subject", "topic"
+    )
+    if exam_type_id:
+        items = items.filter(exam_type_id=exam_type_id)
+    return render(
+        request,
+        "panel/exam_distribution_templates.html",
+        {
+            "page_title": "Deneme dağılım şablonu",
+            "templates": items,
+            "exam_types": ExamType.objects.filter(is_active=True),
+            "selected_exam_type_id": int(exam_type_id) if exam_type_id else None,
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_exam_distribution_edit(
+    request: HttpRequest, template_id: int | None = None
+) -> HttpResponse:
+    item = (
+        get_object_or_404(ExamDistributionTemplate, pk=template_id)
+        if template_id
+        else None
+    )
+    if request.method == "POST":
+        try:
+            exam_type_id = int(request.POST.get("exam_type") or 0)
+            subject_id = int(request.POST.get("subject") or 0)
+            topic_raw = (request.POST.get("topic") or "").strip()
+            topic_id = int(topic_raw) if topic_raw else None
+            question_count = int(request.POST.get("question_count") or 0)
+        except ValueError:
+            messages.error(request, "Geçersiz form alanı.")
+        else:
+            obj = item or ExamDistributionTemplate()
+            obj.exam_type_id = exam_type_id
+            obj.subject_id = subject_id
+            obj.topic_id = topic_id
+            obj.question_count = max(1, question_count)
+            try:
+                obj.full_clean()
+                obj.save()
+                messages.success(request, "Şablon kaydedildi.")
+                return redirect("panel_exam_distribution_list")
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+
+    return render(
+        request,
+        "panel/exam_distribution_template_form.html",
+        {
+            "page_title": "Dağılım şablonu",
+            "template": item,
+            "exam_types": ExamType.objects.filter(is_active=True),
+            "subjects": Subject.objects.filter(is_active=True),
+            "topics": Topic.objects.filter(is_active=True).select_related("subject"),
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_exam_distribution_delete(
+    request: HttpRequest, template_id: int
+) -> HttpResponse:
+    item = get_object_or_404(ExamDistributionTemplate, pk=template_id)
+    item.delete()
+    messages.success(request, "Şablon silindi.")
+    return redirect("panel_exam_distribution_list")
+
+
+@login_required
+@staff_required
+def panel_exam_pack_list(request: HttpRequest) -> HttpResponse:
+    items = ExamPack.objects.select_related("exam_type", "subject").prefetch_related(
+        "exams"
+    )
+    return render(
+        request,
+        "panel/exam_packs.html",
+        {
+            "page_title": "Deneme paketleri",
+            "packs": items,
+        },
+    )
+
+
+def _exam_pack_from_post(request: HttpRequest, item: ExamPack | None) -> ExamPack:
+    from .exam_pack_generator import new_pack_public_id
+
+    obj = item or ExamPack()
+    if not item:
+        obj.public_id = new_pack_public_id(request.POST.get("title") or "pack")
+
+    obj.title = (request.POST.get("title") or "").strip()
+    obj.description = (request.POST.get("description") or "").strip()
+    obj.pack_kind = (request.POST.get("pack_kind") or ExamPack.PACK_KIND_BRANCH).strip()
+    try:
+        obj.exam_type_id = int(request.POST.get("exam_type") or 0)
+    except ValueError:
+        obj.exam_type_id = None
+    subject_raw = (request.POST.get("subject") or "").strip()
+    obj.subject_id = int(subject_raw) if subject_raw else None
+    try:
+        obj.exam_count = max(1, int(request.POST.get("exam_count") or 1))
+    except ValueError:
+        obj.exam_count = 1
+    try:
+        obj.time_limit_minutes = max(1, int(request.POST.get("time_limit_minutes") or 130))
+    except ValueError:
+        obj.time_limit_minutes = 130
+    obj.price_display = (request.POST.get("price_display") or "").strip()
+    obj.play_product_id = (request.POST.get("play_product_id") or "").strip()
+    try:
+        obj.sort_order = int(request.POST.get("sort_order") or 0)
+    except ValueError:
+        obj.sort_order = 0
+    obj.is_published = request.POST.get("is_published") == "on"
+
+    if obj.pack_kind == ExamPack.PACK_KIND_FULL:
+        obj.subject_id = None
+
+    return obj
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_exam_pack_edit(
+    request: HttpRequest, pack_id: int | None = None
+) -> HttpResponse:
+    item = get_object_or_404(ExamPack, pk=pack_id) if pack_id else None
+    if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
+        if action == "generate":
+            pack = get_object_or_404(ExamPack, pk=pack_id)
+            from .exam_pack_generator import ExamPackGeneratorError, generate_pack_exams
+
+            replace = request.POST.get("replace_existing") == "on"
+            try:
+                created = generate_pack_exams(pack, replace=replace)
+                messages.success(
+                    request,
+                    f"{len(created)} deneme üretildi.",
+                )
+            except ExamPackGeneratorError as exc:
+                messages.error(request, str(exc))
+            return redirect("panel_exam_pack_edit", pack_id=pack.id)
+
+        obj = _exam_pack_from_post(request, item)
+        if not obj.title:
+            messages.error(request, "Paket başlığı gerekli.")
+        elif not obj.exam_type_id:
+            messages.error(request, "Sınav tipi seçin.")
+        else:
+            try:
+                obj.full_clean()
+                obj.save()
+                messages.success(request, "Paket kaydedildi.")
+                return redirect("panel_exam_pack_edit", pack_id=obj.id)
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+        item = obj
+
+    return render(
+        request,
+        "panel/exam_pack_form.html",
+        {
+            "page_title": "Deneme paketi",
+            "pack": item,
+            "exam_types": ExamType.objects.filter(is_active=True),
+            "subjects": Subject.objects.filter(is_active=True),
+            "exams": item.exams.order_by("index") if item else [],
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_exam_pack_toggle(request: HttpRequest, pack_id: int) -> HttpResponse:
+    item = get_object_or_404(ExamPack, pk=pack_id)
+    item.is_published = not item.is_published
+    item.save(update_fields=["is_published", "updated_at"])
+    if item.is_published:
+        messages.success(
+            request,
+            f"“{item.title}” aktif — Dersler vitrininde görünür.",
+        )
+    else:
+        messages.success(
+            request,
+            f"“{item.title}” pasif — Dersler vitrininden çıktı.",
+        )
+    return redirect("panel_exam_pack_list")
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_exam_pack_delete(request: HttpRequest, pack_id: int) -> HttpResponse:
+    item = get_object_or_404(ExamPack, pk=pack_id)
+    label = item.title
+    item.delete()
+    messages.success(request, f"{label} silindi.")
+    return redirect("panel_exam_pack_list")
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_mobile_ui(request: HttpRequest) -> HttpResponse:
+    cfg = get_mobile_ui_config()
+    if request.method == "POST":
+        cfg.wrong_notebook_bubble_enabled = (
+            request.POST.get("wrong_notebook_bubble_enabled") == "on"
+        )
+        label = request.POST.get("wrong_notebook_bubble_label", "").strip()
+        if label:
+            cfg.wrong_notebook_bubble_label = label[:48]
+        cfg.banner_ads_enabled = (
+            request.POST.get("banner_ads_enabled") == "on"
+        )
+        cfg.recommended_app_version = (
+            request.POST.get("recommended_app_version", "").strip()[:32]
+        )
+        modules: dict[str, bool] = {}
+        for db_key, _, _, _ in cfg.STUDIO_MODULE_DEFS:
+            modules[db_key] = request.POST.get(f"studio_{db_key}") == "on"
+        cfg.studio_modules = modules
+        cfg.save()
+        messages.success(request, "Mobil arayüz ayarları kaydedildi.")
+        return redirect("panel_mobile_ui")
+
+    return render(
+        request,
+        "panel/mobile_ui.html",
+        {
+            "config": cfg,
+            "page_title": "Mobil arayüz",
+            "studio_rows": [
+                {
+                    "db_key": db_key,
+                    "api_key": api_key,
+                    "label": label,
+                    "section": section,
+                    "enabled": cfg.is_studio_module_enabled(db_key),
+                }
+                for db_key, api_key, label, section in cfg.STUDIO_MODULE_DEFS
+            ],
+        },
+    )
+
+
+@login_required
+@staff_required
+@require_http_methods(["GET", "POST"])
+def panel_daily_mini_ranking(request: HttpRequest) -> HttpResponse:
+    from .daily_mini_exam import VALID_KPSS_TYPES
+    from .daily_mini_ranking import finalize_period, get_ranking_campaign
+    from .models import DailyMiniRankingCampaign, DailyMiniRankingWinner
+
+    cfg = get_ranking_campaign()
+    if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
+        if action == "save":
+            cfg.weekly_enabled = request.POST.get("weekly_enabled") == "on"
+            cfg.monthly_enabled = request.POST.get("monthly_enabled") == "on"
+            cfg.rewards_visible = request.POST.get("rewards_visible") == "on"
+            cfg.save()
+            messages.success(request, "Mini deneme ödül ayarları kaydedildi.")
+        elif action in ("finalize_weekly", "finalize_monthly"):
+            # Mini deneme ürün olarak sınav tipine bölünmez; panel tek düğme.
+            # Depoda hâlâ kpss_type alanları varsa hepsini içeride tarar (--all-kpss).
+            period = "weekly" if action == "finalize_weekly" else "monthly"
+            created: list = []
+            for kpss_type in VALID_KPSS_TYPES:
+                created.extend(
+                    finalize_period(period, kpss_type, send_push=True)
+                )
+            label = "Haftalık" if period == "weekly" else "Aylık"
+            if created:
+                messages.success(
+                    request,
+                    f"{label}: {len(created)} kazanan için premium tanımlandı.",
+                )
+            else:
+                messages.warning(
+                    request,
+                    f"{label} finalize yapılmadı (dönem zaten işlenmiş veya ödül kapalı).",
+                )
+        return redirect("panel_daily_mini_ranking")
+
+    winners = DailyMiniRankingWinner.objects.select_related("user").order_by(
+        "-finalized_at"
+    )[:60]
+    return render(
+        request,
+        "panel/daily_mini_ranking.html",
+        {
+            "config": cfg,
+            "winners": winners,
+            "page_title": "Mini deneme ödülleri",
+        },
+    )

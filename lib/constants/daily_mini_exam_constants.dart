@@ -5,7 +5,7 @@ class DailyMiniExamConstants {
   static const questionCount = 20;
   static const perPool = 5;
   static const opensHour = 6;
-  static const title = 'Günün Mini Denemesi';
+  static const title = 'MİNİ DENEME';
   static const eyebrow = 'ÜCRETSİZ';
   static const cardHeadline = 'Günün denemesi';
   static const testIdPrefix = 'daily_mini_';
@@ -24,9 +24,20 @@ class DailyMiniExamConstants {
   static const prefsState = 'daily_mini_exam_state_v1';
   static const prefsMonthlyWrongs = 'daily_mini_exam_monthly_wrongs_v1';
   static const prefsRankSnapshot = 'daily_mini_rank_snapshot_v1';
+  static const prefsRankingLocked = 'daily_mini_ranking_locked_v1';
+  static const prefsPendingRankingSubmit = 'daily_mini_pending_rank_submit_v1';
+  static const prefsGuestFirstDate = 'daily_mini_guest_first_date_v1';
 
-  static const ctaStart = 'Denemeye Başla ve Sıralamanı Gör';
+  static const ctaStartLine1 = 'Denemeye Başla';
+  static const ctaStartLine2 = 'Sıralamanı Gör';
+  static const ctaStart = 'Denemeye Başla · Sıralamanı Gör';
   static const ctaResume = 'Kaldığın Yerden Devam Et';
+  static const ctaCompleted = 'Bugün tamamlandı';
+  static const ctaGuestSignIn = 'Denemeye katılmak için giriş yap';
+
+  /// Haftalık/aylık sıralamada eşitlik (doğru sayısı) kırılımı.
+  static const tieBreakCopy =
+      'Eşitlik durumunda, denemeyi daha hızlı bitiren öne geçer.';
 
   static String pdfUpsellMessage({int monthlyPriceTl = 299}) =>
       'Bu ay çözdüğün mini denemelerdeki tüm yanlışlarının detaylı '

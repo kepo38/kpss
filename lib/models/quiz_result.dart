@@ -8,6 +8,7 @@ class QuizResult {
   final int total;
   final Duration duration;
   final bool completed;
+  final bool submitDailyMiniRanking;
   final List<String> questionIds;
   final List<String> wrongQuestionIds;
   final List<String> correctQuestionIds;
@@ -20,6 +21,7 @@ class QuizResult {
     required this.total,
     required this.duration,
     this.completed = true,
+    this.submitDailyMiniRanking = false,
     this.questionIds = const [],
     this.wrongQuestionIds = const [],
     this.correctQuestionIds = const [],

@@ -1,0 +1,953 @@
+from django.test import SimpleTestCase, TestCase
+
+from content.models import Question, Subject, TelegramBotSession, Topic
+from content.rich_text_panel import (
+    normalize_panel_paste_field,
+    normalize_pasted_option,
+    normalize_pasted_solution,
+    normalize_pasted_stem,
+)
+from content.rich_text_telegram import (
+    normalize_telegram_solution,
+    restore_collapsed_breaks,
+    telegram_entities_to_markdown,
+)
+from content.rich_text_common import (
+    choose_paste_text,
+    demote_block_underline_markup,
+    html_to_markdown,
+    merge_split_inline_dollar_math,
+    needs_block_underline_repair,
+    normalize_latex,
+    normalize_markup,
+    normalize_paste_text,
+    repair_block_underline_solution,
+    repair_latex_escapes,
+    restore_collapsed_breaks,
+)
+from content.telegram_conversation import (
+    ai_solution_status_note,
+    handle_photo_solution_decision,
+    solution_prompt_message,
+    try_handle_conversation,
+)
+
+
+class RichTextNormalizationTests(SimpleTestCase):
+    def test_html_bold_and_bullets(self):
+        html = (
+            "<p><strong>A) Karahanlılar</strong></p>"
+            "<ul><li><b>Neden Çeldirici?</b> Metin parçası.</li>"
+            "<li><b>KPSS Hap Bilgi:</b> Özet cümle.</li></ul>"
+        )
+        out = normalize_pasted_solution("", html=html)
+        self.assertIn("**A) Karahanlılar**", out)
+        self.assertIn("**Neden Çeldirici?**", out)
+        self.assertIn("**KPSS Hap Bilgi:**", out)
+        self.assertIn("- ", out)
+
+    def test_latex_bracket_to_dollar(self):
+        src = r"Denklem \[ x^2 + 1 \] ve inline \( a+b \)."
+        out = normalize_paste_text(src)
+        self.assertIn("$$x^2 + 1$$", out)
+        self.assertIn("$a+b$", out)
+
+    def test_telegram_vert_group_becomes_lvert(self):
+        src = (
+            r"Verilenlere göre, \(\vert{a - c\vert} = b\) ve "
+            r"\(\vert{c - a\vert} = b\) olur."
+        )
+        out = normalize_telegram_solution(src)
+        self.assertIn(r"\lvert a - c \rvert", out)
+        self.assertIn(r"\lvert c - a \rvert", out)
+        self.assertIn("$", out)
+        self.assertNotIn(r"\vert{", out)
+
+    def test_repair_latex_escapes(self):
+        src = "$rac{1}{2}$"
+        self.assertIn(r"\frac", repair_latex_escapes(src))
+
+    def test_normalize_pasted_stem_skips_solution_outline(self):
+        src = "**A) Bir**\nMetin devam"
+        out = normalize_pasted_stem(src)
+        self.assertIn("**A) Bir**", out)
+
+    def test_normalize_pasted_option_html_bold(self):
+        html = "<p><strong>Osmanlı</strong></p>"
+        out = normalize_pasted_option("", html=html)
+        self.assertIn("**Osmanlı**", out)
+
+    def test_normalize_panel_paste_field_routes_solution(self):
+        html = "<p><strong>KPSS Hap Bilgi:</strong> Özet</p>"
+        out = normalize_panel_paste_field("solution", "", html=html)
+        self.assertIn("**KPSS Hap Bilgi:**", out)
+
+    def test_merge_split_inline_dollar_math(self):
+        src = "$Y\n= 7$"
+        out = merge_split_inline_dollar_math(src)
+        self.assertEqual(out, "$Y = 7$")
+        laid_out = restore_collapsed_breaks(src)
+        self.assertIn("$Y = 7$", laid_out)
+        self.assertNotIn("\n= 7$", laid_out)
+
+    def test_normalize_latex_merges_split_dollar(self):
+        src = "Sonuç: $Y\n= 7$ olur."
+        out = normalize_latex(src)
+        self.assertIn("$Y = 7$", out)
+
+    def test_restore_collapsed_breaks_after_math(self):
+        src = "Sonuç ($a^b \\equiv a$).Verilen ifade"
+        out = restore_collapsed_breaks(src)
+        self.assertIn(").\nVerilen", out)
+
+    def test_restore_collapsed_breaks_google_solution_paste(self):
+        from content.rich_text_common import normalize_latex
+
+        src = (
+            "📊 Adım Adım Net Matematiksel GösterimKitabın Tamamı: 300 sayfa"
+            r"İlk 3 Gün Toplamı: \(300 \times \frac{3}{5} = \mathbf{180}\) sayfa."
+            r"4. Gün Okunan: \(300 - 180 = \mathbf{120}\) sayfa."
+            "İlk İki Gün Toplamı (1. Gün + 2. Gün): 4. gün okunan sayfa sayısı (120), "
+            r"ilk iki günün \(\frac{5}{6}\)'sına eşit olduğuna göre;"
+            r"\(120=(\text{1.\ Gün}+\text{2.\ Gün})\times \frac{5}{6}"
+            r"\implies \text{1.\ Gün}+\text{2.\ Gün}=\mathbf{144}\)"
+            "3. Gün Okunan: İlk 3 günün toplamından (180), ilk iki günün toplamını "
+            r"(144) çıkarırsak;\(180-144=\mathbf{36}\)"
+        )
+        out = restore_collapsed_breaks(normalize_latex(src))
+        self.assertIn("Gösterim\nKitabın", out)
+        self.assertIn("sayfa\nİlk 3 Gün", out)
+        self.assertIn("sayfa.\n4. Gün", out)
+        self.assertIn("göre;\n$", out)
+        self.assertIn("çıkarırsak;\n$", out)
+        self.assertIn("$\n3. Gün Okunan", out)
+        panel = normalize_pasted_solution(src)
+        self.assertIn("\n", panel)
+        self.assertIn(r"\frac", panel)
+
+    def test_choose_paste_prefers_plain_when_it_has_latex(self):
+        plain = r"Çözüm: $\frac{1}{2}$ ve devam"
+        html = "<p>Çözüm: 1/2 ve devam</p>"
+        out = choose_paste_text(plain, html)
+        self.assertIn(r"\frac", out)
+
+    def test_telegram_entities_to_markdown(self):
+        text = "Başlık ve açıklama"
+        entities = [
+            {"type": "bold", "offset": 0, "length": 6},
+            {"type": "underline", "offset": 10, "length": 8},
+        ]
+        out = telegram_entities_to_markdown(text, entities)
+        self.assertIn("**Başlık**", out)
+        self.assertIn("__açıklama__", out)
+
+    def test_html_u_tag_converted(self):
+        raw = "<p><strong>KPSS Hap Bilgi:</strong> <u>Önemli cümle</u></p>"
+        out = html_to_markdown(raw)
+        self.assertIn("**KPSS Hap Bilgi:**", out)
+        self.assertIn("__Önemli cümle__", out)
+
+    def test_panel_glued_named_sections_become_bold_paragraphs(self):
+        src = (
+            "Mühimme Defteri: Divan-ı Hümayun’da görüşülerek karara bağlanan "
+            "kararların tutulduğu resmî defterlerdir. Bu defterler mali harcamaları "
+            "değil, devletin en üst düzey yönetim kararlarını içerir."
+            "Kimin Sorumluluğundadır? Nişancı'ya bağlı çalışan Beylikçi (Amedi) "
+            "Kalemi tarafından tutulurdu."
+            "Hap Bilgi: Askerî mali kayıtlar Defterdarlık (Maliye) kalemleri "
+            "tarafından tutulurdu."
+        )
+
+        out = normalize_pasted_solution(src)
+
+        self.assertIn("**Mühimme Defteri:** ", out)
+        self.assertIn("\n\n**Kimin Sorumluluğundadır?** ", out)
+        self.assertIn("\n\n**Hap Bilgi:** ", out)
+        self.assertNotIn("- **Hap Bilgi:**", out)
+        self.assertEqual(normalize_pasted_solution(out), out)
+
+    def test_exam_arrow_normalization(self):
+        out = normalize_pasted_solution("A -> B sonucu")
+        self.assertIn("→", out)
+
+    def test_inline_dollar_math_not_split_by_restore(self):
+        src = "Taban alanı $Toplam = 5$ olarak bulunur."
+        out = restore_collapsed_breaks(normalize_latex(src))
+        self.assertIn("$Toplam = 5$", out)
+        self.assertNotIn("$\nToplam", out)
+
+    def test_multiline_paren_collapses_to_inline_dollar(self):
+        src = "Buradan \\(x = 5\n+ 3\\) bulunur."
+        out = normalize_latex(src)
+        self.assertIn("$x = 5 + 3$", out)
+
+    def test_restore_does_not_split_units_and_brands(self):
+        src = "Değer 5A akım, pH değeri 7, iPhone modeli ve 3D görüntü."
+        out = restore_collapsed_breaks(src)
+        self.assertIn("5A akım", out)
+        self.assertIn("pH değeri", out)
+        self.assertIn("iPhone modeli", out)
+        self.assertIn("3D görüntü", out)
+        self.assertNotIn("5\nA", out)
+        self.assertNotIn("p\nH", out)
+        self.assertNotIn("i\nPhone", out)
+        self.assertNotIn("3\nD", out)
+
+    def test_restore_keeps_glued_roman_numeral_labels(self):
+        src = "Buna göre\nI.Fidan,\nII. Gamze,\nIII. Işıl"
+        out = restore_collapsed_breaks(src)
+        self.assertIn("I. Fidan,", out)
+        self.assertNotIn("I.\nFidan", out)
+
+    def test_telegram_roman_solution_plain_text_gets_bold_headers(self):
+        src = (
+            "I. Suriye-Filistin: Liman von Sanders birlikte görev yapmıştır."
+            "II. Çanakkale: Liman von Sanders birlikte çalışmıştır."
+            "III. Kafkas: Liman von Sanders bu cephede görev almamıştır."
+        )
+        out = normalize_telegram_solution(src)
+        self.assertIn("**I. Suriye-Filistin:**", out)
+        self.assertIn("**II. Çanakkale:**", out)
+        self.assertIn("**III. Kafkas:**", out)
+        self.assertIn("\n", out)
+
+    def test_telegram_roman_solution_monolithic_bold_entity_splits(self):
+        src = (
+            "I. Suriye-Filistin: Liman von Sanders birlikte görev yapmıştır."
+            "II. Çanakkale: Liman von Sanders birlikte çalışmıştır."
+            "III. Kafkas: Liman von Sanders bu cephede görev almamıştır."
+        )
+        entities = [{"type": "bold", "offset": 0, "length": len(src)}]
+        out = normalize_telegram_solution(src, entities=entities)
+        self.assertIn("**I. Suriye-Filistin:**", out)
+        self.assertIn("**II. Çanakkale:**", out)
+        self.assertGreaterEqual(out.count("\n"), 2)
+        self.assertNotIn("yapmıştır.II.", out)
+
+    def test_telegram_glued_verbal_solution_restores_outline(self):
+        src = (
+            "Sorunun doğru cevabı A seçeneğidir (Demirci Mehmet Efe)."
+            "Millî Mücadele döneminde metinde bahsedilen tarihsel gelişmeler ve "
+            "unvanlar şu şekildedir:"
+            "Aydın ve Yöresi Komutanlığı: Sivas Kongresi'nin ardından bölgedeki "
+            "dağınık direniş güçlerini birleştirmek amacıyla Demirci Mehmet Efe'ye, "
+            "Aydın ve Yöresi Kuvayımilliye Komutanı unvanı verilmiştir."
+            "Düzenli Orduya Karşı İsyan: Batı Cephesi'nde disiplini sağlamak için "
+            "düzenli ordunun kurulması kararlaştırılınca, emir altına girmek "
+            "istemeyerek TBMM'ye karşı ayaklanmıştır (Aralık 1920)."
+            "Diğer Seçeneklerin Elenme Nedenleri"
+            "B) Çerkez Ethem: Düzenli orduya isyan etmiştir ancak faaliyet sahası "
+            "Aydın çevresi değildir."
+            "C) Yörük Ali Efe: Aydın bölgesinin önemli bir efe lideridir."
+            "D) Ahmet Anzavur: İstanbul Hükümeti tarafından desteklenmiştir."
+            "E) Tekelioğlu Sinan: Çukurova bölgesinde mücadele etmiştir."
+        )
+
+        out = normalize_telegram_solution(src)
+
+        self.assertIn("- **Aydın ve Yöresi Komutanlığı:**", out)
+        self.assertIn("- **Düzenli Orduya Karşı İsyan:**", out)
+        self.assertIn("**Diğer Seçeneklerin Elenme Nedenleri**", out)
+        self.assertIn("- **B) Çerkez Ethem:**", out)
+        self.assertIn("- **C) Yörük Ali Efe:**", out)
+        self.assertIn("- **D) Ahmet Anzavur:**", out)
+        self.assertIn("- **E) Tekelioğlu Sinan:**", out)
+        self.assertNotIn("verilmiştir.Düzenli", out)
+        self.assertNotIn("NedenleriB)", out)
+
+        again = normalize_telegram_solution(out)
+        self.assertEqual(again, out)
+
+    def test_telegram_regnal_roman_numerals_remain_prose(self):
+        src = (
+            "II. Mahmut döneminde Sened-i İttifak uygulanmıştır. "
+            "III. Selim ise Nizam-ı Cedit hareketini başlatmıştır."
+        )
+
+        out = normalize_telegram_solution(src)
+
+        self.assertIn("II. Mahmut döneminde", out)
+        self.assertIn("III. Selim ise", out)
+        self.assertNotIn("**II. Mahmut", out)
+        self.assertNotIn("**III. Selim", out)
+
+    def test_telegram_normalized_roman_sections_are_idempotent(self):
+        src = (
+            "I. Suriye-Filistin: Birinci açıklama."
+            "II. Çanakkale: İkinci açıklama."
+            "III. Kafkas: Üçüncü açıklama."
+        )
+
+        once = normalize_telegram_solution(src)
+        twice = normalize_telegram_solution(once)
+
+        self.assertEqual(twice, once)
+        self.assertNotIn("\n**\n", twice)
+
+    def test_structured_solution_still_normalizes_inline_markup(self):
+        src = (
+            "- **Birinci Başlık:** Denklem \\(x^2\\) ve A -> B.\n"
+            "- **İkinci Başlık:** \\vert{}a-b\\vert{} &amp; devam."
+        )
+
+        out = normalize_telegram_solution(src)
+
+        self.assertIn("$x^2$", out)
+        self.assertIn("A → B", out)
+        self.assertIn(r"\lvert a-b \rvert", out)
+        self.assertIn("& devam", out)
+        self.assertNotIn(r"\(", out)
+        self.assertNotIn("&amp;", out)
+
+    def test_glued_divan_solution_q597_pattern(self):
+        """q_597b46c616: : - ** yapışması + Diğer Seçenekler/şık aynı satır."""
+        src = (
+            "Osmanlı'da divanlar toplanırdı:- **Galebe Divanı:** Açıklama metni."
+            "📌 Diğer Seçeneklerin Anlamları-** A) Ayak Divanı\n"
+            "Olağanüstü durumlarda toplanır.-**\n\n"
+            "- **B) Sefer Divanı:**\n  - Savaş zamanında.\n"
+            "divandır.- ** C) İkindi Divanı\n  - İkindi vakti.\n"
+            "- **E) Çarşamba Divanı:**\n  - Yerel işler.**metin**"
+        )
+        out = normalize_pasted_solution(src)
+        self.assertNotIn("toplanırdı:- **", out)
+        self.assertNotIn("Anlamları-**", out)
+        self.assertNotIn("**metin**", out)
+        self.assertIn("- **A) Ayak Divanı:** Olağanüstü", out)
+        self.assertIn("- **C) İkindi Divanı:** İkindi", out)
+        self.assertNotIn("  - Olağanüstü", out)
+        again = normalize_pasted_solution(out)
+        self.assertEqual(again, out)
+
+    def test_glued_clue_preamble_and_partial_option_outline(self):
+        """q_f0f5fc7ff9: yapışık ipuçları + kısmi A–E listesi erken çıkışa takılmamalı."""
+        src = (
+            '**"İlk ipucu":** Metin eleriz.- **"İkinci ipucu":** Devam metni.'
+            'mektedir.- **"Üçüncü ipucu":**\nGövde paragrafı.'
+            '📌 Diğer Seçenekler Neden Yanlış?-** A) Asya Hun Devleti\n'
+            'Onlu teşkilatı kuran ilk devlettir.- **\n\n'
+            '- **C) Uygurlar:**\n  - Yerleşik hayata geçen ilk Türk devletidir.'
+            'devletidir.- **D) İskitler (Sakalar)\n  - Tarihte bilinen ilk Türk topluluğudur.'
+            '\n- **E) Hazarlar:**\n  - Museviliği benimseyen ilk devletidir.**metin**'
+        )
+        out = normalize_pasted_solution(src)
+        self.assertNotIn("**metin**", out)
+        self.assertNotIn("eleriz.- **", out)
+        self.assertNotIn("?-**", out.lower())
+        self.assertNotIn("devletidir.- **", out)
+        self.assertIn('- **A) Asya Hun Devleti:**', out)
+        self.assertIn('- **D) İskitler (Sakalar):**', out)
+        self.assertIn('**"İkinci ipucu":**', out)
+        self.assertIn("**Diğer Seçenekler Neden Yanlış?**", out)
+        again = normalize_pasted_solution(out)
+        self.assertEqual(again, out)
+
+    def test_split_bold_option_body_collapses_to_single_line(self):
+        """q_f0f5fc7ff9: ``- **A) Title:**`` + ``  - body.**`` → tek satır."""
+        src = (
+            "📌 **Diğer Seçenekler Neden Yanlış?**\n\n"
+            "- **A) Asya Hun Devleti:**\n"
+            "  - Onlu teşkilatı (düzenli orduyu) kuran ilk devlettir.**\n\n"
+            "- **\n\n"
+            "- **C) Uygurlar:**\n"
+            "  - Yerleşik hayata geçen ilk Türk devletidir.\n\n"
+            "- **D) İskitler (Sakalar):**\n"
+            "  - Tarihte bilinen ilk Türk topluluğudur (devletleşememişlerdir).\n\n"
+            "- **E) Hazarlar:**\n"
+            "  - Museviliği benimseyen ilk ve tek Türk devletidir."
+        )
+        out = normalize_pasted_solution(src)
+        self.assertIn(
+            "- **A) Asya Hun Devleti:** Onlu teşkilatı (düzenli orduyu) kuran ilk devlettir.",
+            out,
+        )
+        self.assertIn(
+            "- **C) Uygurlar:** Yerleşik hayata geçen ilk Türk devletidir.",
+            out,
+        )
+        self.assertIn(
+            "- **D) İskitler (Sakalar):** Tarihte bilinen ilk Türk topluluğudur",
+            out,
+        )
+        self.assertIn(
+            "- **E) Hazarlar:** Museviliği benimseyen ilk ve tek Türk devletidir.",
+            out,
+        )
+        self.assertNotIn("devlettir.**", out)
+        self.assertNotIn("\n- **\n", out)
+        self.assertNotIn("  - Onlu", out)
+        again = normalize_pasted_solution(out)
+        self.assertEqual(again, out)
+
+    def test_panel_resave_preserves_intentional_solution_edits(self):
+        """Kayıtlı çözümü panelde yeniden kaydetmek biçim/metin düzenlemesini silmemeli."""
+        src = (
+            "📌 **Diğer Seçenekler Neden Yanlış?**\n\n"
+            "- **A) Asya Hun Devleti:** Onlu teşkilatı kuran ilk devlettir.\n\n"
+            "- **C) Uygurlar:** Yerleşik hayata geçen ilk Türk devletidir.\n\n"
+            "- **E) Hazarlar:** Museviliği benimseyen ilk Türk devletidir."
+        )
+        stored = normalize_pasted_solution(src)
+        self.assertTrue(stored.startswith("📌") or "Diğer Seçenekler" in stored)
+
+        # Biçim: liste işaretini bilinçli kaldır
+        no_bullet = stored.replace("- **A)", "**A)", 1)
+        self.assertEqual(normalize_pasted_solution(no_bullet), no_bullet)
+
+        # Metin: kelime değişikliği
+        renamed = stored.replace("Museviliği", "MUSEVI_EDIT", 1)
+        self.assertIn("MUSEVI_EDIT", normalize_pasted_solution(renamed))
+
+        # Ek satır
+        appended = stored + "\n\n**Manuel not:** panel kaydı korunmalı."
+        out = normalize_pasted_solution(appended)
+        self.assertIn("Manuel not", out)
+        self.assertIn("panel kaydı korunmalı", out)
+
+    def test_restore_collapsed_breaks_google_daily_solution_dates(self):
+        src = (
+            "Çözüm Adımları10.06.2024 Sonu:Tarihi geçmeyen 27 yumurta ertesi güne kalır."
+            "Tarihi geçen 6 yumurta çöpe atılır.11.06.2024 Başlangıcı ve Ayrımı:"
+            "Güne kalan 27 yumurta ile başlanır."
+            r"\(2y = 8 \implies \mathbf{y = 4}\) bulunur.\(x\) Değerinin Bulunması:"
+            r"\(3x + y = 22\) denkleminde \(y = 4\) yazılır."
+            r"Sonuç:\(x \cdot y = 6 \cdot 4 = \mathbf{24}\) olur:"
+        )
+        out = restore_collapsed_breaks(normalize_latex(src))
+        self.assertIn("Çözüm Adımları\n10.06.2024", out)
+        self.assertIn("10.06.2024", out)
+        self.assertNotIn("10.06.\n2024", out)
+        self.assertIn("Sonu:\nTarihi", out)
+        self.assertIn("atılır.\n11.06.2024", out)
+        self.assertIn("Başlangıcı ve Ayrımı:\nGüne", out)
+        self.assertIn("bulunur.\n", out)
+        self.assertIn("Değerinin Bulunması:\n", out)
+        self.assertIn("Sonuç:\n", out)
+
+    def test_telegram_pipeline_preserves_inline_math(self):
+        src = r"Sonuç \(300 \times \frac{3}{5} = \mathbf{180}\) sayfa."
+        out = normalize_telegram_solution(src)
+        self.assertIn(r"\frac", out)
+        self.assertIn("$300", out)
+        self.assertNotIn("$\n300", out)
+
+    def test_structure_solution_outline_google_logic_paste(self):
+        from content.rich_text_common import structure_solution_outline
+
+        src = (
+            "💡 Adım Adım ÇözümKural Özeti:"
+            "Tüm öğrenciler başlangıçta oturuyor."
+            "Söylenen harf isminde varsa durum değiştirir."
+            "Öğretmen sırasıyla A, B ve C harflerini birer kez söylüyor."
+            "Bir öğrencinin son durumda ayakta kalması gerekir."
+            "Şimdi seçenekleri kontrol edelim:"
+            "A) AYBERK:"
+            "A var (Kalktı), B var (Otuttu), C yok."
+            r"Toplam değişim: 2 kez \(\rightarrow \) Oturuyor."
+            "B) BERKCAN:"
+            "A var (Kalktı), B var (Otuttu), C var (Kalktı)."
+            r"Toplam değişim: 3 kez \(\rightarrow \) 🧍 AYAKTA."
+            "C) CEYDA:"
+            "A var (Kalktı), B yok, C var (Otuttu)."
+            r"Toplam değişim: 2 kez \(\rightarrow \) Oturuyor."
+        )
+        tg = normalize_telegram_solution(src)
+        panel = normalize_pasted_solution(src)
+        for out in (tg, panel):
+            self.assertIn("**💡 Adım Adım Çözüm**", out)
+            self.assertIn("**Kural Özeti:**", out)
+            self.assertIn("- Tüm öğrenciler başlangıçta oturuyor.", out)
+            self.assertIn("- **A) AYBERK:**", out)
+            self.assertIn("  - A var (Kalktı), B var (Otuttu), C yok.", out)
+            self.assertIn("- **B) BERKCAN:**", out)
+            self.assertIn("**AYAKTA**", out)
+            self.assertIn("- **C) CEYDA:**", out)
+            # Idempotent
+            again = structure_solution_outline(out)
+            self.assertEqual(again.count("- **A) AYBERK:**"), 1)
+            self.assertEqual(again.count("- **B) BERKCAN:**"), 1)
+
+    def test_structure_solution_outline_candle_secenegi_paste(self):
+        from content.rich_text_common import (
+            restore_collapsed_breaks,
+            structure_solution_outline,
+        )
+        from content.rich_text_panel import normalize_pasted_solution
+        from content.rich_text_telegram import normalize_telegram_solution
+
+        src = (
+            "Beş mumu sadece 2 hamlede kısadan uzuna sıralayabilmek için, "
+            "başlangıçta en az 3 mumun kendi aralarında zaten doğru sırada "
+            "(artan sırada) duruyor olması gerekir. Geriye kalan 2 mum "
+            "aralardan çekilip doğru yerlerine taşınarak sıralama "
+            "tamamlanır.Mum boylarını en kısadan en uzuna 1, 2, 3, 4, 5 "
+            "sayılarıyla kodlayarak seçenekleri inceleyelim:"
+            "A Seçeneği: Dizilim 2 - 3 - 5 - 4 - 1 şeklindedir."
+            "2 - 3 - 4 üçlüsü zaten sıralıdır. (2 hamlede yapılabilir)"
+            "B Seçeneği: Dizilim 3 - 1 - 4 - 5 - 2 şeklindedir."
+            "1 - 4 - 5 üçlüsü zaten sıralıdır. (2 hamlede yapılabilir)"
+            "D Seçeneği: Dizilim 3 - 1 - 5 - 4 - 2 şeklindedir."
+            "Küçükten büyüğe sıralı hiçbir üçlü grup yoktur."
+        )
+        broken = restore_collapsed_breaks(src)
+        self.assertIn("\nA Seçeneği:", broken)
+        self.assertIn("\nB Seçeneği:", broken)
+        outlined = structure_solution_outline(broken)
+        self.assertIn("- **A Seçeneği:**", outlined)
+        self.assertIn("- **B Seçeneği:**", outlined)
+        self.assertIn("- **D Seçeneği:**", outlined)
+        self.assertIn("  - Dizilim 2 - 3 - 5 - 4 - 1", outlined)
+        self.assertIn("  - Küçükten büyüğe sıralı hiçbir üçlü grup yoktur.", outlined)
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("- **A Seçeneği:**", out)
+            self.assertIn("- **B Seçeneği:**", out)
+
+    def test_structure_solution_outline_hel_presence_table_paste(self):
+        from content.rich_text_common import (
+            restore_collapsed_breaks,
+            structure_solution_outline,
+        )
+
+        src = (
+            "💡 Adım Adım Mantıksal ÇözümÖğretmenin seçtiği 3 harfin her bir "
+            "ismini tek bir şekilde (kesin olarak) belirleyebilmesi için, bu 3 "
+            "harfin isimlerdeki dağılımının (kümelenmesinin) her öğrenci için "
+            "tamamen benzersiz (farklı) olması gerekir.Öğrencilerimiz: AYNUR, "
+            "GÖZDE, HÜLYA, LEMAN, ZEHRASeçeneklerde yer alan H, E, L harflerinin "
+            'bu isimlerde bulunma durumlarını ("Var: 1", "Yok: 0") kodlayarak '
+            "bir tablo oluşturalım:ÖğrenciH HarfiE HarfiL HarfiOluşan Benzersiz "
+            "Kod (H, E, L)AYNURYok (0)Yok (0)Yok (0)000GÖZDEYok (0)Var (1)Yok (0)"
+            "010HÜLYAVar (1)Yok (0)Var (1)101LEMANYok (0)Var (1)Var (1)011ZEHRA"
+            "Var (1)Var (1)Yok (0)110Görüldüğü üzere, H, E, L harfleri seçildiğinde "
+            "her öğrenci için tamamen farklı bir kod kombinasyonu oluşmaktadır."
+        )
+        broken = restore_collapsed_breaks(src)
+        self.assertIn("Çözüm\nÖğretmenin", broken)
+        self.assertIn("gerekir.\nÖğrencilerimiz:", broken)
+        self.assertIn("ZEHRA\nSeçeneklerde", broken)
+        self.assertIn("Öğrenci\nH Harfi", broken)
+        self.assertIn("AYNUR\nYok (0)", broken)
+        self.assertIn("000\nGÖZDE", broken)
+        self.assertIn("110\nGörüldüğü", broken)
+        self.assertNotIn("ÖğrenciH Harfi", broken)
+
+        outlined = structure_solution_outline(broken)
+        self.assertIn("**💡 Adım Adım Mantıksal Çözüm**", outlined)
+        self.assertIn("**Harf kodu:**", outlined)
+        self.assertIn("- **AYNUR:** H yok, E yok, L yok → **000**", outlined)
+        self.assertIn("- **GÖZDE:** H yok, E var, L yok → **010**", outlined)
+        self.assertIn("- **HÜLYA:** H var, E yok, L var → **101**", outlined)
+        self.assertIn("- **LEMAN:** H yok, E var, L var → **011**", outlined)
+        self.assertIn("- **ZEHRA:** H var, E var, L yok → **110**", outlined)
+        self.assertNotIn("ÖğrenciH", outlined)
+        again = structure_solution_outline(outlined)
+        self.assertEqual(again.count("- **AYNUR:**"), 1)
+
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**Harf kodu:**", out)
+            self.assertIn("- **ZEHRA:** H var, E var, L yok → **110**", out)
+
+    def test_structure_solution_outline_ab_two_digit_paste(self):
+        from content.rich_text_common import structure_solution_outline
+
+        src = (
+            r"Adım Adım Çözüm:İki basamaklı sayımız \(ab\) olsun. Soruda verilen şartlar şunlardır:"
+            r"Rakamlar sıfırdan farklı (\(a \neq 0, b \neq 0\))"
+            r"Rakamlar birbirinden farklı (\(a \neq b\))"
+            r'Son maddede "onlar basamağındaki rakamın birler basamağındaki rakama oranı" bir doğal sayı belirtmektedir. '
+            r"Yani \(\frac{a}{b}\) bir tam sayıdır (\(a\), \(b\)'nin katıdır)."
+            r"Elde edilen 5 sayıdan 4'ü çift, 1'i tek sayıdır."
+            r"Kağıda yazılan 5 sayıyı formülleştirelim:"
+            r"Kendisi: \(10a + b\)"
+            r"Rakamları toplamı: \(a + b\)"
+            r"Rakamları çarpımı: \(a \times b\)"
+            r"Rakamları farkının mutlak değeri: \(\vert{}a - b\vert{}\)"
+            r"Rakamların oranı: \(\frac{a}{b}\)"
+            r"1. Tek/Çift Analizi Yaparak Sayıyı Bulma:"
+            r"\(a \times b\) (Rakamlar Çarpımı): Elde edilen 5 sayıdan sadece 1 tanesi tek olduğuna göre, "
+            r"bu çarpımın çift olması şarttır."
+            r"Şimdi \(\frac{a}{b}\) oranının bir doğal sayı olmasını ve rakamların durumlarını inceleyelim. "
+            r"Sayımızın \(62\) olduğunu varsayıp test edelim (\(a=6, b=2\)):"
+            r"Kendisi: \(62\) (Çift)"
+            r"Rakamları toplamı: \(6 + 2 = 8\) (Çift)"
+            r"Rakamları çarpımı: \(6 \times 2 = 12\) (Çift)"
+            r"Rakamları farkı: \(\vert{}6 - 2\vert{} = 4\) (Çift)"
+            r"Rakamları oranı: \(\frac{6}{2} = 3\) (Tek)"
+            r"Görüldüğü gibi \(62\) sayısı için elde edilen değerlerden 4 tanesi çift (62, 8, 12, 4) "
+            r"ve tam olarak 1 tanesi tek (3) çıkmaktadır."
+            r"2. Kağıttaki Sayıların Toplamını Hesaplama:"
+            r"Bulduğumuz bu 5 doğal sayıyı toplayalım:"
+            r"\(62 + 8 + 12 + 4 + 3 = \mathbf{105}\)"
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**Adım Adım Çözüm:**", out)
+            self.assertIn("- Rakamlar sıfırdan farklı", out)
+            self.assertIn("- Kendisi: $10a + b$", out)
+            self.assertIn("- Rakamları toplamı: $a + b$", out)
+            self.assertIn(r"\lvert a - b \rvert", out)
+            self.assertIn("**1. Tek/Çift Analizi Yaparak Sayıyı Bulma:**", out)
+            self.assertIn("**2. Kağıttaki Sayıların Toplamını Hesaplama:**", out)
+            self.assertIn("- Kendisi: $62$ (Çift)", out)
+            self.assertIn("(Tek)", out)
+            self.assertIn("Görüldüğü gibi", out)
+            self.assertLess(out.index("(Tek)"), out.index("Görüldüğü gibi"))
+            self.assertIn(r"\mathbf{105}", out)
+            again = structure_solution_outline(out)
+            self.assertEqual(again.count("- Kendisi: $10a + b$"), 1)
+
+    def test_google_verbal_solution_diger_secenekler_paste(self):
+        src = (
+            'Metinde sanayileşmeyi temsil eden *"XIX. yüzyılla birlikte '
+            'makineleşmeye bağlı olarak seri üretimin artması" *ifadesinden sonra, '
+            "bu durumun ortak zevkleri ve modayı doğurduğu anlatılmıştır. "
+            'Cümlenin devamındaki* "Trajik biçimde insan da kendi ürettiği '
+            'eşyaların biçimlendirdiği bir kültürel evren içinde yaşamaya başladı."* '
+            "ifadesi, sanayileşmenin ilişkisini tamamen değiştirip ona "
+            "**yeni bir boyut kazandırdığını** doğrudan doğrular.** "
+            "Diğer Seçenekler Neden Olmaz?A) İnsanlar, eşyanın yaşam tarzı "
+            "üzerindeki etkisine uzun süre tepkisiz kalmıştır:** Metinde "
+            'insanların bu duruma "tepkisiz kaldığına" dair bir bilgi yoktur.** '
+            "B) Sosyal ilişkiler eşyanın sembolik değerini belirleyen bir niteliğe "
+            "sahiptir:** Metne göre tersine bir durum söz konusudur.** "
+            "C) Seri üretimle birlikte eski eşyalara olan rağbet gün geçtikçe "
+            "azalmıştır:** Parçada böyle bir kıyaslama yer almamaktadır.** "
+            "E) Eşyaya atfedilen değer modanın ölçütlerine göre zamanla "
+            "değişmiştir:** Metinde bu yönde bir vurgu yoktur."
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn('*"XIX. yüzyılla birlikte', out)
+            self.assertIn("ifadesinden", out)
+            self.assertIn('*"Trajik biçimde', out)
+            self.assertIn("**Diğer Seçenekler Neden Olmaz?**", out)
+            self.assertIn("- **A) İnsanlar, eşyanın yaşam tarzı üzerindeki etkisine uzun süre tepkisiz kalmıştır:**", out)
+            self.assertIn("- **B) Sosyal ilişkiler eşyanın sembolik değerini belirleyen bir niteliğe sahiptir:**", out)
+            self.assertIn("- **C) Seri üretimle birlikte eski eşyalara olan rağbet gün geçtikçe azalmıştır:**", out)
+            self.assertIn("- **E) Eşyaya atfedilen değer modanın ölçütlerine göre zamanla değişmiştir:**", out)
+            self.assertIn("Metinde insanların bu duruma", out)
+            self.assertIn(
+                "- **A) İnsanlar, eşyanın yaşam tarzı üzerindeki etkisine uzun süre tepkisiz kalmıştır:** Metinde",
+                out,
+            )
+            self.assertNotIn("  - Metinde", out)
+            self.assertNotIn("Olmaz?A)", out)
+
+    def test_google_verbal_elenme_nedenleri_bold_letters(self):
+        src = (
+            "Metinde, geçmişte eşyanın insan üzerindeki etkisinin sadece belirli "
+            "kişilerin alışkanlıklarında görüldüğü belirtilmektedir.\n"
+            'Özellikle **"XIX. yüzyılla birlikte makineleşmeye bağlı olarak '
+            'seri üretimin artması..."** ifadesi sanayileşme sürecine işaret eder.\n'
+            "Bu durum, ** sanayileşmenin insanın eşya ile olan ilişkisini kökten "
+            "değiştirerek ona yeni bir boyut kazandırdığını ** (D seçeneği) "
+            "doğrudan doğrular.\n"
+            "** Diğer Seçeneklerin Elenme Nedenleri **-** A)** Metinde insanların "
+            'bu etkiye "tepkisiz kaldığına" dair bir bilgi yoktur.\n'
+            "** B)** Metne göre sosyal ilişkiler eşyanın değerini belirlememektedir.\n"
+            "** C)** Eski eşyalara olan rağbetin azaldığından bahsedilmemiştir.\n"
+            "-** E)** Eşyaya atfedilen değerin modanın ölçütlerine göre değiştiği "
+            "değil, makineleşmenin modayı doğurduğu anlatılmıştır."
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**Diğer Seçeneklerin Elenme Nedenleri**", out)
+            self.assertIn("- **A):**", out)
+            self.assertIn("- **B):**", out)
+            self.assertIn("- **C):**", out)
+            self.assertIn("- **E):**", out)
+            self.assertIn("tepkisiz kaldığına", out)
+            self.assertNotIn("-** A)**", out)
+
+    def test_structure_solution_outline_xyz_addition_paste(self):
+        src = (
+            r"1. Adım: Toplama İşlemini Alt Alta Yazalım"
+            r"\(\begin{array}{r@{\quad }c@{\quad }c@{\quad }c}"
+            r"5&2&A&\\ +&B&4&3\\ \hline X&Y&Z&\end{array}\)"
+            r"Elde edilen \(XYZ\) üç basamaklı sayısının tüm rakamları birbirinden farklı tek sayılar "
+            r"(\(1, 3, 5, 7, 9\)) olmak zorundadır."
+            r"2. Adım: Onlar Basamağını İnceleyelim"
+            r"Onlar basamağındaki işlem: \(2 + 4 = 6\)"
+            r"Sonucun tek sayı olması gerektiği için, birler basamağından onlar basamağına kesinlikle 1 elde gelmiştir."
+            r"Bu durumda onlar basamağının yeni sonucu: \(2 + 4 + 1 = \mathbf{7}\) olur."
+            r"Böylece ortadaki rakamı bulduk: \(Y = 7\)."
+            r"3. Adım: Birler Basamağından Elde Gelmesini Sağlayalım"
+            r"Birler basamağındaki işlem: \(A + 3\)"
+            r"5. Adım: Sonuç ve Kontrol"
+            r"Sayıları yerine yazalım: \(528 + 443 = \mathbf{971}\)"
+            r"Doğru Seçenek: D"
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("**1. Adım: Toplama İşlemini Alt Alta Yazalım**", out)
+            self.assertIn("**2. Adım: Onlar Basamağını İnceleyelim**", out)
+            self.assertIn("**3. Adım: Birler Basamağından Elde Gelmesini Sağlayalım**", out)
+            self.assertIn("**5. Adım: Sonuç ve Kontrol**", out)
+            self.assertIn(r"\begin{array}", out)
+            self.assertIn("$$", out)
+            self.assertIn("\nElde edilen", out)
+            self.assertIn("\nSonucun tek", out)
+            self.assertIn("\nBu durumda", out)
+            self.assertIn(r"\mathbf{971}", out)
+
+    def test_google_seceneki_glued_telegram_paste(self):
+        src = (
+            "**Asya Hun Devleti (A seçeneği):** İlk düzenli orduyu (onlu sistemi) kuran "
+            "ve ikili teşkilatı ilk başlatan devlettir. Ancak soruda "
+            '*"ordu sistemini kuran devlet olma özelliğine sahip olmayan"* '
+            "dendiği için elenir.** I. Kök Türk Devleti (B seçeneği):** "
+            "Türk adını siyasi bir kimlik olarak** resmî devlet adı** "
+            "olarak kullanan ilk devlettir. Hunların ikili yönetim teşkilatı ve ordu "
+            "yapısı gibi geleneklerini aynen devam ettirmişlerdir. Sorudaki tüm "
+            "kriterleri tam olarak karşılar.** Uygurlar (C seçeneği):** "
+            "Yerleşik hayata geçen, mimari ve matbaada ilkleri başlatan devlettir."
+            "** İskitler (D seçeneği):** Tarihte bilinen ilk Türk topluluğudur ancak "
+            "teşkilatlı bir devlet yapısından ziyade topluluk özellikleriyle öne çıkar."
+        )
+        for out in (normalize_telegram_solution(src), normalize_pasted_solution(src)):
+            self.assertIn("- **Asya Hun Devleti (A seçeneği):**", out)
+            self.assertIn("- **I. Kök Türk Devleti (B seçeneği):**", out)
+            self.assertIn("- **Uygurlar (C seçeneği):**", out)
+            self.assertIn("- **İskitler (D seçeneği):**", out)
+            self.assertIn("**resmî devlet adı**", out)
+            self.assertNotIn("** I.", out)
+            self.assertNotIn("** Uygurlar", out)
+            self.assertNotIn("elenir.**", out)
+
+    def test_demote_block_underline_stage_headers(self):
+        src = (
+            "__## 1. Aşama: Tarihsel Süreci İnceleme__\n"
+            "I. Kök Türk Devleti'nin 630 yılında kurulması.\n"
+            "__## 2. Aşama: Kahramanları Tanıma__\n"
+            "II. Mete Han ve Türk ordusunun kuruluşu.\n"
+            "Paragraf __önemli__ kelime\n"
+            "Alt satır devam ediyor."
+        )
+        out = normalize_markup(src)
+        self.assertIn("**1. Aşama: Tarihsel Süreci İnceleme**", out)
+        self.assertIn("**2. Aşama: Kahramanları Tanıma**", out)
+        self.assertNotIn("__##", out)
+        self.assertIn("__önemli__", out)
+        self.assertIn("\nAlt satır devam ediyor.", out)
+
+    def test_gemini_atx_headings_normalize_to_bold_storage(self):
+        """Gemini ## / * çözümleri kayıt pipeline'ında kanonik forma iner."""
+        from content.rich_text_common import (
+            convert_atx_headings_to_bold,
+            solution_has_storage_defects,
+        )
+        from content.rich_text_storage import normalize_question_for_storage
+
+        src = (
+            "## 1. Aşama: Kenar İncelemesi\n"
+            "\n"
+            "Üçgende *AB* kenarı verilmiştir.\n"
+            "\n"
+            "## 2. Aşama: Oran Kurma\n"
+            "\n"
+            "**Doğru cevap C** seçeneğidir.\n"
+            "\n"
+            "- **A) Yanlış:** oran hatalı\n"
+            "- **B) Eksik:** veri yetersiz\n"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        converted = convert_atx_headings_to_bold(src)
+        self.assertNotRegex(converted, r"(?m)^#{1,3}\s")
+        self.assertIn("**1. Aşama: Kenar İncelemesi**", converted)
+        self.assertIn("*AB*", converted)
+
+        for out in (
+            normalize_pasted_solution(src),
+            normalize_telegram_solution(src),
+        ):
+            self.assertNotRegex(out, r"(?m)^#{1,3}\s")
+            self.assertNotIn("## ", out)
+            self.assertIn("**1. Aşama: Kenar İncelemesi**", out)
+            self.assertIn("**2. Aşama: Oran Kurma**", out)
+            self.assertIn("*AB*", out)
+            self.assertEqual(out, normalize_pasted_solution(out))
+            self.assertEqual(out, normalize_telegram_solution(out))
+
+        question = Question(
+            stem="Soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            solution=src,
+        )
+        normalize_question_for_storage(question)
+        self.assertNotIn("## ", question.solution)
+        self.assertIn("**1. Aşama: Kenar İncelemesi**", question.solution)
+
+    def test_demote_block_underline_idempotent_in_telegram_pipeline(self):
+        src = (
+            "__## 1. Aşama: Tarihsel Süreci İnceleme__\n"
+            "I. Kök Türk Devleti'nin kurulması."
+        )
+        once = normalize_telegram_solution(src)
+        twice = normalize_telegram_solution(once)
+        self.assertEqual(once, twice)
+        self.assertIn("**1. Aşama: Tarihsel Süreci İnceleme**", once)
+        self.assertEqual(
+            demote_block_underline_markup(src),
+            "**1. Aşama: Tarihsel Süreci İnceleme**\n"
+            "I. Kök Türk Devleti'nin kurulması.",
+        )
+
+    def test_needs_block_underline_repair_scan(self):
+        self.assertTrue(
+            needs_block_underline_repair("__## 1. Aşama: Test__\nGövde")
+        )
+        self.assertTrue(
+            needs_block_underline_repair("__1. Adım: Toplama__\nDevam")
+        )
+        self.assertFalse(
+            needs_block_underline_repair("Paragraf __kelime__ altı çizgili")
+        )
+        self.assertFalse(
+            needs_block_underline_repair("__Bu normal bir not satırı__")
+        )
+
+    def test_repair_block_underline_idempotent_and_narrow(self):
+        src = (
+            "__## 1. Aşama: Başlık__\n"
+            "Paragraf __önemli__ kelime.\n"
+            "__Bu tam satır not__\n"
+            "Alt satır."
+        )
+        once = repair_block_underline_solution(src)
+        twice = repair_block_underline_solution(once)
+        self.assertEqual(once, twice)
+        self.assertIn("**1. Aşama: Başlık**", once)
+        self.assertIn("__önemli__", once)
+        self.assertIn("__Bu tam satır not__", once)
+        self.assertNotIn("__##", once)
+
+
+    def test_restore_collapsed_breaks_plain_prose_dynasty_roman(self):
+        src = (
+            "I. Kök Türk Devleti'nin yıkılmasının ardından boylar yaşamıştır. "
+            "verip II. Kök Türk (Kutluk) Devleti'ni kurarak soru?"
+        )
+        out = restore_collapsed_breaks(src)
+        self.assertIn("verip II. Kök Türk", out)
+        self.assertNotIn("\nII.", out)
+
+    def test_restore_collapsed_breaks_colon_premise_still_splits(self):
+        src = (
+            "I. Birinci öncül metni: açıklama devam eder. "
+            "II. İkinci öncül metni: ikinci açıklama burada."
+        )
+        out = restore_collapsed_breaks(src)
+        self.assertIn("\nII.", out)
+
+    def test_strip_paste_fragment_markers_q_abe2d84408(self):
+        src = (
+            "<!--Start\nFragment- →\n"
+            "Adayların en çok düşeceği tuzak **Berlin Antlaşması<!--TgQPHd|||[]- →** "
+            "'dır (1878). Ancak Berlin Antlaşması; **genel, çok uluslu ve çok yönlü"
+            "<!--TgQPHd|||[]- →** bir kongre metnidir."
+            "<!--TgQPHd|||[]- → <!--TgQPHd|||[]- →\n"
+            "<!--End\nFragment- →"
+        )
+        out = normalize_markup(src)
+        self.assertNotIn("TgQPHd", out)
+        self.assertNotIn("<!--", out)
+        self.assertIn("**Berlin Antlaşması**", out)
+        self.assertIn("**genel, çok uluslu ve çok yönlü**", out)
+
+
+class TelegramSolutionNormalizationIntegrationTests(TestCase):
+    def setUp(self):
+        subject = Subject.objects.create(slug="tarih", name="Tarih")
+        topic = Topic.objects.create(
+            subject=subject,
+            slug="turk_tarih",
+            name="Türk Tarihi",
+        )
+        self.question = Question.objects.create(
+            topic=topic,
+            public_id="q_norm_test",
+            stem="Soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+        )
+        TelegramBotSession.objects.create(
+            telegram_user_id=42,
+            chat_id=1001,
+            step=TelegramBotSession.STEP_SOLUTION_TEXT,
+            question=self.question,
+        )
+
+    def test_conversation_saves_normalized_solution(self):
+        pasted = (
+            "A) Karahanlılar\n"
+            "- **Neden Çeldirici?** Gazneliler ile birlikte hareket etmişlerdir.\n"
+            "- **KPSS Hap Bilgi:** Karahanlılar ilk Müslüman Türk devletidir."
+        )
+        reply = try_handle_conversation(42, pasted)
+        self.assertIsNotNone(reply)
+        self.question.refresh_from_db()
+        self.assertIn("**Neden Çeldirici?**", self.question.solution)
+        self.assertIn("**KPSS Hap Bilgi:**", self.question.solution)
+        self.assertNotIn("<strong>", self.question.solution)
+        self.assertNotIn("<u>", self.question.solution)
+
+    def test_conversation_normalizes_latex(self):
+        pasted = r"Sonuç \[ \frac{1}{2} \] olarak bulunur."
+        try_handle_conversation(42, pasted)
+        self.question.refresh_from_db()
+        self.assertIn("$$", self.question.solution)
+        self.assertIn(r"\frac", self.question.solution)
+
+
+class TelegramAiSolutionMessagingTests(TestCase):
+    def setUp(self):
+        subject = Subject.objects.create(slug="matematik", name="Matematik")
+        topic = Topic.objects.create(
+            subject=subject,
+            slug="matematik_sayilar",
+            name="Sayılar",
+        )
+        self.question = Question.objects.create(
+            topic=topic,
+            public_id="q_ai_solution",
+            stem="Soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            solution="## 1. Adım\nSonuç **A** olur.",
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+            telegram_chat_id=1001,
+            telegram_message_id=555,
+        )
+
+    def test_solution_prompt_mentions_gemini_auto_solution(self):
+        msg = solution_prompt_message()
+        self.assertIn("Gemini", msg)
+        self.assertNotIn("çözüm yok", msg.lower())
+
+    def test_hayir_keeps_gemini_solution_and_message(self):
+        reply = handle_photo_solution_decision(
+            telegram_user_id=42,
+            chat_id=1001,
+            photo_message_id=555,
+            yes=False,
+        )
+        self.question.refresh_from_db()
+        self.assertIn("Gemini otomatik çözüm kayıtlı", reply.text)
+        self.assertIn("1. Adım", self.question.solution)
+        self.assertTrue((self.question.solution or "").strip())
+
+    def test_ai_solution_status_note_before_ocr(self):
+        self.assertIn(
+            "Gemini adım adım çözüm yazar",
+            ai_solution_status_note(None),
+        )
+        self.assertIn(
+            "Gemini otomatik çözüm kayıtlı",
+            ai_solution_status_note(self.question),
+        )

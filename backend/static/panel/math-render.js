@@ -2,20 +2,886 @@
  * Markdown + LaTeX ($...$ / $$...$$) → HTML (KaTeX).
  */
 (function (global) {
+  function inlineLatexBodyToDollars(body) {
+    var cleaned = String(body || "").trim();
+    if (/\n/.test(cleaned)) {
+      cleaned = cleaned.replace(/\s*\n\s*/g, " ").trim();
+    }
+    if (/\\begin\{(?:array|matrix|pmatrix|cases)\}/.test(cleaned)) {
+      return "$$" + cleaned + "$$";
+    }
+    return "$" + cleaned + "$";
+  }
+
+  function mergeSplitInlineDollarMath(text) {
+    var src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (!src) return src;
+    var display = [];
+    src = src.replace(/\$\$[\s\S]+?\$\$/g, function (m) {
+      display.push(m);
+      return "§§D" + (display.length - 1) + "§§";
+    });
+    var inline = [];
+    src = src.replace(/\$[^$\n]+\$/g, function (m) {
+      inline.push(m);
+      return "§§I" + (inline.length - 1) + "§§";
+    });
+    var prev;
+    do {
+      prev = src;
+      src = src.replace(/\$([^$\n]*)\n(\s*[^$\n]+)\$/g, function (_, a, b) {
+        a = String(a || "").trim();
+        b = String(b || "").trim();
+        return a ? "$" + a + " " + b + "$" : "$" + b + "$";
+      });
+    } while (src !== prev);
+    src = src.replace(/§§I(\d+)§§/g, function (_, idx) {
+      return inline[Number(idx)] || "";
+    });
+    src = src.replace(/§§D(\d+)§§/g, function (_, idx) {
+      return display[Number(idx)] || "";
+    });
+    return src;
+  }
+
   function normalizeLatex(text) {
-    return String(text || "")
+    var src = mergeSplitInlineDollarMath(repairLatexEscapes(String(text || "")));
+    return src
       .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
         return "$$" + body.trim() + "$$";
       })
       .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
-        return "$" + body.trim() + "$";
+        return inlineLatexBodyToDollars(body);
       });
   }
 
+  /** JSON/OCR: \\frac → form-feed+rac; önizlemede geri yamala. */
+  function repairGoogleDocsVertBars(text) {
+    var src = String(text || "");
+    src = src.replace(/\\\(\s*\\vert\{\}\s*\\\)/g, "|");
+    src = src.replace(/\(\\vert\{\}\)/g, "|");
+    src = src.replace(/\\vert\{\}([^\\]*?)\\vert\{\}/g, function (_, inner) {
+      var body = String(inner || "").trim();
+      return body ? "\\lvert " + body + " \\rvert" : "\\vert";
+    });
+    return src;
+  }
+
+  function repairLatexEscapes(text) {
+    var src = repairGoogleDocsVertBars(
+      String(text || "")
+      .replace(/\x0crac/g, "\\frac")
+      .replace(/\x08eta/g, "\\beta")
+      .replace(/\x08egin/g, "\\begin")
+      .replace(/\x09ext\{/g, "\\text{")
+      .replace(/\x09imes/g, "\\times")
+      .replace(/\x09heta/g, "\\theta")
+      .replace(/\x09an/g, "\\tan")
+      .replace(/\x0dight/g, "\\right")
+      .replace(/\x0aeq/g, "\\neq")
+      .replace(/\$rac\{/g, "$\\frac{")
+      .replace(/\$sqrt\{/g, "$\\sqrt{")
+    );
+    if (src.indexOf("frac") !== -1 && src.indexOf("\\frac") === -1) {
+      src = src.replace(/(^|[^\\A-Za-z])frac\{/g, "$1\\frac{");
+    }
+    return src;
+  }
+
+  function looksLikeMath(text) {
+    var t = String(text || "").trim();
+    if (!t) return false;
+    // Güçlü sinyal: LaTeX komutları.
+    if (
+      /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq|displaystyle|hline|vert|lvert|rvert|implies)\b/.test(
+        t
+      ) ||
+      /(^|[^\\A-Za-z])frac\{/.test(t)
+    ) {
+      return true;
+    }
+    // ^ _ { — yalnızca kısa ifadelerde.
+    if (t.length <= 96 && /[\^_{}]/.test(t)) return true;
+    // Basit cebir: tire (-) tarih/bileşik kelime yanlış pozitifini önle.
+    if (t.length > 64) return false;
+    return /[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]/.test(t);
+  }
+
+  /** Şıkta yalnızca gerçek LaTeX varsa $...$ sarmala; "Yalnız I" düz metin kalsın. */
+  function wrapBareLatex(text) {
+    var src = repairLatexEscapes(String(text || "")).trim();
+    if (!src) return src;
+    var display = src.match(/^\$\$([\s\S]+)\$\$$/);
+    if (display) {
+      var inner = display[1].trim();
+      return looksLikeMath(inner) ? src : inner;
+    }
+    var wrapped = src.match(/^\$([^$]+)\$$/);
+    if (wrapped) {
+      var inner = wrapped[1].trim();
+      return looksLikeMath(inner) ? src : inner;
+    }
+    if (/\$|\\\(|\\\[/.test(src)) return src;
+    // Şık: -1/2, 3/4 → $-\frac{1}{2}$ / $\frac{3}{4}$
+    var slash = src.match(/^(-?)(\d+)\s*\/\s*(\d+)$/);
+    if (slash) {
+      return slash[1]
+        ? "$-\\frac{" + slash[2] + "}{" + slash[3] + "}$"
+        : "$\\frac{" + slash[2] + "}{" + slash[3] + "}$";
+    }
+    if (looksLikeMath(src)) return "$" + src + "$";
+    return src;
+  }
+
   function hasLatex(text) {
-    return /\$\$|\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sqrt|\\circ|\\cdot|\\left|\\right/.test(
+    return /\$\$|\$[^$\n]+\$|\\\(|\\\[|\\frac|\\sqrt|\\circ|\\cdot|\\left|\\right|\\begin\{|\\hline/.test(
       String(text || "")
     );
+  }
+
+  /**
+   * Eşleştirme oku: Gemini KaTeX / ASCII `->` → sınav `→`.
+   */
+  function normalizeExamArrows(text) {
+    return String(text || "")
+      .replace(/\$\\(?:long)?rightarrow\$/g, "→")
+      .replace(/\$\\to\$/g, "→")
+      .replace(/\\(?:long)?rightarrow\b/g, "→")
+      .replace(/&#0*8594;|&rarr;/gi, "→")
+      .replace(/[ \t]*->[ \t]*/g, " → ");
+  }
+
+  function protectMarkdownSpans(text, holders) {
+    return String(text || "").replace(/\*\*[\s\S]+?\*\*|__[\s\S]+?__/g, function (m) {
+      holders.push(m);
+      return "§§K" + (holders.length - 1) + "§§";
+    });
+  }
+
+  function restoreMarkdownSpans(text, holders) {
+    return String(text || "").replace(/§§K(\d+)§§/g, function (_, idx) {
+      return holders[Number(idx)] || "";
+    });
+  }
+
+  function repairInlineGluedBold(text) {
+    var src = String(text || "").replace(/(→)\s*\*\*\s*/g, "$1 **");
+    return src.replace(
+      /(?<=[a-zçğıöşüâîû])[ \t]*\*\*[ \t]+([^*\n]+?)\*\*/gi,
+      function (_, inner) {
+        return " **" + String(inner || "").trim() + "**";
+      }
+    );
+  }
+
+  function collapseItalicQuoteMarkerSpaces(text) {
+    return String(text || "").replace(/\*[ \t]+(")/g, "*$1");
+  }
+
+  function splitGluedSecenekHeaders(text) {
+    var src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (!/\([A-E]\s+seçeneği\)/i.test(src)) return src.trim();
+    src = src.replace(/([.!?])\*\*\s+/g, "$1\n\n**");
+    src = src.replace(
+      /\*\*\s+((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*/gi,
+      "**$1**"
+    );
+    src = repairInlineGluedBold(src);
+    src = src.replace(
+      /(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*/gi,
+      "$1\n\n- **"
+    );
+    return tightenMarkdownMarkers(src).trim();
+  }
+
+  function structureSecenekiSolutionOutline(text) {
+    var src = splitGluedSecenekHeaders(text);
+    var re = /\*\*((?:I\.\s+)?[^*\n]+?\([A-E]\s+seçeneği\)\s*:)\*\*/gi;
+    var headers = [];
+    var m;
+    while ((m = re.exec(src)) !== null) {
+      headers.push({ index: m.index, end: re.lastIndex, title: m[1].trim() });
+    }
+    if (headers.length < 2) return src;
+    var out = [];
+    for (var i = 0; i < headers.length; i++) {
+      var bodyStart = headers[i].end;
+      var bodyEnd = i + 1 < headers.length ? headers[i + 1].index : src.length;
+      var body = src.slice(bodyStart, bodyEnd).trim();
+      out.push("- **" + headers[i].title + "**");
+      if (body) out.push("  - " + body);
+      out.push("");
+    }
+    return out.join("\n").replace(/^\s+|\s+$/g, "");
+  }
+
+  function splitGoogleVerbalSolution(src) {
+    src = String(src || "");
+    src = splitGluedSecenekHeaders(src);
+    src = src.replace(/\*("[^"\n]+")[ \t]+\*(?!\*)/g, "*$1* ");
+    src = src.replace(/(?<=[^\s*])\*[ \t]+("[^"\n]+")\*/g, " *$1*");
+    src = collapseItalicQuoteMarkerSpaces(src);
+    src = src.replace(
+      /(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*/gi,
+      "$1\n\n- **"
+    );
+    src = src.replace(
+      /(?:\*\*)?\s*(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri))\s*(?:\*\*)?\s*(?=(?:[-•*◦○–—]\s*)?(?:\*\*)?\s*[A-E]\s*\)\s*(?:\*\*)?)/gi,
+      "\n\n**$1**\n"
+    );
+    src = src.replace(
+      /(?<!\n)(?:\s*[-•*◦○–—])?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*/g,
+      "\n**$1)** "
+    );
+    src = src.replace(
+      /^[ \t]*[-•*◦○–—]?\s*\*\*\s*([A-E])\s*\)\s*\*\*\s*/gm,
+      "**$1)** "
+    );
+    src = src.replace(
+      /(?<=[.!?:;*"'»)\]]|[a-zçğıöşüâîû])(?:\s*\*\*)?\s*(?=[A-E]\)\s)/g,
+      "\n"
+    );
+    src = src.replace(
+      /([A-E]\)[^\n*]{3,120}?):\*\*[ \t]+(?=[A-ZÇĞİÖŞÜÂÎÛ"“«])/g,
+      "$1\n"
+    );
+    src = splitInlineOptionHeaders(src);
+    return src;
+  }
+
+  /** Google Docs: "A) Başlık (Alt): gövde metni" tek satır → başlık + gövde. */
+  function splitInlineOptionHeaders(src) {
+    src = String(src || "");
+    src = src.replace(
+      /(^|\n)(\s*(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+)([^\n*]+?):\s+(?=\S)/g,
+      function (_, lead, prefix, letter, title) {
+        return lead + prefix + title + ":\n";
+      }
+    );
+    src = src.replace(
+      /(^|\n)(\s*(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+)([^\n]+?):\s*\*\*\s+(?=\S)/g,
+      function (_, lead, prefix, letter, title) {
+        return lead + prefix + title + ":**\n";
+      }
+    );
+    return src;
+  }
+
+  /** Yapışık Romen öncül/madde satırlarını ayır; düz metin (II. Mahmut, II. Kök Türk) korunur. */
+  function splitGluedRomanSections(src) {
+    var out = String(src || "");
+    if (!out) return out;
+    var colonMatches = out.match(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+[^:\n]{1,80}:/g) || [];
+    var colonUnique = {};
+    for (var ci = 0; ci < colonMatches.length; ci++) {
+      var cm = colonMatches[ci].match(/^(I|II|III|IV|V|VI|VII|VIII|IX|X)\./);
+      if (cm) colonUnique[cm[1]] = true;
+    }
+    if (Object.keys(colonUnique).length >= 2) {
+      out = out.replace(
+        /(?<!\n)(?<!\*\*)(?=\b(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)/g,
+        "\n"
+      );
+    }
+    var mathMatches =
+      out.match(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.\s+(?:§§M\d+§§|\$|\\\(|\\\[)/g) ||
+      [];
+    var mathUnique = {};
+    for (var mi = 0; mi < mathMatches.length; mi++) {
+      var mm = mathMatches[mi].match(/^(I|II|III|IV|V|VI|VII|VIII|IX|X)\./);
+      if (mm) mathUnique[mm[1]] = true;
+    }
+    if (Object.keys(mathUnique).length >= 2) {
+      out = out.replace(
+        /(?:(?<=\$)|(?<=§§M\d+§§))(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)/g,
+        "\n"
+      );
+    }
+    return out;
+  }
+
+  /**
+   * Google / sohbet kopyasında yutulan Enter'ları geri koy:
+   * "...aynıdır ($a^b \\equiv a$).Verilen" → satır kırılır.
+   * "GösterimKitabın" / "sayfaİlk" / "$…$3. Gün" / "göre;$120" da.
+   */
+  function restoreCollapsedBreaks(text) {
+    var src = mergeSplitInlineDollarMath(String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
+    if (!src) return src;
+    var holders = [];
+    src = src.replace(
+      /\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g,
+      function (m) {
+        holders.push(m);
+        return "§§M" + (holders.length - 1) + "§§";
+      }
+    );
+    src = splitGoogleVerbalSolution(src);
+    var mdHolders = [];
+    src = protectMarkdownSpans(src, mdHolders);
+    src = src.replace(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\.(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1. ");
+    // Google günlük çözüm yapıştırması: 10.06.2024, Sonu:, Ayrımı:
+    src = src.replace(/(Çözüm Adımları)(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})/gi, "$1\n");
+    src = src.replace(/(?<=[a-zçğıöşüâîû])(?=\d{1,2}\.\d{1,2}\.\d{4})/g, "\n");
+    src = src.replace(/([.!?])(?!\n)(?=\d{1,2}\.\d{1,2}\.\d{4})/g, "$1\n");
+    var dateHolders = [];
+    src = src.replace(/(?<!\d)(\d{1,2}\.\d{1,2}\.\d{4})(?!\d)/g, function (m) {
+      dateHolders.push(m);
+      return "§§D" + (dateHolders.length - 1) + "§§";
+    });
+    src = src.replace(
+      /(Sonu:|Ayrımı:|Sonuç:|Başlangıcı ve Ayrımı:|Değerinin Bulunması:)(?!\n)(?=\S)/gi,
+      "$1\n"
+    );
+    src = src.replace(/([.!?])(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
+    src = src.replace(/:(?!\n)(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, ":\n");
+    src = src.replace(/([.!?])(?!\n)(?=\d+\.\s)/g, "$1\n");
+    src = src.replace(/:(?!\n)(?=\d+\.\s)/g, ":\n");
+    src = src.replace(/;(?!\n)(?=§§M|[\$A-ZÇĞİÖŞÜÂÎÛ])/g, ";\n");
+    // Google mantık çözümü: A Seçeneği: / B Seçeneği:
+    src = src.replace(/(?<!\n)(?=[A-E]\s+Seçeneği\s*:)/gi, "\n");
+    src = src.replace(/(Adım Adım Çözüm:)(?!\n)(?=\S)/gi, "$1\n");
+    src = src.replace(/(şunlardır:)(?!\n)(?=Rakamlar)/gi, "$1\n");
+    src = src.replace(/(§§M\d+§§\))(?!\n)(?=[A-ZÇĞİÖŞÜ])/g, "$1\n");
+    src = src.replace(/(§§M\d+§§)(?=§§M\d+§§)/g, "$1\n");
+    src = src.replace(/(§§M\d+§§)(?!\n)(?=[A-ZÇĞİÖŞÜ])/g, "$1\n");
+    src = src.replace(/(?<=[a-zçğıöşüâîû])(?=§§M)/g, "\n");
+    src = src.replace(
+      /(§§M\d+§§)(?!\n)(?=(?:Rakamlar|Kendisi|Son maddede|Elde edilen|Kağıda|Şimdi |Bulduğumuz|Görüldüğü|Now:|Çarpım ))/gi,
+      "$1\n"
+    );
+    src = src.replace(/(?<!\n)(?=\d+\.\s+(?:Tek\/|Kağıttaki))/gi, "\n");
+    src = src.replace(
+      /(?<!\n)(?=[A-E]\)\s+(?:\d|[\u0027\u2019]|[A-Za-zÇĞİÖŞÜçğıöşü]))/g,
+      "\n"
+    );
+    src = src.replace(/([❌✅])(?!\n)(?=[A-E]\))/g, "$1\n");
+    src = src.replace(/(olsaydı:)(?!\n)(?=[\$\\\(])/gi, "$1\n");
+    src = src.replace(
+      /(?<!\n)(?=(?:Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı|oranı))\s*:)/gi,
+      "\n"
+    );
+    src = src.replace(/(\((?:Çift|Tek)\))(?!\n)(?=Rakamlar)/gi, "$1\n");
+    src = src.replace(/(\(Tek\))(?!\n)(?=Görüldüğü)/gi, "$1\n");
+    src = src.replace(/(\d+\.\s+[^:]+:)(\s*)(?=\\\(|\$|§§M)/g, "$1\n");
+    src = src.replace(/([a-zçğıöşüâîû]:)(?!\n)(?=\$)/gi, "$1\n");
+    src = src.replace(/(\$)(?!\n)(?=[A-ZÇĞİÖŞÜ])/g, "$1\n");
+    src = src.replace(/([.!?])(?!\n)(?=\d+\s)/g, "$1\n");
+    // camelCase: GösterimKitabın — 5A/pH/iPhone bölünmez (rich_text_common.py ile aynı)
+    src = src.replace(
+      /(?<=[a-zçğıöşüâîû]{2})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû])/g,
+      "\n"
+    );
+    src = restoreCollapsedPresenceTable(src);
+    src = src.replace(/(?<!\n)(\d+\.\s+Adım)/g, "\n$1");
+    src = src.replace(/(göre\*{0,2})(?!\n)(?=\s+(?:I|II|III|IV|V)\.)/g, "$1\n");
+    src = splitGluedRomanSections(src);
+    src = restoreMarkdownSpans(src, mdHolders);
+    src = src.replace(/§§M(\d+)§§\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))/g, "§§M$1§§\n");
+    src = src.replace(/§§M(\d+)§§\s+(?=(?:ifadelerinden|hangileri|yukarıdakilerden))/g, "§§M$1§§\n");
+    src = src.replace(/(§§M\d+§§)(?=\d+\.\s)/g, "$1\n");
+    src = src.replace(/([.!?])(?!\n)(?=§§M\d+§§)/g, "$1\n");
+    src = src.replace(
+      /(§§M\d+§§)(?!\n)(?=(?:Değerinin Bulunması|Sonuç)\s*:)/gi,
+      "$1\n"
+    );
+    src = src.replace(/§§D(\d+)§§/g, function (_, idx) {
+      return dateHolders[Number(idx)] || "";
+    });
+    src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
+      return holders[Number(idx)] || "";
+    });
+    src = repairInlineGluedBold(src);
+    src = splitGluedSecenekHeaders(src);
+    return src.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+  }
+
+  var PRESENCE_CELL_RE = /^(Yok|Var)\s*\(\s*[01]\s*\)$/i;
+  var ALLCAPS_NAME_RE = /^[A-ZÇĞİÖŞÜÂÎÛ]{3,}$/;
+  var BIN_CODE_RE = /^[01]{3}$/;
+
+  function restoreCollapsedPresenceTable(src) {
+    if (!src) return src;
+    src = src.replace(/(Öğrenci)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)/gi, "$1\n");
+    src = src.replace(/(Harfi)(?=[A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)/g, "$1\n");
+    src = src.replace(/(Harfi)(?=Oluşan\s+Benzersiz)/g, "$1\n");
+    src = src.replace(/(?<!\n)(?=Oluşan Benzersiz)/g, "\n");
+    src = src.replace(/(\))(?=[A-ZÇĞİÖŞÜÂÎÛ]{3,})/g, ")\n");
+    src = src.replace(
+      /(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=(?:Yok|Var)\s*\(\s*[01]\s*\))/g,
+      "\n"
+    );
+    src = src.replace(/(\(\s*[01]\s*\))(?=(?:Yok|Var)\s*\()/g, "$1\n");
+    src = src.replace(/(\(\s*[01]\s*\))(?=[01]{3}(?:[A-ZÇĞİÖŞÜÂÎÛ]|$))/g, "$1\n");
+    src = src.replace(/([01]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ])/g, "$1\n");
+    src = src.replace(
+      /(?<=[A-ZÇĞİÖŞÜÂÎÛ]{3})(?=[A-ZÇĞİÖŞÜÂÎÛ][a-zçğıöşüâîû]{3,})/g,
+      "\n"
+    );
+    return src;
+  }
+
+  function formatPresenceTable(text) {
+    var lines = String(text || "").split("\n");
+    var start = -1;
+    var i;
+    for (i = 0; i < lines.length; i++) {
+      var probe = lines[i].trim();
+      if (probe === "Öğrenci" || /\bHarfi\b/.test(probe) || probe.indexOf("Benzersiz Kod") !== -1) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return text;
+
+    var headers = [];
+    i = start;
+    while (i < lines.length) {
+      var s = lines[i].trim();
+      if (!s) {
+        i += 1;
+        continue;
+      }
+      if (ALLCAPS_NAME_RE.test(s) || PRESENCE_CELL_RE.test(s)) break;
+      var gluedHeader = s.match(/^(Öğrenci)\s*([A-ZÇĞİÖŞÜÂÎÛ]\s+Harfi)$/i);
+      if (gluedHeader) {
+        headers.push(gluedHeader[1], gluedHeader[2]);
+        i += 1;
+        continue;
+      }
+      headers.push(s);
+      i += 1;
+    }
+    var letterHeaders = [];
+    for (var h = 0; h < headers.length; h++) {
+      var header = headers[h];
+      if (header.toLocaleLowerCase("tr-TR") === "öğrenci" || /kod/i.test(header)) {
+        continue;
+      }
+      letterHeaders.push(header.replace(/\s*Harfi\s*$/i, "").trim());
+    }
+    var rows = [];
+    while (i < lines.length) {
+      s = lines[i].trim();
+      if (!s) {
+        i += 1;
+        continue;
+      }
+      if (!ALLCAPS_NAME_RE.test(s)) break;
+      var name = s;
+      i += 1;
+      var cells = [];
+      var code = "";
+      while (i < lines.length) {
+        var t = lines[i].trim();
+        if (PRESENCE_CELL_RE.test(t)) {
+          cells.push(t);
+          i += 1;
+        } else if (BIN_CODE_RE.test(t)) {
+          code = t;
+          i += 1;
+          break;
+        } else {
+          break;
+        }
+      }
+      if (!cells.length) break;
+      rows.push({ name: name, cells: cells, code: code });
+    }
+    if (rows.length < 2) return text;
+
+    var block = ["**Harf kodu:**"];
+    for (var r = 0; r < rows.length; r++) {
+      var bits = [];
+      for (var c = 0; c < rows[r].cells.length; c++) {
+        var label = c < letterHeaders.length ? letterHeaders[c] : String.fromCharCode(72 + c);
+        var kind = /^var/i.test(rows[r].cells[c]) ? "var" : "yok";
+        bits.push(label + " " + kind);
+      }
+      var tail = rows[r].code ? " → **" + rows[r].code + "**" : "";
+      block.push("- **" + rows[r].name + ":** " + bits.join(", ") + tail);
+    }
+    var before = lines.slice(0, start).join("\n").replace(/\s+$/, "");
+    var after = lines.slice(i).join("\n").replace(/^\s+/, "");
+    var parts = [];
+    if (before) parts.push(before);
+    parts.push(block.join("\n"));
+    if (after) parts.push(after);
+    return parts.join("\n\n");
+  }
+
+  var OPTION_HEADER_RE =
+    /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+([A-ZÇĞİÖŞÜÂÎÛİ][A-ZÇĞİÖŞÜÂÎÛİa-zçğıöşüâîû]*)\s*:?(?:\*\*)?\s*$/;
+  var OPTION_TRIAL_HEADER_RE =
+    /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\)\s+(.+\S)\s*:?\s*(?:\*\*)?\s*$/;
+  var OPTION_TRIAL_TITLE_RE = /[\s',\d]/;
+  var OPTION_BOLD_LETTER_RE =
+    /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\s*\)\s*\*\*\s*(.+)$/;
+  var OPTION_BOLD_TITLE_RE =
+    /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\)\s+(.+?)\s*:?\s*\*\*\s*$/;
+  var OPTION_BOLD_TITLE_INLINE_RE =
+    /^(?:[-•*◦○–—]\s+)?\*\*\s*([A-E])\)\s+(.+?):\s*\*\*\s*(.+)$/;
+  var OPTION_SECENEGI_INLINE_RE =
+    /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\s+Seçeneği\s*:\s*(.*)$/i;
+  var OPTION_SECENEGI_ONLY_RE =
+    /^(?:[-•*◦○–—]\s+)?(?:\*\*)?([A-E])\s+Seçeneği\s*:?\s*(?:\*\*)?\s*$/i;
+  var BULLET_STRIP_RE = /^(\s*)[-•*◦○–—]\s+/;
+  var KURAL_OZETI_RE = /^Kural\s+Özeti\s*:?\s*$/i;
+  var RESULT_TAIL_RE = /(→\s*)(🧍\s*)?(Oturuyor|AYAKTA)\.?\s*$/i;
+  var FORMULA_LIST_LABEL_RE =
+    /^(Kendisi|Rakamlar(?:ı|ları|ın)\s+(?:toplamı|çarpımı|farkı(?:nın mutlak değeri)?|oranı))\s*:\s*.+/i;
+  var NUMBERED_SECTION_RE = /^\d+\.\s+.+\S/;
+  var NUMBERED_SECTION_TITLE_RE = /^(\d+\.\s+[^:]+:)([\s\S]*)$/;
+  var STEP_HEADER_RE = /^\d+\.\s+Adım:/i;
+  var CONDITION_BULLET_RE = /^(?:Rakamlar\s|Son maddede)/i;
+  var ADIM_ADIM_HEADER_RE = /^(.*?Adım Adım Çözüm:)\s*(.*)$/i;
+
+  function isOptionHeaderLine(line) {
+    var s = String(line || "").trim();
+    if (!s) return false;
+    if (
+      OPTION_HEADER_RE.test(s) ||
+      OPTION_SECENEGI_ONLY_RE.test(s) ||
+      OPTION_SECENEGI_INLINE_RE.test(s) ||
+      OPTION_BOLD_LETTER_RE.test(s) ||
+      OPTION_BOLD_TITLE_RE.test(s) ||
+      OPTION_BOLD_TITLE_INLINE_RE.test(s)
+    ) {
+      return true;
+    }
+    var trial = s.match(OPTION_TRIAL_HEADER_RE);
+    return !!(trial && OPTION_TRIAL_TITLE_RE.test(String(trial[2] || "")));
+  }
+
+  function parseOptionHeader(line) {
+    var s = String(line || "").trim();
+    var hm = s.match(OPTION_HEADER_RE);
+    if (hm) {
+      return { letter: hm[1], title: hm[1] + ") " + hm[2], inline: null };
+    }
+    hm = s.match(OPTION_SECENEGI_INLINE_RE);
+    if (hm) {
+      var body = String(hm[2] || "").trim();
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + " Seçeneği",
+        inline: body || null,
+      };
+    }
+    hm = s.match(OPTION_SECENEGI_ONLY_RE);
+    if (hm) {
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + " Seçeneği",
+        inline: null,
+      };
+    }
+    hm = s.match(OPTION_BOLD_LETTER_RE);
+    if (hm) {
+      var letterBody = String(hm[2] || "").trim();
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + ")",
+        inline: letterBody || null,
+      };
+    }
+    hm = s.match(OPTION_BOLD_TITLE_INLINE_RE);
+    if (hm) {
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + ") " + stripOuterBold(hm[2]).replace(/:+$/, "").trim(),
+        inline: String(hm[3] || "").trim() || null,
+      };
+    }
+    hm = s.match(OPTION_BOLD_TITLE_RE);
+    if (hm) {
+      return {
+        letter: hm[1].toUpperCase(),
+        title:
+          hm[1].toUpperCase() +
+          ") " +
+          stripOuterBold(hm[2]).replace(/:+$/, "").trim(),
+        inline: null,
+      };
+    }
+    hm = s.match(OPTION_TRIAL_HEADER_RE);
+    if (hm && OPTION_TRIAL_TITLE_RE.test(String(hm[2] || ""))) {
+      var trialTitle = stripOuterBold(String(hm[2] || "").trim()).replace(/:+$/, "").trim();
+      return {
+        letter: hm[1].toUpperCase(),
+        title: hm[1].toUpperCase() + ") " + trialTitle,
+        inline: null,
+      };
+    }
+    return null;
+  }
+
+  function stripOuterBold(text) {
+    var src = String(text || "").trim();
+    if (/^\*\*[^*][\s\S]*\*\*$/.test(src) && src.indexOf("**", 2) === src.length - 2) {
+      return src.slice(2, -2).trim();
+    }
+    return src;
+  }
+
+  function emphasizeResultTail(line) {
+    var src = String(line || "");
+    src = src.replace(RESULT_TAIL_RE, function (_, arrow, emoji, word) {
+      return arrow + (emoji || "") + "**" + word + "**.";
+    });
+    return ensureFarkiItalic(src);
+  }
+
+  function ensureFarkiItalic(line) {
+    var src = String(line || "").trim();
+    if (!src || !/Farkı\s*:/i.test(src)) return src;
+    if (/^\*[^*]+\*$/.test(src)) return src;
+    var idx = src.search(/Farkı\s*:/i);
+    if (idx < 0) return src;
+    var head = src.slice(0, idx).trim();
+    var tail = src.slice(idx).trim();
+    if (!/^\*/.test(tail)) tail = "*" + tail;
+    if (!/\*$/.test(tail)) tail = tail + "*";
+    return head ? head + " " + tail : tail;
+  }
+
+  function structurePreambleLines(lines) {
+    var out = [];
+    var i = 0;
+    while (i < lines.length) {
+      var line = String(lines[i] || "").trim();
+      if (!line) {
+        i += 1;
+        continue;
+      }
+      if (
+        i === 0 &&
+        (line.indexOf("💡") === 0 ||
+          line.indexOf("Adım Adım") !== -1 ||
+          line.indexOf("Adim Adim") !== -1)
+      ) {
+        var hdr = line.match(ADIM_ADIM_HEADER_RE);
+        if (hdr && line.indexOf("Adım Adım") !== -1) {
+          out.push("**" + hdr[1].trim() + "**");
+          out.push("");
+          var rest = String(hdr[2] || "").trim();
+          if (rest) out.push(rest);
+          i += 1;
+          continue;
+        }
+        out.push("**" + stripOuterBold(line) + "**");
+        out.push("");
+        i += 1;
+        continue;
+      }
+      if (FORMULA_LIST_LABEL_RE.test(line)) {
+        while (i < lines.length && FORMULA_LIST_LABEL_RE.test(String(lines[i] || "").trim())) {
+          out.push("- " + String(lines[i] || "").trim());
+          i += 1;
+        }
+        out.push("");
+        continue;
+      }
+      if (CONDITION_BULLET_RE.test(line)) {
+        while (i < lines.length && CONDITION_BULLET_RE.test(String(lines[i] || "").trim())) {
+          out.push("- " + String(lines[i] || "").trim());
+          i += 1;
+        }
+        out.push("");
+        continue;
+      }
+      if (STEP_HEADER_RE.test(line)) {
+        var stepCore = line.trim();
+        if (/^\*\*[\s\S]+\*\*$/.test(stepCore)) {
+          out.push(stepCore);
+        } else {
+          out.push("**" + stepCore + "**");
+        }
+        out.push("");
+        i += 1;
+        continue;
+      }
+      if (NUMBERED_SECTION_RE.test(line)) {
+        var section = line.match(NUMBERED_SECTION_TITLE_RE);
+        if (section && String(section[2] || "").trim()) {
+          out.push("**" + section[1].trim() + "**");
+          out.push("");
+          out.push(String(section[2]).trim());
+        } else {
+          out.push("**" + line + "**");
+        }
+        out.push("");
+        i += 1;
+        continue;
+      }
+      var diger = line.match(
+        /^(?:\*\*)?(Diğer Seçenekler(?:in)?(?:\s+Neden Olmaz\??|\s+Elenme Nedenleri)):?(?:\*\*)?$/i
+      );
+      if (diger) {
+        out.push("**" + String(diger[1] || "").trim() + "**");
+        out.push("");
+        i += 1;
+        continue;
+      }
+      if (KURAL_OZETI_RE.test(line) || /^kural özeti/i.test(line)) {
+        out.push("**Kural Özeti:**");
+        i += 1;
+        while (i < lines.length) {
+          var nxt = String(lines[i] || "").trim();
+          if (!nxt) {
+            i += 1;
+            break;
+          }
+          if (
+            nxt.indexOf("Şimdi ") === 0 ||
+            nxt.indexOf("Bir öğrenci") === 0 ||
+            isOptionHeaderLine(nxt)
+          ) {
+            break;
+          }
+          var body = stripOuterBold(nxt.replace(BULLET_STRIP_RE, "").trim());
+          if (body) out.push("- " + body);
+          i += 1;
+        }
+        out.push("");
+        continue;
+      }
+      out.push(line);
+      i += 1;
+    }
+    return out;
+  }
+
+  function stripOuterBold(text) {
+    var src = String(text || "").trim();
+    if (
+      src.indexOf("**") === 0 &&
+      src.lastIndexOf("**") === src.length - 2 &&
+      (src.match(/\*\*/g) || []).length === 2
+    ) {
+      return src.slice(2, -2).trim();
+    }
+    return src;
+  }
+
+  /** Python normalize_roman_solution_sections — Romen öncül maddelerini kalın başlığa çevirir. */
+  function normalizeRomanSolutionSections(text) {
+    var src = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim();
+    if (!src) return src;
+    if (!/\b(VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:/.test(src)) {
+      return src;
+    }
+    var inner = src;
+    if (
+      inner.indexOf("**") === 0 &&
+      inner.lastIndexOf("**") === inner.length - 2 &&
+      (inner.match(/\*\*/g) || []).length === 2
+    ) {
+      inner = inner.slice(2, -2).trim();
+    }
+    inner = splitGluedRomanSections(inner);
+    var parts = inner
+      .split(/(?<=[.!?])(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]{1,80}:)/)
+      .map(function (part) {
+        return part.trim();
+      })
+      .filter(Boolean);
+    if (parts.length < 2) {
+      parts = inner
+        .split("\n")
+        .map(function (line) {
+          return line.trim();
+        })
+        .filter(Boolean);
+    }
+    if (parts.length < 2) return src;
+
+    var out = [];
+    var matched = 0;
+    var titleRe =
+      /^(\*{0,2})((?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+[^:\n]+:)(\*{0,2})\s*(.*)$/s;
+    for (var pi = 0; pi < parts.length; pi++) {
+      var part = parts[pi];
+      var title = part.match(titleRe);
+      if (!title) {
+        out.push(part);
+        continue;
+      }
+      matched += 1;
+      var header = stripOuterBold(title[2].trim());
+      var body = (title[4] || "").trim();
+      out.push("**" + header + "**");
+      if (body) out.push(body);
+      out.push("");
+    }
+    if (matched < 2) return src;
+    return out.join("\n").trim();
+  }
+
+  /** Google çözüm: madde + A–E iç içe liste (rich_text_common.structure_solution_outline). */
+  function structureSolutionOutline(text) {
+    var src = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim();
+    if (!src) return src;
+    src = src.replace(
+      /(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*/gi,
+      "$1\n\n- **"
+    );
+    src = src.replace(/(→)\*\*\s+/g, "$1 **");
+    if (/\([A-E]\s+seçeneği\)/i.test(src)) {
+      var seceneki = structureSecenekiSolutionOutline(src);
+      if ((seceneki.match(/^- \*\*/gm) || []).length >= 2) return seceneki;
+    }
+    src = splitInlineOptionHeaders(src);
+    src = formatPresenceTable(src);
+    var lines = src.split("\n");
+    var optionIdxs = [];
+    for (var i = 0; i < lines.length; i++) {
+      if (isOptionHeaderLine(String(lines[i] || "").trim())) {
+        optionIdxs.push(i);
+      }
+    }
+    if (optionIdxs.length < 2) {
+      var preambleOnly = structurePreambleLines(lines);
+      return preambleOnly.length ? preambleOnly.join("\n").replace(/^\s+|\s+$/g, "") : src;
+    }
+
+    var out = structurePreambleLines(lines.slice(0, optionIdxs[0]));
+    if (out.length && out[out.length - 1] !== "") out.push("");
+
+    for (var oi = 0; oi < optionIdxs.length; oi++) {
+      var start = optionIdxs[oi];
+      var end = oi + 1 < optionIdxs.length ? optionIdxs[oi + 1] : lines.length;
+      var block = [];
+      for (var j = start; j < end; j++) {
+        if (String(lines[j] || "").trim()) block.push(lines[j]);
+      }
+      if (!block.length) continue;
+      var parsed = parseOptionHeader(String(block[0] || "").trim());
+      if (!parsed) continue;
+      out.push("- **" + parsed.title + ":**");
+      if (parsed.inline) {
+        var inlineBody = stripOuterBold(parsed.inline);
+        if (inlineBody) out.push("  - " + emphasizeResultTail(inlineBody));
+      }
+      for (var c = 1; c < block.length; c++) {
+        var raw = stripOuterBold(
+          String(block[c] || "")
+            .trim()
+            .replace(BULLET_STRIP_RE, "")
+            .trim()
+        );
+        if (!raw) continue;
+        out.push("  - " + emphasizeResultTail(raw));
+      }
+      out.push("");
+    }
+    return out.join("\n").trim();
   }
 
   function collapseSoftLines(chunk) {
@@ -57,15 +923,215 @@
   }
 
   /** Renk etiketleri olmadan kalın / italik / altı çizili. */
+  function collapseNestedMarks(text) {
+    var src = String(text || "");
+    var prev;
+    do {
+      prev = src;
+      src = src.replace(/\*\*__\*\*([^*]+)\*\*__\*\*/g, "**__$1__**");
+      src = src.replace(/__\*\*__([^_]+)__\*\*__/g, "__**$1**__");
+      src = src.replace(/\*\*\s*\*\*([^*]+)\*\*\s*\*\*/g, "**$1**");
+      src = src.replace(/__\s*__([^_]+)__\s*__/g, "__$1__");
+      src = src.replace(/\*{4,}([^*\n]+)\*{4,}/g, "**$1**");
+      src = src.replace(/_{4,}([^_\n]+)_{4,}/g, "__$1__");
+    } while (src !== prev);
+    return src;
+  }
+
+  function repairSplitBoldLines(text) {
+    return String(text || "").replace(
+      /\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*/g,
+      "**$1$2**"
+    );
+  }
+
+  /** `** metin **` / `__ metin __` — iç boşluğu dışarı taşı (yutma). */
+  function tightenMarkdownMarkers(text) {
+    var src = collapseNestedMarks(text);
+    function peel(open, close, full, inner) {
+      var body = String(inner);
+      var leadSpaces = "";
+      var trailSpaces = "";
+      var mLead = full.match(
+        new RegExp("^" + open.replace(/\*/g, "\\*") + "([ \\t]+)")
+      );
+      if (mLead) leadSpaces = mLead[1];
+      var mTrail = full.match(
+        new RegExp("([ \\t]+)" + close.replace(/\*/g, "\\*") + "$")
+      );
+      if (mTrail) trailSpaces = mTrail[1];
+      if (body.indexOf("\n") >= 0) {
+        return leadSpaces + open + body + close + trailSpaces;
+      }
+      return leadSpaces + open + body.trim() + close + trailSpaces;
+    }
+    src = src.replace(/(?<!\S)\*\*[ \t]+([^*\n]+?)[ \t]+\*\*/g, function (full, inner) {
+      return peel("**", "**", full, inner);
+    });
+    src = src.replace(/__[ \t]+([^_\n]+?)[ \t]+__/g, function (full, inner) {
+      return peel("__", "__", full, inner);
+    });
+    src = src.replace(/(?<!\*)\*[ \t]+([^*\n]+?)[ \t]+\*(?!\*)/g, function (full, inner) {
+      return peel("*", "*", full, inner);
+    });
+    src = src.replace(/(?<!\S)\*\*([^*\n]+?)[ \t]+\*\*/g, function (full, inner) {
+      return peel("**", "**", full, inner);
+    });
+    src = src.replace(/__([^_\n]+?)[ \t]+__/g, function (full, inner) {
+      return peel("__", "__", full, inner);
+    });
+    return src;
+  }
+
+  /**
+   * Harf/`**` bitişikse (`kelime**kalın**devam`) araya boşluk koy.
+   * Math placeholder'ları koru.
+   */
+  function ensureMarkdownExteriorSpaces(text) {
+    var src = String(text || "");
+    var holders = [];
+    src = src.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+\$/g, function (m) {
+      holders.push(m);
+      return "§§M" + (holders.length - 1) + "§§";
+    });
+    // Açılış: harf/rakam/apostrof + ** veya __ (*** / ___ değil)
+    src = src.replace(
+      /([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(\*\*)(?!\*)(?=[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])/g,
+      "$1 $2"
+    );
+    src = src.replace(
+      /([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])(__)(?!_)(?=[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’])/g,
+      "$1 $2"
+    );
+    // Kapanış: ** veya __ + harf/rakam
+    src = src.replace(
+      /(?<=[^\s*])(\*\*)(?!\*)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g,
+      "$1 $2"
+    );
+    src = src.replace(
+      /(?<=[^\s_])(__)(?!_)([0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû])/g,
+      "$1 $2"
+    );
+    src = src.replace(/§§M(\d+)§§/g, function (_, idx) {
+      return holders[Number(idx)] || "";
+    });
+    return src;
+  }
+
+  function peelBlockUnderline(line) {
+    var t = String(line || "").trim();
+    var m = t.match(/^__(.+?)__$/);
+    return m ? m[1].trim() : t;
+  }
+
+  /** ``__## 1. Aşama: …__`` → ``**1. Aşama: …**`` (Flutter demoteBlockUnderlineMarkup). */
+  function demoteBlockUnderlineMarkup(text) {
+    var src = String(text || "");
+    if (!src || src.indexOf("__") === -1) return src;
+    var headerInner = /^(?:#{1,3}\s+|\d+\.\s*(?:Aşama|Adım)\b|\*\*.+\*\*)/i;
+    return src
+      .split("\n")
+      .map(function (line) {
+        var m = line.match(/^[ \t]*__(.+?)__[ \t]*$/);
+        if (!m) return line;
+        var inner = m[1].trim();
+        if (!headerInner.test(inner)) return line;
+        var body = inner.replace(/^#{1,3}\s+/, "");
+        var boldWrap = body.match(/^\*\*(.+)\*\*$/);
+        if (boldWrap) body = boldWrap[1].trim();
+        return "**" + body.trim() + "**";
+      })
+      .join("\n");
+  }
+
+  function stripPasteFragmentMarkers(text) {
+    var src = String(text || "");
+    if (!src || (src.indexOf("<!--") === -1 && src.indexOf("- →") === -1)) return src;
+    src = src.replace(/<!--\s*(?:Start|End)\s*Fragment-\s*→\s*/gi, "");
+    src = src.replace(/<!--TgQPHd\|\|\|\[\]-\s*→\s*/gi, "");
+    src = src.replace(/<!--TgQPHd[^>]*?-->/gi, "");
+    src = src.replace(/<!--\s*(?:Start|End)[^>]*?-->/gis, "");
+    return src.replace(/- →/g, "");
+  }
+
+  /**
+   * Flutter FormattedText.normalizeMarkup ile uyumlu ön işleme:
+   * CRLF, ZWSP, tam genişlik ＊/＿, boşluklu markdown işaretleri.
+   */
+  function normalizeMarkup(text) {
+    var src = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/＊/g, "*")
+      .replace(/＿/g, "_");
+    src = stripPasteFragmentMarkers(src);
+    src = demoteBlockUnderlineMarkup(src);
+    src = tightenMarkdownMarkers(src);
+    src = ensureMarkdownExteriorSpaces(src);
+    src = repairSplitBoldLines(src);
+    // Bozuk satır kırığından kalan yalnız ** / __ satırlarını temizle.
+    src = src.replace(/^\s*\*\*\s*$/gm, "");
+    src = src.replace(/^\s*__\s*$/gm, "");
+    return src;
+  }
+
+  function formatNamedSolutionSections(text) {
+    var src = String(text || "").trim();
+    if (!src) return src;
+    var label =
+      "(Mühimme\\s+Defteri\\s*:|Kimin\\s+Sorumluluğundadır\\s*\\?|" +
+      "(?:KPSS\\s+)?Hap\\s+Bilgi\\s*:)";
+    src = src.replace(
+      new RegExp("\\*\\*\\s*" + label + "\\s*\\*\\*", "gi"),
+      "$1"
+    );
+    src = src.replace(
+      new RegExp(
+        "([^\\n])\\s*(?=" +
+          "Mühimme\\s+Defteri\\s*:|Kimin\\s+Sorumluluğundadır\\s*\\?|" +
+          "KPSS\\s+Hap\\s+Bilgi\\s*:|(?<!KPSS\\s)Hap\\s+Bilgi\\s*:)",
+        "gi"
+      ),
+      "$1\n\n"
+    );
+    src = src.replace(
+      new RegExp("^[ \\t]*(?:[-•◦○–—]\\s+)?" + label + "[ \\t]*", "gim"),
+      function (_, sectionLabel) {
+        return "**" + sectionLabel.trim() + "** ";
+      }
+    );
+    return src.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
   function mdMarks(text) {
-    return escapeHtml(text)
-      .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong><em>$1</em></strong></u>")
-      .replace(/\*\*__(.+?)__\*\*/g, "<strong><u>$1</u></strong>")
-      .replace(/__\*\*(.+?)\*\*__/g, "<u><strong>$1</strong></u>")
-      .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    var html = escapeHtml(collapseNestedMarks(text))
+      .replace(/__\*\*\*(.+?)\*\*\*__/g, "<u><strong class=\"preview-bold\"><em>$1</em></strong></u>")
+      .replace(/\*\*__(.+?)__\*\*/g, "<strong class=\"preview-bold\"><u>$1</u></strong>")
+      .replace(/__\*\*(.+?)\*\*__/g, "<u><strong class=\"preview-bold\">$1</strong></u>")
+      .replace(/\*\*\*(.+?)\*\*\*/g, "<strong class=\"preview-bold\"><em>$1</em></strong>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong class=\"preview-bold\">$1</strong>")
       .replace(/__(.+?)__/g, "<u>$1</u>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>");
+    // Sınav metninde otomatik negatif/pozitif renk yok.
+    return html;
+  }
+
+  function emphasizeSignWords(html) {
+    return String(html || "");
+  }
+
+  function restoreHolders(html, holders) {
+    var out = String(html || "");
+    if (!holders.length) return out;
+    var guard = 0;
+    while (/§§C\d+§§/.test(out) && guard++ < 40) {
+      out = out.replace(/§§C(\d+)§§/g, function (_, idx) {
+        var item = holders[Number(idx)];
+        return item && item.html != null ? item.html : "";
+      });
+    }
+    return out;
   }
 
   /**
@@ -83,25 +1149,66 @@
       function (_, color, inner) {
         var idx = holders.length;
         holders.push({
-          color: color,
-          html: mdInline(inner),
+          html:
+            '<span class="rich-' + color + '">' + mdInline(inner) + "</span>",
         });
         return "§§C" + idx + "§§";
       }
     );
-    var html = mdMarks(protectedSrc);
-    if (!holders.length) return html;
-    return html.replace(/§§C(\d+)§§/g, function (_, idx) {
-      var item = holders[Number(idx)];
-      if (!item) return "";
-      return (
-        '<span class="rich-' + item.color + '">' + item.html + "</span>"
-      );
+    return restoreHolders(mdMarks(protectedSrc), holders);
+  }
+
+  function replaceHlineWithColoredRule(tex) {
+    var t = String(tex || "");
+    if (t.indexOf("\\hline") === -1) return t;
+    t = t.replace(/\\\\\s*\\hline\s*/g, "\\\\ \\rule{5em}{0.05em} \\\\ ");
+    t = t.replace(/\\hline\s*(?=\\\\|\\end)/g, "\\rule{5em}{0.05em} \\\\ ");
+    return t;
+  }
+
+  function normalizeFractionStyles(tex) {
+    var t = String(tex || "");
+    t = t.replace(/\\dfrac/g, "§§DFRAC§§");
+    t = t.replace(/\\tfrac/g, "§§DFRAC§§");
+    t = t.replace(/\\frac/g, "\\dfrac");
+    return t.replace(/§§DFRAC§§/g, "\\dfrac");
+  }
+
+  function forceDisplaySizeAll(tex, forceDisplayStyle) {
+    if (forceDisplayStyle === undefined) forceDisplayStyle = true;
+    var t = String(tex || "").trim();
+    if (!t) return t;
+    t = t.replace(/\\ttfrac/g, "\\frac");
+    t = t.replace(/\\ddfrac/g, "\\frac");
+    t = t.replace(/\{([^{}]+)\\over\s*([^{}]+)\}/g, function (_, a, b) {
+      return "\\frac{" + a.trim() + "}{" + b.trim() + "}";
     });
+    if (forceDisplayStyle) {
+      t = normalizeFractionStyles(t);
+      var isTabular =
+        /\\begin\{array\}/.test(t) ||
+        /\\begin\{matrix\}/.test(t) ||
+        /\\begin\{pmatrix\}/.test(t);
+      if (!isTabular && !/\\displaystyle\b/.test(t)) {
+        t = "\\displaystyle " + t;
+      }
+    }
+    return t;
+  }
+
+  function prepareTex(tex, forceDisplayStyle) {
+    return forceDisplaySizeAll(
+      replaceHlineWithColoredRule(String(tex || "")),
+      forceDisplayStyle
+    );
+  }
+
+  function needsDisplayMathBlock(tex) {
+    return /\\begin\{(?:array|matrix|pmatrix|cases)\}/.test(tex) || /\\hline/.test(tex);
   }
 
   function renderMath(tex, displayMode) {
-    var body = String(tex || "").trim();
+    var body = prepareTex(tex);
     if (!body) return "";
     if (typeof global.katex === "undefined") {
       return escapeHtml(displayMode ? "$$" + body + "$$" : "$" + body + "$");
@@ -120,7 +1227,43 @@
   /** Metin içinde markdown + inline/display LaTeX. */
   function richInline(text) {
     if (!text) return "";
-    var src = normalizeLatex(String(text));
+    var src = normalizeMarkup(String(text));
+    src = normalizeExamArrows(normalizeLatex(src));
+    var holders = [];
+    src = src.replace(
+      /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g,
+      function (_, color, inner) {
+        var idx = holders.length;
+        holders.push({
+          html:
+            '<span class="rich-' + color + '">' + richInline(inner) + "</span>",
+        });
+        return "§§C" + idx + "§§";
+      }
+    );
+    src = src.replace(/\*\*([\s\S]+?)\*\*/g, function (_, inner) {
+      var idx = holders.length;
+      holders.push({
+        html:
+          '<strong class="preview-bold">' + richInline(inner) + "</strong>",
+      });
+      return "§§C" + idx + "§§";
+    });
+    // __altı çizili__ / *italik* — mdMarks ile aynı sıra (kalın sonrası).
+    src = src.replace(/__([^_\n]+?)__/g, function (_, inner) {
+      var idx = holders.length;
+      holders.push({
+        html: "<u>" + richInline(inner) + "</u>",
+      });
+      return "§§C" + idx + "§§";
+    });
+    src = src.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, function (_, inner) {
+      var idx = holders.length;
+      holders.push({
+        html: "<em>" + richInline(inner) + "</em>",
+      });
+      return "§§C" + idx + "§§";
+    });
     var out = "";
     var re =
       /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
@@ -129,17 +1272,29 @@
     while ((m = re.exec(src)) !== null) {
       out += mdInline(src.slice(last, m.index));
       var tex = m[1] || m[2] || m[3] || m[4] || "";
-      out += renderMath(tex, !!(m[1] || m[3]));
+      var display = !!(m[1] || m[3]) || needsDisplayMathBlock(tex);
+      if (display && !(m[1] || m[3])) {
+        out +=
+          '<span class="math-block">' + renderMath(tex, true) + "</span>";
+      } else {
+        out += renderMath(tex, display);
+      }
       last = m.index + m[0].length;
     }
     out += mdInline(src.slice(last));
-    return out;
+    return restoreHolders(out, holders);
   }
 
-  /** Şık metni — kalın/italik/altı çizili yok, yalnızca matematik. */
+  /** Şık metni — kalın/italik/altı çizili + matematik (uygulama ExamOptionView ile uyumlu). */
+  function optionInline(text) {
+    if (!text) return "";
+    return richInline(formatPlain(text));
+  }
+
+  /** Eski ad — yalnızca LaTeX, markdown yok (tablo ayrıştırma vb.). */
   function plainInline(text) {
     if (!text) return "";
-    var src = normalizeLatex(String(text));
+    var src = wrapBareLatex(normalizeExamArrows(normalizeLatex(String(text))));
     var out = "";
     var re =
       /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
@@ -148,18 +1303,119 @@
     while ((m = re.exec(src)) !== null) {
       out += escapeHtml(src.slice(last, m.index));
       var tex = m[1] || m[2] || m[3] || m[4] || "";
-      out += renderMath(tex, !!(m[1] || m[3]));
+      out += renderMath(tex, false);
       last = m.index + m[0].length;
     }
     out += escapeHtml(src.slice(last));
     return out;
   }
 
+  function usesDisplayMath(tex) {
+    var t = String(tex || "");
+    return (
+      t.indexOf("\\frac") !== -1 ||
+      t.indexOf("\\dfrac") !== -1 ||
+      t.indexOf("\\tfrac") !== -1 ||
+      t.indexOf("\\displaystyle") !== -1 ||
+      /\\over(?![a-zA-Z])/.test(t) ||
+      t.indexOf("\\sqrt") !== -1 ||
+      t.indexOf("\\left") !== -1 ||
+      t.indexOf("\\sum") !== -1 ||
+      t.indexOf("\\int") !== -1 ||
+      t.indexOf("\\begin{") !== -1 ||
+      t.indexOf("\\hline") !== -1
+    );
+  }
+
+  function lineHasMidSentenceRoman(line) {
+    var t = String(line || "").trim();
+    if (!t) return false;
+    return /(?<=.\s)(?:VIII|VII|III|VI|IV|IX|II|V|X)\.\s/.test(t);
+  }
+
+  /** Flutter FormattedText._isStructuralLine — madde / başlık satırları. */
+  function isStructuralLine(line) {
+    var t = peelBlockUnderline(line);
+    if (!t) return false;
+    if (/^(?:#{1,3}\s+|[-•*◦○–—]\s+|\*\*|---|\*\*\*|___)/.test(t)) return true;
+    if (/^(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s+/.test(t)) {
+      return !lineHasMidSentenceRoman(t);
+    }
+    return false;
+  }
+
+  function isHardBreakLine(trimmed) {
+    if (/__/.test(trimmed) && !/^___$/.test(trimmed)) return true;
+    var peeled = peelBlockUnderline(trimmed);
+    if (/^- \*\*.+\([A-E]\s+seçeneği\)/i.test(trimmed)) return true;
+    if (/^\*\*.+\([A-E]\s+seçeneği\)\s*:\*\*$/i.test(trimmed)) return true;
+    if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) return true;
+    var displayInline = trimmed.match(/^\$([^$\n]+)\$$/);
+    if (displayInline && usesDisplayMath(displayInline[1].trim())) return true;
+    if (/^(---|\*\*\*|___)$/.test(trimmed)) return true;
+    if (/^#{1,3}\s+/.test(peeled)) return true;
+    if (isOptionHeaderLine(trimmed)) return true;
+    if (isStructuralLine(trimmed)) return true;
+    if (/^\*\*\s*\d+\.\s+Adım:.+\*\*$/.test(trimmed)) return true;
+    if (/^(?:\*\*)?(?:Payda|Pay|Kesrin değeri)\s*:/i.test(trimmed)) return true;
+    if (/^(?:\s*)(?:[-•*◦○–—]\s+)/.test(trimmed)) return true;
+    return false;
+  }
+
+  /**
+   * Google / Telegram yumuşak satırlarını paragrafta birleştirir
+   * (Flutter ExamSolutionView examWrap).
+   */
+  function coalesceSoftLines(src) {
+    var lines = String(src || "").split("\n");
+    var out = [];
+    var buf = [];
+    function flush() {
+      var joined = buf.join(" ").replace(/[ \t]{2,}/g, " ").trim();
+      buf = [];
+      if (joined) out.push(joined);
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var trimmed = lines[i].trim();
+      if (!trimmed) {
+        flush();
+        out.push("");
+        continue;
+      }
+      if (isHardBreakLine(trimmed)) {
+        flush();
+        out.push(trimmed);
+      } else {
+        buf.push(trimmed);
+      }
+    }
+    flush();
+    return out.join("\n");
+  }
+
   /** Çözüm / ders metni — satır ve madde yapısını korur. */
-  function documentHtml(text) {
-    var src = normalizeLatex(String(text || ""))
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n");
+  function documentHtml(text, options) {
+    options = options || {};
+    var examMode = !!options.examMode;
+    var solutionMode = !!options.solutionMode;
+    var preNormalized = !!options.preNormalized;
+    var src = normalizeMarkup(String(text || ""));
+    if (preNormalized) {
+      src = normalizeLatex(src);
+      if (solutionMode) {
+        src = coalesceSoftLines(src);
+      }
+    } else {
+      if (solutionMode) {
+        src = formatNamedSolutionSections(src);
+      }
+      src = structureSolutionOutline(restoreCollapsedBreaks(normalizeLatex(src)));
+      src = repairInlineGluedBold(src);
+      src = collapseItalicQuoteMarkerSpaces(tightenMarkdownMarkers(src));
+      if (solutionMode) {
+        src = coalesceSoftLines(src);
+      }
+    }
     if (!src.trim()) return "";
 
     var lines = src.split("\n");
@@ -173,14 +1429,25 @@
       }
     }
 
+    var nested = false;
+
+    function closeNested() {
+      if (nested) {
+        html.push("</ul>");
+        nested = false;
+      }
+    }
+
     lines.forEach(function (line) {
       var trimmed = line.trim();
       if (!trimmed) {
+        closeNested();
         closeList();
         return;
       }
 
       if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) {
+        closeNested();
         closeList();
         html.push(
           '<div class="math-block">' +
@@ -190,19 +1457,77 @@
         return;
       }
 
-      var bullet = trimmed.match(/^[-•*–—]\s+(.+)/);
+      if (/^(---|\*\*\*|___)$/.test(trimmed)) {
+        closeNested();
+        closeList();
+        html.push('<hr class="preview-rule">');
+        return;
+      }
+
+      if (/^[-•*◦○–—]+$/.test(trimmed)) {
+        return;
+      }
+
+      if (examMode) {
+        var stepHdr = trimmed.match(/^\*\*\s*\d+\.\s+Adım:.+\*\*$/);
+        if (stepHdr) {
+          if (!inList) {
+            html.push('<ul class="rich-list">');
+            inList = true;
+          }
+          closeNested();
+          html.push("<li>" + richInline(trimmed) + "</li>");
+          return;
+        }
+      }
+
+      var bullet = line.match(/^(\s*)(?:[-•*◦○–—]\s+)+(.+)/);
       if (bullet) {
+        var deep = bullet[1].replace(/\t/g, "  ").length >= 2;
         if (!inList) {
           html.push('<ul class="rich-list">');
           inList = true;
         }
-        html.push("<li>" + richInline(bullet[1]) + "</li>");
+        if (deep && !nested) {
+          html.push('<ul class="rich-list nested">');
+          nested = true;
+        }
+        if (!deep) closeNested();
+        html.push("<li>" + richInline(bullet[2]) + "</li>");
         return;
       }
 
+      closeNested();
       closeList();
+
+      var heading = trimmed.match(/^#{1,3}\s+(.+)/);
+      if (heading) {
+        if (examMode) {
+          var title = heading[1].replace(/^\*\*|\*\*$/g, "").trim();
+          html.push("<p>" + richInline("**" + title + "**") + "</p>");
+        } else {
+          html.push(
+            '<p class="preview-heading">' + richInline(heading[1]) + "</p>"
+          );
+        }
+        return;
+      }
+      var questionLike =
+        /\?\s*\**$/.test(trimmed) ||
+        /\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b/i.test(trimmed);
+      if (
+        !examMode &&
+        !questionLike &&
+        /^\*\*[^*][\s\S]*\*\*$/.test(trimmed) &&
+        trimmed.indexOf("**", 2) === trimmed.length - 2
+      ) {
+        html.push('<p class="preview-heading">' + richInline(trimmed) + "</p>");
+        return;
+      }
+
       html.push("<p>" + richInline(trimmed) + "</p>");
     });
+    closeNested();
     closeList();
     return html.join("");
   }
@@ -219,13 +1544,51 @@
       .join("");
   }
 
+  function examDocumentHtml(text) {
+    return documentHtml(text, { examMode: true });
+  }
+
+  /** Onay / çözüm önizleme — uygulama ExamSolutionView ile aynı paragraf akışı. */
+  function solutionDocumentHtml(text) {
+    return documentHtml(text, { solutionMode: true });
+  }
+
+  /** DB / sunucu normalize edilmiş çözüm — tekrar outline uygulanmaz. */
+  function solutionStoredDocumentHtml(text) {
+    return documentHtml(text, { solutionMode: true, preNormalized: true });
+  }
+
+  /** DB normalize edilmiş soru/şık metni. */
+  function examStoredDocumentHtml(text) {
+    return documentHtml(text, { examMode: true, preNormalized: true });
+  }
+
   global.KpssMathRender = {
     examFormat: examFormat,
     normalizeLatex: normalizeLatex,
-    hasLatex: hasLatex,
+    normalizeExamArrows: normalizeExamArrows,
+    normalizeMarkup: normalizeMarkup,
+    formatNamedSolutionSections: formatNamedSolutionSections,
+    mergeSplitInlineDollarMath: mergeSplitInlineDollarMath,
+    restoreCollapsedBreaks: restoreCollapsedBreaks,
+    normalizeRomanSolutionSections: normalizeRomanSolutionSections,
+    splitInlineOptionHeaders: splitInlineOptionHeaders,
+    structureSolutionOutline: structureSolutionOutline,
+    repairInlineGluedBold: repairInlineGluedBold,
+    tightenMarkdownMarkers: tightenMarkdownMarkers,
+    ensureMarkdownExteriorSpaces: ensureMarkdownExteriorSpaces,
+    collapseItalicQuoteMarkerSpaces: collapseItalicQuoteMarkerSpaces,
+    wrapBareLatex: wrapBareLatex,
+    forceDisplaySizeAll: forceDisplaySizeAll,
     richInline: richInline,
+    optionInline: optionInline,
     plainInline: plainInline,
     paragraphHtml: paragraphHtml,
     documentHtml: documentHtml,
+    examDocumentHtml: examDocumentHtml,
+    solutionDocumentHtml: solutionDocumentHtml,
+    solutionStoredDocumentHtml: solutionStoredDocumentHtml,
+    examStoredDocumentHtml: examStoredDocumentHtml,
+    coalesceSoftLines: coalesceSoftLines,
   };
 })(window);

@@ -1,0 +1,49 @@
+---
+description: Panel OCR + soru önizlemesi — şık/cevap/konu akışını bozmama kuralları
+globs: backend/content/ocr*.py,backend/content/panel_views.py,backend/content/ocr_ingest.py,backend/content/topic_classifier.py,backend/static/panel/question*.js,backend/static/panel/option-table.js,backend/templates/panel/question_form.html,backend/templates/panel/partials/question_options_fields.html
+alwaysApply: false
+---
+
+# Panel OCR ve soru önizlemesi — dokunulmaz akış
+
+Bu dosyalar birbirine bağlıdır. Tek taraflı “sadeleştirme” veya refactor **şıkların önizlemede kaybolmasına**, OCR sonrası **cevap/konunun dolmamasına** veya **yanlış italik** geri dönüşüne yol açar.
+
+## Veri akışı (bozma)
+
+```
+Görsel → panel_ocr_question / ocr_ingest
+       → coalesce_ocr_options + classify_topic_from_ocr
+       → JSON (stem, options, dogru_cevap, suggested_topic_*)
+       → question_form.html fill()
+       → form alanları + question-preview.js sync()
+```
+
+Düzenleme sayfası (GET): `prepare_question_for_panel` + `panel_form_options` + `question_form_bootstrap` → `#question-form-bootstrap` JSON.
+
+## Backend — zorunlu
+
+- **`coalesce_ocr_options`**: API şıkları zayıfsa stem/ham metinden A–E ayrıştır; `panel_ocr_question` payload’ında `stem` + `options` birlikte dönsün.
+- **`sanitize_ocr_emphasis`**: Yalnızca şüpheli tek kelime `*italik*` temizliği; gerçek `**kalın**` korunur. Stem ingest + panel GET’te uygulanır.
+- **`panel_ocr_question`**: `dogru_cevap`, `detayli_cozum`, `suggested_topic_id/subject_id/name` JSON’da kalsın; görsel şık yalnızca gerçek crop varsa (`optionsVisual` + data URL).
+- **`question_form_bootstrap`**: Önizleme için `{ options, solution, correct_option }` — `panel_question_edit` context’inde `form_bootstrap` ile şablona ver.
+
+## Frontend — zorunlu
+
+- **`fill()` (question_form.html)**: Metin şıkları **her zaman** doldur; `applyOcrVisualOptions` hata verse bile metne geri dön (`try/catch`). Görsel şık yalnızca `optionImageDataUrls` doluysa.
+- **`question-preview.js`**: `loadFormBootstrap()` + `optionValue()` — DOM boş olsa bile bootstrap’ten oku. `KpssOptionTable.apply` **yalnızca** `option_table` ≠ `none` iken; aksi halde placeholder (*Şık A*) gerçek metni ezmesin.
+- **`question-options.js`**: `isVisual()` yalnızca gerçek kayıtlı/görsel crop varken true; metin şıkları gizlenmesin.
+- **Cache bust**: `question-preview.js` / `question-options.js` sürüm query’sini (`?v=`) şablon değişikliğiyle birlikte artır.
+- **Sunucu tarafı seed**: `preview_option_items` + `preview_solution` şablonda `pv-opt-text-*` / `pv-solution-body` içine yazılır; JS yedek olarak `data-initial-text` okur.
+
+## Yasak / dikkat
+
+- OCR yanıtında `optionsVisual: true` iken metin şıklarını atlamak.
+- `prepare_question_for_panel` veya `panel_form_options`’ı kaldırıp yalnızca ham `question.option_*` bırakmak (stem’e gömülü şık senaryosu kırılır).
+- Önizlemede `innerHTML` dolu diye `renderOptionPreviewText` atlamak — placeholder metni gerçek sanılır.
+- `escape` filtresiz `value="{{ ... }}"` (Türkçe/özel karakter formu kırabilir).
+
+## Değişiklik sonrası kontrol
+
+1. `/panel/konu/<id>/soru/317/` — şıklar önizlemede görünür (İkindi Divanı …).
+2. Manuel soru ekle → OCR yapıştır — A–E + (varsa) doğru cevap + konu önerisi dolmalı.
+3. Test: `python manage.py test content.ocr_ingest_tests content.ocr_emphasis_tests`

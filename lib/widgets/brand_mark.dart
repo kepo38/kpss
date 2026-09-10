@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../constants/brand_constants.dart';
@@ -11,6 +13,8 @@ class BrandMark extends StatelessWidget {
   final bool showLogo;
   final bool compact;
   final CrossAxisAlignment alignment;
+  final double? line1FontSize;
+  final double? line2FontSize;
 
   const BrandMark({
     super.key,
@@ -19,6 +23,8 @@ class BrandMark extends StatelessWidget {
     this.showLogo = true,
     this.compact = false,
     this.alignment = CrossAxisAlignment.start,
+    this.line1FontSize,
+    this.line2FontSize,
   });
 
   /// Üst bar — ortalanmış iki satır marka.
@@ -27,14 +33,18 @@ class BrandMark extends StatelessWidget {
         logoSize = 28,
         showLogo = false,
         compact = false,
-        alignment = CrossAxisAlignment.center;
+        alignment = CrossAxisAlignment.center,
+        line1FontSize = null,
+        line2FontSize = null;
 
   @override
   Widget build(BuildContext context) {
     final titleColor = dark ? Colors.white : AppTheme.onPage(context);
     final accentColor = dark ? AppTheme.champagneLight : AppTheme.champagne;
-    final line1Size = compact ? 13.0 : (alignment == CrossAxisAlignment.center ? 22.0 : 15.0);
-    final line2Size = compact ? 8.0 : (alignment == CrossAxisAlignment.center ? 12.0 : 9.0);
+    final line1Size = line1FontSize ??
+        (compact ? 13.0 : (alignment == CrossAxisAlignment.center ? 22.0 : 15.0));
+    final line2Size = line2FontSize ??
+        (compact ? 8.0 : (alignment == CrossAxisAlignment.center ? 12.0 : 9.0));
     final line2Spacing = alignment == CrossAxisAlignment.center ? 4.5 : (compact ? 2.8 : 3.2);
 
     return Row(
@@ -94,9 +104,19 @@ class QuizHeaderStrip extends StatelessWidget {
   final String durationText;
   final bool isCountdown;
   final bool urgent;
-  final String questionLabel;
+  final String? questionLabel;
+  /// Yeşil başarı oranı — eski Soru X/Y yerinde (ör. `Başarı: %49`).
+  final String? successLabel;
+  /// 0–1 arası; dikey gösterge çubuğu için. Veri yoksa örnek %70.
+  final double? successRate;
   final String? difficultyLabel;
   final String? attemptLabel;
+  final Widget? leading;
+  final Widget? center;
+  final bool showTimer;
+  final bool difficultyOnRight;
+  final Color timerAccent;
+  final List<Color> accentLineColors;
 
   const QuizHeaderStrip({
     super.key,
@@ -104,9 +124,21 @@ class QuizHeaderStrip extends StatelessWidget {
     required this.durationText,
     required this.isCountdown,
     required this.urgent,
-    required this.questionLabel,
+    this.questionLabel,
+    this.successLabel,
+    this.successRate,
     this.difficultyLabel,
     this.attemptLabel,
+    this.leading,
+    this.center,
+    this.showTimer = true,
+    this.difficultyOnRight = false,
+    this.timerAccent = AppTheme.champagne,
+    this.accentLineColors = const [
+      AppTheme.champagne,
+      AppTheme.neonEdge,
+      AppTheme.champagneLight,
+    ],
   });
 
   static const _lineHeight = 2.5;
@@ -144,7 +176,95 @@ class QuizHeaderStrip extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).width < 360;
     final badgeHeight = compact ? 44.0 : 52.0;
     final timeColor = urgent ? Colors.redAccent : Colors.white;
-    final iconColor = urgent ? Colors.redAccent : AppTheme.champagne;
+    final iconColor = urgent ? Colors.redAccent : timerAccent;
+
+    final chipsColumn = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (successLabel != null)
+          Container(
+            constraints: const BoxConstraints(maxWidth: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF34D399).withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: const Color(0xFF34D399).withValues(alpha: 0.55),
+              ),
+            ),
+            child: Text(
+              successLabel!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.1,
+                color: Color(0xFF6EE7B7),
+              ),
+            ),
+          )
+        else if (questionLabel != null)
+          Text(
+            questionLabel!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.88),
+            ),
+          ),
+        if (difficultyOnRight && difficultyLabel != null) ...[
+          if (successLabel != null || questionLabel != null)
+            const SizedBox(height: 6),
+          _DifficultyBadge(label: difficultyLabel!),
+        ],
+        if (attemptLabel != null) ...[
+          const SizedBox(height: 6),
+          _AttemptChip(label: attemptLabel!),
+        ],
+      ],
+    );
+
+    final showRateMeter = successLabel != null && successRate != null;
+    final rightMeta = showRateMeter
+        ? IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                chipsColumn,
+                const SizedBox(width: 8),
+                _SuccessRateMeter(rate: successRate!.clamp(0.0, 1.0)),
+              ],
+            ),
+          )
+        : chipsColumn;
+
+    final leftMeta = leading != null
+        ? leading!
+        : (showTimer
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _timerRow(
+                    isCountdown: isCountdown,
+                    iconColor: iconColor,
+                    durationText: durationText,
+                    timeColor: timeColor,
+                  ),
+                  if (!difficultyOnRight && difficultyLabel != null) ...[
+                    const SizedBox(height: 6),
+                    _DifficultyBadge(label: difficultyLabel!),
+                  ],
+                ],
+              )
+            : const SizedBox.shrink());
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -152,66 +272,99 @@ class QuizHeaderStrip extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (osymSordu)
-                OsymBadge(
-                  height: badgeHeight,
-                  variant: OsymBadgeVariant.premium,
-                ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _timerRow(
-                        isCountdown: isCountdown,
-                        iconColor: iconColor,
-                        durationText: durationText,
-                        timeColor: timeColor,
+          child: SizedBox(
+            height: math.max(badgeHeight, 58),
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: leftMeta,
                       ),
-                      if (difficultyLabel != null) ...[
-                        const SizedBox(height: 6),
-                        _DifficultyBadge(label: difficultyLabel!),
-                      ],
-                    ],
-                  ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          questionLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.88),
-                          ),
-                        ),
-                        if (attemptLabel != null) ...[
-                          const SizedBox(height: 6),
-                          _AttemptChip(label: attemptLabel!),
-                        ],
-                      ],
                     ),
-                  ),
-                ],
-              ),
-            ],
+                    SizedBox(
+                      width: osymSordu
+                          ? badgeHeight * OsymBadge.aspectRatio + 8
+                          : 0,
+                    ),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: rightMeta,
+                      ),
+                    ),
+                  ],
+                ),
+                // AppBar «Soru X/Y» ile aynı dikey eksen (ekran ortası).
+                if (osymSordu)
+                  OsymBadge(
+                    height: badgeHeight,
+                    variant: OsymBadgeVariant.premium,
+                  )
+                else if (center != null)
+                  center!,
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 8),
-        const _AccentLine(height: _lineHeight),
+        _AccentLine(height: _lineHeight, colors: accentLineColors),
       ],
+    );
+  }
+}
+
+class _SuccessRateMeter extends StatelessWidget {
+  static const _successGreen = Color(0xFF34D399);
+  static const _remainderRed = Color(0xFFF87171);
+  static const _height = 44.0;
+  static const _width = 5.0;
+
+  final double rate;
+
+  const _SuccessRateMeter({required this.rate});
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = rate.clamp(0.0, 1.0);
+    // Alttan yeşil dolum: üstte kırmızı (kalan), altta yeşil (başarı).
+
+    return Container(
+      width: _width,
+      height: _height,
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        boxShadow: [
+          BoxShadow(
+            color: (clamped >= 0.5 ? _successGreen : _remainderRed)
+                .withValues(alpha: 0.35),
+            blurRadius: 6,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(99),
+        child: ColoredBox(
+          color: clamped <= 0 ? _remainderRed : _successGreen,
+          child: clamped <= 0 || clamped >= 1
+              ? null
+              : Align(
+                  alignment: Alignment.topCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: 1.0 - clamped,
+                    widthFactor: 1,
+                    child: const ColoredBox(color: _remainderRed),
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }
@@ -281,7 +434,7 @@ class _AttemptChip extends StatelessWidget {
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
+        textAlign: TextAlign.right,
         style: TextStyle(
           fontSize: 10.5,
           fontWeight: FontWeight.w700,
@@ -313,22 +466,17 @@ class QuizBrandBridge extends StatelessWidget {
 
 class _AccentLine extends StatelessWidget {
   final double height;
+  final List<Color> colors;
 
-  const _AccentLine({required this.height});
+  const _AccentLine({required this.height, required this.colors});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: height,
       width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.champagne,
-            AppTheme.neonEdge,
-            AppTheme.champagneLight,
-          ],
-        ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: colors),
       ),
     );
   }

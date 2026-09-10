@@ -34,10 +34,16 @@ class PromoCodeService {
     }
 
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession) {
+    if (!auth.hasPermanentAccount) {
       return const PromoRedeemResult(
         success: false,
-        message: 'Kodu kullanmak için oturum açmanız gerekir.',
+        message: 'Kodu kullanmak için Google hesabını bağlayın.',
+      );
+    }
+    if (code.length > 32) {
+      return const PromoRedeemResult(
+        success: false,
+        message: 'Promosyon kodu geçersiz.',
       );
     }
 

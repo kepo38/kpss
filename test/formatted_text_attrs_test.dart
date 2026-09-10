@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/widgets/formatted_text.dart';
 
@@ -49,7 +49,7 @@ void main() {
       FormattedText.normalizeMarkup(
         '<span style="color:red;font-weight:700">y</span>',
       ),
-      '**y**',
+      '{red}**y**{/red}',
     );
   });
 

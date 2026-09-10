@@ -86,7 +86,17 @@ class ShareableResultCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+          Text(
+            'Soru başı ort. ${QuizResult.formatDuration(result.averageQuestionDuration)}',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
