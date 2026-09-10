@@ -480,6 +480,35 @@ def _strip_markdown_heading_marks(text: str) -> str:
     return re.sub(r"^#{1,3}\s+", "", text.strip())
 
 
+_ATX_HEADING_LINE_RE = re.compile(r"^[ \t]*(#{1,3})[ \t]+(.+?)[ \t]*#*[ \t]*$")
+
+
+def convert_atx_headings_to_bold(text: str) -> str:
+    """Gemini/ATX ``## Başlık`` satırlarını panel kanonik ``**Başlık**`` yap.
+
+    Panel paste / uygulama çözümü ``#`` başlık işaretini depolamaz; kalın satır
+    başlığı kullanır. Idempotent: zaten ``**…**`` olan satırlara dokunmaz.
+    """
+    if not text or "#" not in text:
+        return text
+    out: list[str] = []
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        match = _ATX_HEADING_LINE_RE.match(line)
+        if not match:
+            out.append(line)
+            continue
+        body = match.group(2).strip()
+        body = re.sub(r"\s+#+\s*$", "", body).strip()
+        bold_wrapped = re.match(r"^\*\*(.+)\*\*$", body, re.DOTALL)
+        if bold_wrapped:
+            body = bold_wrapped.group(1).strip()
+        if not body:
+            out.append(line)
+            continue
+        out.append(f"**{body}**")
+    return "\n".join(out)
+
+
 def demote_block_underline_markup(text: str) -> str:
     """Tam satır ``__…__`` ile sarılmış başlıkları ``**…**`` yap.
 
@@ -1205,13 +1234,24 @@ def _strip_outer_bold(text: str) -> str:
     return src
 
 
+def _clean_option_title(text: str) -> str:
+    """Şık başlığından sondaki ``:``, ``**`` artıklarını temizle."""
+    t = _strip_outer_bold((text or "").strip())
+    t = re.sub(r"\*+$", "", t).strip()
+    return t.rstrip(":").strip()
+
+
 def _is_option_header_line(line: str) -> bool:
     s = line.strip()
     if not s:
         return False
-    # Zaten ``- **A) …:**`` madde satırı — tekrar outline etme (idempotent koruma).
-    if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)", s):
+    # Tam biçimlenmiş ``- **A) …:**`` — tekrar outline etme (idempotent koruma).
+    if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", s) or re.match(
+        r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+\*\*\s*$", s
+    ):
         return False
+    if re.match(r"^\*\*[A-E]\)\s+.+", s):
+        return True
     if (
         _OPTION_HEADER_RE.match(s)
         or _OPTION_SECENEGI_ONLY_RE.match(s)
@@ -1230,6 +1270,11 @@ def _is_option_header_line(line: str) -> bool:
 def _parse_option_header(line: str) -> tuple[str, str, str | None]:
     """Harf, kalın başlık (sondaki : hariç), aynı satırdaki gövde."""
     s = line.strip()
+    bare = re.match(r"^\*\*([A-E])\)\s+(.+\S)\s*$", s)
+    if bare:
+        letter = bare.group(1).upper()
+        title = _strip_outer_bold(bare.group(2).strip()).rstrip(":").strip()
+        return letter, f"{letter}) {title}", None
     m = _OPTION_HEADER_RE.match(s)
     if m:
         letter = m.group(1).upper()
@@ -1261,6 +1306,7 @@ def structure_solution_outline(text: str) -> str:
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not src:
         return src
+    src = convert_atx_headings_to_bold(src)
     src = re.sub(
         r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
         r"\1\n\n- **",
@@ -1274,9 +1320,15 @@ def structure_solution_outline(text: str) -> str:
             return seceneki
     src = _format_presence_table(src)
     lines = src.split("\n")
-    option_idxs = [
-        i for i, line in enumerate(lines) if _is_option_header_line(line.strip())
-    ]
+    option_idxs: list[int] = []
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if _is_option_header_line(s):
+            option_idxs.append(i)
+        elif re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", s) or re.match(
+            r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+\*\*\s*$", s
+        ):
+            option_idxs.append(i)
     if len(option_idxs) < 2:
         preamble = _structure_preamble_lines(lines)
         return "\n".join(preamble).strip() if preamble else src
@@ -1292,22 +1344,59 @@ def structure_solution_outline(text: str) -> str:
         block = [ln for ln in lines[start:end] if ln.strip()]
         if not block:
             continue
+        head = block[0].strip()
+        # Tek satır ``- **A) Title:** body``
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s+\S", head):
+            out.append(head)
+            for child in block[1:]:
+                out.append(child)
+            out.append("")
+            continue
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", head) or re.match(
+            r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+\*\*\s*$", head
+        ):
+            bodies: list[str] = []
+            for child in block[1:]:
+                raw = child.strip()
+                raw = _BULLET_LINE_STRIP_RE.sub("", raw).strip()
+                raw = _strip_orphan_trailing_bold(_strip_outer_bold(raw))
+                if raw:
+                    bodies.append(_emphasize_result_tail(raw))
+            if len(bodies) == 1:
+                out.append(f"{head} {bodies[0]}")
+            elif not bodies:
+                out.append(head)
+            else:
+                out.append(head)
+                for body in bodies:
+                    out.append(f"  - {body}")
+            out.append("")
+            continue
         try:
-            _letter, title, inline = _parse_option_header(block[0].strip())
+            _letter, title, inline = _parse_option_header(head)
         except ValueError:
             continue
-        out.append(f"- **{title}:**")
+        bodies = []
         if inline:
-            body = _strip_outer_bold(inline)
+            body = _strip_orphan_trailing_bold(_strip_outer_bold(inline))
             if body:
-                out.append(f"  - {_emphasize_result_tail(body)}")
+                bodies.append(_emphasize_result_tail(body))
         for child in block[1:]:
             raw = child.strip()
             raw = _BULLET_LINE_STRIP_RE.sub("", raw).strip()
-            raw = _strip_outer_bold(raw)
+            raw = _strip_orphan_trailing_bold(_strip_outer_bold(raw))
             if not raw:
                 continue
-            out.append(f"  - {_emphasize_result_tail(raw)}")
+            bodies.append(_emphasize_result_tail(raw))
+        title_clean = _clean_option_title(title)
+        if len(bodies) == 1:
+            out.append(f"- **{title_clean}:** {bodies[0]}")
+        elif not bodies:
+            out.append(f"- **{title_clean}:**")
+        else:
+            out.append(f"- **{title_clean}:**")
+            for body in bodies:
+                out.append(f"  - {body}")
         out.append("")
 
     return "\n".join(out).strip()
@@ -1518,9 +1607,279 @@ def is_structured_solution_outline(text: str) -> bool:
     return len(outlined_options) >= 2
 
 
+_OPTION_HEADER_ONLY_RE = re.compile(
+    r"^(\s*[-•*◦○–—]\s+)\*\*([A-E])\)\s+([^*\n]+?):\*\*\s*$"
+)
+_OPTION_NESTED_BODY_RE = re.compile(r"^(\s*[-•*◦○–—]\s+)(.+?)\s*$")
+_ORPHAN_TRAILING_BOLD_RE = re.compile(
+    r"(?m)^\s*[-•*◦○–—]\s+(?!\*\*)(.*\S)\*\*\s*$"
+)
+
+
+def _strip_orphan_trailing_bold(text: str) -> str:
+    """Satır sonundaki eşleşmeyen ``**`` kapanışını temizle."""
+    src = (text or "").strip()
+    if not src.endswith("**"):
+        return src
+    # Dengeli ``**…**`` sarımı koru; yalnız yetim kapanışı sil.
+    if src.startswith("**") and src.count("**") == 2:
+        return src
+    if src.count("**") % 2 == 1 or not src.startswith("**"):
+        return re.sub(r"\*\*\s*$", "", src).strip()
+    return src
+
+
+def solution_has_storage_defects(text: str) -> bool:
+    """Kayıtlı çözüm hâlâ yapışık/bozuk markdown içeriyor mu?"""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip():
+        return False
+    # Gemini ATX başlıkları — panel kanonik **Başlık** biçimine çevrilmeli
+    if re.search(r"(?m)^[ \t]*#{1,3}[ \t]+\S", src):
+        return True
+    if re.search(r"\*\*metin\*\*\s*$", src, re.IGNORECASE):
+        return True
+    if re.search(r"(?m)^\s*-\s*\*\*\s*$", src):
+        return True
+    # ``- body.**`` / ``  - body.**`` — kalın açılışı olmayan yetim kapanış
+    if _ORPHAN_TRAILING_BOLD_RE.search(src):
+        return True
+    # ``- **A) Title:**`` + tek çocuk gövde (``body.**`` dahil) → tek satır olmalı
+    lines = src.split("\n")
+    for i, line in enumerate(lines[:-1]):
+        if not _OPTION_HEADER_ONLY_RE.match(line):
+            continue
+        nxt = lines[i + 1]
+        body_m = _OPTION_NESTED_BODY_RE.match(nxt)
+        if not body_m:
+            continue
+        body = body_m.group(2).strip()
+        if re.match(r"^(?:\*\*)?[A-E]\)", body):
+            continue
+        extra_child = False
+        if i + 2 < len(lines):
+            mid = lines[i + 2]
+            mid_s = mid.strip()
+            if (
+                mid_s
+                and _OPTION_NESTED_BODY_RE.match(mid)
+                and not _OPTION_HEADER_ONLY_RE.match(mid)
+                and not re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)", mid_s)
+            ):
+                extra_child = True
+        if extra_child:
+            continue
+        return True
+    if re.search(r"[.!?]-\s*\*\*", src):
+        return True
+    if re.search(r"[^\n]:-\s*\*\*", src):
+        return True
+    if re.search(r"Diğer Seçenekler[^\n]+-\s*\*\*", src, re.IGNORECASE):
+        return True
+    if re.search(r"(?m)^\s*-\s+\*\*[A-E]\)[^:\n]+$", src):
+        return True
+    if re.search(r"\?-\s*\*\*", src, re.IGNORECASE):
+        return True
+    if re.search(r"[a-zçğıöşüâîû]\.- \*\*", src, re.IGNORECASE):
+        return True
+    if re.search(r"-\*\*\s+[A-E]\)", src, re.IGNORECASE):
+        return True
+    if re.search(r"(?m)^\s*-\s+\*\*\s+[A-E]\)", src):
+        return True
+    # Diğer Seçenekler bölümünde A–E şık satırları eksik veya yapışık
+    if re.search(r"Diğer Seçenekler", src, re.IGNORECASE):
+        option_hits = len(re.findall(r"(?m)^\s*-\s+\*\*[A-E]\)", src))
+        glued_options = len(re.findall(r"[A-E]\)\s+[A-ZÇĞİÖŞÜ]", src))
+        if glued_options >= 2 and option_hits < 2:
+            return True
+    return False
+
+
+def _collapse_option_header_body_lines(text: str) -> str:
+    """``- **A) Title:**\n  - body.**`` → ``- **A) Title:** body``."""
+    lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        header_m = _OPTION_HEADER_ONLY_RE.match(lines[i])
+        if header_m and i + 1 < len(lines):
+            body_m = _OPTION_NESTED_BODY_RE.match(lines[i + 1])
+            if body_m:
+                raw_body = body_m.group(2).strip()
+                if not re.match(r"^(?:\*\*)?[A-E]\)", raw_body) and not re.match(
+                    r"^\*\*[^*\n]+\*\*", raw_body
+                ):
+                    has_extra_child = False
+                    if i + 2 < len(lines):
+                        mid = lines[i + 2]
+                        mid_s = mid.strip()
+                        if (
+                            mid_s
+                            and _OPTION_NESTED_BODY_RE.match(mid)
+                            and not _OPTION_HEADER_ONLY_RE.match(mid)
+                            and not re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)", mid_s)
+                        ):
+                            has_extra_child = True
+                    if not has_extra_child:
+                        body = _strip_orphan_trailing_bold(raw_body)
+                        body = re.sub(r"^\*\*\s*", "", body).strip()
+                        letter = header_m.group(2)
+                        title = header_m.group(3).strip().rstrip(":").strip()
+                        if body:
+                            out.append(f"- **{letter}) {title}:** {body}")
+                        else:
+                            out.append(f"- **{letter}) {title}:**")
+                        i += 2
+                        continue
+        orphan = re.match(
+            r"^(\s*[-•*◦○–—]\s+)(?!\*\*[A-E]\))(.+?)\*\*\s*$",
+            lines[i],
+        )
+        if orphan:
+            cleaned = _strip_orphan_trailing_bold(orphan.group(2) + "**")
+            out.append(f"{orphan.group(1)}{cleaned}")
+            i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
+def _repair_broken_option_bold_blocks(text: str) -> str:
+    """``**A) Başlık\\nGövde\\n\\n**`` gibi yarım kalın şık bloklarını madde listesine çevir."""
+    lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        line = raw.strip()
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s+\S", line):
+            # Zaten tek satır ``- **A) Title:** body``
+            out.append(raw)
+            i += 1
+            continue
+        if re.match(r"^[-•*◦○–—]\s+\*\*[A-E]\)[^*\n]+:\*\*\s*$", line):
+            out.append(raw)
+            i += 1
+            continue
+        m = re.match(r"^(?:-\s+)?\*\*([A-E])\)\s+(.+)$", line)
+        # Dengeli `**A) Başlık**` — sonraki maddeyle birleştirme
+        if m and line.startswith("**") and line.endswith("**") and line.count("**") == 2:
+            out.append(raw)
+            i += 1
+            continue
+        if m and i + 1 < len(lines):
+            nxt = lines[i + 1].strip()
+            child = re.match(r"^[-•*◦○–—]\s+(.+)$", nxt)
+            if child and (
+                re.match(r"^\*\*[A-E]\)", child.group(1).strip())
+                or re.match(r"^\*\*[^*\n]+\*\*", child.group(1).strip())
+            ):
+                child = None
+            if (
+                nxt
+                and nxt != "**"
+                and not re.match(r"^\*\*[A-E]\)", nxt)
+                and (child or not re.match(r"^[-•*◦○–—]", nxt))
+            ):
+                letter = m.group(1)
+                title = _clean_option_title(m.group(2))
+                body = child.group(1).strip() if child else nxt
+                body = _strip_orphan_trailing_bold(body)
+                out.append(f"- **{letter}) {title}:** {body}" if body else f"- **{letter}) {title}:**")
+                out.append("")
+                i += 2
+                if i < len(lines) and lines[i].strip() == "**":
+                    i += 1
+                continue
+        if line == "**":
+            i += 1
+            continue
+        out.append(raw)
+        i += 1
+    return "\n".join(out)
+
+
+def repair_solution_storage_defects(text: str) -> str:
+    """Yapışık ipucu/şık satırları ve bozuk madde işaretlerini onar."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src:
+        return src
+
+    src = convert_atx_headings_to_bold(src)
+    src = re.sub(r"\*\*metin\*\*\s*$", "", src, flags=re.IGNORECASE)
+    src = re.sub(r"(?m)^\s*-\s*\*\*\s*$", "", src)
+    src = re.sub(r"(?m)^\s*\*\*\s*$", "", src)
+    src = re.sub(r"(\S)(📌)", r"\1\n\n\2", src)
+    src = re.sub(r"([^\n]):-\s*\*\*", r"\1:\n\n**", src)
+    src = re.sub(
+        r"([a-zçğıöşüâîû])\.-\s*\*\*\s*([A-E])\)",
+        r"\1.\n\n- **\2)",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(📌\s*)?(Diğer Seçenekler[^\n-]+)-\s*\*\*\s*([A-E])\)\s+([^\n]+)",
+        lambda m: (
+            f"{m.group(1) or ''}**{m.group(2).strip()}**\n\n"
+            f"- **{m.group(3)}) {m.group(4).strip()}**"
+        ),
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(📌\s*)(Diğer Seçenekler[^\n-]+)(?=\s*-\s*\*\*)",
+        r"\1**\2**",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(r"\?-\s*\*\*\s*([A-E])\)", r"?\n\n- **\1)", src, flags=re.IGNORECASE)
+    src = re.sub(r"-\*\*\s+([A-E])\)", r"- **\1)", src, flags=re.IGNORECASE)
+    src = re.sub(r"(?m)^(\s*-\s*)\*\*\s+([A-E])\)", r"\1**\2)", src)
+    src = re.sub(r"([.!?])-\s*\*\*\"", r'\1\n\n**"', src)
+    src = re.sub(r"\.-\s*\*\*(?=\s*(?:\n|$))", ".\n\n", src)
+    src = re.sub(
+        r"\*\*\s*(Diğer Seçenekler(?:in)?[^\n*]+?)\s*\*\*",
+        r"**\1**",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(📌\s*)(Diğer Seçenekler[^\n?]+\?)",
+        r"\1**\2**",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-?\s*\*\*",
+        r"\1\n\n- **",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = _repair_broken_option_bold_blocks(src)
+    src = _collapse_option_header_body_lines(src)
+    if re.search(r"Diğer Seçenekler", src, re.IGNORECASE) or len(
+        re.findall(r"(?m)^(?:-\s+)?\*\*[A-E]\)", src)
+    ) >= 2:
+        src = re.sub(
+            r"(?m)^(?:-\s*)?\*\*\s*([A-E])\s*\)\s*\*\*\s+(.+)$",
+            r"- **\1):** \2",
+            src,
+        )
+        src = re.sub(r"(?m)^\*\*([A-E])\)\s+", r"- **\1) ", src)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
 def _touchup_storage_solution(text: str) -> str:
-    """Kayıtlı çözüm: outline atlama; ok/LaTeX/entity temizliği (idempotent)."""
+    """Kayıtlı çözüm: outline atlama; ok/LaTeX/entity temizliği (idempotent).
+
+    ``repair_solution_storage_defects`` burada çağrılmaz — kusursuz metinde
+    bilinçli biçim değişikliklerini (ör. liste işaretini kaldırma) geri yazardı.
+    Kusurlu metin ``normalize_pasted_solution`` içinde ayrıca onarılır.
+    """
     src = _decode_entities(text or "")
+    src = convert_atx_headings_to_bold(src)
     src = normalize_exam_arrows(normalize_latex(repair_vert_groups(src)))
     return src
 
@@ -1529,6 +1888,8 @@ def looks_storage_normalized_solution(text: str) -> bool:
     """DB'de kayıtlı, pipeline'dan geçmiş çözüm — yapıştırma adımını atla."""
     src = (text or "").strip()
     if not src:
+        return False
+    if solution_has_storage_defects(src):
         return False
     if is_structured_solution_outline(src):
         return True

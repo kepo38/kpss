@@ -299,6 +299,111 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertNotIn(r"\(", out)
         self.assertNotIn("&amp;", out)
 
+    def test_glued_divan_solution_q597_pattern(self):
+        """q_597b46c616: : - ** yapışması + Diğer Seçenekler/şık aynı satır."""
+        src = (
+            "Osmanlı'da divanlar toplanırdı:- **Galebe Divanı:** Açıklama metni."
+            "📌 Diğer Seçeneklerin Anlamları-** A) Ayak Divanı\n"
+            "Olağanüstü durumlarda toplanır.-**\n\n"
+            "- **B) Sefer Divanı:**\n  - Savaş zamanında.\n"
+            "divandır.- ** C) İkindi Divanı\n  - İkindi vakti.\n"
+            "- **E) Çarşamba Divanı:**\n  - Yerel işler.**metin**"
+        )
+        out = normalize_pasted_solution(src)
+        self.assertNotIn("toplanırdı:- **", out)
+        self.assertNotIn("Anlamları-**", out)
+        self.assertNotIn("**metin**", out)
+        self.assertIn("- **A) Ayak Divanı:** Olağanüstü", out)
+        self.assertIn("- **C) İkindi Divanı:** İkindi", out)
+        self.assertNotIn("  - Olağanüstü", out)
+        again = normalize_pasted_solution(out)
+        self.assertEqual(again, out)
+
+    def test_glued_clue_preamble_and_partial_option_outline(self):
+        """q_f0f5fc7ff9: yapışık ipuçları + kısmi A–E listesi erken çıkışa takılmamalı."""
+        src = (
+            '**"İlk ipucu":** Metin eleriz.- **"İkinci ipucu":** Devam metni.'
+            'mektedir.- **"Üçüncü ipucu":**\nGövde paragrafı.'
+            '📌 Diğer Seçenekler Neden Yanlış?-** A) Asya Hun Devleti\n'
+            'Onlu teşkilatı kuran ilk devlettir.- **\n\n'
+            '- **C) Uygurlar:**\n  - Yerleşik hayata geçen ilk Türk devletidir.'
+            'devletidir.- **D) İskitler (Sakalar)\n  - Tarihte bilinen ilk Türk topluluğudur.'
+            '\n- **E) Hazarlar:**\n  - Museviliği benimseyen ilk devletidir.**metin**'
+        )
+        out = normalize_pasted_solution(src)
+        self.assertNotIn("**metin**", out)
+        self.assertNotIn("eleriz.- **", out)
+        self.assertNotIn("?-**", out.lower())
+        self.assertNotIn("devletidir.- **", out)
+        self.assertIn('- **A) Asya Hun Devleti:**', out)
+        self.assertIn('- **D) İskitler (Sakalar):**', out)
+        self.assertIn('**"İkinci ipucu":**', out)
+        self.assertIn("**Diğer Seçenekler Neden Yanlış?**", out)
+        again = normalize_pasted_solution(out)
+        self.assertEqual(again, out)
+
+    def test_split_bold_option_body_collapses_to_single_line(self):
+        """q_f0f5fc7ff9: ``- **A) Title:**`` + ``  - body.**`` → tek satır."""
+        src = (
+            "📌 **Diğer Seçenekler Neden Yanlış?**\n\n"
+            "- **A) Asya Hun Devleti:**\n"
+            "  - Onlu teşkilatı (düzenli orduyu) kuran ilk devlettir.**\n\n"
+            "- **\n\n"
+            "- **C) Uygurlar:**\n"
+            "  - Yerleşik hayata geçen ilk Türk devletidir.\n\n"
+            "- **D) İskitler (Sakalar):**\n"
+            "  - Tarihte bilinen ilk Türk topluluğudur (devletleşememişlerdir).\n\n"
+            "- **E) Hazarlar:**\n"
+            "  - Museviliği benimseyen ilk ve tek Türk devletidir."
+        )
+        out = normalize_pasted_solution(src)
+        self.assertIn(
+            "- **A) Asya Hun Devleti:** Onlu teşkilatı (düzenli orduyu) kuran ilk devlettir.",
+            out,
+        )
+        self.assertIn(
+            "- **C) Uygurlar:** Yerleşik hayata geçen ilk Türk devletidir.",
+            out,
+        )
+        self.assertIn(
+            "- **D) İskitler (Sakalar):** Tarihte bilinen ilk Türk topluluğudur",
+            out,
+        )
+        self.assertIn(
+            "- **E) Hazarlar:** Museviliği benimseyen ilk ve tek Türk devletidir.",
+            out,
+        )
+        self.assertNotIn("devlettir.**", out)
+        self.assertNotIn("\n- **\n", out)
+        self.assertNotIn("  - Onlu", out)
+        again = normalize_pasted_solution(out)
+        self.assertEqual(again, out)
+
+    def test_panel_resave_preserves_intentional_solution_edits(self):
+        """Kayıtlı çözümü panelde yeniden kaydetmek biçim/metin düzenlemesini silmemeli."""
+        src = (
+            "📌 **Diğer Seçenekler Neden Yanlış?**\n\n"
+            "- **A) Asya Hun Devleti:** Onlu teşkilatı kuran ilk devlettir.\n\n"
+            "- **C) Uygurlar:** Yerleşik hayata geçen ilk Türk devletidir.\n\n"
+            "- **E) Hazarlar:** Museviliği benimseyen ilk Türk devletidir."
+        )
+        stored = normalize_pasted_solution(src)
+        self.assertTrue(stored.startswith("📌") or "Diğer Seçenekler" in stored)
+
+        # Biçim: liste işaretini bilinçli kaldır
+        no_bullet = stored.replace("- **A)", "**A)", 1)
+        self.assertEqual(normalize_pasted_solution(no_bullet), no_bullet)
+
+        # Metin: kelime değişikliği
+        renamed = stored.replace("Museviliği", "MUSEVI_EDIT", 1)
+        self.assertIn("MUSEVI_EDIT", normalize_pasted_solution(renamed))
+
+        # Ek satır
+        appended = stored + "\n\n**Manuel not:** panel kaydı korunmalı."
+        out = normalize_pasted_solution(appended)
+        self.assertIn("Manuel not", out)
+        self.assertIn("panel kaydı korunmalı", out)
+
     def test_restore_collapsed_breaks_google_daily_solution_dates(self):
         src = (
             "Çözüm Adımları10.06.2024 Sonu:Tarihi geçmeyen 27 yumurta ertesi güne kalır."
@@ -518,7 +623,12 @@ class RichTextNormalizationTests(SimpleTestCase):
             self.assertIn("- **B) Sosyal ilişkiler eşyanın sembolik değerini belirleyen bir niteliğe sahiptir:**", out)
             self.assertIn("- **C) Seri üretimle birlikte eski eşyalara olan rağbet gün geçtikçe azalmıştır:**", out)
             self.assertIn("- **E) Eşyaya atfedilen değer modanın ölçütlerine göre zamanla değişmiştir:**", out)
-            self.assertIn("  - Metinde insanların bu duruma", out)
+            self.assertIn("Metinde insanların bu duruma", out)
+            self.assertIn(
+                "- **A) İnsanlar, eşyanın yaşam tarzı üzerindeki etkisine uzun süre tepkisiz kalmıştır:** Metinde",
+                out,
+            )
+            self.assertNotIn("  - Metinde", out)
             self.assertNotIn("Olmaz?A)", out)
 
     def test_google_verbal_elenme_nedenleri_bold_letters(self):
@@ -615,6 +725,57 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertNotIn("__##", out)
         self.assertIn("__önemli__", out)
         self.assertIn("\nAlt satır devam ediyor.", out)
+
+    def test_gemini_atx_headings_normalize_to_bold_storage(self):
+        """Gemini ## / * çözümleri kayıt pipeline'ında kanonik forma iner."""
+        from content.rich_text_common import (
+            convert_atx_headings_to_bold,
+            solution_has_storage_defects,
+        )
+        from content.rich_text_storage import normalize_question_for_storage
+
+        src = (
+            "## 1. Aşama: Kenar İncelemesi\n"
+            "\n"
+            "Üçgende *AB* kenarı verilmiştir.\n"
+            "\n"
+            "## 2. Aşama: Oran Kurma\n"
+            "\n"
+            "**Doğru cevap C** seçeneğidir.\n"
+            "\n"
+            "- **A) Yanlış:** oran hatalı\n"
+            "- **B) Eksik:** veri yetersiz\n"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        converted = convert_atx_headings_to_bold(src)
+        self.assertNotRegex(converted, r"(?m)^#{1,3}\s")
+        self.assertIn("**1. Aşama: Kenar İncelemesi**", converted)
+        self.assertIn("*AB*", converted)
+
+        for out in (
+            normalize_pasted_solution(src),
+            normalize_telegram_solution(src),
+        ):
+            self.assertNotRegex(out, r"(?m)^#{1,3}\s")
+            self.assertNotIn("## ", out)
+            self.assertIn("**1. Aşama: Kenar İncelemesi**", out)
+            self.assertIn("**2. Aşama: Oran Kurma**", out)
+            self.assertIn("*AB*", out)
+            self.assertEqual(out, normalize_pasted_solution(out))
+            self.assertEqual(out, normalize_telegram_solution(out))
+
+        question = Question(
+            stem="Soru",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            solution=src,
+        )
+        normalize_question_for_storage(question)
+        self.assertNotIn("## ", question.solution)
+        self.assertIn("**1. Aşama: Kenar İncelemesi**", question.solution)
 
     def test_demote_block_underline_idempotent_in_telegram_pipeline(self):
         src = (
@@ -778,7 +939,8 @@ class TelegramAiSolutionMessagingTests(TestCase):
         )
         self.question.refresh_from_db()
         self.assertIn("Gemini otomatik çözüm kayıtlı", reply.text)
-        self.assertIn("## 1. Adım", self.question.solution)
+        self.assertIn("1. Adım", self.question.solution)
+        self.assertTrue((self.question.solution or "").strip())
 
     def test_ai_solution_status_note_before_ocr(self):
         self.assertIn(

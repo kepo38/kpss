@@ -938,7 +938,9 @@ def repair_question_with_gemini(
     if letter:
         updates["correct_option"] = letter
     solution = (getattr(ocr, "solution", "") or "").strip()
-    if solution:
+    # Panelde elle yazılmış çözümü GET otomatik onarımında ezme.
+    existing_solution = (getattr(question, "solution", "") or "").strip()
+    if solution and not existing_solution:
         updates["solution"] = solution
     figure_svg = _sanitize_figure_svg(getattr(ocr, "figure_svg", "") or "")
     if figure_svg:

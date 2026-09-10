@@ -727,17 +727,17 @@
         }
       }
       if (sol) {
-        var solFormEl = solutionFieldEl();
-        if (!shouldKeepServerPreview(solBody, solFormEl, sol)) {
-          solBody.innerHTML = window.KpssMathRender
-            ? (window.KpssMathRender.solutionStoredDocumentHtml
-                ? window.KpssMathRender.solutionStoredDocumentHtml(sol)
-                : window.KpssMathRender.solutionDocumentHtml
-                  ? window.KpssMathRender.solutionDocumentHtml(sol)
-                  : window.KpssMathRender.examDocumentHtml(sol))
-            : stemToHtml(sol);
-          solBody.setAttribute("data-initial-text", sol);
-        }
+        // Sunucu gövdesi düz markdown metnidir (HTML değil); her sync'te
+        // MathRender ile boya — aksi halde ## / * literal görünür.
+        solBody.innerHTML = window.KpssMathRender
+          ? (window.KpssMathRender.solutionStoredDocumentHtml
+              ? window.KpssMathRender.solutionStoredDocumentHtml(sol)
+              : window.KpssMathRender.solutionDocumentHtml
+                ? window.KpssMathRender.solutionDocumentHtml(sol)
+                : window.KpssMathRender.examDocumentHtml(sol))
+          : stemToHtml(sol);
+        solBody.setAttribute("data-initial-text", sol);
+        solBody.removeAttribute("data-server-rendered");
         solBody.classList.remove("is-empty");
       } else if (solBody.dataset.previewDirty !== "1") {
         solBody.textContent = "";

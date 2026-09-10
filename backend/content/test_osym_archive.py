@@ -95,3 +95,28 @@ class OsmArchiveLabelTests(SimpleTestCase):
             resolve_to_catalog_key("2025 Hakimlik"),
             "2025 Hakimlik",
         )
+
+    def test_ayt_short_label_resolves_to_catalog(self):
+        slot = OsymArchiveSlot(
+            family="YKS",
+            exam_name="AYT",
+            session_key="ayt",
+            session_name="",
+            expected_count=80,
+        )
+        self.assertEqual(slot.canonical_label(2026), "2026 AYT")
+        self.assertEqual(resolve_to_catalog_key("2026 AYT"), "2026 AYT")
+
+    def test_legacy_ayt_subtypes_collapse(self):
+        self.assertEqual(
+            archive_key_from_label("2026 AYT Eşit Ağırlık · Alan Yeterlilik Testi"),
+            "2026 AYT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 AYT Sayısal"),
+            "2025 AYT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2024 AYT Dil · Yabancı Dil Testi"),
+            "2024 AYT",
+        )

@@ -17,6 +17,12 @@ from .osym_cikmis import normalize_osym_cikmis_label
 LABEL_SEPARATOR = " · "
 SORU_SUFFIX_RE = re.compile(r"\s·\s*soru\s+\d+\s*$", re.IGNORECASE)
 YEAR_PREFIX_RE = re.compile(r"^(\d{4})\s+(.+)$")
+# Eski panel etiketleri: «2026 AYT Eşit Ağırlık · Alan Yeterlilik Testi» → «2026 AYT»
+_AYT_LEGACY_EXAM_RE = re.compile(
+    r"^(\d{4})\s+AYT\s+(?:Sayısal|Sözel|Eşit\s+Ağırlık|Dil)"
+    r"(?:\s·\s*(?:Alan Yeterlilik Testi|Yabancı Dil Testi|ayt(?:_(?:say|soz|ea|dil))?))?$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -120,23 +126,17 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
     },
     {
         "family": "YKS",
-        "exam_name": "AYT Sayısal",
-        "sessions": (("ayt_say", "Alan Yeterlilik Testi", 80),),
-    },
-    {
-        "family": "YKS",
-        "exam_name": "AYT Sözel",
-        "sessions": (("ayt_soz", "Alan Yeterlilik Testi", 80),),
-    },
-    {
-        "family": "YKS",
-        "exam_name": "AYT Eşit Ağırlık",
-        "sessions": (("ayt_ea", "Alan Yeterlilik Testi", 80),),
-    },
-    {
-        "family": "YKS",
-        "exam_name": "AYT Dil",
-        "sessions": (("ayt_dil", "Yabancı Dil Testi", 80),),
+        "exam_name": "AYT",
+        "sessions": (("ayt", "", 80),),
+        "short_aliases": (
+            "ayt sayısal",
+            "ayt sayisal",
+            "ayt sözel",
+            "ayt sozel",
+            "ayt eşit ağırlık",
+            "ayt esit agirlik",
+            "ayt dil",
+        ),
     },
     {
         "family": "DGS",
@@ -183,7 +183,17 @@ def archive_key_from_label(raw: str) -> str:
     normalized = normalize_osym_cikmis_label(raw)
     if not normalized:
         return ""
-    return normalize_osym_cikmis_label(SORU_SUFFIX_RE.sub("", normalized))
+    return _collapse_legacy_exam_labels(
+        normalize_osym_cikmis_label(SORU_SUFFIX_RE.sub("", normalized))
+    )
+
+
+def _collapse_legacy_exam_labels(key: str) -> str:
+    """Eski YKS alt tür etiketlerini güncel katalog biçimine indirger."""
+    match = _AYT_LEGACY_EXAM_RE.match(key)
+    if match:
+        return f"{match.group(1)} AYT"
+    return key
 
 
 def _alias_fold(text: str) -> str:

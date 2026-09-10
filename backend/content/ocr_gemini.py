@@ -127,7 +127,7 @@ detayli_cozum:
 - Matematikte LaTeX ($...$) kullan.
 - Çözümü mobil uygulama MarkdownBody ile gösterecek; HTML kullanma.
 - Her paragraf/aşama arasında boş satır bırak.
-- Ana adım başlıkları yalnızca ## ile (ör. ## 1. Aşama: Kenar İncelemesi).
+- Ana adım başlıklarını **kalın** yaz (ör. **1. Aşama: Kenar İncelemesi**); # / ## / ### kullanma.
 - Kritik kavram/şık/sonuç için **kalın** kullan; tüm paragrafı kalın yapma.
 - Romen rakamlı öncülleri düz metin yaz (I. … II. …); otomatik liste üretme.
 - Yön okları yalnızca → sembolü; sağında solunda boşluk bırak.
@@ -179,7 +179,7 @@ _MARKDOWN_SOLUTION_RULES = """
 Mobil uygulama çözüm formatı (TAVİZSİZ):
 - Yalnızca standart Markdown; HTML etiketi kullanma.
 - Her paragraf/aşama arasında bir boş satır bırak.
-- Ana adım başlıkları yalnızca ## ile yaz (tek # veya ### kullanma).
+- Ana adım başlıklarını **kalın** yaz (ör. **1. Aşama: Kenar İncelemesi**); # / ## / ### kullanma.
 - Kritik kavram/şık/sonuç için **kalın**; tüm paragrafı kalın yapma.
 - Romen rakamlı öncülleri düz metin yaz (I. … II. …); otomatik liste üretme.
 - Matematik ifadeleri $...$ içinde veya düz metinde bozulmadan yaz.
@@ -220,7 +220,7 @@ Kurallar:
 - Görselde işaretli/daireli şık varsa onu kullan; yoksa soruyu çözerek belirle
 - detayli_cozum: Türkçe, adım adım, öğretici
 - Matematikte LaTeX ($...$) kullan
-- Mobil uygulama Markdown formatı: paragraflar arası boş satır, ## adım başlıkları, **kalın** vurgu
+- Mobil uygulama Markdown formatı: paragraflar arası boş satır, **kalın** adım başlıkları (# kullanma), **kalın** vurgu
 
 Çıktı yalnızca şu JSON (başka metin yok):
 {"dogru_cevap": "C", "detayli_cozum": "..."}

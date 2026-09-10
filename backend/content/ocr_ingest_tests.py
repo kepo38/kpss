@@ -1,7 +1,7 @@
 """OCR ingest — Gemini fallback logging ve onarım."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from types import SimpleNamespace
 
@@ -353,3 +353,88 @@ class QuestionNeedsGeminiRepairTests(SimpleTestCase):
             solution="Çözüm var",
         )
         self.assertFalse(_question_needs_gemini_repair(q))
+
+
+class RepairQuestionPreservesSolutionTests(SimpleTestCase):
+    def _fake_image(self):
+        return SimpleNamespace(
+            open=lambda *a, **k: MagicMock(
+                __enter__=lambda s: s,
+                __exit__=lambda *a: False,
+                read=lambda: b"fake",
+            ),
+            name="questions/x.jpg",
+        )
+
+    @patch("content.ocr_ingest.refresh_question_embedding")
+    @patch("content.ocr_ingest.normalize_question_for_storage")
+    @patch("content.ocr_ingest.ocr_question_image_gemini")
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    def test_does_not_overwrite_existing_solution(self, _cfg, mock_ocr, _norm, _emb):
+        from content.ocr_ingest import repair_question_with_gemini
+
+        mock_ocr.return_value = SimpleNamespace(
+            ok=True,
+            stem="Yeni stem",
+            options={"A": "Bir", "B": "İki", "C": "Üç", "D": "Dört", "E": "Beş"},
+            correct_option="B",
+            solution="OCR çözüm metni",
+            figure_svg="",
+            raw_text="",
+            engine="gemini",
+        )
+        question = SimpleNamespace(
+            pk=99,
+            public_id="q_testpreserve",
+            image=self._fake_image(),
+            stem="Eski stem",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            correct_option="A",
+            solution="Panelde kaydedilmiş çözüm",
+            figure_svg="",
+            save=MagicMock(),
+        )
+        result = repair_question_with_gemini(question, dry_run=False)
+        self.assertTrue(result.get("ok"))
+        self.assertNotIn("solution", result.get("updates") or {})
+        self.assertEqual(question.solution, "Panelde kaydedilmiş çözüm")
+
+    @patch("content.ocr_ingest.refresh_question_embedding")
+    @patch("content.ocr_ingest.normalize_question_for_storage")
+    @patch("content.ocr_ingest.ocr_question_image_gemini")
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    def test_fills_solution_when_empty(self, _cfg, mock_ocr, _norm, _emb):
+        from content.ocr_ingest import repair_question_with_gemini
+
+        mock_ocr.return_value = SimpleNamespace(
+            ok=True,
+            stem="Yeni stem",
+            options={"A": "Bir", "B": "İki", "C": "Üç", "D": "Dört", "E": "Beş"},
+            correct_option="B",
+            solution="OCR çözüm metni",
+            figure_svg="",
+            raw_text="",
+            engine="gemini",
+        )
+        question = SimpleNamespace(
+            pk=100,
+            public_id="q_testfill",
+            image=self._fake_image(),
+            stem="Eski stem",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            correct_option="A",
+            solution="",
+            figure_svg="",
+            save=MagicMock(),
+        )
+        result = repair_question_with_gemini(question, dry_run=False)
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("updates", {}).get("solution"), "OCR çözüm metni")

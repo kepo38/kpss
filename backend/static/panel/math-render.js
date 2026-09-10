@@ -1249,6 +1249,21 @@
       });
       return "§§C" + idx + "§§";
     });
+    // __altı çizili__ / *italik* — mdMarks ile aynı sıra (kalın sonrası).
+    src = src.replace(/__([^_\n]+?)__/g, function (_, inner) {
+      var idx = holders.length;
+      holders.push({
+        html: "<u>" + richInline(inner) + "</u>",
+      });
+      return "§§C" + idx + "§§";
+    });
+    src = src.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, function (_, inner) {
+      var idx = holders.length;
+      holders.push({
+        html: "<em>" + richInline(inner) + "</em>",
+      });
+      return "§§C" + idx + "§§";
+    });
     var out = "";
     var re =
       /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;

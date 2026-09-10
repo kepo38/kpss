@@ -232,7 +232,7 @@
           id="osym-cikmis-adi"
           maxlength="200"
           list="osym-cikmis-suggestions"
-          placeholder="örn. 2025 KPSS Lisans"
+          placeholder="örn. 2026 AYT"
           value="{{ question.osym_cikmis_adi|default:'' }}"
           {% if question.osym_sordu %}required{% endif %}
         >
@@ -242,7 +242,7 @@
         <option value="{{ label }}"></option>
         {% endfor %}
       </datalist>
-      <span class="hint">Yalnızca panelde görünür; testlerde normal ÖSYM rozeti kalır. Arşiv: «2025 KPSS Lisans», «2025 Kaymakamlık», «2025 adli», «2025 idari». İsteğe bağlı « · Soru 12». <a href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a></span>
+      <span class="hint">Yalnızca panelde görünür; testlerde normal ÖSYM rozeti kalır. Arşiv: «2026 AYT», «2025 KPSS Lisans», «2025 Kaymakamlık», «2025 adli», «2025 idari». İsteğe bağlı « · Soru 12». <a href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a></span>
     </div>
     <fieldset style="border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:12px 14px;margin:0 0 8px;">
       <legend style="padding:0 6px;font-size:.9rem;opacity:.9;">Özel test etiketleri</legend>
@@ -345,7 +345,7 @@
 {{ preview_seed|json_script:"question-preview-seed" }}
 {{ scenarios_json|json_script:"question-scenarios-data" }}
 <script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
-<script src="{% static 'panel/question-preview.js' %}?v=26"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=27"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {

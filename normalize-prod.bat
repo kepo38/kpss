@@ -97,67 +97,77 @@ type "%DRY_OUT%"
 echo === DRY-RUN ===>> "%LOG%"
 type "%DRY_OUT%">> "%LOG%"
 del "%DRY_OUT%" >nul 2>&1
-if !DRY_ERR! neq 0 (
-  echo [HATA] Dry-run basarisiz (kod !DRY_ERR!).
-  pause
-  exit /b !DRY_ERR!
-)
+if not "!DRY_ERR!"=="0" goto dry_run_failed
+goto dry_run_ok
+:dry_run_failed
+echo [HATA] Dry-run basarisiz - kod !DRY_ERR!
+pause
+exit /b !DRY_ERR!
+:dry_run_ok
 
-if "%DRY_RUN_ONLY%"=="1" (
-  echo.
-  echo Dry-run tamamlandi. Log: %LOG%
-  pause
+if not "!DRY_RUN_ONLY!"=="1" goto after_dry_run_only
+echo.
+echo Dry-run tamamlandi - Log: !LOG!
+pause
+exit /b 0
+:after_dry_run_only
+
+if not "!SKIP_CONFIRM!"=="0" goto after_confirm
+echo.
+echo Dry-run ciktisini kontrol edin - devam edilirse DB guncellenir
+echo Geri almak icin yedek dosyasini db.sqlite3 uzerine kopyalayin:
+echo   !BACKUP!
+echo.
+set "ANS="
+set /p "ANS=Uygulamaya devam edilsin mi? [e/H]: "
+if /I not "!ANS!"=="e" (
+  echo Iptal edildi
   exit /b 0
 )
-
-if "%SKIP_CONFIRM%"=="0" (
-  echo.
-  echo Dry-run ciktisini kontrol edin. Devam edilirse DB guncellenir.
-  echo Geri almak icin: copy /Y "%BACKUP%" "%DB%"
-  echo.
-  set "ANS="
-  set /p "ANS=Uygulamaya devam edilsin mi? [e/H]: "
-  if /I not "!ANS!"=="e" (
-    echo Iptal edildi.
-    exit /b 0
-  )
-)
+:after_confirm
 
 echo.
 echo [3/5] Normalize uygulaniyor...
 echo === APPLY ===>> "%LOG%"
 "%PY%" manage.py normalize_stored_questions %EXTRA_ARGS% >> "%LOG%" 2>&1
 set "APPLY_ERR=!ERRORLEVEL!"
-if !APPLY_ERR! neq 0 (
-  echo [HATA] Normalize basarisiz (kod !APPLY_ERR!). Log: %LOG%
-  echo Geri alma: copy /Y "%BACKUP%" "%DB%"
-  pause
-  exit /b !APPLY_ERR!
-)
+if not "!APPLY_ERR!"=="0" goto apply_failed
+goto apply_ok
+:apply_failed
+echo [HATA] Normalize basarisiz - kod !APPLY_ERR! - Log: !LOG!
+echo Geri alma yedegi: !BACKUP!
+pause
+exit /b !APPLY_ERR!
+:apply_ok
 
 echo [4/5] Dogrulama dry-run...
 echo === VERIFY DRY-RUN ===>> "%LOG%"
 "%PY%" manage.py normalize_stored_questions --dry-run %EXTRA_ARGS% >> "%LOG%" 2>&1
 set "VERIFY_ERR=!ERRORLEVEL!"
-if !VERIFY_ERR! neq 0 (
-  echo [HATA] Dogrulama dry-run basarisiz (kod !VERIFY_ERR!).
-  pause
-  exit /b !VERIFY_ERR!
-)
+if not "!VERIFY_ERR!"=="0" goto verify_failed
+goto verify_ok
+:verify_failed
+echo [HATA] Dogrulama dry-run basarisiz - kod !VERIFY_ERR!
+pause
+exit /b !VERIFY_ERR!
+:verify_ok
 
-if "%SKIP_TESTS%"=="0" (
-  echo [5/5] Rich-text testleri...
-  echo === TESTS ===>> "%LOG%"
-  "%PY%" manage.py test content.test_rich_text content.test_rich_text_storage content.test_rich_text_parity content.test_rich_text_js_parity -v 0 >> "%LOG%" 2>&1
-  set "TEST_ERR=!ERRORLEVEL!"
-  if !TEST_ERR! neq 0 (
-    echo [HATA] Testler basarisiz (kod !TEST_ERR!). Log: %LOG%
-    pause
-    exit /b !TEST_ERR!
-  )
-) else (
-  echo [5/5] Testler atlandi (--skip-tests).
-)
+if not "!SKIP_TESTS!"=="0" goto skip_tests
+echo [5/5] Rich-text testleri...
+echo === TESTS ===>> "!LOG!"
+"!PY!" manage.py test content.test_rich_text content.test_rich_text_storage content.test_rich_text_parity content.test_rich_text_js_parity -v 0 >> "!LOG!" 2>&1
+set "TEST_ERR=!ERRORLEVEL!"
+if not "!TEST_ERR!"=="0" goto tests_failed
+goto tests_ok
+:tests_failed
+echo [HATA] Testler basarisiz - kod !TEST_ERR! - Log: !LOG!
+pause
+exit /b !TEST_ERR!
+:tests_ok
+goto after_tests
+:skip_tests
+echo [5/5] Testler atlandi (--skip-tests)
+:after_tests
 
 echo.
 echo Bitti.

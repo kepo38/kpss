@@ -24,11 +24,21 @@ from .rich_text_common import (
     normalize_paste_text,
     normalize_roman_solution_sections,
     repair_latex_escapes,
+    repair_solution_storage_defects,
     restore_collapsed_breaks,
     repair_inline_glued_bold,
+    solution_has_storage_defects,
     structure_solution_outline,
     tighten_markdown_markers,
 )
+
+
+def _repair_solution_if_defective(text: str) -> str:
+    """Yalnızca kusurlu kayıtlarda storage onarımı — bilinçli düzenlemeyi koru."""
+    src = text or ""
+    if solution_has_storage_defects(src):
+        return repair_solution_storage_defects(src)
+    return src
 
 
 def normalize_pasted_stem(
@@ -81,7 +91,9 @@ def normalize_pasted_solution(
     if not raw and not html_src:
         return ""
     if not html_src and not _HTML_TAG_RE.search(raw):
-        prestructured = _format_named_solution_sections(raw)
+        prestructured = _repair_solution_if_defective(
+            _format_named_solution_sections(raw)
+        )
         if looks_storage_normalized_solution(prestructured):
             touched = _touchup_storage_solution(prestructured)
             return normalize_turkish_text(touched).strip()
@@ -91,7 +103,7 @@ def normalize_pasted_solution(
         chosen = choose_paste_text(raw, html_src)
     else:
         chosen = choose_paste_text(raw, "")
-    chosen = _format_named_solution_sections(chosen)
+    chosen = _repair_solution_if_defective(_format_named_solution_sections(chosen))
     if looks_storage_normalized_solution(chosen):
         touched = _touchup_storage_solution(chosen)
         return normalize_turkish_text(touched).strip()
