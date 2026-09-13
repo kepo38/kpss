@@ -521,12 +521,21 @@
   .map-marker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* %170: form dışında tam ekran harita (424b459 orijinal davranış). */
 body.map-editor-expanded {
   overflow: hidden;
 }
+/* .form backdrop-filter, fixed editörü form yüksekliğine bağlamasın. */
+body.map-editor-expanded .form {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 #map-question-editor.is-expanded {
   position: fixed;
-  inset: 0;
+  top: var(--topbar-h, 64px);
+  right: clamp(16px, 3vw, 32px);
+  bottom: 0;
+  left: clamp(16px, 3vw, 32px);
   z-index: 80;
   margin: 0;
   padding: 12px 18px 10px;

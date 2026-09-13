@@ -292,6 +292,8 @@
       var padB = parseFloat(cs.paddingBottom) || 0;
       var contentW = Math.max(0, wrap.clientWidth - padL - padR);
       var contentH = Math.max(0, wrap.clientHeight - padT - padB);
+      // Expanded (%170) flex layout may report 0×0 before paint — skip to avoid white canvas.
+      if (contentW <= 0 || contentH <= 0) return;
       var nw = baseImage.naturalWidth;
       var nh = baseImage.naturalHeight;
       var w = contentW;
@@ -1777,18 +1779,20 @@
       notify();
     });
     previewImage.addEventListener("load", notify);
-    if (window.ResizeObserver) {
-      new ResizeObserver(function () {
-        syncFitPlane();
-        if (drag) return;
-        renderMarkers();
-      }).observe(wrap);
-    } else {
-      window.addEventListener("resize", function () {
+    var layoutFrame = 0;
+    function scheduleLayout() {
+      if (layoutFrame) cancelAnimationFrame(layoutFrame);
+      layoutFrame = requestAnimationFrame(function () {
+        layoutFrame = 0;
         syncFitPlane();
         if (drag) return;
         renderMarkers();
       });
+    }
+    if (window.ResizeObserver) {
+      new ResizeObserver(scheduleLayout).observe(wrap);
+    } else {
+      window.addEventListener("resize", scheduleLayout);
     }
 
     function previewImageSrc() {
