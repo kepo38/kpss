@@ -485,7 +485,12 @@ class Question(models.Model):
             "option_c",
             "option_d",
             "option_e",
+            "solution",
         )
+        if update_fields is None or any(f in update_fields for f in content_fields):
+            from .rich_text_storage import normalize_question_for_storage
+
+            normalize_question_for_storage(self)
         if update_fields is None or any(f in update_fields for f in content_fields):
             raised = apply_auto_tags(self, only_raise=True)
             if update_fields is not None and raised:

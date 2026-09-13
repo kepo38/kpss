@@ -399,9 +399,41 @@ def _sanitize_figure_svg(raw: str) -> str:
     return sanitize_figure_svg(raw)
 
 
+def _lookup_question_by_query(raw: str) -> Question | None:
+    """Panel araması: sayısal pk veya public_id (örn. q_f0f5fc7ff9)."""
+    q = (raw or "").strip().lstrip("#")
+    if not q:
+        return None
+    base = Question.objects.select_related("topic")
+    if q.isdigit():
+        found = base.filter(pk=int(q)).first()
+        if found:
+            return found
+    found = base.filter(public_id__iexact=q).first()
+    if found:
+        return found
+    if not q.lower().startswith("q_"):
+        return base.filter(public_id__iexact=f"q_{q}").first()
+    return None
+
+
 @login_required
 @staff_required
 def panel_home(request: HttpRequest) -> HttpResponse:
+    question_query = (request.GET.get("q") or "").strip()
+    if question_query:
+        question = _lookup_question_by_query(question_query)
+        if question:
+            return redirect(
+                "panel_question_edit",
+                topic_id=question.topic_id,
+                question_id=question.pk,
+            )
+        messages.error(
+            request,
+            f"«{question_query}» ile eşleşen soru bulunamadı.",
+        )
+
     subjects = (
         Subject.objects.annotate(
             topic_count=Count("topics", distinct=True),
@@ -435,6 +467,7 @@ def panel_home(request: HttpRequest) -> HttpResponse:
             "today_questions": today_questions,
             "today_question_count": today_qs.count(),
             "today_pending_count": today_pending_count,
+            "question_query": question_query,
             "page_title": "Dersler",
         },
     )

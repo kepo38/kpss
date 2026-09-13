@@ -939,8 +939,10 @@
   }
 
   function repairSplitBoldLines(text) {
+    // Yalnız girintili devam satırı: ``**baş\n  devam**``.
+    // Boş satırla ayrılmış ``**4. …**`` / ``**Neden …?**`` birleşmesin.
     return String(text || "").replace(
-      /\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*/g,
+      /\*\*([^\n*][^\n]*?)\n[ \t]+([^\n*][^\n]*?)\*\*/g,
       "**$1$2**"
     );
   }
@@ -1512,8 +1514,11 @@
         }
         return;
       }
+      var sectionAsk = /^\*\*(?:Neden|Niçin|Peki|Sonuç|Not|Uyarı|Açıklama)\b/i.test(
+        trimmed
+      );
       var questionLike =
-        /\?\s*\**$/.test(trimmed) ||
+        (!sectionAsk && /\?\s*\**$/.test(trimmed)) ||
         /\b(?:ifadelerinden|hangileri|yukarıdakilerden)\b/i.test(trimmed);
       if (
         !examMode &&

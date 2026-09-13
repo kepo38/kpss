@@ -77,6 +77,11 @@ class Command(BaseCommand):
             action="store_true",
             help="Yalnızca yayınlanmış sorular.",
         )
+        parser.add_argument(
+            "--telegram-only",
+            action="store_true",
+            help="Yalnızca Telegram kaynaklı sorular.",
+        )
 
     def handle(self, *args, **options):
         dry_run = bool(options["dry_run"])
@@ -87,12 +92,15 @@ class Command(BaseCommand):
         only_changed = not bool(options.get("include_unchanged"))
         unpublished_only = bool(options.get("unpublished_only"))
         published_only = bool(options.get("published_only"))
+        telegram_only = bool(options.get("telegram_only"))
 
         qs = Question.objects.all().order_by("pk")
         if public_ids:
             qs = qs.filter(public_id__in=public_ids)
         elif pks:
             qs = qs.filter(pk__in=pks)
+        if telegram_only:
+            qs = qs.filter(submission_source="telegram")
         if unpublished_only:
             qs = qs.filter(is_published=False)
         elif published_only:

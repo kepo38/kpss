@@ -777,6 +777,82 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertNotIn("## ", question.solution)
         self.assertIn("**1. Aşama: Kenar İncelemesi**", question.solution)
 
+    def test_glued_gemini_numbered_items_q_d958afaaed(self):
+        """Gemini ``**1. …** 2. …** 3. …**`` aynı satırda kalmasın."""
+        from content.rich_text_common import (
+            solution_has_storage_defects,
+            split_glued_numbered_bold_items,
+        )
+
+        src = (
+            "**Çözüm Analizi**\n"
+            "Metni incelediğimizde simülasyon teorisinin temel özelliklerinin "
+            "şunlar olduğu görülmektedir:\n"
+            "**1. Gerçeğin aslına olan bağlılığın kopması ve simülasyonun kendi "
+            "gerçekliğini inşa etmesi (A şıkkı ile örtüşür).** 2. Bireyin kurgu "
+            "(illüzyon) ile gerçeklik (realite) arasındaki farkı ayırt edememesi "
+            "(B şıkkı ile örtüşür).** 3. Referans alınacak bir dış dünyanın "
+            "kalmaması (D şıkkı ile örtüşür).**\n"
+            "\n"
+            "**4. Gerçeğin temsil edilmeyip, simülasyonun bir türevi haline "
+            "gelmesi (E şıkkı ile örtüşür).**\n"
+            "\n"
+            "**Neden C Şıkkı?**\n"
+            "Metinde kitle iletişim araçlarının yanılsamaları **kalıcı hale "
+            "getirdiğine** dair bir ifade yer almamaktadır."
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        split = split_glued_numbered_bold_items(src)
+        self.assertIn("**1. Gerçeğin aslına olan bağlılığın kopması", split)
+        self.assertIn("\n**2. Bireyin kurgu", split)
+        self.assertIn("\n**3. Referans alınacak", split)
+        self.assertIn("**4. Gerçeğin temsil edilmeyip", split)
+        self.assertIn("**Neden C Şıkkı?**", split)
+
+        out = normalize_pasted_solution(src)
+        self.assertRegex(out, r"(?m)^\*\*1\. ")
+        self.assertRegex(out, r"(?m)^\*\*2\. ")
+        self.assertRegex(out, r"(?m)^\*\*3\. ")
+        self.assertRegex(out, r"(?m)^\*\*4\. ")
+        self.assertRegex(out, r"(?m)^\*\*Neden C Şıkkı\?\*\*")
+        self.assertFalse(solution_has_storage_defects(out))
+        self.assertEqual(out, normalize_pasted_solution(out))
+
+    def test_repair_broken_option_bullet_colons_q_13262387c4(self):
+        """``- **A):** Başlık**: gövde.:**`` şık satırları kanonik maddeye iner."""
+        from content.rich_text_common import (
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+        )
+
+        src = (
+            "**Seçeneklerin Analizi**\n\n"
+            "- **A):** Hatt-ı Hümayun**: Padişahın kendi el yazısıyla yazdığı veya "
+            "onayladığı emirlerdir. Tanım doğrudur.:**\n\n"
+            "- **E):** Adaletname**: Seçenekte verilen tanım, daha çok **Amanname** "
+            "veya benzeri koruma belgeleriyle karıştırılmıştır. Bu nedenle E "
+            "seçeneğindeki tanım yanlıştır.:**"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        repaired = repair_solution_storage_defects(src)
+        self.assertIn(
+            "- **A) Hatt-ı Hümayun:** Padişahın kendi el yazısıyla yazdığı veya "
+            "onayladığı emirlerdir. Tanım doğrudur.",
+            repaired,
+        )
+        self.assertIn(
+            "- **E) Adaletname:** Seçenekte verilen tanım, daha çok **Amanname**",
+            repaired,
+        )
+        self.assertNotIn("):**", repaired)
+        self.assertNotIn(".:**", repaired)
+        self.assertFalse(solution_has_storage_defects(repaired))
+        self.assertEqual(repaired, repair_solution_storage_defects(repaired))
+
+        out = normalize_pasted_solution(src)
+        self.assertEqual(out, normalize_pasted_solution(out))
+        self.assertIn("- **A) Hatt-ı Hümayun:**", out)
+
     def test_demote_block_underline_idempotent_in_telegram_pipeline(self):
         src = (
             "__## 1. Aşama: Tarihsel Süreci İnceleme__\n"

@@ -5,6 +5,23 @@
   <p class="lead">Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.</p>
 </header>
 
+<form method="get" action="{% url 'panel_home' %}" class="panel-card question-id-search" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;padding:14px 16px;">
+  <label for="question-id-q" style="margin:0;font-weight:600;white-space:nowrap;">Soru ara</label>
+  <input
+    type="search"
+    id="question-id-q"
+    name="q"
+    value="{{ question_query|default:'' }}"
+    placeholder="public_id veya pk — örn. q_f0f5fc7ff9"
+    autocomplete="off"
+    style="flex:1;min-width:220px;padding:10px 12px;border-radius:8px;border:1px solid rgba(148,163,184,.35);background:rgba(15,23,42,.45);color:inherit;"
+  >
+  <button class="btn btn-primary" type="submit">Soruya git</button>
+  {% if question_query %}
+  <a class="btn btn-ghost" href="{% url 'panel_home' %}">Temizle</a>
+  {% endif %}
+</form>
+
 <section class="panel-card today-questions-card">
   <div class="panel-card-head">
     <div>

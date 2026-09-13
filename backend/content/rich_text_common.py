@@ -1610,6 +1610,9 @@ def is_structured_solution_outline(text: str) -> bool:
 _OPTION_HEADER_ONLY_RE = re.compile(
     r"^(\s*[-•*◦○–—]\s+)\*\*([A-E])\)\s+([^*\n]+?):\*\*\s*$"
 )
+_BROKEN_OPTION_BULLET_RE = re.compile(
+    r"^(\s*[-•*◦○–—]\s+)\*\*([A-E])\):\*\*\s+(.+?)\*\*:\s+(.+?)\.\:\*\*\s*$"
+)
 _OPTION_NESTED_BODY_RE = re.compile(r"^(\s*[-•*◦○–—]\s+)(.+?)\s*$")
 _ORPHAN_TRAILING_BOLD_RE = re.compile(
     r"(?m)^\s*[-•*◦○–—]\s+(?!\*\*)(.*\S)\*\*\s*$"
@@ -1629,6 +1632,21 @@ def _strip_orphan_trailing_bold(text: str) -> str:
     return src
 
 
+def _repair_broken_option_bullet_colons(text: str) -> str:
+    """``- **A):** Başlık**: gövde.:**`` → ``- **A) Başlık:** gövde.``"""
+    out: list[str] = []
+    for line in (text or "").replace("\r\n", "\n").split("\n"):
+        match = _BROKEN_OPTION_BULLET_RE.match(line)
+        if match:
+            prefix, letter, title, body = match.groups()
+            out.append(f"{prefix}**{letter}) {title.strip()}:** {body.strip()}.")
+            continue
+        if re.match(r"^\s*[-•*◦○–—]\s+\*\*[A-E]\)", line):
+            line = re.sub(r"\.\:\*\*\s*$", ".", line)
+        out.append(line)
+    return "\n".join(out)
+
+
 def solution_has_storage_defects(text: str) -> bool:
     """Kayıtlı çözüm hâlâ yapışık/bozuk markdown içeriyor mu?"""
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -1643,6 +1661,9 @@ def solution_has_storage_defects(text: str) -> bool:
         return True
     # ``- body.**`` / ``  - body.**`` — kalın açılışı olmayan yetim kapanış
     if _ORPHAN_TRAILING_BOLD_RE.search(src):
+        return True
+    # ``- **A):** Başlık**: gövde.:**`` — bozuk şık madde biçimi
+    if re.search(r"(?m)^\s*[-•*◦○–—]\s+\*\*[A-E]\):\*\*", src):
         return True
     # ``- **A) Title:**`` + tek çocuk gövde (``body.**`` dahil) → tek satır olmalı
     lines = src.split("\n")
@@ -1692,7 +1713,53 @@ def solution_has_storage_defects(text: str) -> bool:
         glued_options = len(re.findall(r"[A-E]\)\s+[A-ZÇĞİÖŞÜ]", src))
         if glued_options >= 2 and option_hits < 2:
             return True
+    if _has_glued_numbered_items(src):
+        return True
     return False
+
+
+_ARABIC_NUM_TOKEN_RE = re.compile(r"(?:(?<=\*\*)\s+|(?:^|(?<=\s)))\d+\.\s+")
+_GLUED_NUMBERED_SPLIT_RE = re.compile(r"(?<=\*\*)\s+(?=\d+\.\s+)")
+_SENTENCE_NUMBERED_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=\d+\.\s+)")
+
+
+def _has_glued_numbered_items(text: str) -> bool:
+    """Aynı satırda birden fazla ``1. / 2.`` madde (Gemini yapışması)."""
+    for line in (text or "").split("\n"):
+        if len(_ARABIC_NUM_TOKEN_RE.findall(line)) >= 2:
+            return True
+    return False
+
+
+def split_glued_numbered_bold_items(text: str) -> str:
+    """``**1. …** 2. …** 3. …**`` → ayrı ``**N. …**`` satırları."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip() or not _has_glued_numbered_items(src):
+        return src
+    out: list[str] = []
+    for raw in src.split("\n"):
+        line = raw.strip()
+        if len(_ARABIC_NUM_TOKEN_RE.findall(line)) < 2:
+            out.append(raw)
+            continue
+        parts = _GLUED_NUMBERED_SPLIT_RE.split(line)
+        if len(parts) < 2:
+            parts = _SENTENCE_NUMBERED_SPLIT_RE.split(line)
+        if len(parts) < 2:
+            out.append(raw)
+            continue
+        if out and out[-1].strip():
+            out.append("")
+        for part in parts:
+            piece = part.strip().strip("*").strip()
+            if not piece:
+                continue
+            if re.match(r"^\d+\.\s+", piece):
+                out.append(f"**{piece}**")
+                out.append("")
+            else:
+                out.append(piece)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 def _collapse_option_header_body_lines(text: str) -> str:
@@ -1807,6 +1874,8 @@ def repair_solution_storage_defects(text: str) -> str:
         return src
 
     src = convert_atx_headings_to_bold(src)
+    src = _repair_broken_option_bullet_colons(src)
+    src = split_glued_numbered_bold_items(src)
     src = re.sub(r"\*\*metin\*\*\s*$", "", src, flags=re.IGNORECASE)
     src = re.sub(r"(?m)^\s*-\s*\*\*\s*$", "", src)
     src = re.sub(r"(?m)^\s*\*\*\s*$", "", src)
