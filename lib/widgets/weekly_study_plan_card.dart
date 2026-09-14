@@ -722,9 +722,12 @@ class _SelectedDayPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const maxVisibleTasks = 3;
-    final visibleTasks = day.tasks.take(maxVisibleTasks).toList();
-    final hiddenCount = day.tasks.length - visibleTasks.length;
+    const maxFreeVisibleTasks = 3;
+    final visibleTasks = isPremium
+        ? day.tasks
+        : day.tasks.take(maxFreeVisibleTasks).toList();
+    final hiddenCount =
+        isPremium ? 0 : day.tasks.length - visibleTasks.length;
 
     final content = Container(
       width: double.infinity,
@@ -886,7 +889,7 @@ class _SelectedDayPanel extends StatelessWidget {
                     ),
                     if (i < visibleTasks.length - 1) const SizedBox(height: 8),
                   ],
-                  if (hiddenCount > 0) ...[
+                  if (!isPremium && hiddenCount > 0) ...[
                     const SizedBox(height: 10),
                     DailyMissionProTeaser(
                       hiddenCount: hiddenCount,

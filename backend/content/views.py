@@ -234,6 +234,8 @@ class PremiumSyncView(APIView):
                 )
 
         if not is_premium:
+            if (user.premium_grant_note or "").strip():
+                return Response(user_to_dict(user))
             user.is_premium = False
             user.premium_expires_at = None
             user.premium_product_id = ""

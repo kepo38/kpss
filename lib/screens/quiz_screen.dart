@@ -639,41 +639,65 @@ class _QuizScreenState extends State<QuizScreen>
     return 'Asla pes etme. Yanlışlar en büyük öğretmendir.';
   }
 
+  double? _correctOptionPercentFrom(Map<String, double> distribution) {
+    if (distribution.isEmpty) return null;
+    final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
+    double? livePct =
+        distribution[correctKey] ?? distribution[_currentQuestion.dogruCevap];
+    if (livePct == null) {
+      for (final entry in distribution.entries) {
+        if (entry.key.trim().toUpperCase() == correctKey) {
+          livePct = entry.value;
+          break;
+        }
+      }
+    }
+    if (livePct == null) return null;
+    return livePct <= 1.0 ? livePct * 100 : livePct;
+  }
+
   /// Doğru cevaplayan oranı — `Başarı: %49`. Veri yoksa `Başarı: —`.
   double? _successRatePercent() {
-    final summaryRate = _attemptSummaries[_currentQuestion.id]?.correctRate;
-    if (summaryRate != null) {
-      return summaryRate <= 1.0 ? summaryRate * 100 : summaryRate;
+    final qid = _currentQuestion.id;
+    final summary = _attemptSummaries[qid];
+
+    if (summary?.correctRate != null) {
+      final pct = summary!.correctRate! <= 1.0
+          ? summary.correctRate! * 100
+          : summary.correctRate!;
+      if (pct > 0 || _selectedAnswer == null) return pct;
     }
 
-    final refreshed = _liveCorrectRates[_currentQuestion.id];
+    // Cevaplandıktan sonra yerel dağılım (sunucu gecikmesi / sıfır önbellek).
+    if (_selectedAnswer != null && _showOptionPercentages) {
+      final bumped = _correctOptionPercentFrom(_visibleOptionPercentages);
+      if (bumped != null) return bumped;
+    }
+
+    if (summary != null) {
+      final fromSummaryOptions =
+          _correctOptionPercentFrom(summary.optionPercentages ?? const {});
+      if (fromSummaryOptions != null) return fromSummaryOptions;
+      if (summary.correctRate != null) {
+        return summary.correctRate! <= 1.0
+            ? summary.correctRate! * 100
+            : summary.correctRate!;
+      }
+    }
+
+    final refreshed = _liveCorrectRates[qid];
     if (refreshed != null) {
-      return refreshed <= 1.0 ? refreshed * 100 : refreshed;
+      final pct = refreshed <= 1.0 ? refreshed * 100 : refreshed;
+      if (pct > 0 || _selectedAnswer == null) return pct;
     }
 
     final rate = _currentQuestion.correctRate;
     if (rate != null) {
-      return rate <= 1.0 ? rate * 100 : rate;
+      final pct = rate <= 1.0 ? rate * 100 : rate;
+      if (pct > 0 || _selectedAnswer == null) return pct;
     }
 
-    final live = _visibleOptionPercentages;
-    if (live.isNotEmpty) {
-      final correctKey = _currentQuestion.dogruCevap.trim().toUpperCase();
-      double? livePct = live[correctKey] ?? live[_currentQuestion.dogruCevap];
-      if (livePct == null) {
-        for (final entry in live.entries) {
-          if (entry.key.trim().toUpperCase() == correctKey) {
-            livePct = entry.value;
-            break;
-          }
-        }
-      }
-      if (livePct != null) {
-        return livePct <= 1.0 ? livePct * 100 : livePct;
-      }
-    }
-
-    return null;
+    return _correctOptionPercentFrom(_visibleOptionPercentages);
   }
 
   String _successRateLabel() {

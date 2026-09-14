@@ -322,12 +322,23 @@ class PlayBillingService {
     _applyPremiumState(true, productId: productId);
   }
 
+  bool _hasServerPremiumGrant() {
+    final user = DatabaseService.instance.currentUser;
+    if (user == null) return false;
+    if ((user.premiumGrantNote ?? '').trim().isNotEmpty) return true;
+    if (!user.isPremium) return false;
+    if (user.premiumProductId.isNotEmpty) return false;
+    final expiry = user.premiumBitisTarihi;
+    return expiry == null || expiry.isAfter(DateTime.now());
+  }
+
   Future<void> _revokePremium() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(IapConstants.premiumPrefsKey);
     await prefs.remove(IapConstants.premiumProductPrefsKey);
     await prefs.remove(IapConstants.premiumExpiryPrefsKey);
     _applyPremiumState(false);
+    if (_hasServerPremiumGrant()) return;
     unawaited(
       PremiumSyncService.instance.syncToBackend(
         isPremium: false,
@@ -342,6 +353,13 @@ class PlayBillingService {
     String? productId,
     DateTime? expiry,
   }) {
+    if (!isPremium && _hasServerPremiumGrant()) {
+      premiumNotifier.value = false;
+      _activeProductId = null;
+      AdManager.instance.setPremium(true);
+      return;
+    }
+
     premiumNotifier.value = isPremium;
     _activeProductId = isPremium ? productId : null;
 
