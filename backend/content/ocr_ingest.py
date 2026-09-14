@@ -99,10 +99,26 @@ def _option_is_weak(val: str) -> bool:
     return (val or "").strip() in _OPTION_FORM_PLACEHOLDERS
 
 
+_LATEX_OPTION_RE = re.compile(
+    r"(?:^\$[^$]+\$$|^\$\$[\s\S]+\$\$|\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right)\b)",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_valid_latex_option(val: str) -> bool:
+    """Geçerli $…$ / \\frac şık metni — OCR çöpü sayılmasın."""
+    s = (val or "").strip()
+    if not s:
+        return False
+    return bool(_LATEX_OPTION_RE.search(s))
+
+
 def _option_is_corrupt(val: str) -> bool:
     """Dolu görünen ama OCR/Tesseract çöpü şık metni."""
     s = (val or "").strip()
     if not s or _option_is_weak(s):
+        return False
+    if _looks_like_valid_latex_option(s):
         return False
     if "�" in s:
         return True

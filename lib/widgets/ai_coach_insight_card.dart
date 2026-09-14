@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../services/ai_coach_service.dart';
@@ -318,16 +319,10 @@ class _PremiumCoachCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Expanded(
-                        child: Text(
-                          message,
-                          style: TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 15.5,
-                            height: 1.55,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.1,
-                            color: Colors.white.withValues(alpha: 0.94),
-                          ),
+                        child: _CoachMessageBody(
+                          message: message,
+                          topic: topic,
+                          onTopicTap: onTopicTap,
                         ),
                       ),
                     ],
@@ -361,6 +356,101 @@ class _PremiumCoachCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _CoachMessageBody extends StatefulWidget {
+  final String message;
+  final String? topic;
+  final VoidCallback? onTopicTap;
+
+  const _CoachMessageBody({
+    required this.message,
+    this.topic,
+    this.onTopicTap,
+  });
+
+  @override
+  State<_CoachMessageBody> createState() => _CoachMessageBodyState();
+}
+
+class _CoachMessageBodyState extends State<_CoachMessageBody> {
+  TapGestureRecognizer? _topicTap;
+
+  static final _messageStyle = TextStyle(
+    fontFamily: 'serif',
+    fontSize: 15.5,
+    height: 1.55,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.1,
+    color: Colors.white,
+  );
+
+  @override
+  void didUpdateWidget(covariant _CoachMessageBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onTopicTap != widget.onTopicTap) {
+      _topicTap?.dispose();
+      _topicTap = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _topicTap?.dispose();
+    super.dispose();
+  }
+
+  TapGestureRecognizer? _recognizerFor(VoidCallback onTap) {
+    _topicTap ??= TapGestureRecognizer();
+    _topicTap!.onTap = onTap;
+    return _topicTap;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = _messageStyle.copyWith(
+      color: Colors.white.withValues(alpha: 0.94),
+    );
+    final topic = widget.topic?.trim();
+    final onTap = widget.onTopicTap;
+    if (topic == null || topic.isEmpty || onTap == null) {
+      return Text(widget.message, style: baseStyle);
+    }
+
+    final linkStyle = baseStyle.copyWith(
+      color: AppTheme.champagneLight,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.underline,
+      decorationColor: AppTheme.champagne.withValues(alpha: 0.72),
+    );
+
+    final patterns = <String>[
+      '“$topic”',
+      '"$topic"',
+      ' · $topic.',
+      ' · $topic',
+    ];
+    for (final pattern in patterns) {
+      final idx = widget.message.indexOf(pattern);
+      if (idx < 0) continue;
+      return Text.rich(
+        TextSpan(
+          style: baseStyle,
+          children: [
+            TextSpan(text: widget.message.substring(0, idx)),
+            TextSpan(
+              text: pattern,
+              style: linkStyle,
+              recognizer: _recognizerFor(onTap),
+            ),
+            TextSpan(text: widget.message.substring(idx + pattern.length)),
+          ],
+        ),
+      );
+    }
+
+    return Text(widget.message, style: baseStyle);
   }
 }
 

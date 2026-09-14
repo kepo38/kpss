@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../data/kpss_curriculum.dart';
 import '../models/practice_exam_model.dart';
 import '../models/subject_performance.dart';
@@ -50,7 +52,7 @@ class AiCoachService {
 
     final attempts = ContentBankService.instance
         .attemptsForType(type)
-        .where(ContentBankService.countsTowardDailyHomework)
+        .where(ContentBankService.countsTowardTopicTestAnalytics)
         .toList()
       ..sort((a, b) => b.completedAt.compareTo(a.completedAt));
 
@@ -69,9 +71,7 @@ class AiCoachService {
         topic: topic,
         kpssType: type,
         subjectId: weakest.subjectId,
-        topicId: measuredTopic == null
-            ? null
-            : _topicIdForName(type, weakest.subjectId, measuredTopic),
+        topicId: _topicIdForName(type, weakest.subjectId, topic),
       );
     }
 
@@ -100,9 +100,7 @@ class AiCoachService {
         topic: topic,
         kpssType: type,
         subjectId: weakest.subjectId,
-        topicId: measuredTopic == null
-            ? null
-            : _topicIdForName(type, weakest.subjectId, measuredTopic),
+        topicId: _topicIdForName(type, weakest.subjectId, topic),
       );
     }
 
@@ -128,9 +126,7 @@ class AiCoachService {
       topic: topic,
       kpssType: type,
       subjectId: subjectId,
-      topicId: measuredTopic == null
-          ? null
-          : _topicIdForName(type, subjectId, measuredTopic),
+      topicId: _topicIdForName(type, subjectId, topic),
     );
   }
 
@@ -162,9 +158,11 @@ class AiCoachService {
           topic: decline.$2,
           kpssType: type,
           subjectId: _subjectIdForName(type, decline.$1),
-          // Deneme trendi dersi saptar; statik konu önerisi ölçülmüş bir
-          // zayıf-konu verisi olmadığı için bağlantı oluşturmaz.
-          topicId: null,
+          topicId: _topicIdForName(
+            type,
+            _subjectIdForName(type, decline.$1),
+            decline.$2,
+          ),
         );
       }
     }
@@ -267,21 +265,52 @@ class AiCoachService {
     return null;
   }
 
+  @visibleForTesting
+  String? topicIdForName(
+    KpssType type,
+    String? subjectId,
+    String? topicName,
+  ) =>
+      _topicIdForName(type, subjectId, topicName);
+
   String? _topicIdForName(
     KpssType type,
     String? subjectId,
     String? topicName,
   ) {
-    if (subjectId == null || topicName == null) return null;
+    final normalized = topicName?.trim();
+    if (normalized == null || normalized.isEmpty) return null;
+
+    if (subjectId != null) {
+      final inSubject = _topicIdInSubject(type, subjectId, normalized);
+      if (inSubject != null) return inSubject;
+    }
+
+    for (final subject in KpssCurriculum.subjectsFor(type)) {
+      final id = _topicIdInSubject(type, subject.id, normalized);
+      if (id != null) return id;
+    }
+    return null;
+  }
+
+  String? _topicIdInSubject(
+    KpssType type,
+    String subjectId,
+    String topicName,
+  ) {
     final subject = KpssCurriculum.findSubject(type, subjectId);
     if (subject == null) return null;
     for (final topic in subject.topics) {
-      if (topic.name == topicName || topic.subtopics.contains(topicName)) {
-        return topic.id;
+      if (_topicNameMatches(topic.name, topicName)) return topic.id;
+      for (final sub in topic.subtopics) {
+        if (_topicNameMatches(sub, topicName)) return topic.id;
       }
     }
     return null;
   }
+
+  static bool _topicNameMatches(String candidate, String target) =>
+      candidate.trim().toLowerCase() == target.trim().toLowerCase();
 }
 
 extension _FirstOrNull<E> on List<E> {

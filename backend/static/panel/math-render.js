@@ -1304,7 +1304,7 @@
   /** Şık metni — kalın/italik/altı çizili + matematik (uygulama ExamOptionView ile uyumlu). */
   function optionInline(text) {
     if (!text) return "";
-    return richInline(formatPlain(text));
+    return richInline(examFormat(text));
   }
 
   /** Eski ad — yalnızca LaTeX, markdown yok (tablo ayrıştırma vb.). */

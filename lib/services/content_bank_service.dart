@@ -976,6 +976,14 @@ class ContentBankService extends ChangeNotifier {
     return true;
   }
 
+  /// Gelişim sekmesi / koç analizi — mini deneme, özel test ve demo seed hariç.
+  static bool countsTowardTopicTestAnalytics(TestAttemptModel attempt) {
+    if (!countsTowardErrorReportQuota(attempt)) return false;
+    final id = attempt.testId;
+    if (id == _sampleSeedTestId || id.startsWith('test_seed_')) return false;
+    return true;
+  }
+
   /// Bugün (yerel saat) bu derste tamamlanan konu testi sayısı.
   /// Lisans / Ön Lisans / Ortaöğretim müfredatı ortak — tip ayrımı yok.
   int dailyCompletedTestsForSubject(KpssType type, String subjectId) {
@@ -1325,13 +1333,19 @@ class ContentBankService extends ChangeNotifier {
   bool _pruneSampleSeedProgress() {
     final beforeWrong = _wrongQuestionIds.length;
     final beforeSolved = _solvedQuestionIds.length;
+    final beforeAttempts = _attempts.length;
     _wrongQuestionIds.removeAll(_sampleSeedQuestionIds);
     _solvedQuestionIds.removeAll(_sampleSeedQuestionIds);
     for (final id in _sampleSeedQuestionIds) {
       _wrongQuestionStatuses.remove(id);
     }
+    _attempts.removeWhere(
+      (a) =>
+          a.testId == _sampleSeedTestId || a.testId.startsWith('test_seed_'),
+    );
     return beforeWrong != _wrongQuestionIds.length ||
-        beforeSolved != _solvedQuestionIds.length;
+        beforeSolved != _solvedQuestionIds.length ||
+        beforeAttempts != _attempts.length;
   }
 
   void _pruneWrongQuestionStatuses() {

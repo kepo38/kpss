@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,15 +9,40 @@ import '../theme/app_theme.dart';
 import 'scale_button.dart';
 
 /// Profil üst barındaki bilgilendirici «NEDEN BİZ» tetikleyici.
-class WhyUsButton extends StatelessWidget {
+class WhyUsButton extends StatefulWidget {
   final double height;
 
   const WhyUsButton({super.key, this.height = 30});
 
   @override
+  State<WhyUsButton> createState() => _WhyUsButtonState();
+}
+
+class _WhyUsButtonState extends State<WhyUsButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _shine;
+
+  @override
+  void initState() {
+    super.initState();
+    _shine = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _shine.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final dark = AppTheme.isDark(context);
-    final ink = dark ? AppTheme.champagneLight : const Color(0xFF6B5428);
+    final ink = dark ? AppTheme.champagneLight : const Color(0xFF4A3820);
+    final h = widget.height;
+
     return ScaleButton(
       onPressed: () => showWhyUsComparisonDialog(context),
       child: Tooltip(
@@ -23,56 +50,82 @@ class WhyUsButton extends StatelessWidget {
         child: Semantics(
           button: true,
           label: 'Neden biz? Bilgi',
-          child: Container(
-            height: height,
-            padding: const EdgeInsets.fromLTRB(8, 0, 11, 0),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(height / 2),
-              color: dark
-                  ? const Color(0xFF1A2436)
-                  : const Color(0xFFFFF8EE),
-              border: Border.all(
-                color: AppTheme.champagne.withValues(alpha: dark ? 0.55 : 0.65),
-                width: 1.1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.ink.withValues(alpha: 0.18),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+          child: AnimatedBuilder(
+            animation: _shine,
+            builder: (context, child) {
+              final t = _shine.value;
+              final glow =
+                  0.24 + 0.2 * (0.5 + 0.5 * math.sin(t * math.pi * 2));
+              return Container(
+                height: h,
+                padding: const EdgeInsets.fromLTRB(9, 0, 11, 0),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(h / 2),
+                  gradient: LinearGradient(
+                    begin: Alignment(-1.25 + t * 2.5, -0.4),
+                    end: Alignment(0.15 + t * 2.5, 1.1),
+                    colors: dark
+                        ? const [
+                            Color(0xFF1A2436),
+                            Color(0xFF3D4F68),
+                            Color(0xFF5C4A2E),
+                            Color(0xFF1A2436),
+                          ]
+                        : const [
+                            Color(0xFFFFF8EE),
+                            Color(0xFFEAD4A8),
+                            Color(0xFFF8EDD8),
+                            Color(0xFFD4AF6A),
+                          ],
+                    stops: const [0.0, 0.38, 0.62, 1.0],
+                  ),
+                  border: Border.all(
+                    color: dark
+                        ? AppTheme.champagne.withValues(alpha: 0.72)
+                        : Colors.white.withValues(alpha: 0.55),
+                    width: 1.1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.champagne.withValues(alpha: glow),
+                      blurRadius: 14,
+                      spreadRadius: 0.6,
+                    ),
+                    BoxShadow(
+                      color: AppTheme.ink.withValues(alpha: dark ? 0.38 : 0.16),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-                BoxShadow(
-                  color: AppTheme.champagne.withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
+                child: child,
+              );
+            },
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.info_outline_rounded,
-                  size: 14,
-                  color: ink.withValues(alpha: 0.9),
+                  Icons.auto_awesome_rounded,
+                  size: 13,
+                  color: ink.withValues(alpha: 0.95),
                 ),
                 const SizedBox(width: 5),
                 Text(
                   'NEDEN BİZ',
                   style: GoogleFonts.manrope(
                     fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.55,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.65,
                     height: 1,
                     color: ink,
                   ),
                 ),
-                const SizedBox(width: 3),
+                const SizedBox(width: 2),
                 Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 14,
-                  color: ink.withValues(alpha: 0.55),
+                  color: ink.withValues(alpha: 0.65),
                 ),
               ],
             ),
