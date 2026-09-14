@@ -41,6 +41,31 @@ def _repair_solution_if_defective(text: str) -> str:
     return src
 
 
+def _finalize_storage_solution(text: str) -> str:
+    """Kayıt/önizleme öncesi son geçiş — yapıştırma yolundan bağımsız tek çıkış."""
+    from .rich_text_common import (
+        _repair_glued_italic_open_quotes,
+        _repair_underline_phrase_analysis,
+    )
+
+    src = (text or "").strip()
+    if not src:
+        return ""
+    if looks_storage_normalized_solution(src):
+        return normalize_turkish_text(_touchup_storage_solution(src)).strip()
+    src = _repair_glued_italic_open_quotes(src)
+    src = _repair_underline_phrase_analysis(src)
+    for _ in range(4):
+        if not solution_has_storage_defects(src):
+            break
+        repaired = repair_solution_storage_defects(src)
+        if repaired == src:
+            break
+        src = repaired
+    src = _touchup_storage_solution(src)
+    return normalize_turkish_text(src).strip()
+
+
 def normalize_pasted_stem(
     text: str,
     *,
@@ -91,22 +116,18 @@ def normalize_pasted_solution(
     if not raw and not html_src:
         return ""
     if not html_src and not _HTML_TAG_RE.search(raw):
-        prestructured = _repair_solution_if_defective(
-            _format_named_solution_sections(raw)
-        )
+        prestructured = _format_named_solution_sections(raw)
         if looks_storage_normalized_solution(prestructured):
-            touched = _touchup_storage_solution(prestructured)
-            return normalize_turkish_text(touched).strip()
+            return _finalize_storage_solution(prestructured)
     if _HTML_TAG_RE.search(raw):
         chosen = choose_paste_text(raw, raw)
     elif html_src:
         chosen = choose_paste_text(raw, html_src)
     else:
         chosen = choose_paste_text(raw, "")
-    chosen = _repair_solution_if_defective(_format_named_solution_sections(chosen))
+    chosen = _format_named_solution_sections(chosen)
     if looks_storage_normalized_solution(chosen):
-        touched = _touchup_storage_solution(chosen)
-        return normalize_turkish_text(touched).strip()
+        return _finalize_storage_solution(chosen)
     chosen = restore_collapsed_breaks(chosen)
     chosen = _format_named_solution_sections(chosen)
     chosen = normalize_roman_solution_sections(chosen)
@@ -115,7 +136,7 @@ def normalize_pasted_solution(
     chosen = tighten_markdown_markers(chosen)
     chosen = _ensure_markdown_exterior_spaces(chosen)
     chosen = collapse_italic_quote_marker_spaces(chosen)
-    return normalize_turkish_text(chosen).strip()
+    return _finalize_storage_solution(chosen)
 
 
 def normalize_panel_paste_field(

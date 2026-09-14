@@ -834,13 +834,114 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIn("**Neden C Şıkkı?**", split)
 
         out = normalize_pasted_solution(src)
-        self.assertRegex(out, r"(?m)^\*\*1\. ")
-        self.assertRegex(out, r"(?m)^\*\*2\. ")
-        self.assertRegex(out, r"(?m)^\*\*3\. ")
-        self.assertRegex(out, r"(?m)^\*\*4\. ")
-        self.assertRegex(out, r"(?m)^\*\*Neden C Şıkkı\?\*\*")
+        self.assertRegex(out, r"(?m)^- \*\*1\. ")
+        self.assertRegex(out, r"(?m)^- \*\*2\. ")
+        self.assertRegex(out, r"(?m)^- \*\*3\. ")
+        self.assertRegex(out, r"(?m)^- \*\*4\. ")
+        self.assertIn("Neden C Şıkkı?", out)
         self.assertFalse(solution_has_storage_defects(out))
         self.assertEqual(out, normalize_pasted_solution(out))
+
+    def test_solution_defect_detector_repair_gate(self):
+        """Dedektör yalnızca repair gerçekten değiştirdiğinde kusur sayar (osilasyon önlemi)."""
+        from content.rich_text_common import (
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+        )
+
+        kpss = (
+            "- **A) Önemsiz görülebilecek detaylara bile özen gösterilmesi gerektiğini "
+            "vurgulamaktadır.**\n\n"
+            "  - **Metindeki Karşılığı:** *\"...en ufak çizgi...\"* ifadesidir.\n\n"
+            "- **KPSS Taktiği:** Metindeki kelime oyunu açıklaması."
+        )
+        self.assertFalse(solution_has_storage_defects(kpss))
+
+        color_option = (
+            "- **A) {blue}Sınava hazırlanan __öğrenci,__ paragraf çözüyordu{/blue}. "
+            "Kelimenin kökü öğren- fiilidir."
+        )
+        self.assertFalse(solution_has_storage_defects(color_option))
+
+        glued = (
+            "**(En önce gerçekleşen olay)**- **Mustafa Kemal Paşa'nın Tekâlif-i Milliye "
+            "Emirleri'ni yayımlaması (7-8 Ağustos 1921):** Emirler yayımlandı."
+        )
+        self.assertTrue(solution_has_storage_defects(glued))
+        self.assertNotEqual(repair_solution_storage_defects(glued), glued)
+
+    def test_structure_chronology_solution_q_56a11aed3b(self):
+        """Kronoloji çözümü: yapışık maddeler numaralı listeye ve satır kırığına iner."""
+        from content.rich_text_common import (
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+        )
+
+        src = (
+            "Soruda verilen tüm gelişmeler **1921 yılı** içinde gerçekleşmiştir. "
+            "Kronolojik sıralama şu şekildedir:\n"
+            "**TBMM'de Başkomutanlık Kanunu'nun kabul edilmesi (5 Ağustos 1921):** "
+            "Ordumuz geri çekilince Mustafa Kemal Paşa'ya başkomutanlık verildi. "
+            "**(En önce gerçekleşen olay)**- **Mustafa Kemal Paşa'nın Tekâlif-i Milliye "
+            "Emirleri'ni yayımlaması (7-8 Ağustos 1921):** Emirler yayımlandı.- **Türk "
+            "ordusunun Sakarya Meydan Muharebesi'nde zafer kazanması (13 Eylül 1921):** "
+            "Ordumuz zafer kazandı."
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = repair_solution_storage_defects(src)
+        self.assertRegex(out, r"(?m)^-\s+\*\*1\. TBMM'de Başkomutanlık")
+        self.assertRegex(out, r"(?m)^-\s+\*\*2\. Mustafa Kemal Paşa'nın Tekâlif-i Milliye")
+        self.assertRegex(out, r"(?m)^-\s+\*\*3\. Türk ordusunun Sakarya")
+        self.assertIn("Kronolojik sıralama şu şekildedir:\n\n", out)
+        self.assertFalse(solution_has_storage_defects(out))
+        self.assertEqual(out, normalize_pasted_solution(out))
+
+    def test_finalize_storage_solution_idempotent(self):
+        """Çözüm kaydı tek çıkıştan geçer; ikinci normalize metni değiştirmez."""
+        from content.rich_text_panel import _finalize_storage_solution
+
+        src = (
+            '📌 Altı Çizili Sözün Metinle Eşleşmesi ve Analizi\n'
+            '- **"Renk somut bir kılıfa sokulur..."\n'
+            '**-** Metindeki Bağlamı:** Metinde *"örnek"* und*"yapışık"* metin.\n'
+            '- **Seçenekteki Karşılığı:** Karşılık açıklaması.'
+        )
+        once = _finalize_storage_solution(src)
+        twice = _finalize_storage_solution(once)
+        self.assertEqual(once, twice)
+        self.assertIn("  - **Metindeki Bağlamı:**", once)
+
+    def test_repair_underline_phrase_analysis_q_c386e377d7(self):
+        """Altı çizili söz analizi: **-** alt madde, kırık tırnak, yapışık italik tırnak."""
+        from content.rich_text_common import (
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+        )
+
+        src = (
+            '📌 Altı Çizili Sözün Metinle Eşleşmesi ve Analizi\n'
+            '- **"Renk somut bir kılıfa sokulur..."\n'
+            '**-** Metindeki Bağlamı:** Metinde zihindeki kırmızının sınırsız ve belirsiz '
+            'olduğu; ancak resim sanatında ona *"maddi biçimde yer verildiği"* und*"yüzey '
+            'üzerinde sınırlandığı"* belirtilmiştir. Son cümlede de bu durumun*"renkle '
+            'biçim arasındaki kaçınılmaz ilişki"* olduğu vurgulanır.\n'
+            '- **Seçenekteki Karşılığı:** Bir şeyin somut bir kılıfa girmesi ve maddi bir '
+            'sınır kazanması, seçenekteki **"biçim kazandığı"** ve **"betimlenebilir"** '
+            'hâle geldiği ifadesiyle doğrudan eşleşir.'
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        repaired = repair_solution_storage_defects(src)
+        self.assertIn('- **"Renk somut bir kılıfa sokulur..."**', repaired)
+        self.assertIn("- **Metindeki Bağlamı:**", repaired)
+        self.assertIn("- **Seçenekteki Karşılığı:**", repaired)
+        self.assertIn('und *"yüzey üzerinde sınırlandığı"*', repaired)
+        self.assertIn('durumun *"renkle biçim arasındaki kaçınılmaz ilişki"*', repaired)
+        self.assertNotIn("**-**", repaired)
+        self.assertFalse(solution_has_storage_defects(repaired))
+
+        out = normalize_pasted_solution(src)
+        self.assertEqual(out, normalize_pasted_solution(out))
+        self.assertIn("- **Metindeki Bağlamı:**", out)
 
     def test_repair_broken_option_bullet_colons_q_13262387c4(self):
         """``- **A):** Başlık**: gövde.:**`` şık satırları kanonik maddeye iner."""

@@ -1647,25 +1647,172 @@ def _repair_broken_option_bullet_colons(text: str) -> str:
     return "\n".join(out)
 
 
-def solution_has_storage_defects(text: str) -> bool:
-    """Kayıtlı çözüm hâlâ yapışık/bozuk markdown içeriyor mu?"""
+_CHRONO_INTRO_RE = re.compile(r"Kronolojik\s+s[ıi]ralama", re.IGNORECASE)
+_CHRONO_ITEM_LINE_RE = re.compile(
+    r"^(?:-\s+)?\*\*(?:(\d+)\.\s+)?(.+?\(\d{1,2}(?:-\d{1,2})?\s+"
+    r"[A-Za-zçğıöşüÇĞİÖŞÜ]+\s+\d{4}\))\:\*\*\s*(.*)$",
+    re.IGNORECASE,
+)
+
+
+def _structure_chronology_solution(text: str) -> str:
+    """Kronoloji çözümü: numaralı madde listesi + girişten sonra boş satır."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not _CHRONO_INTRO_RE.search(src):
+        return src
+
+    src = re.sub(
+        r"(Kronolojik\s+s[ıi]ralama[^\n]*:)\s*\n(?!\n)",
+        r"\1\n\n",
+        src,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+
+    lines = src.split("\n")
+    out: list[str] = []
+    in_chrono = False
+    item_num = 0
+
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped:
+            if out and out[-1] != "":
+                out.append("")
+            continue
+
+        if _CHRONO_INTRO_RE.search(stripped) and not in_chrono:
+            in_chrono = True
+            out.append(stripped)
+            out.append("")
+            continue
+
+        if not in_chrono:
+            out.append(raw.rstrip())
+            continue
+
+        match = _CHRONO_ITEM_LINE_RE.match(stripped)
+        if match:
+            item_num += 1
+            existing_num, title, body = match.groups()
+            num = int(existing_num) if existing_num else item_num
+            line = f"- **{num}. {title.strip()}:**"
+            if body.strip():
+                line = f"{line} {body.strip()}"
+            out.append(line)
+            continue
+
+        out.append(raw.rstrip())
+
+    if item_num < 2:
+        return src
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def _repair_glued_italic_open_quotes(text: str) -> str:
+    """``kelime*"alıntı"`` → ``kelime *"alıntı"`` (Google sözel çözüm yapışması)."""
+    src = collapse_italic_quote_marker_spaces(text or "")
+    return re.sub(r'(?<=[a-zçğıöşüâîû])\*"', r' *"', src, flags=re.IGNORECASE)
+
+
+def _repair_underline_phrase_analysis(text: str) -> str:
+    """Altı çizili söz analizi: ``**-** Metindeki``, kırık tırnak maddesi, iç içe madde."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not re.search(r"Metindeki Bağlamı|Seçenekteki Karşılığı", src, re.I):
+        return src
+
+    src = _repair_glued_italic_open_quotes(src)
+    src = re.sub(
+        r"(?m)^\*\*-\*\*\s+(Metindeki Bağlamı|Seçenekteki Karşılığı):\*\*\s*",
+        r"  - **\1:** ",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r'(?m)^(- \*\*"(?:[^"\n]+|\.\.\.)"?)\s*$',
+        r"\1**",
+        src,
+    )
+    src = re.sub(
+        r'(\*\*"[^"\n]+")\s*(Metindeki Bağlamı:)',
+        r"\1\n  - **\2",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r'(\*\*"[^"\n]+")\s*(Seçenekteki Karşılığı:)',
+        r"\1\n  - **\2",
+        src,
+        flags=re.IGNORECASE,
+    )
+
+    lines = src.split("\n")
+    out: list[str] = []
+    in_phrase_block = False
+
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped:
+            if out and out[-1] != "":
+                out.append("")
+            continue
+
+        if stripped.startswith("📌"):
+            out.append(stripped)
+            out.append("")
+            in_phrase_block = False
+            continue
+
+        if re.match(r'^- \*\*".+"\*\*\s*$', stripped):
+            in_phrase_block = True
+            out.append(stripped)
+            continue
+
+        if stripped.startswith('- **"') and not stripped.endswith("**"):
+            in_phrase_block = True
+            out.append(stripped if stripped.endswith("**") else f"{stripped}**")
+            continue
+
+        if re.match(
+            r"^\s{2,}-\s+\*\*(Metindeki Bağlamı|Seçenekteki Karşılığı):",
+            raw,
+            re.I,
+        ):
+            in_phrase_block = True
+            out.append(raw.rstrip())
+            continue
+
+        ctx_top = re.match(
+            r"^- \*\*(Metindeki Bağlamı|Seçenekteki Karşılığı):\*\*\s",
+            stripped,
+            re.I,
+        )
+        if ctx_top and in_phrase_block:
+            out.append(f"  {stripped}")
+            continue
+
+        in_phrase_block = False
+        out.append(stripped)
+
+    src = re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+    return src.strip()
+
+
+def _solution_needs_pipeline_repair(text: str) -> bool:
+    """Ham sinyal — yapıştırma/outline pipeline'ı atlanmamalı mı?"""
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not src.strip():
         return False
-    # Gemini ATX başlıkları — panel kanonik **Başlık** biçimine çevrilmeli
     if re.search(r"(?m)^[ \t]*#{1,3}[ \t]+\S", src):
         return True
     if re.search(r"\*\*metin\*\*\s*$", src, re.IGNORECASE):
         return True
     if re.search(r"(?m)^\s*-\s*\*\*\s*$", src):
         return True
-    # ``- body.**`` / ``  - body.**`` — kalın açılışı olmayan yetim kapanış
     if _ORPHAN_TRAILING_BOLD_RE.search(src):
         return True
-    # ``- **A):** Başlık**: gövde.:**`` — bozuk şık madde biçimi
     if re.search(r"(?m)^\s*[-•*◦○–—]\s+\*\*[A-E]\):\*\*", src):
         return True
-    # ``- **A) Title:**`` + tek çocuk gövde (``body.**`` dahil) → tek satır olmalı
     lines = src.split("\n")
     for i, line in enumerate(lines[:-1]):
         if not _OPTION_HEADER_ONLY_RE.match(line):
@@ -1697,7 +1844,10 @@ def solution_has_storage_defects(text: str) -> bool:
         return True
     if re.search(r"Diğer Seçenekler[^\n]+-\s*\*\*", src, re.IGNORECASE):
         return True
-    if re.search(r"(?m)^\s*-\s+\*\*[A-E]\)[^:\n]+$", src):
+    if re.search(
+        r"(?m)^\s*-\s+\*\*[A-E]\)(?:(?!.*:)[^\n])*(?<!\*\*)\s*$",
+        src,
+    ):
         return True
     if re.search(r"\?-\s*\*\*", src, re.IGNORECASE):
         return True
@@ -1707,7 +1857,6 @@ def solution_has_storage_defects(text: str) -> bool:
         return True
     if re.search(r"(?m)^\s*-\s+\*\*\s+[A-E]\)", src):
         return True
-    # Diğer Seçenekler bölümünde A–E şık satırları eksik veya yapışık
     if re.search(r"Diğer Seçenekler", src, re.IGNORECASE):
         option_hits = len(re.findall(r"(?m)^\s*-\s+\*\*[A-E]\)", src))
         glued_options = len(re.findall(r"[A-E]\)\s+[A-ZÇĞİÖŞÜ]", src))
@@ -1717,7 +1866,46 @@ def solution_has_storage_defects(text: str) -> bool:
         return True
     if _has_unbulleted_numbered_bold_items(src):
         return True
+    if _CHRONO_INTRO_RE.search(src):
+        chrono_items = len(_CHRONO_ITEM_LINE_RE.findall(src))
+        numbered = len(re.findall(r"(?m)^-\s+\*\*\d+\.\s+", src))
+        if chrono_items >= 2 and numbered < chrono_items:
+            return True
+        if re.search(r"Kronolojik[^\n]*:\n(?!\n)(?:-\s+)?\*\*", src, re.I):
+            return True
+    if re.search(
+        r"(?m)^\*\*-\*\*\s+(Metindeki Bağlamı|Seçenekteki Karşılığı):",
+        src,
+        re.I,
+    ):
+        return True
+    if re.search(r'(?m)^- \*\*"[^"\n]+\.\.\."\s*$', src):
+        return True
+    if re.search(r'(?<=[a-zçğıöşüâîû])\*"', src, re.I):
+        return True
+    for i, line in enumerate(lines):
+        if line.startswith(("  ", "\t")):
+            continue
+        if not re.match(
+            r"^- \*\*(Metindeki Bağlamı|Seçenekteki Karşılığı):",
+            line.strip(),
+            re.I,
+        ):
+            continue
+        if i <= 0:
+            continue
+        prev = lines[i - 1].strip()
+        if prev.startswith('- **"') or re.match(r'^- \*\*".+"\*\*', prev):
+            return True
     return False
+
+
+def solution_has_storage_defects(text: str) -> bool:
+    """Kayıtlı çözüm onarım gerektiriyor mu? (yalnızca repair metni değiştirecekse True)."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src:
+        return False
+    return repair_solution_storage_defects(src) != src
 
 
 _ARABIC_NUM_TOKEN_RE = re.compile(r"(?:(?<=\*\*)\s+|(?:^|(?<=\s)))\d+\.\s+")
@@ -1932,6 +2120,13 @@ def repair_solution_storage_defects(text: str) -> str:
         return src
 
     src = convert_atx_headings_to_bold(src)
+    src = _repair_underline_phrase_analysis(src)
+    # Yapışık madde: ``…**- **Başlık`` / ``…yayımladı.- **Sonraki madde``
+    # Yalnızca aynı satır — ``\s*`` satır sınırını aşmasın (``.:**\\n\\n- **E``)
+    src = re.sub(r"(\*\*)[ \t]*-\s*\*\*", r"\1\n\n- **", src)
+    src = re.sub(r"([.!?])[ \t]*-\s*\*\*", r"\1\n\n- **", src)
+    # ``söylenebilir.:** 🚨 Başlık`` — aynı satır; ``.:**\\n\\n- **E`` değil
+    src = re.sub(r"([.!?])\:\*\*[ \t]+(?=\S)", r"\1\n\n**", src)
     src = _repair_broken_option_bullet_colons(src)
     src = split_glued_numbered_bold_items(src)
     src = structure_numbered_bold_lines_as_list(src)
@@ -1986,6 +2181,7 @@ def repair_solution_storage_defects(text: str) -> str:
     )
     src = _repair_broken_option_bold_blocks(src)
     src = _collapse_option_header_body_lines(src)
+    src = _structure_chronology_solution(src)
     if re.search(r"Diğer Seçenekler", src, re.IGNORECASE) or len(
         re.findall(r"(?m)^(?:-\s+)?\*\*[A-E]\)", src)
     ) >= 2:
@@ -2008,7 +2204,6 @@ def _touchup_storage_solution(text: str) -> str:
     """
     src = _decode_entities(text or "")
     src = convert_atx_headings_to_bold(src)
-    src = structure_numbered_bold_lines_as_list(src)
     src = normalize_exam_arrows(normalize_latex(repair_vert_groups(src)))
     return src
 
@@ -2018,13 +2213,13 @@ def looks_storage_normalized_solution(text: str) -> bool:
     src = (text or "").strip()
     if not src:
         return False
-    if solution_has_storage_defects(src):
+    if _solution_needs_pipeline_repair(src):
         return False
     if is_structured_solution_outline(src):
         return True
     if re.search(r"(?m)^\*\*💡?\s*Adım Adım Çözüm\*\*", src, re.I):
         return True
-    if re.search(r"(?m)^\*\*\d+\.\s+", src):
+    if re.search(r"(?m)^(?:-\s+)?\*\*\d+\.\s+", src):
         return not _has_unbulleted_numbered_bold_items(src)
     return False
 

@@ -8,11 +8,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .rich_text_common import (
+    _touchup_storage_solution,
+    repair_solution_storage_defects,
+    solution_has_storage_defects,
+)
 from .rich_text_panel import (
     normalize_pasted_option,
     normalize_pasted_solution,
     normalize_pasted_stem,
 )
+from .ocr import normalize_turkish_text
 
 if TYPE_CHECKING:
     from .models import Question
@@ -40,7 +46,12 @@ def normalize_question_for_storage(question: Question) -> None:
     for attr in _OPTION_FIELDS:
         setattr(question, attr, normalize_pasted_option(getattr(question, attr) or ""))
     if question.solution:
-        question.solution = normalize_pasted_solution(question.solution)
+        sol = question.solution or ""
+        if solution_has_storage_defects(sol):
+            sol = normalize_turkish_text(
+                _touchup_storage_solution(repair_solution_storage_defects(sol))
+            ).strip()
+        question.solution = normalize_pasted_solution(sol)
 
 
 def normalize_telegram_solution_for_storage(

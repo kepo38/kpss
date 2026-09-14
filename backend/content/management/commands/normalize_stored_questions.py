@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from content.models import Question
+from content.rich_text_common import solution_has_storage_defects
 from content.rich_text_storage import (
     normalize_question_for_storage,
     question_content_changed,
@@ -82,6 +83,14 @@ class Command(BaseCommand):
             action="store_true",
             help="Yalnızca Telegram kaynaklı sorular.",
         )
+        parser.add_argument(
+            "--defective-solutions-only",
+            action="store_true",
+            help=(
+                "Yalnızca solution_has_storage_defects(çözüm) olan soruları tara "
+                "(toplu markdown onarımı için hızlı filtre)."
+            ),
+        )
 
     def handle(self, *args, **options):
         dry_run = bool(options["dry_run"])
@@ -93,6 +102,7 @@ class Command(BaseCommand):
         unpublished_only = bool(options.get("unpublished_only"))
         published_only = bool(options.get("published_only"))
         telegram_only = bool(options.get("telegram_only"))
+        defective_only = bool(options.get("defective_solutions_only"))
 
         qs = Question.objects.all().order_by("pk")
         if public_ids:
@@ -111,10 +121,16 @@ class Command(BaseCommand):
         scanned = 0
         changed_count = 0
         skipped_unchanged = 0
+        skipped_clean = 0
         pending: list[Question] = []
 
         for question in qs.iterator():
             scanned += 1
+            if defective_only and not (
+                question.solution and solution_has_storage_defects(question.solution)
+            ):
+                skipped_clean += 1
+                continue
             if only_changed and not question_needs_content_normalize(question):
                 skipped_unchanged += 1
                 continue
@@ -147,10 +163,13 @@ class Command(BaseCommand):
                 )
 
         suffix = " [dry-run]" if dry_run else ""
+        extra = ""
+        if defective_only:
+            extra = f", {skipped_clean} kusursuz çözüm atlandı"
         self.stdout.write(
             self.style.SUCCESS(
                 f"Bitti: {scanned} tarandı, {changed_count} soru "
                 f"{'incelendi' if dry_run else 'güncellendi'}, "
-                f"{skipped_unchanged} değişmedi{suffix}."
+                f"{skipped_unchanged} değişmedi{extra}{suffix}."
             )
         )
