@@ -2113,6 +2113,19 @@ def _repair_broken_option_bold_blocks(text: str) -> str:
     return "\n".join(out)
 
 
+def _repair_glued_heading_after_broken_colon(text: str) -> str:
+    """``söylenebilir.:** 🚨 Başlık`` — şık satırı değilse satır kır."""
+    out: list[str] = []
+    for line in (text or "").replace("\r\n", "\n").split("\n"):
+        if re.match(r"^\s*[-•*◦○–—]\s+\*\*[A-E]\)", line):
+            out.append(line)
+            continue
+        out.append(
+            re.sub(r"([.!?])\:\*\*[ \t]+(?=\S)", r"\1\n\n**", line)
+        )
+    return "\n".join(out)
+
+
 def repair_solution_storage_defects(text: str) -> str:
     """Yapışık ipucu/şık satırları ve bozuk madde işaretlerini onar."""
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -2125,8 +2138,7 @@ def repair_solution_storage_defects(text: str) -> str:
     # Yalnızca aynı satır — ``\s*`` satır sınırını aşmasın (``.:**\\n\\n- **E``)
     src = re.sub(r"(\*\*)[ \t]*-\s*\*\*", r"\1\n\n- **", src)
     src = re.sub(r"([.!?])[ \t]*-\s*\*\*", r"\1\n\n- **", src)
-    # ``söylenebilir.:** 🚨 Başlık`` — aynı satır; ``.:**\\n\\n- **E`` değil
-    src = re.sub(r"([.!?])\:\*\*[ \t]+(?=\S)", r"\1\n\n**", src)
+    src = _repair_glued_heading_after_broken_colon(src)
     src = _repair_broken_option_bullet_colons(src)
     src = split_glued_numbered_bold_items(src)
     src = structure_numbered_bold_lines_as_list(src)

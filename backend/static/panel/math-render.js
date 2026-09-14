@@ -888,6 +888,23 @@
     return String(chunk || "")
       .split(/\n\s*\n+/)
       .map(function (para) {
+        var lines = String(para || "").split(/\n/);
+        var hasBullets = lines.some(function (ln) {
+          var t = String(ln || "").trim();
+          return (
+            /^\s*[-•*◦○–—]\s+\S/.test(ln) ||
+            /^\*\*\d+\.\s/.test(t) ||
+            /^\*\*[^*]+\(\d{1,2}/.test(t)
+          );
+        });
+        if (hasBullets) {
+          return lines
+            .map(function (ln) {
+              return ln.replace(/[ \t]+$/g, "");
+            })
+            .join("\n")
+            .trim();
+        }
         return para
           .replace(/[ \t]*\n[ \t]*/g, " ")
           .replace(/[ \t]{2,}/g, " ")
@@ -1227,44 +1244,40 @@
   }
 
   /** Metin içinde markdown + inline/display LaTeX. */
-  function richInline(text) {
+  function richInline(text, holders) {
     if (!text) return "";
+    var ownHolders = !holders;
+    if (!holders) holders = [];
     var src = normalizeMarkup(String(text));
     src = normalizeExamArrows(normalizeLatex(src));
-    var holders = [];
+    function pushHolder(html) {
+      var idx = holders.length;
+      holders.push({ html: html });
+      return "§§C" + idx + "§§";
+    }
     src = src.replace(
       /\{(green|red|blue)\}([\s\S]+?)\{\/\1\}/g,
       function (_, color, inner) {
-        var idx = holders.length;
-        holders.push({
-          html:
-            '<span class="rich-' + color + '">' + richInline(inner) + "</span>",
-        });
-        return "§§C" + idx + "§§";
+        return pushHolder(
+          '<span class="rich-' +
+            color +
+            '">' +
+            richInline(inner, holders) +
+            "</span>"
+        );
       }
     );
     src = src.replace(/\*\*([\s\S]+?)\*\*/g, function (_, inner) {
-      var idx = holders.length;
-      holders.push({
-        html:
-          '<strong class="preview-bold">' + richInline(inner) + "</strong>",
-      });
-      return "§§C" + idx + "§§";
+      return pushHolder(
+        '<strong class="preview-bold">' + richInline(inner, holders) + "</strong>"
+      );
     });
     // __altı çizili__ / *italik* — mdMarks ile aynı sıra (kalın sonrası).
     src = src.replace(/__([^_\n]+?)__/g, function (_, inner) {
-      var idx = holders.length;
-      holders.push({
-        html: "<u>" + richInline(inner) + "</u>",
-      });
-      return "§§C" + idx + "§§";
+      return pushHolder("<u>" + richInline(inner, holders) + "</u>");
     });
     src = src.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, function (_, inner) {
-      var idx = holders.length;
-      holders.push({
-        html: "<em>" + richInline(inner) + "</em>",
-      });
-      return "§§C" + idx + "§§";
+      return pushHolder("<em>" + richInline(inner, holders) + "</em>");
     });
     var out = "";
     var re =
@@ -1284,7 +1297,8 @@
       last = m.index + m[0].length;
     }
     out += mdInline(src.slice(last));
-    return restoreHolders(out, holders);
+    if (ownHolders) return restoreHolders(out, holders);
+    return out;
   }
 
   /** Şık metni — kalın/italik/altı çizili + matematik (uygulama ExamOptionView ile uyumlu). */

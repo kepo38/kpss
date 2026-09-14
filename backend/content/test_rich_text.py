@@ -842,6 +842,21 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertFalse(solution_has_storage_defects(out))
         self.assertEqual(out, normalize_pasted_solution(out))
 
+    def test_option_line_colon_label_not_split_by_repair(self):
+        """``- **A) … .:** Açıklama (…):`` tek satır şık etiketi repair ile bölünmesin."""
+        from content.rich_text_common import (
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+        )
+
+        src = (
+            "- **A) Soğuktan elleri titreyen dilenci, kavşakta battaniyesine sarıldı.:** "
+            "Açıklama (Ünlü Düşmesi Var):\n\n"
+            "  - kavşakta: Kelimenin kökü kavuş-mak fiilidir."
+        )
+        self.assertEqual(repair_solution_storage_defects(src), src)
+        self.assertFalse(solution_has_storage_defects(src))
+
     def test_solution_defect_detector_repair_gate(self):
         """Dedektör yalnızca repair gerçekten değiştirdiğinde kusur sayar (osilasyon önlemi)."""
         from content.rich_text_common import (

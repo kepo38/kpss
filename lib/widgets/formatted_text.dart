@@ -1960,47 +1960,8 @@ class FormattedText extends StatelessWidget {
   }) {
     if (input.isEmpty) return [TextSpan(text: '', style: base)];
 
-    final colorRe = RegExp(r'\{(green|red|blue)\}([\s\S]+?)\{\/\1\}');
-    if (colorRe.hasMatch(input)) {
-      final spans = <InlineSpan>[];
-      var i = 0;
-      for (final m in colorRe.allMatches(input)) {
-        if (m.start > i) {
-          spans.addAll(
-            _parseMath(
-              input.substring(i, m.start),
-              base,
-              forceDisplayMath: forceDisplayMath,
-            ),
-          );
-        }
-        final color = switch (m.group(1)) {
-          'green' => _greenText,
-          'red' => _redText,
-          'blue' => _blueText,
-          _ => base.color,
-        };
-        spans.addAll(
-          _parse(
-            m.group(2)!,
-            _emphasis(base, textColor: color),
-            forceDisplayMath: forceDisplayMath,
-          ),
-        );
-        i = m.end;
-      }
-      if (i < input.length) {
-        spans.addAll(
-          _parseMath(
-            input.substring(i),
-            base,
-            forceDisplayMath: forceDisplayMath,
-          ),
-        );
-      }
-      return spans.isEmpty ? [TextSpan(text: '', style: base)] : spans;
-    }
-
+    // Renk etiketleri _parseMarkdown içinde işlenir; burada önce bölmek
+    // ``**… __YOKTUR__ -{green}…{/green}):**`` gibi kalın/altı çizili sarmalayıcıları kırar.
     return _parseMath(input, base, forceDisplayMath: forceDisplayMath);
   }
 
