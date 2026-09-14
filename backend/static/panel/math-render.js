@@ -1359,6 +1359,8 @@
     if (isOptionHeaderLine(trimmed)) return true;
     if (isStructuralLine(trimmed)) return true;
     if (/^\*\*\s*\d+\.\s+Adım:.+\*\*$/.test(trimmed)) return true;
+    if (/^\*\*\d+\.\s.+\*\*$/.test(peeled)) return true;
+    if (/^-\s+\*\*\d+\.\s.+\*\*$/.test(trimmed)) return true;
     if (/^(?:\*\*)?(?:Payda|Pay|Kesrin değeri)\s*:/i.test(trimmed)) return true;
     if (/^(?:\s*)(?:[-•*◦○–—]\s+)/.test(trimmed)) return true;
     return false;

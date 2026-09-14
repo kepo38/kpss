@@ -777,6 +777,30 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertNotIn("## ", question.solution)
         self.assertIn("**1. Aşama: Kenar İncelemesi**", question.solution)
 
+    def test_numbered_bold_lines_become_bullet_list_q_77cd3785e4(self):
+        from content.rich_text_common import (
+            _has_unbulleted_numbered_bold_items,
+            structure_numbered_bold_lines_as_list,
+        )
+
+        src = (
+            "**Soru metninde verilen bilgiler incelendiğinde:**\n\n"
+            "**1. Millî Mücadele'nin başlarında Yunan kuvvetlerine karşı mücadele etmiştir.**\n\n"
+            "**2. Sivas Kongresi'nden sonra Aydın ve Yöresi Kuvayımilliye Komutanı olarak "
+            "görevlendirilmiştir.**\n\n"
+            "**3. Düzenli ordunun kurulması sürecinde TBMM'ye karşı isyan etmiştir.**\n\n"
+            "Bu özellikler **Demirci Mehmet Efe** 'ye aittir."
+        )
+        self.assertTrue(_has_unbulleted_numbered_bold_items(src))
+        out = normalize_pasted_solution(src)
+        self.assertRegex(out, r"(?m)^- \*\*1\. ")
+        self.assertRegex(out, r"(?m)^- \*\*2\. ")
+        self.assertRegex(out, r"(?m)^- \*\*3\. ")
+        self.assertFalse(_has_unbulleted_numbered_bold_items(out))
+        self.assertEqual(out, normalize_pasted_solution(out))
+        listed = structure_numbered_bold_lines_as_list(src)
+        self.assertIn("- **1. Millî Mücadele", listed)
+
     def test_glued_gemini_numbered_items_q_d958afaaed(self):
         """Gemini ``**1. …** 2. …** 3. …**`` aynı satırda kalmasın."""
         from content.rich_text_common import (

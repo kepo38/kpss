@@ -1715,6 +1715,8 @@ def solution_has_storage_defects(text: str) -> bool:
             return True
     if _has_glued_numbered_items(src):
         return True
+    if _has_unbulleted_numbered_bold_items(src):
+        return True
     return False
 
 
@@ -1729,6 +1731,62 @@ def _has_glued_numbered_items(text: str) -> bool:
         if len(_ARABIC_NUM_TOKEN_RE.findall(line)) >= 2:
             return True
     return False
+
+
+_FULL_LINE_NUMBERED_BOLD_RE = re.compile(r"^\*\*(\d+\.\s+.+\S)\*\*\s*$")
+
+
+def _has_unbulleted_numbered_bold_items(text: str) -> bool:
+    """Ardışık ``**1. …**`` satırları madde listesine alınmamış (önizleme riski)."""
+    run = 0
+    for raw in (text or "").split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        if _FULL_LINE_NUMBERED_BOLD_RE.match(line):
+            run += 1
+            if run >= 2:
+                return True
+            continue
+        if run:
+            run = 0
+    return False
+
+
+def structure_numbered_bold_lines_as_list(text: str) -> str:
+    """``**1. …**`` + ``**2. …**`` → ``- **1. …**`` madde listesi."""
+    lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        match = _FULL_LINE_NUMBERED_BOLD_RE.match(raw.strip())
+        if not match:
+            out.append(raw)
+            i += 1
+            continue
+        run: list[str] = []
+        start = i
+        while i < len(lines):
+            if not lines[i].strip():
+                i += 1
+                continue
+            m = _FULL_LINE_NUMBERED_BOLD_RE.match(lines[i].strip())
+            if not m:
+                break
+            run.append(m.group(1))
+            i += 1
+        if len(run) >= 2:
+            if out and out[-1].strip():
+                out.append("")
+            for item in run:
+                out.append(f"- **{item}**")
+            if i < len(lines) and lines[i].strip():
+                out.append("")
+        else:
+            out.append(lines[start])
+            i = start + 1
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 def split_glued_numbered_bold_items(text: str) -> str:
@@ -1876,6 +1934,7 @@ def repair_solution_storage_defects(text: str) -> str:
     src = convert_atx_headings_to_bold(src)
     src = _repair_broken_option_bullet_colons(src)
     src = split_glued_numbered_bold_items(src)
+    src = structure_numbered_bold_lines_as_list(src)
     src = re.sub(r"\*\*metin\*\*\s*$", "", src, flags=re.IGNORECASE)
     src = re.sub(r"(?m)^\s*-\s*\*\*\s*$", "", src)
     src = re.sub(r"(?m)^\s*\*\*\s*$", "", src)
@@ -1949,6 +2008,7 @@ def _touchup_storage_solution(text: str) -> str:
     """
     src = _decode_entities(text or "")
     src = convert_atx_headings_to_bold(src)
+    src = structure_numbered_bold_lines_as_list(src)
     src = normalize_exam_arrows(normalize_latex(repair_vert_groups(src)))
     return src
 
@@ -1965,7 +2025,7 @@ def looks_storage_normalized_solution(text: str) -> bool:
     if re.search(r"(?m)^\*\*💡?\s*Adım Adım Çözüm\*\*", src, re.I):
         return True
     if re.search(r"(?m)^\*\*\d+\.\s+", src):
-        return True
+        return not _has_unbulleted_numbered_bold_items(src)
     return False
 
 

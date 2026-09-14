@@ -220,46 +220,70 @@
         <img alt="Çözüm görseli önizleme" id="solution-image-preview-img">
       </div>
     </div>
-    <label class="check">
-      <input type="checkbox" name="osym_sordu" id="osym-sordu" {% if question.osym_sordu %}checked{% endif %}>
-      ÖSYM sordu <span style="opacity:.7;font-weight:400">(uygulamada sorunun sağ üstünde ÖSYM rozeti)</span>
-    </label>
-    <div id="osym-cikmis-wrap" class="osym-cikmis-wrap" {% if not question.osym_sordu %}hidden{% endif %}>
-      <label>Hangi çıkmış soru?
-        <input
-          type="text"
-          name="osym_cikmis_adi"
-          id="osym-cikmis-adi"
-          maxlength="200"
-          list="osym-cikmis-suggestions"
-          placeholder="örn. 2026 AYT"
-          value="{{ question.osym_cikmis_adi|default:'' }}"
-          {% if question.osym_sordu %}required{% endif %}
-        >
-      </label>
-      <datalist id="osym-cikmis-suggestions">
-        {% for label in osym_cikmis_suggestions %}
-        <option value="{{ label }}"></option>
-        {% endfor %}
-      </datalist>
-      <span class="hint">Yalnızca panelde görünür; testlerde normal ÖSYM rozeti kalır. Arşiv: «2026 AYT», «2025 KPSS Lisans», «2025 Kaymakamlık», «2025 adli», «2025 idari». İsteğe bağlı « · Soru 12». <a href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a></span>
-    </div>
-    <fieldset style="border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:12px 14px;margin:0 0 8px;">
-      <legend style="padding:0 6px;font-size:.9rem;opacity:.9;">Özel test etiketleri</legend>
-      <p class="hint" style="margin:0 0 10px;">Kayıtta metin kalıpları da otomatik işaretleyebilir. Çeldirici yalnızca elle işaretlenir.</p>
-      <label class="check">
-        <input type="checkbox" name="tag_kronoloji" {% if question.tag_kronoloji %}checked{% endif %}>
-        Kronoloji
-      </label>
-      <label class="check">
-        <input type="checkbox" name="tag_padisah_antlasma" {% if question.tag_padisah_antlasma %}checked{% endif %}>
-        Padişahlar ve Antlaşmalar
-      </label>
-      <label class="check">
-        <input type="checkbox" name="tag_celdirici" {% if question.tag_celdirici %}checked{% endif %}>
-        Çeldiricisi güçlü
-      </label>
-    </fieldset>
+    <section class="q-meta-panel" aria-label="Rozet ve test etiketleri">
+      <div class="q-meta-section q-meta-osym">
+        <label class="q-meta-toggle">
+          <input type="checkbox" name="osym_sordu" id="osym-sordu" {% if question.osym_sordu %}checked{% endif %}>
+          <span class="q-meta-toggle-text">
+            <strong>ÖSYM sordu</strong>
+            <span class="q-meta-sub">Uygulamada sağ üstte rozet görünür</span>
+          </span>
+        </label>
+        <div id="osym-cikmis-wrap" class="q-meta-osym-body" {% if not question.osym_sordu %}hidden{% endif %}>
+          <label class="q-meta-field">
+            <span class="q-meta-field-label">Çıkmış soru etiketi</span>
+            <input
+              type="text"
+              name="osym_cikmis_adi"
+              id="osym-cikmis-adi"
+              maxlength="200"
+              list="osym-cikmis-suggestions"
+              placeholder="örn. 2026 AYT"
+              value="{{ question.osym_cikmis_adi|default:'' }}"
+              {% if question.osym_sordu %}required{% endif %}
+            >
+          </label>
+          <datalist id="osym-cikmis-suggestions">
+            {% for label in osym_cikmis_suggestions %}
+            <option value="{{ label }}"></option>
+            {% endfor %}
+          </datalist>
+          <details class="q-meta-help">
+            <summary>Etiket biçimi</summary>
+            <p class="hint">
+              Yalnızca panelde görünür; uygulamada normal ÖSYM rozeti kalır.
+              Örnekler: <code>2026 AYT</code>, <code>2025 KPSS Lisans</code>,
+              <code>2025 Kaymakamlık</code>, <code>2025 adli</code>.
+              İsteğe bağlı soru no: <code> · Soru 12</code>.
+            </p>
+          </details>
+          <a class="q-meta-link" href="{% url 'panel_osym_archive' %}">ÖSYM arşivi</a>
+        </div>
+      </div>
+
+      <div class="q-meta-divider" role="presentation"></div>
+
+      <div class="q-meta-section q-meta-tags">
+        <div class="q-meta-section-head">
+          <strong>Özel test havuzları</strong>
+          <span class="q-meta-sub">Metin kalıpları otomatik işaretleyebilir · çeldirici elle</span>
+        </div>
+        <div class="q-meta-chips" role="group" aria-label="Özel test etiketleri">
+          <label class="q-meta-chip">
+            <input type="checkbox" name="tag_kronoloji" {% if question.tag_kronoloji %}checked{% endif %}>
+            <span>Kronoloji</span>
+          </label>
+          <label class="q-meta-chip">
+            <input type="checkbox" name="tag_padisah_antlasma" {% if question.tag_padisah_antlasma %}checked{% endif %}>
+            <span>Padişahlar ve Antlaşmalar</span>
+          </label>
+          <label class="q-meta-chip">
+            <input type="checkbox" name="tag_celdirici" {% if question.tag_celdirici %}checked{% endif %}>
+            <span>Çeldiricisi güçlü</span>
+          </label>
+        </div>
+      </div>
+    </section>
     <label class="check">
       <input type="checkbox" name="is_published" {% if pending_telegram_review or not question or not question.pk or question.is_published %}checked{% endif %}>
       Yayında <span style="opacity:.7;font-weight:400">(işaretli değilse uygulamada görünmez)</span>
@@ -292,8 +316,12 @@
   {% endif %}
 
   <aside class="preview-pane" id="question-preview" aria-label="Uygulama önizlemesi">
-    <p class="preview-label">Uygulama önizlemesi</p>
-    <div class="phone">
+    <div class="preview-phone-stack">
+      <p class="preview-question-id{% if not question.public_id %} is-draft{% endif %}" id="pv-question-id">
+        {% if question.public_id %}{{ question.public_id }}{% else %}Yeni soru{% endif %}
+      </p>
+      <p class="preview-label">Uygulama önizlemesi</p>
+      <div class="phone">
       <div class="phone-notch" aria-hidden="true"></div>
       <div class="phone-screen">
         <div class="quiz-mock-bar">
@@ -328,6 +356,7 @@
           </div>
         </div>
       </div>
+    </div>
     </div>
   </aside>
 </div>
