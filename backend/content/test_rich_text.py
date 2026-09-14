@@ -1070,6 +1070,50 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIn("**Berlin Antlaşması**", out)
         self.assertIn("**genel, çok uluslu ve çok yönlü**", out)
 
+    def test_repair_math_step_solution_glue_q_e1a98d5a85(self):
+        """Basit eşitsizlik: ****1. Adım, ):**-, ** Sonuç ** ve kırık kalın onarımı."""
+        from content.rich_text_common import (
+            looks_storage_normalized_solution,
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+        )
+
+        src = (
+            "**Çözüm Adımları****1. Adım: Üçüncü eşitsizliği inceleyelim "
+            "($\\frac{z}{x} > 1$):**- Bu ifadenin sağlanması için **$x$ ve $z$ aynı "
+            "işaretli** olmalıdır.\n\n"
+            "- **$x$ ve $z$ negatif **ise: $z < x < 0$ olur (Negatif sayılarda bölme "
+            "yön değiştirir).\n\n"
+            "- **$x$ ve $z$ pozitif **ise: $z > x > 0$ olur.\n\n"
+            "- **2. Adım: İkinci eşitsizliği inceleyelim ($\\frac{x \\cdot z}{y} < 0$):**"
+            "- $x$ ve $z$ aynı işaretli olduğundan çarpımları her zaman pozitiftir "
+            "($x \\cdot z > 0$).- Sonucun negatif olması için payda yani **$y$ "
+            "kesinlikle negatif ($y < 0$)** olmalıdır.\n"
+            "- **3. Adım: Birinci eşitsizliği inceleyelim ($x \\cdot (z - y) < 0$):**\n\n"
+            "- **$x$ pozitif olsaydı:** $z > x > 0$ ve $y < 0$ durumunda $z > y$ "
+            "olurdu. Bu da $x \\cdot (z - y) > 0$ sonucunu doğururdu (Çelişki).\n\n"
+            "- **$x$ negatif olmalıdır:** $x < 0$ olduğundan, çarpımın negatif "
+            "çıkması için $(z - y) > 0$ yani **$z > y$** olmalıdır.** Sonuç "
+            "**Bulduğumuz tüm bilgileri birleştirdiğimizde sıralama** y < z < x** "
+            "şeklinde olur."
+        )
+        self.assertFalse(looks_storage_normalized_solution(src))
+        self.assertTrue(solution_has_storage_defects(src))
+        repaired = repair_solution_storage_defects(src)
+        self.assertIn("**Çözüm Adımları**\n\n- **1. Adım:", repaired)
+        self.assertNotIn("****1. Adım:", repaired)
+        self.assertNotIn("):**-", repaired)
+        self.assertNotIn(").- Sonucun", repaired)
+        self.assertIn("**Sonuç**", repaired)
+        self.assertIn("sıralama **y < z < x**", repaired)
+        self.assertIn("**$x$ ve $z$ negatif** ise:", repaired)
+        self.assertFalse(solution_has_storage_defects(repaired))
+
+        out = normalize_pasted_solution(src)
+        self.assertEqual(out, normalize_pasted_solution(out))
+        self.assertIn("**Sonuç**", out)
+        self.assertIn("sıralama **y < z < x**", out)
+
 
 class TelegramSolutionNormalizationIntegrationTests(TestCase):
     def setUp(self):

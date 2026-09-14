@@ -1306,6 +1306,8 @@ def structure_solution_outline(text: str) -> str:
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not src:
         return src
+    if re.search(r"(?m)^-\s+\*\*\d+\.\s+Adım:", src, re.I):
+        return src
     src = convert_atx_headings_to_bold(src)
     src = re.sub(
         r"(\*\*Diğer Seçenekler[^\n*]+\*\*)\s*-\s*\*\*",
@@ -1588,9 +1590,101 @@ def _structure_score(text: str) -> int:
     return bolds * 3 + unders * 3 + breaks + bullets * 2 + heads * 4
 
 
+_MATH_STEP_TITLE_GLUE_RE = re.compile(
+    r"\*\*[^*\n]+\*\*\*\*(?:\d+\.\s+Adım:|\d+\.)"
+)
+_MATH_STEP_HEADER_BODY_GLUE_RE = re.compile(r"\):\*\*-\s")
+_MATH_STEP_PAREN_SENTENCE_GLUE_RE = re.compile(r"\)\.\-\s+")
+_MATH_STEP_INLINE_SONUC_RE = re.compile(r"\*\*\s*Sonuç\s*\*\*", re.IGNORECASE)
+_MATH_STEP_ORPHAN_BOLD_LINE_RE = re.compile(
+    r"([a-zçğıöşüâîû]{2,})\*\*[ \t]+([^*\n]+?\*\*)",
+    re.IGNORECASE,
+)
+_MATH_STEP_BROKEN_BOLD_WORD_RE = re.compile(
+    r"\*\*([^*\n]+?)[ \t]+\*\*([a-zçğıöşüâîû]+:)",
+    re.IGNORECASE,
+)
+
+
+_OPTION_BULLET_LINE_RE = re.compile(r"^\s*[-•*◦○–—]\s+\*\*[A-E]\)")
+
+
+def _line_has_orphan_bold_glue(line: str) -> bool:
+    """``sıralama** y < z < x**`` — dengeli ``**Amanname** veya`` sayılmaz."""
+    if _OPTION_BULLET_LINE_RE.match(line):
+        return False
+    for match in _MATH_STEP_ORPHAN_BOLD_LINE_RE.finditer(line):
+        if line[: match.start()].count("**") % 2 == 0:
+            return True
+    return False
+
+
+def _repair_orphan_bold_glue_on_line(line: str) -> str:
+    if _OPTION_BULLET_LINE_RE.match(line):
+        return line
+
+    def repl(match: re.Match[str]) -> str:
+        if line[: match.start()].count("**") % 2 == 1:
+            return match.group(0)
+        return f"{match.group(1)} **{match.group(2)}"
+
+    return _MATH_STEP_ORPHAN_BOLD_LINE_RE.sub(repl, line)
+
+
+def _has_math_step_solution_glue(text: str) -> bool:
+    """Matematik adım çözümü: ****1. Adım, ):**-, ).- , ** Sonuç ** yapışmaları."""
+    src = text or ""
+    if not src.strip():
+        return False
+    if _MATH_STEP_TITLE_GLUE_RE.search(src):
+        return True
+    if _MATH_STEP_HEADER_BODY_GLUE_RE.search(src):
+        return True
+    if _MATH_STEP_PAREN_SENTENCE_GLUE_RE.search(src):
+        return True
+    if _MATH_STEP_INLINE_SONUC_RE.search(src):
+        return True
+    if any(_line_has_orphan_bold_glue(line) for line in src.split("\n")):
+        return True
+    if _MATH_STEP_BROKEN_BOLD_WORD_RE.search(src):
+        return True
+    return False
+
+
+def _repair_math_step_solution_glue(text: str) -> str:
+    """Matematik adım çözümü yapışmalarını ayır (Gemini / OCR kayıt kusuru)."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not src or not _has_math_step_solution_glue(src):
+        return src
+
+    src = re.sub(
+        r"\*\*([^*\n]+?)\*\*\*\*(\d+\.\s+Adım:)",
+        r"**\1**\n\n- **\2",
+        src,
+        flags=re.IGNORECASE,
+    )
+    src = re.sub(
+        r"\*\*([^*\n]+?)\*\*\*\*(\d+\.)",
+        r"**\1**\n\n- **\2",
+        src,
+    )
+    src = _MATH_STEP_HEADER_BODY_GLUE_RE.sub("):**\n\n- ", src)
+    src = _MATH_STEP_PAREN_SENTENCE_GLUE_RE.sub(").\n\n", src)
+    src = _MATH_STEP_INLINE_SONUC_RE.sub("\n\n**Sonuç**\n\n", src)
+    fixed_lines: list[str] = []
+    for line in src.split("\n"):
+        line = _MATH_STEP_BROKEN_BOLD_WORD_RE.sub(r"**\1** \2", line)
+        line = _repair_orphan_bold_glue_on_line(line)
+        fixed_lines.append(line)
+    src = re.sub(r"\n{3,}", "\n\n", "\n".join(fixed_lines))
+    return src.strip()
+
+
 def is_structured_solution_outline(text: str) -> bool:
     """Daha önce biçimlenmiş çözümü ikinci normalizasyondan koru."""
     src = text or ""
+    if _has_math_step_solution_glue(src):
+        return False
     structured_lines = re.findall(
         r"(?m)^\s*(?:-\s+)?\*\*(?:"
         r"[A-E]\)\s+[^*\n]+:|"
@@ -1897,6 +1991,8 @@ def _solution_needs_pipeline_repair(text: str) -> bool:
         prev = lines[i - 1].strip()
         if prev.startswith('- **"') or re.match(r'^- \*\*".+"\*\*', prev):
             return True
+    if _has_math_step_solution_glue(src):
+        return True
     return False
 
 
@@ -2140,6 +2236,7 @@ def repair_solution_storage_defects(text: str) -> str:
     src = re.sub(r"([.!?])[ \t]*-\s*\*\*", r"\1\n\n- **", src)
     src = _repair_glued_heading_after_broken_colon(src)
     src = _repair_broken_option_bullet_colons(src)
+    src = _repair_math_step_solution_glue(src)
     src = split_glued_numbered_bold_items(src)
     src = structure_numbered_bold_lines_as_list(src)
     src = re.sub(r"\*\*metin\*\*\s*$", "", src, flags=re.IGNORECASE)

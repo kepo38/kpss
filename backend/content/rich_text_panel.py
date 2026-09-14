@@ -130,6 +130,8 @@ def normalize_pasted_solution(
         return _finalize_storage_solution(chosen)
     chosen = restore_collapsed_breaks(chosen)
     chosen = _format_named_solution_sections(chosen)
+    if solution_has_storage_defects(chosen):
+        chosen = repair_solution_storage_defects(chosen)
     chosen = normalize_roman_solution_sections(chosen)
     chosen = structure_solution_outline(chosen)
     chosen = repair_inline_glued_bold(chosen)
