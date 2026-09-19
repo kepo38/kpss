@@ -1070,6 +1070,44 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIn("**Berlin Antlaşması**", out)
         self.assertIn("**genel, çok uluslu ve çok yönlü**", out)
 
+    def test_strip_google_docs_xpm_latex_blob(self):
+        """Kapanmayan TgQPHd + data-xpm-latex → $…$; SVG/speech silinir."""
+        from content.rich_text_common import (
+            looks_storage_normalized_solution,
+            repair_solution_storage_defects,
+            solution_has_storage_defects,
+            strip_google_docs_xpm_paste,
+        )
+
+        src = (
+            "A-B arasını **1 saat 20 dakika** (yani 43four-thirds\n"
+            '43<!--TgQPHd|||[[[null,"\\u003cdiv data-xpm-latex\\u003d\\"\\\\frac{4}{3}\\" '
+            'src\\u003d\\"data:image/gif;base64,AAA\\"\\u003e\\u003c/div\\u003e"],'
+            "null,1,0,0,0,1,null,null,0,null,1]] saat) sürede almıştır."
+            "<!--qkimaf b6tt\n"
+            "Re_28/HugV6 <!--cqw1tb b6tt\n"
+            "Re_28/HugV6\n"
+            "x equals 78 cross four-thirds equals 104 km\n"
+            "**Toplam Yol:** Toplam Mesafe (AD)=3×104=312 km"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        self.assertFalse(looks_storage_normalized_solution(src))
+        cleaned = strip_google_docs_xpm_paste(src)
+        self.assertNotIn("TgQPHd", cleaned)
+        self.assertNotIn("data-xpm", cleaned)
+        self.assertNotIn("qkimaf", cleaned)
+        self.assertNotIn("equals", cleaned)
+        self.assertIn(r"$\frac{4}{3}$", cleaned)
+        self.assertIn("saat) sürede", cleaned)
+        repaired = repair_solution_storage_defects(src)
+        self.assertNotIn("TgQPHd", repaired)
+        self.assertNotIn("equals", repaired)
+        self.assertIn(r"$\frac{4}{3}$", repaired)
+        out = normalize_pasted_solution(src)
+        self.assertNotIn("TgQPHd", out)
+        self.assertNotIn("equals", out)
+        self.assertIn(r"\frac{4}{3}", out)
+
     def test_repair_math_step_solution_glue_q_e1a98d5a85(self):
         """Basit eşitsizlik: ****1. Adım, ):**-, ** Sonuç ** ve kırık kalın onarımı."""
         from content.rich_text_common import (

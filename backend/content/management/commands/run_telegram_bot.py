@@ -286,12 +286,16 @@ class Command(BaseCommand):
     def _run_watch(self, token: str) -> None:
         self._prepare_polling()
         offset = 0
+        # Aynı update_id'de ardışık hata — zehirli mesajda sonsuz döngüyü kır.
+        poison_update_id: int | None = None
+        poison_failures = 0
+        max_poison_retries = 5
         self.stdout.write(
             self.style.SUCCESS(
                 "Bot sürekli dinliyor (--watch).\n"
-                "• Son 24 saat: otomatik işlenir.\n"
-                "• Daha eski fotoğraflar: İlet (forward) ile gönderin.\n"
-                "• Hata olursa mesaj kuyrukta kalır, otomatik yeniden denenir.\n"
+                "• PC kapalıyken gelenler (Telegram ~24 saat tutar): açılınca otomatik işlenir.\n"
+                "• Daha eski fotoğraflar: sohbette İlet (forward) ile yeniden gönderin.\n"
+                "• Hata olursa mesaj kuyrukta kalır ve yeniden denenir.\n"
                 "• Durdurmak: Ctrl+C"
             )
         )
@@ -303,16 +307,41 @@ class Command(BaseCommand):
                 continue
             if batch:
                 self.stdout.write(f"{len(batch)} bekleyen mesaj işleniyor…")
+                # advance_on_error=False: PC açılışındaki kuyruk / geçici OCR
+                # hatalarında offset ilerletilmez — mesaj Telegram'da kalır.
                 offset, processed, stopped_on_error = self._process_batch(
-                    batch, offset, None, advance_on_error=True
+                    batch, offset, None, advance_on_error=False
                 )
                 if stopped_on_error:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"{processed} mesaj işlendi; hatalı mesaj tekrar denenecek."
+                    failed_id = batch[processed]["update_id"] if processed < len(batch) else None
+                    if failed_id is not None and failed_id == poison_update_id:
+                        poison_failures += 1
+                    else:
+                        poison_update_id = failed_id
+                        poison_failures = 1
+                    if poison_failures >= max_poison_retries and failed_id is not None:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"{processed} mesaj işlendi; update {failed_id} "
+                                f"{max_poison_retries} kez başarısız — atlanıyor "
+                                "(fotoğrafı İlet ile yeniden gönderin)."
+                            )
                         )
-                    )
+                        offset = failed_id + 1
+                        poison_update_id = None
+                        poison_failures = 0
+                    else:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"{processed} mesaj işlendi; hatalı mesaj kuyrukta "
+                                f"(deneme {poison_failures}/{max_poison_retries}), "
+                                "birazdan tekrar."
+                            )
+                        )
+                        time.sleep(min(5 * poison_failures, 30))
                 else:
+                    poison_update_id = None
+                    poison_failures = 0
                     self.stdout.write(
                         self.style.SUCCESS(f"{processed} mesaj tamam.")
                     )

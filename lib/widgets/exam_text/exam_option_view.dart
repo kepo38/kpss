@@ -17,12 +17,18 @@ class ExamOptionView extends StatelessWidget {
   final String text;
   final String? imageUrl;
   final int? forceColumns;
+  /// Chip gibi satır içi kullanımda matematik şıkkı da sola yaslanır.
+  final TextAlign? textAlign;
+  /// `false` → display-math bloğu ortalamaz; cevap chip'leri için.
+  final bool? examWrap;
 
   const ExamOptionView({
     super.key,
     required this.text,
     this.imageUrl,
     this.forceColumns,
+    this.textAlign,
+    this.examWrap,
   });
 
   /// Yalnızca tamamı LaTeX olan şıklar kompakt görünür.
@@ -162,18 +168,22 @@ class ExamOptionView extends StatelessWidget {
       fontSize: mathStyle ? kCompactOptionFontSize : 15,
     );
 
-    // Şıklarda soft hyphen (TDK heceleme) kullanılmaz — Android/Tinos satır
-    // kırılınca harfler üst üste binip boşluklar kaybolabiliyor.
-    final wrapped = FormattedText.wrapBareLatex(FormattedText.stripMarkup(text));
+    // stripMarkup yalnızca isMathStyleOption / _visiblePlain gibi heuristiklerde;
+    // render'da kalın/altı çizili işaretleri korunmalı.
+    final wrapped = FormattedText.wrapBareLatex(text);
     final prepared = FormattedText.prepareStoredExamJustifyText(wrapped);
+    final align = textAlign ?? (mathStyle ? TextAlign.center : TextAlign.start);
+    // examWrap=true iken tek satır $\frac$ display bloğuna düşüp her zaman
+    // ortalanır; chip'te start hizası için wrap kapatılır.
+    final wrap = examWrap ?? true;
     return FormattedText(
       prepared,
       preNormalized: true,
       preserveLineBreaks: true,
       examLayout: true,
-      examWrap: true,
+      examWrap: wrap,
       examScaleDown: false,
-      textAlign: mathStyle ? TextAlign.center : TextAlign.start,
+      textAlign: align,
       style: style,
     );
   }

@@ -256,32 +256,44 @@ class _WeeklySummaryCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        _SummaryStat(value: '${summary.denemeSayisi}', label: 'Deneme'),
-                        _SummaryStat(
-                          value: summary.ortalamaNet.toStringAsFixed(1),
-                          label: 'Ort. Net',
-                        ),
-                        _SummaryStat(
-                          value: changeText,
-                          label: 'Değişim',
-                          valueColor: changeColor,
-                        ),
-                        _SummaryStat(value: '$dueCount', label: 'Yanlış'),
-                      ],
-                    ),
-                    if (summary.enGucluDers != '-') ...[
-                      const SizedBox(height: 12),
+                    if (summary.denemeSayisi == 0)
                       Text(
-                        'Güçlü: ${summary.enGucluDers} · Geliştir: '
-                        '${summary.gelistirilmesiGerekenDers}',
+                        'Bu hafta henüz kayıtlı deneme yok.\n'
+                        '+ Deneme Ekle ile ekleyebilirsiniz.',
                         style: GoogleFonts.inter(
-                          color: Colors.white.withValues(alpha: 0.82),
-                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 13,
                           height: 1.35,
                         ),
+                      )
+                    else ...[
+                      Row(
+                        children: [
+                          _SummaryStat(value: '${summary.denemeSayisi}', label: 'Deneme'),
+                          _SummaryStat(
+                            value: summary.ortalamaNet.toStringAsFixed(1),
+                            label: 'Ort. Net',
+                          ),
+                          _SummaryStat(
+                            value: changeText,
+                            label: 'Değişim',
+                            valueColor: changeColor,
+                          ),
+                          _SummaryStat(value: '$dueCount', label: 'Yanlış'),
+                        ],
                       ),
+                      if (summary.enGucluDers != '-') ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Güçlü: ${summary.enGucluDers} · Geliştir: '
+                          '${summary.gelistirilmesiGerekenDers}',
+                          style: GoogleFonts.inter(
+                            color: Colors.white.withValues(alpha: 0.82),
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                     ],
                   ],
                 ),

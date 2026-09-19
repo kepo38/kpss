@@ -1167,7 +1167,7 @@ h2 {
   line-height: 1.35;
   font-weight: 400;
   color: #fff;
-  text-align: center;
+  text-align: start;
   overflow-wrap: break-word;
   word-break: normal;
   hyphens: none;

@@ -14,9 +14,9 @@ class ExamStemView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visible = OptionColumnLayout.visibleStem(text);
-    final wrapped = FormattedText.wrapBareLatex(
-      FormattedText.stripMarkup(visible),
-    );
+    // stripMarkup çağırma — panel `**kalın**` / `__altı çizili__` işaretlerini
+    // telefonda FormattedText._parseMarkdown ile uygular; strip edersek düz görünür.
+    final wrapped = FormattedText.wrapBareLatex(visible);
     final prepared = FormattedText.prepareStoredExamJustifyText(wrapped);
     // Matematik / LaTeX köklerde TDK hecelemesi yapma (şıklarla aynı kural).
     final cleaned = FormattedText.looksLikeMath(prepared) ||

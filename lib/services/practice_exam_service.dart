@@ -14,6 +14,8 @@ class PracticeExamService {
 
   bool get isInitialized => _initialized;
 
+  static const Set<String> _legacyDemoExamIds = {'e1', 'e2', 'e3', 'e4'};
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -21,15 +23,23 @@ class PracticeExamService {
     _exams.clear();
     _exams.addAll(await LocalDatabase.instance.getAllExams());
 
-    if (await LocalDatabase.instance.isExamTableEmpty()) {
-      for (final exam in _demoExams()) {
-        await LocalDatabase.instance.insertExam(exam);
-        _exams.add(exam);
-      }
-    }
+    // Eski örnek seed'ler (e1–e4) gerçek deneme gibi görünüp Haftalık Özet'i
+    // dolduruyordu — bir kez temizle, bir daha ekleme.
+    await _pruneLegacyDemoExams();
 
     _exams.sort((a, b) => b.tarih.compareTo(a.tarih));
     _initialized = true;
+  }
+
+  Future<void> _pruneLegacyDemoExams() async {
+    final stale = _exams
+        .where((e) => _legacyDemoExamIds.contains(e.id))
+        .map((e) => e.id)
+        .toList();
+    for (final id in stale) {
+      await LocalDatabase.instance.deleteExam(id);
+      _exams.removeWhere((e) => e.id == id);
+    }
   }
 
   List<PracticeExamModel> get exams {
@@ -178,64 +188,5 @@ class PracticeExamService {
       enGucluDers: strongest,
       gelistirilmesiGerekenDers: weakest,
     );
-  }
-
-  /// İlk kurulumda gösterilecek örnek denemeler (yalnızca DB boşken).
-  static List<PracticeExamModel> _demoExams() {
-    final now = DateTime.now();
-    return [
-      PracticeExamModel(
-        id: 'e1',
-        denemeAdi: 'Genel Deneme 1',
-        yayinEvi: 'Palme',
-        tarih: now.subtract(const Duration(days: 21)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 22, yanlis: 6, bos: 2),
-          'Matematik': DersSonuc(dogru: 12, yanlis: 8, bos: 10),
-          'Tarih': DersSonuc(dogru: 18, yanlis: 4, bos: 5),
-          'Coğrafya': DersSonuc(dogru: 10, yanlis: 3, bos: 5),
-          'Vatandaşlık': DersSonuc(dogru: 10, yanlis: 2, bos: 3),
-        },
-      ),
-      PracticeExamModel(
-        id: 'e2',
-        denemeAdi: 'Genel Deneme 2',
-        yayinEvi: 'Pegem',
-        tarih: now.subtract(const Duration(days: 14)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 25, yanlis: 4, bos: 1),
-          'Matematik': DersSonuc(dogru: 15, yanlis: 7, bos: 8),
-          'Tarih': DersSonuc(dogru: 20, yanlis: 3, bos: 4),
-          'Coğrafya': DersSonuc(dogru: 12, yanlis: 2, bos: 4),
-          'Vatandaşlık': DersSonuc(dogru: 11, yanlis: 1, bos: 3),
-        },
-      ),
-      PracticeExamModel(
-        id: 'e3',
-        denemeAdi: 'Genel Deneme 3',
-        yayinEvi: 'Palme',
-        tarih: now.subtract(const Duration(days: 7)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 27, yanlis: 2, bos: 1),
-          'Matematik': DersSonuc(dogru: 18, yanlis: 5, bos: 7),
-          'Tarih': DersSonuc(dogru: 22, yanlis: 2, bos: 3),
-          'Coğrafya': DersSonuc(dogru: 13, yanlis: 1, bos: 4),
-          'Vatandaşlık': DersSonuc(dogru: 12, yanlis: 1, bos: 2),
-        },
-      ),
-      PracticeExamModel(
-        id: 'e4',
-        denemeAdi: 'İndeks Branş Denemesi',
-        yayinEvi: 'İndeks Akademi',
-        tarih: now.subtract(const Duration(days: 3)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 26, yanlis: 3, bos: 1),
-          'Matematik': DersSonuc(dogru: 16, yanlis: 6, bos: 8),
-          'Tarih': DersSonuc(dogru: 19, yanlis: 4, bos: 4),
-          'Coğrafya': DersSonuc(dogru: 11, yanlis: 3, bos: 4),
-          'Vatandaşlık': DersSonuc(dogru: 10, yanlis: 2, bos: 3),
-        },
-      ),
-    ];
   }
 }

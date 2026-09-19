@@ -7,6 +7,7 @@ noktalarına sahiptir; bu modül paylaşılan LaTeX/markdown/HTML dönüşümler
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from .ocr import normalize_turkish_text
 
@@ -558,10 +559,384 @@ _PASTE_FRAGMENT_MARKER_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r"<!--\s*(?:Start|End)[^>]*?-->", re.IGNORECASE | re.DOTALL),
 )
 
+_GOOGLE_XPM_SIGNAL_RE = re.compile(
+    r"TgQPHd|data-xpm-latex|<!--\s*qkimaf|<!--\s*cqw1tb",
+    re.IGNORECASE,
+)
+# Google Docs XPM: kapanmayan ``<!--TgQPHd|||[[[…]]`` (--> yok).
+_TGQPHD_BLOB_RE = re.compile(
+    r"<!--TgQPHd\|\|\|(?:\[\[.*?\]\]|\[\])-?\s*→?",
+    re.IGNORECASE | re.DOTALL,
+)
+_XPM_SIDE_MARKER_RE = re.compile(
+    r"<!--\s*(?:qkimaf|cqw1tb)\b[^<\n]*(?:\n[^\n<]*)?",
+    re.IGNORECASE,
+)
+_XPM_LATEX_ATTR_RE = re.compile(
+    r'data-xpm-latex\s*=\s*"((?:\\.|[^"\\])*)"',
+    re.IGNORECASE,
+)
+_XPM_SPEECH_DUP_RE = re.compile(
+    # Herhangi bir satırda Google MathML konuşma: equals / end-fraction / …
+    r"^[ \t]*.*\bequals\b.*$|"
+    r"^[ \t]*.*\b(?:end-fraction|four-thirds|open paren|close paren)\b.*$|"
+    r"^[ \t]*.*\bimplies\b.*$|"
+    r"^[ \t]*.*\bcap\s+[A-Za-z]\b.*$|"
+    r"^[ \t]*.*\b(?:cross|space)\b.*\b(?:equals|implies|plus|minus|cap)\b.*$|"
+    r"^[ \t]*.*\b(?:plus|minus|cross)\b.*\b(?:equals|implies|paren)\b.*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_XPM_SPEECH_GLUE_RE = re.compile(
+    r"(?:four-thirds|open paren|close paren|\bcross\b|\bend-fraction\b)",
+    re.IGNORECASE,
+)
+_GOOGLE_SPEECH_SIGNAL_RE = re.compile(
+    r"\bequals\b|\bfour-thirds\b|\bend-fraction\b|\bcap\s+[A-Za-z]\b|"
+    r"\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]",
+    re.IGNORECASE,
+)
+# MathML annotation artığı: kısa sembol satırları (``x`` / ``+5`` / ``)`` / ``=3x``).
+_XPM_MATH_FRAG_LINE_RE = re.compile(
+    r"^[ \t]*[A-Za-z0-9+\-×÷=⇒→().,]{1,16}\s*$"
+)
+
+
+def _unescape_google_paste_escapes(text: str) -> str:
+    """``\\u003c`` / ``\\\"`` gibi yapıştırma kaçışlarını çöz."""
+    src = text or ""
+    src = re.sub(
+        r"\\u([0-9a-fA-F]{4})",
+        lambda m: chr(int(m.group(1), 16)),
+        src,
+    )
+    return src.replace(r"\"", '"').replace(r"\'", "'")
+
+
+def _latex_from_xpm_blob(blob: str) -> str:
+    decoded = _unescape_google_paste_escapes(blob)
+    match = _XPM_LATEX_ATTR_RE.search(decoded)
+    if not match:
+        return ""
+    latex = match.group(1)
+    # JSON/HTML kaçışı: ``\\frac`` → ``\frac``
+    latex = latex.replace(r"\\", "\\")
+    latex = (
+        latex.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", '"')
+    )
+    latex = latex.strip()
+    if not latex:
+        return ""
+    if latex.startswith("$") and latex.endswith("$"):
+        return latex
+    return f"${latex}$"
+
+
+def _plain_formula_lookalike(plain: str) -> bool:
+    """Düz metin formül kopyası mı? (Unicode/ASCII matematik artığı)."""
+    s = (plain or "").strip()
+    if not s or s.startswith("$"):
+        return False
+    # Uzun düzyazı değil
+    if len(s) > 90:
+        return False
+    if re.search(r"[⇒→×÷]", s) and re.search(r"\d|[A-Za-z]", s):
+        return True
+    if re.fullmatch(r"[A-Za-z0-9+\-×÷=⇒→().,\s\\]+", s) and re.search(
+        r"[+\-×÷=⇒→]", s
+    ):
+        return True
+    if len(s) <= 64 and re.search(r"\d\s*[=×÷]", s):
+        return True
+    return False
+
+
+def _drop_plain_prefix_before_inline_math(line: str) -> str:
+    """``𝑀+3x=50(1)$M+3x=50$`` → ``$M+3x=50$`` (ardından metin kalsa da)."""
+    match = re.search(r"(\$[^$\n]+\$)", line)
+    if not match:
+        return line
+    prefix = line[: match.start()]
+    suffix = line[match.end() :]
+    if not prefix.strip():
+        return line
+    if _plain_formula_lookalike(prefix) or re.search(
+        r"(?i)\b(?:cap|equals|implies|plus|minus)\b", prefix
+    ) or (
+        len(prefix.strip()) <= 80
+        and "=" in prefix
+        and re.search(r"\d", prefix)
+        and not prefix.strip().startswith(("**", "- "))
+    ):
+        leading = re.match(r"^(\s*(?:[-•*]\s+\*\*[^*]+?:\*\*\s*)?)", prefix)
+        head = leading.group(1) if leading else ""
+        if suffix and not suffix.startswith((" ", "\n")):
+            if suffix.startswith("**"):
+                suffix = "\n\n" + suffix
+            elif suffix[0].isalpha() or suffix[0] in "ÇĞİÖŞÜçğıöşüâîû":
+                ch = suffix[0]
+                if ch.upper() == ch and ch.lower() != ch:
+                    suffix = "\n\n" + suffix
+                else:
+                    suffix = " " + suffix
+        return f"{head}{match.group(1)}{suffix}"
+    return line
+
+
+def _leading_inline_math(line: str) -> str:
+    """Satır başındaki ``$…$`` (ardından yapışık metin olsa da)."""
+    match = re.match(r"^(\$[^$\n]+\$)", (line or "").strip())
+    return match.group(1) if match else ""
+
+
+def _next_nonempty(lines: list[str], start: int) -> tuple[int, str]:
+    j = start
+    while j < len(lines) and not lines[j].strip():
+        j += 1
+    if j >= len(lines):
+        return -1, ""
+    return j, lines[j].strip()
+
+
+def scrub_google_math_speech_debris(text: str) -> str:
+    """XPM sonrası kalan İngilizce konuşma / çift düz+LaTeX satırlarını temizle."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip():
+        return src
+    # Mathematical Alphanumeric (𝑀, 𝑥, …) → ASCII — sinyal ve eşleşme için.
+    if re.search(r"[\U0001D400-\U0001D7FF]", src):
+        src = unicodedata.normalize("NFKC", src)
+    if not (
+        _GOOGLE_SPEECH_SIGNAL_RE.search(src)
+        or _XPM_SPEECH_GLUE_RE.search(src)
+        or re.search(r"[𝑥𝑋]", src)
+        or re.search(r"(?<=\d)\n\d+\$", src)
+        or re.search(r"(?i)\bMcap\b|\bover\b.*\bend-fraction\b", src)
+        or re.search(r"\$[^$\n]+\$\d", src)
+    ):
+        return src
+
+    src = _XPM_SPEECH_DUP_RE.sub("", src)
+    # Satır ortası yapışık konuşma: ``14.39Varış Saati equals 10.``
+    src = re.sub(
+        r"(?<=\d)([A-ZÇĞİÖŞÜa-zçğıöşüâîû][^\n]*\bequals\b[^\n]*)",
+        "",
+        src,
+        flags=re.I,
+    )
+    src = _XPM_SPEECH_GLUE_RE.sub("", src)
+    src = re.sub(r"(?<=\d)(?:four-thirds|thirds)\b", "", src, flags=re.I)
+    src = re.sub(r"(?i)\b([A-Za-z])cap\s*\1\b", r"$\1$", src)
+    src = re.sub(r"\bxx\s*[𝑥𝑋xX]\b", "x", src)
+    src = re.sub(r"[𝑥𝑋]", "x", src)
+    # ``43\n43$\frac`` → ``$\frac``
+    src = re.sub(r"(?<!\d)(\d+)\n\1\$", "$", src)
+    # ``x$x$`` / ``M$M$`` → ``$x$``
+    src = re.sub(r"(?<![A-Za-z\\$])([A-Za-z])\s*\$\1\$", r"$\1$", src)
+    # ``$…$0`` / ``$…$,`` artığı
+    src = re.sub(r"(\$[^$\n]+\$)[0-9]+(?=\s|$)", r"\1", src)
+    # Düz satır + hemen ardından aynı içeriğin $…$ hali: düz satırı düş
+    lines = src.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        plain = line.strip()
+        # Kısa sembol artığı koşusu → sonraki $…$ satırına kadar atla
+        if _XPM_MATH_FRAG_LINE_RE.match(plain or ""):
+            j = i
+            while j < len(lines) and (
+                not lines[j].strip() or _XPM_MATH_FRAG_LINE_RE.match(lines[j].strip())
+            ):
+                j += 1
+            if j > i and j < len(lines) and _leading_inline_math(lines[j]):
+                i = j
+                continue
+        _nxt_i, math = _next_nonempty(lines, i + 1)
+        # ``14.\n39\n$…$`` — ondalık kırığı atla
+        scan = _nxt_i
+        while scan >= 0 and re.fullmatch(r"\d+\.?", math or ""):
+            scan, math = _next_nonempty(lines, scan + 1)
+        if (
+            plain
+            and _leading_inline_math(math)
+            and not plain.startswith("$")
+            and (
+                re.sub(r"\s+", "", plain)
+                == re.sub(r"[\s$\\*]", "", _leading_inline_math(math))[
+                    : max(len(plain) // 2, 8)
+                ]
+                or _plain_formula_lookalike(plain)
+                or (
+                    len(plain) <= 80
+                    and "=" in plain
+                    and re.search(r"\d", plain)
+                    and not plain.startswith(("**", "- "))
+                )
+            )
+        ):
+            # Düz formül kopyası → sonraki $…$ satırını tut
+            i += 1
+            continue
+        # Ondalık kırığı ``14.`` / ``39`` (sonraki $…$ varsa)
+        if re.fullmatch(r"\d+\.?", plain or ""):
+            scan, nxt_math = _next_nonempty(lines, i + 1)
+            while scan >= 0 and re.fullmatch(r"\d+\.?", nxt_math or ""):
+                scan, nxt_math = _next_nonempty(lines, scan + 1)
+            if _leading_inline_math(nxt_math):
+                i += 1
+                continue
+        # ``…km$x=…$`` yapışık → satır kır (kapanış ``$`` sonrası değil)
+        line = re.sub(
+            r"(?<!\$)([a-zçğıöşü0-9).])\$(?=\\|[A-Za-z0-9])",
+            r"\1\n\n$",
+            line,
+            flags=re.I,
+        )
+        line = _drop_plain_prefix_before_inline_math(line)
+        # ``$…$**3. Başlık`` → satır kır; ``$…$**yaş`` → boşluk
+        line = re.sub(
+            r"(\$[^$\n]+\$)\*\*(?=\d+\.|\s*[A-ZÇĞİÖŞÜ])",
+            r"\1\n\n**",
+            line,
+        )
+        line = re.sub(r"(\$[^$\n]+\$)\*\*(?=\S)", r"\1 ", line)
+
+        def _math_prose_split(match: re.Match[str]) -> str:
+            math_s, ch = match.group(1), match.group(2)
+            if ch.upper() == ch and ch.lower() != ch:
+                return f"{math_s}\n\n{ch}"
+            return f"{math_s} {ch}"
+
+        line = re.sub(
+            r"(\$[^$\n]+\$)([A-Za-zÇĞİÖŞÜçğıöşüâîû])",
+            _math_prose_split,
+            line,
+        )
+        # ``$x$ yaşındadır)`` — annotation kapanış artığı
+        line = re.sub(
+            r"(\$[^$\n]+\$)\s+([a-zçğıöşüâîû]{3,})\)(?=\s*[-—.]|\s*$)",
+            r"\1 \2",
+            line,
+            flags=re.I,
+        )
+        line = re.sub(r"\b([a-zçğıöşüâîû]{4,})\)(?=-)", r"\1", line, flags=re.I)
+        line = re.sub(r"\(xx?\)?\s*$", "", line)
+        # Orphan ``**x`` / ``**M`` before math already extracted
+        if re.fullmatch(r"\*\*[A-Za-z]\s*", plain or ""):
+            i += 1
+            continue
+        out.append(line)
+        i += 1
+    src = "\n".join(out)
+    # Orphan konuşma devamı / yarım satır / sahte $prose
+    cleaned_lines: list[str] = []
+    for line in src.split("\n"):
+        s = line.strip()
+        if re.fullmatch(r"[,.]?\d{1,3}", s):
+            continue
+        if re.fullmatch(r"[,.]", s):
+            continue
+        if re.match(r"^\d+\$", s) and s.count("$") == 1:
+            continue
+        if s.startswith("$") and s.count("$") == 1 and len(s) < 12:
+            continue
+        if (
+            s.startswith("$")
+            and not s.startswith("$\\")
+            and re.match(r"^\$[a-zçğıöşüâîû ]", s, flags=re.I)
+            and not re.search(r"[\\=+\-^_{×÷]", s)
+        ):
+            continue
+        if re.search(r"\([A-Z]$", s) and len(s) < 40:
+            continue
+        # ``(xx`` / ``(x`` artığı
+        if re.fullmatch(r"\(x{1,2}", s, flags=re.I):
+            continue
+        cleaned_lines.append(line)
+    # Düz kopya tekrarı (boş satır aralıklı) + formül → $…$
+    deduped: list[str] = []
+    i = 0
+    cl = cleaned_lines
+    while i < len(cl):
+        cur = cl[i].strip()
+        nxt_i, nxt = _next_nonempty(cl, i + 1)
+        nxt2_i, nxt2 = _next_nonempty(cl, nxt_i + 1) if nxt_i >= 0 else (-1, "")
+        if (
+            cur
+            and nxt
+            and cur == nxt
+            and not cur.startswith("$")
+            and _leading_inline_math(nxt2)
+        ):
+            i += 1
+            continue
+        if cur and _leading_inline_math(nxt) and not cur.startswith("$") and (
+            _plain_formula_lookalike(cur)
+            or (
+                len(cur) <= 80
+                and "=" in cur
+                and re.search(r"\d", cur)
+                and not cur.startswith(("**", "- "))
+            )
+        ):
+            i += 1
+            continue
+        deduped.append(cl[i])
+        i += 1
+    src = "\n".join(deduped)
+    # ``×60`` / ``=54`` / ``dakika`` artıkları — sonraki $…$ öncesi
+    lines = src.split("\n")
+    out2: list[str] = []
+    i = 0
+    while i < len(lines):
+        plain = lines[i].strip()
+        if _XPM_MATH_FRAG_LINE_RE.match(plain or "") or plain in {
+            "dakika",
+            "saat",
+            "km",
+        }:
+            j = i
+            while j < len(lines) and (
+                not lines[j].strip()
+                or _XPM_MATH_FRAG_LINE_RE.match(lines[j].strip())
+                or lines[j].strip() in {"dakika", "saat", "km"}
+            ):
+                j += 1
+            if j > i and j < len(lines) and lines[j].strip().startswith("$"):
+                i = j
+                continue
+        out2.append(lines[i])
+        i += 1
+    src = "\n".join(out2)
+    src = re.sub(r"[ \t]{2,}", " ", src)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
+def strip_google_docs_xpm_paste(text: str) -> str:
+    """Google Docs denklem yapıştırması: TgQPHd/XPM SVG → ``data-xpm-latex`` / sil."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src or not _GOOGLE_XPM_SIGNAL_RE.search(src):
+        return scrub_google_math_speech_debris(src)
+
+    def repl_blob(match: re.Match[str]) -> str:
+        return _latex_from_xpm_blob(match.group(0))
+
+    src = _TGQPHD_BLOB_RE.sub(repl_blob, src)
+    src = _XPM_SIDE_MARKER_RE.sub("", src)
+    # Kalan kapanmamış / boş TgQPHd
+    src = re.sub(r"<!--TgQPHd[^<\n]*", "", src, flags=re.I)
+    return scrub_google_math_speech_debris(src)
+
 
 def strip_paste_fragment_markers(text: str) -> str:
     """Google/panel yapıştırmasında kalan ``<!--TgQPHd...`` / Fragment artıklarını temizler."""
     src = text or ""
+    if _GOOGLE_XPM_SIGNAL_RE.search(src):
+        src = strip_google_docs_xpm_paste(src)
     if "<!--" not in src and "- →" not in src:
         return src
     for pattern in _PASTE_FRAGMENT_MARKER_RES:
@@ -1897,6 +2272,10 @@ def _solution_needs_pipeline_repair(text: str) -> bool:
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not src.strip():
         return False
+    if _GOOGLE_XPM_SIGNAL_RE.search(src):
+        return True
+    if _GOOGLE_SPEECH_SIGNAL_RE.search(src):
+        return True
     if re.search(r"(?m)^[ \t]*#{1,3}[ \t]+\S", src):
         return True
     if re.search(r"\*\*metin\*\*\s*$", src, re.IGNORECASE):
@@ -2229,6 +2608,8 @@ def repair_solution_storage_defects(text: str) -> str:
         return src
 
     src = convert_atx_headings_to_bold(src)
+    src = strip_paste_fragment_markers(src)
+    src = scrub_google_math_speech_debris(src)
     src = _repair_underline_phrase_analysis(src)
     # Yapışık madde: ``…**- **Başlık`` / ``…yayımladı.- **Sonraki madde``
     # Yalnızca aynı satır — ``\s*`` satır sınırını aşmasın (``.:**\\n\\n- **E``)

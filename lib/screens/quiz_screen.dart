@@ -3002,7 +3002,8 @@ class _SolutionPanel extends StatelessWidget {
             if (selectedAnswer != correctKey) ...[
               _AnswerChip(
                 label: 'Senin cevabın',
-                value: '$selectedAnswer) $userText',
+                letter: selectedAnswer!,
+                optionText: userText ?? selectedAnswer!,
                 imageUrl: question.optionImageUrlFor(selectedAnswer!),
                 accent: const Color(0xFFF87171),
               ),
@@ -3010,7 +3011,8 @@ class _SolutionPanel extends StatelessWidget {
             ],
             _AnswerChip(
               label: 'Doğru cevap',
-              value: '$correctKey) $correctText',
+              letter: correctKey,
+              optionText: correctText,
               imageUrl: question.optionImageUrlFor(correctKey),
               accent: const Color(0xFF34D399),
             ),
@@ -3323,19 +3325,27 @@ class _ReviewAnswerStatus extends StatelessWidget {
 
 class _AnswerChip extends StatelessWidget {
   final String label;
-  final String value;
+  final String letter;
+  final String optionText;
   final String? imageUrl;
   final Color accent;
 
   const _AnswerChip({
     required this.label,
-    required this.value,
+    required this.letter,
+    required this.optionText,
     required this.accent,
     this.imageUrl,
   });
 
   @override
   Widget build(BuildContext context) {
+    final option = FormattedText.stripMarkup(optionText);
+    final mathStyle = ExamOptionView.isMathStyleOption(
+      option,
+      imageUrl: imageUrl,
+    );
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -3355,10 +3365,29 @@ class _AnswerChip extends StatelessWidget {
               color: accent.withValues(alpha: 0.95),
             ),
           ),
-          const SizedBox(height: 4),
-          ExamOptionView(
-            text: FormattedText.stripMarkup(value),
-            imageUrl: imageUrl,
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                '$letter)',
+                style: TextStyle(
+                  fontSize: mathStyle ? kCompactOptionFontSize : 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ExamOptionView(
+                  text: option,
+                  imageUrl: imageUrl,
+                  textAlign: TextAlign.start,
+                  examWrap: false,
+                ),
+              ),
+            ],
           ),
         ],
       ),
