@@ -9,6 +9,7 @@ import '../models/question_model.dart';
 import '../widgets/countdown_widget.dart';
 import 'content_bank_service.dart';
 import 'offline_pack_service.dart';
+import 'premium_service.dart';
 
 class QuestionFetchResult {
   final List<QuestionModel> questions;
@@ -134,12 +135,16 @@ class QuestionFetchService {
       if (body is! Map) return const [];
       final parsed = _parseQuestions(body['questions']);
       _rememberSession(parsed);
-      return parsed;
+      return parsed
+          .where((q) => q.id != questionId)
+          .toList(growable: false);
     } catch (e) {
       debugPrint('Similar questions fetch ($questionId): $e');
       return const [];
     }
   }
+
+  List<QuestionModel> parseQuestionsList(Object? raw) => _parseQuestions(raw);
 
   List<QuestionModel> _parseQuestions(Object? raw) {
     if (raw is! List) return const [];
@@ -163,13 +168,18 @@ class QuestionFetchService {
   ) {
     if (questions.isEmpty) return const [];
     if (test.questionIds.isEmpty) {
-      return QuestionModel.keepGroupsContiguous(questions);
+      return QuestionModel.interleaveOsymSordu(
+        QuestionModel.keepGroupsContiguous(questions),
+      );
     }
     final ordered = _orderByIds(questions, test.questionIds);
     final contiguous = QuestionModel.keepGroupsContiguous(
       ordered.isNotEmpty ? ordered : questions,
     );
-    return contiguous.isNotEmpty ? contiguous : questions;
+    final laidOut = QuestionModel.interleaveOsymSordu(
+      contiguous.isNotEmpty ? contiguous : questions,
+    );
+    return laidOut.isNotEmpty ? laidOut : questions;
   }
 
   Future<List<QuestionModel>> _fetchIdsFromApi(List<String> ids) async {
@@ -192,6 +202,7 @@ class QuestionFetchService {
   }
 
   bool get _useLocalFullBank =>
+      PremiumService.instance.canUseOfflinePack &&
       OfflinePackService.instance.isReady &&
       ContentBankService.instance.hasFullQuestionBank;
 

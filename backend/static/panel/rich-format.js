@@ -4,16 +4,35 @@
  */
 (function () {
   function normalizePasteText(text) {
+    var src;
     if (window.KpssMathRender && window.KpssMathRender.normalizeLatex) {
-      return window.KpssMathRender.normalizeLatex(text);
+      src = window.KpssMathRender.normalizeLatex(text);
+    } else {
+      src = String(text || "")
+        .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
+          return "$$" + body.trim() + "$$";
+        })
+        .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
+          return "$" + body.trim() + "$";
+        });
     }
-    return String(text || "")
-      .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
-        return "$$" + body.trim() + "$$";
-      })
-      .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
-        return "$" + body.trim() + "$";
-      });
+    if (window.KpssMathRender && window.KpssMathRender.normalizeExamArrows) {
+      src = window.KpssMathRender.normalizeExamArrows(src);
+    } else {
+      src = src
+        .replace(/\$\\(?:long)?rightarrow\$/g, "→")
+        .replace(/\$\\to\$/g, "→")
+        .replace(/[ \t]*->[ \t]*/g, " → ");
+    }
+    if (window.KpssMathRender && window.KpssMathRender.normalizeMarkup) {
+      return window.KpssMathRender.normalizeMarkup(src);
+    }
+    return String(src || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/＊/g, "*")
+      .replace(/＿/g, "_");
   }
 
   function styleOf(node) {
@@ -24,14 +43,57 @@
     }
   }
 
+  function fullyWrapped(text, mark) {
+    var t = String(text || "");
+    var n = mark.length;
+    if (t.length < n * 2) return false;
+    if (t.slice(0, n) !== mark || t.slice(-n) !== mark) return false;
+    return t.slice(n, t.length - n).indexOf(mark) === -1;
+  }
+
+  function isBoldUnderline(core) {
+    return /^\*\*__.+__\*\*$/.test(core) || /^__\*\*.+\*\*__$/.test(core);
+  }
+
+  function collapseNestedMarks(text) {
+    var src = String(text || "");
+    var prev;
+    do {
+      prev = src;
+      src = src.replace(/\*\*__\*\*([^*]+)\*\*__\*\*/g, "**__$1__**");
+      src = src.replace(/__\*\*__([^_]+)__\*\*__/g, "__**$1**__");
+      src = src.replace(/\*\*\s*\*\*([^*]+)\*\*\s*\*\*/g, "**$1**");
+      src = src.replace(/__\s*__([^_]+)__\s*__/g, "__$1__");
+      src = src.replace(/\*{4,}([^*\n]+)\*{4,}/g, "**$1**");
+      src = src.replace(/_{4,}([^_\n]+)_{4,}/g, "__$1__");
+    } while (src !== prev);
+    return src;
+  }
+
   function wrapMarkdown(text, bold, italic, underline) {
-    var core = String(text || "").trim();
-    if (!core) return "";
-    if (bold && italic) core = "***" + core + "***";
+    var raw = String(text || "");
+    var lead = (raw.match(/^[ \t]+/) || [""])[0];
+    var trail = (raw.match(/[ \t]+$/) || [""])[0];
+    var core = raw.slice(lead.length, raw.length - trail.length).trim();
+    if (!core) return raw;
+    if (!italic && isBoldUnderline(core) && (bold || underline)) {
+      return lead + core + trail;
+    }
+    if (bold && /^__\*\*.+\*\*__$/.test(core)) return lead + core + trail;
+    if (underline && /^\*\*__.+__\*\*$/.test(core)) return lead + core + trail;
+    if (bold && fullyWrapped(core, "**")) core = core.slice(2, -2).trim();
+    if (underline && fullyWrapped(core, "__")) core = core.slice(2, -2).trim();
+    if (italic && fullyWrapped(core, "*") && !fullyWrapped(core, "**")) {
+      core = core.slice(1, -1).trim();
+    }
+    if (bold && underline && !italic) core = "**__" + core + "__**";
+    else if (bold && italic) core = "***" + core + "***";
     else if (bold) core = "**" + core + "**";
     else if (italic) core = "*" + core + "*";
-    if (underline) core = "__" + core + "__";
-    return core;
+    if (underline && !(bold && underline && !italic)) {
+      core = "__" + core + "__";
+    }
+    return lead + core + trail;
   }
 
   function wrapColor(text, color) {
@@ -57,56 +119,90 @@
     return "";
   }
 
-  function nodeText(node) {
+  function childrenText(node, listDepth) {
+    return Array.prototype.map
+      .call(node.childNodes || [], function (child) {
+        return nodeText(child, listDepth);
+      })
+      .join("");
+  }
+
+  function nodeText(node, listDepth) {
     if (!node) return "";
     if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    var depth = listDepth || 0;
     var tag = (node.nodeName || "").toUpperCase();
+    if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") return "";
     if (tag === "BR") return "\n";
-    if (tag === "P" || tag === "DIV" || tag === "H1" || tag === "H2" || tag === "H3") {
-      var inner = Array.prototype.map
-        .call(node.childNodes, nodeText)
-        .join("")
-        .replace(/\n+$/g, "");
+    if (tag === "HR") return "\n\n---\n\n";
+    if (tag === "H1" || tag === "H2" || tag === "H3" || tag === "H4") {
+      var heading = childrenText(node, depth).replace(/\n+/g, " ").trim();
+      if (!heading) return "";
+      if (!/^\*\*/.test(heading)) heading = "**" + heading + "**";
+      return "## " + heading + "\n\n";
+    }
+    if (tag === "P" || tag === "DIV" || tag === "SECTION" || tag === "BLOCKQUOTE") {
+      var inner = childrenText(node, depth).replace(/\n+$/g, "");
+      if (!inner.trim()) return "";
       return inner + "\n\n";
     }
     if (tag === "LI") {
-      return (
-        "- " +
-        Array.prototype.map
-          .call(node.childNodes, nodeText)
-          .join("")
-          .trim() +
-        "\n"
-      );
+      var head = "";
+      var nested = "";
+      Array.prototype.forEach.call(node.childNodes || [], function (child) {
+        var childTag = (child.nodeName || "").toUpperCase();
+        if (childTag === "UL" || childTag === "OL") {
+          nested += nodeText(child, depth + 1);
+        } else {
+          head += nodeText(child, depth);
+        }
+      });
+      head = head.replace(/\n+/g, " ").trim();
+      head = head.replace(/^[-•*◦○–—]\s+/, "");
+      if (!head) return nested;
+      return "  ".repeat(depth) + "- " + head + "\n" + nested;
     }
     if (tag === "UL" || tag === "OL") {
-      return Array.prototype.map.call(node.childNodes, nodeText).join("");
+      return childrenText(node, depth);
     }
 
-    var child = Array.prototype.map.call(node.childNodes, nodeText).join("");
+    var child = childrenText(node, depth);
     var style = styleOf(node).toLowerCase();
+    var cls = ((node.getAttribute && node.getAttribute("class")) || "").toLowerCase();
     var bold =
       tag === "STRONG" ||
       tag === "B" ||
-      /font-weight\s*:\s*(bold|[7-9]00)/.test(style);
-    var italic = tag === "EM" || tag === "I" || /font-style\s*:\s*italic/.test(style);
+      /font-weight\s*:\s*(bold|bolder|[6-9]00)/.test(style) ||
+      /mso-bidi-font-weight\s*:\s*bold/.test(style) ||
+      /mso-ansi-font-weight\s*:\s*bold/.test(style) ||
+      /\b(bold|font-bold|font-semibold|fw-bold|fw-semibold)\b/.test(cls);
+    var italic =
+      tag === "EM" ||
+      tag === "I" ||
+      /font-style\s*:\s*italic/.test(style) ||
+      /\b(italic|font-italic)\b/.test(cls);
     var underline =
-      tag === "U" || /text-decoration\s*:[^;]*underline/.test(style);
+      tag === "U" ||
+      /text-decoration(?:-line)?\s*:[^;]*underline/.test(style) ||
+      /text-underline\s*:\s*single/.test(style) ||
+      /mso-text-underline/.test(style) ||
+      /\b(underline|font-underline)\b/.test(cls);
     var color = parseTextColor(style);
 
-    var inner = child;
+    var marked = child;
     if (bold || italic || underline) {
-      inner = wrapMarkdown(child, bold, italic, underline);
+      marked = wrapMarkdown(child, bold, italic, underline);
     }
     if (color) {
-      return wrapColor(inner, color);
+      return wrapColor(marked, color);
     }
-    return inner;
+    return marked;
   }
 
   function wrapTex(tex, display) {
     var body = String(tex || "").trim();
     if (!body) return "";
+    if (/^\\(?:long)?rightarrow$/.test(body) || body === "\\to") return "→";
     return display ? "$$" + body + "$$" : "$" + body + "$";
   }
 
@@ -144,9 +240,62 @@
     return dollars + commands * 2;
   }
 
+  function extractClipboardHtml(html) {
+    var src = String(html || "");
+    var frag = src.match(/<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i);
+    if (frag) return frag[1];
+    var trimmed = src.replace(/^\s+/, "");
+    if (/^Version:1\.0/i.test(trimmed) || /StartHTML:/i.test(src)) {
+      var start = src.match(/StartHTML:(\d+)/i);
+      var end = src.match(/EndHTML:(\d+)/i);
+      if (start && end) {
+        var from = parseInt(start[1], 10);
+        var to = parseInt(end[1], 10);
+        if (from < to && to <= src.length) return src.slice(from, to);
+      }
+      var htmlTag = src.search(/<html[\s>]/i);
+      if (htmlTag >= 0) return src.slice(htmlTag);
+    }
+    return src;
+  }
+
+  function htmlLooksRich(html) {
+    var src = String(html || "");
+    return (
+      /<(strong|b|em|i|u)\b/i.test(src) ||
+      /font-weight\s*:\s*(bold|bolder|[6-9]00)/i.test(src) ||
+      /mso-(?:bidi|ansi)-font-weight\s*:\s*bold/i.test(src) ||
+      /text-decoration(?:-line)?\s*:[^;"']*underline/i.test(src) ||
+      /text-underline\s*:\s*single/i.test(src)
+    );
+  }
+
+  function markdownLooksRich(text) {
+    return /(\*\*|__|\{green\}|\{red\}|\{blue\})/.test(String(text || ""));
+  }
+
+  function collapseBulletPrefixes(text) {
+    return String(text || "")
+      .replace(/^(?:\s*[-•*◦○–—]\s+){2,}/gm, "- ")
+      .replace(/^\s*[-•*◦○–—]\s*$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function alignListToPlain(fromHtml, fromPlain) {
+    var html = collapseBulletPrefixes(fromHtml);
+    var plainList = (String(fromPlain || "").match(/^\s*[-•*]\s+/gm) || []).length;
+    var htmlList = (html.match(/^\s*[-•*]\s+/gm) || []).length;
+    if (htmlList > 0 && plainList === 0) {
+      return html.replace(/^\s*[-•*◦○–—]\s+/gm, "").trim();
+    }
+    return html;
+  }
+
   function htmlClipboardToText(html) {
     try {
-      var doc = new DOMParser().parseFromString(html, "text/html");
+      var payload = extractClipboardHtml(html);
+      var doc = new DOMParser().parseFromString(payload, "text/html");
       var body = doc.body;
       if (!body) return "";
       replaceClipboardMath(body);
@@ -155,15 +304,36 @@
         .replace(/[ \t]+\n/g, "\n")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
-      return normalizePasteText(text);
+      return collapseBulletPrefixes(collapseNestedMarks(normalizePasteText(text)));
     } catch (e) {
       return "";
     }
   }
 
+  function structureScore(text) {
+    var src = String(text || "");
+    var bolds = (src.match(/\*\*/g) || []).length;
+    var unders = (src.match(/__/g) || []).length;
+    var breaks = (src.match(/\n/g) || []).length;
+    var bullets = (src.match(/^\s*[-•]/gm) || []).length;
+    var heads = (src.match(/^## /gm) || []).length;
+    return bolds * 3 + unders * 3 + breaks + bullets * 2 + heads * 4;
+  }
+
   function choosePasteText(plain, html) {
-    var fromPlain = normalizePasteText(plain || "");
+    var fromPlain = collapseBulletPrefixes(
+      collapseNestedMarks(normalizePasteText(plain || ""))
+    );
     var fromHtml = html ? htmlClipboardToText(html) : "";
+    if (fromHtml) fromHtml = alignListToPlain(fromHtml, fromPlain);
+    if (!fromHtml) return fromPlain;
+    if (!fromPlain) return collapseBulletPrefixes(fromHtml);
+    var htmlRich = htmlLooksRich(html);
+    var plainMd = markdownLooksRich(fromPlain);
+    var htmlMd = markdownLooksRich(fromHtml);
+    if (htmlRich && htmlMd && !plainMd) return fromHtml;
+    if (plainMd && !htmlMd) return fromPlain;
+    if (htmlRich && htmlMd) return fromHtml;
     var plainHas =
       window.KpssMathRender && window.KpssMathRender.hasLatex
         ? window.KpssMathRender.hasLatex(fromPlain)
@@ -174,6 +344,9 @@
         : /\$|\\frac|\\sqrt|\\\(/.test(fromHtml);
     if (plainHas && (!htmlHas || latexScore(fromPlain) >= latexScore(fromHtml))) {
       return fromPlain;
+    }
+    if (structureScore(fromHtml) >= structureScore(fromPlain)) {
+      return fromHtml;
     }
     return fromHtml || fromPlain;
   }
@@ -189,6 +362,92 @@
     el.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
+  function finalizeSolutionPaste(text) {
+    if (!window.KpssMathRender) return text;
+    var MR = window.KpssMathRender;
+    var src = String(text || "");
+    if (MR.normalizeMarkup) src = MR.normalizeMarkup(src);
+    if (MR.formatNamedSolutionSections) src = MR.formatNamedSolutionSections(src);
+    if (MR.restoreCollapsedBreaks) src = MR.restoreCollapsedBreaks(src);
+    if (MR.formatNamedSolutionSections) src = MR.formatNamedSolutionSections(src);
+    if (MR.normalizeRomanSolutionSections) src = MR.normalizeRomanSolutionSections(src);
+    if (MR.normalizeLatex) src = MR.normalizeLatex(src);
+    if (MR.structureSolutionOutline) src = MR.structureSolutionOutline(src);
+    if (MR.repairInlineGluedBold) src = MR.repairInlineGluedBold(src);
+    if (MR.tightenMarkdownMarkers) src = MR.tightenMarkdownMarkers(src);
+    if (MR.ensureMarkdownExteriorSpaces) src = MR.ensureMarkdownExteriorSpaces(src);
+    if (MR.collapseItalicQuoteMarkerSpaces) {
+      src = MR.collapseItalicQuoteMarkerSpaces(src);
+    }
+    src = src.replace(
+      /([^\n])\n(\*\*(?:Mühimme\s+Defteri:|Kimin\s+Sorumluluğundadır\?|(?:KPSS\s+)?Hap\s+Bilgi:)[^*\n]*\*\*)/gi,
+      "$1\n\n$2"
+    );
+    return src.trim();
+  }
+
+  function csrfToken() {
+    var el = document.querySelector("[name=csrfmiddlewaretoken]");
+    return el ? el.value : "";
+  }
+
+  function pasteFieldKind(el) {
+    if (!el) return "option";
+    if (el.id === "question-solution" || el.name === "solution") return "solution";
+    if (el.id === "question-stem" || el.name === "stem") return "stem";
+    return "option";
+  }
+
+  function normalizePasteLocally(fieldKind, plain, html) {
+    var converted = choosePasteText(plain, html);
+    if (fieldKind === "solution") {
+      return finalizeSolutionPaste(converted);
+    }
+    if (window.KpssMathRender && window.KpssMathRender.restoreCollapsedBreaks) {
+      converted = window.KpssMathRender.restoreCollapsedBreaks(converted);
+    }
+    return converted;
+  }
+
+  function normalizePasteViaServer(fieldKind, plain, html) {
+    var url = window.KPSS_NORMALIZE_PASTE_URL;
+    if (!url) {
+      return Promise.resolve(normalizePasteLocally(fieldKind, plain, html));
+    }
+    return fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken(),
+      },
+      body: JSON.stringify({
+        field: fieldKind,
+        text: plain || "",
+        html: html || "",
+      }),
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("normalize failed");
+        return res.json();
+      })
+      .then(function (data) {
+        return (data && data.text != null)
+          ? data.text
+          : normalizePasteLocally(fieldKind, plain, html);
+      })
+      .catch(function (err) {
+        if (html && fieldKind === "solution") {
+          console.warn(
+            "KPSS: çözüm yapıştırma sunucu normalizasyonu başarısız; " +
+              "lokal önizleme Python kaydı ile uyumlu olmayabilir.",
+            err
+          );
+        }
+        return normalizePasteLocally(fieldKind, plain, html);
+      });
+  }
+
   function bindPaste(el) {
     if (el.dataset.richPaste) return;
     el.dataset.richPaste = "1";
@@ -197,11 +456,12 @@
       if (!clip) return;
       var html = clip.getData("text/html");
       var plain = clip.getData("text/plain") || "";
-      var converted = choosePasteText(plain, html);
-      if (!converted) return;
-      if (!html && converted === plain) return;
+      var fieldKind = pasteFieldKind(el);
       e.preventDefault();
-      insertAtCursor(el, converted);
+      normalizePasteViaServer(fieldKind, plain, html).then(function (converted) {
+        if (!converted) return;
+        insertAtCursor(el, converted);
+      });
     });
   }
 
@@ -239,13 +499,42 @@
       return;
     }
 
-    const insert = selected.length ? selected : "metin";
-    el.value = value.slice(0, start) + open + insert + close + value.slice(end);
+    const lead = (selected.match(/^[ \t]+/) || [""])[0];
+    const trail = (selected.match(/[ \t]+$/) || [""])[0];
+    const core = selected.slice(lead.length, selected.length - trail.length);
+    const insert = core.length ? core : "metin";
+    let beforePad = "";
+    let afterPad = "";
+    const leftChar = value.slice(Math.max(0, start - 1), start);
+    const rightChar = value.slice(end, end + 1);
+    if (
+      !lead &&
+      leftChar &&
+      /[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû'’]/.test(leftChar)
+    ) {
+      beforePad = " ";
+    }
+    if (
+      !trail &&
+      rightChar &&
+      /[0-9A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜÂÎÛçğıöşüâîû]/.test(rightChar)
+    ) {
+      afterPad = " ";
+    }
+    const wrapped = lead + beforePad + open + insert + close + afterPad + trail;
+    el.value = value.slice(0, start) + wrapped + value.slice(end);
     el.focus();
+    const selStart = start + lead.length + beforePad.length;
     if (selected.length) {
-      el.setSelectionRange(start, start + open.length + insert.length + close.length);
+      el.setSelectionRange(
+        selStart,
+        selStart + open.length + insert.length + close.length
+      );
     } else {
-      el.setSelectionRange(start + open.length, start + open.length + insert.length);
+      el.setSelectionRange(
+        selStart + open.length,
+        selStart + open.length + insert.length
+      );
     }
     el.dispatchEvent(new Event("input", { bubbles: true }));
   }
@@ -269,6 +558,23 @@
 
     const bar = document.createElement("div");
     bar.className = "rich-toolbar";
+    var mathBtns = "";
+    if (window.KpssMathFormulas && window.KpssMathFormulas.toolbarItems) {
+      mathBtns =
+        '<span class="rich-sep" aria-hidden="true"></span>' +
+        '<span class="rich-hint" title="Matematik parçacıkları">∑</span>';
+      window.KpssMathFormulas.toolbarItems().forEach(function (item) {
+        mathBtns +=
+          '<button type="button" class="rich-btn" data-math="' +
+          item.key +
+          '" title="' +
+          (item.title || item.label) +
+          '">' +
+          item.label +
+          "</button>";
+      });
+    }
+
     bar.innerHTML =
       '<button type="button" class="rich-btn" data-fmt="bold" title="Kalın (Ctrl+B)"><strong>K</strong></button>' +
       '<button type="button" class="rich-btn" data-fmt="italic" title="İtalik (Ctrl+I)"><em>I</em></button>' +
@@ -277,18 +583,27 @@
       '<button type="button" class="rich-btn rich-btn-color rich-btn-green" data-fmt="green" title="Yeşil">G</button>' +
       '<button type="button" class="rich-btn rich-btn-color rich-btn-red" data-fmt="red" title="Kırmızı">R</button>' +
       '<button type="button" class="rich-btn rich-btn-color rich-btn-blue" data-fmt="blue" title="Mavi">M</button>' +
-      '<span class="rich-hint">Seç → Kalın / İtalik / Altı çizili / Renk</span>';
+      mathBtns +
+      '<span class="rich-hint">Seç → Kalın / İtalik / Altı çizili / Renk · ∑ Matematik</span>';
 
     wrap.appendChild(bar);
     wrap.appendChild(el);
     bindPaste(el);
+    document.dispatchEvent(
+      new CustomEvent("kpss-rich-field-ready", { detail: { el: el } })
+    );
 
     bar.addEventListener("mousedown", function (e) {
       // Odak kaybını engelle (seçim bozulmasın)
-      if (e.target.closest("[data-fmt]")) e.preventDefault();
+      if (e.target.closest("[data-fmt], [data-math]")) e.preventDefault();
     });
 
     bar.addEventListener("click", function (e) {
+      const mathBtn = e.target.closest("[data-math]");
+      if (mathBtn && window.KpssMathFormulas) {
+        window.KpssMathFormulas.insert(el, mathBtn.getAttribute("data-math"));
+        return;
+      }
       const btn = e.target.closest("[data-fmt]");
       if (!btn) return;
       applyFormat(el, btn.getAttribute("data-fmt"));
@@ -313,4 +628,11 @@
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll("textarea.js-rich, input.js-rich").forEach(buildToolbar);
   });
+
+  window.KpssRichFormat = {
+    htmlClipboardToText: htmlClipboardToText,
+    choosePasteText: choosePasteText,
+    extractClipboardHtml: extractClipboardHtml,
+    finalizeSolutionPaste: finalizeSolutionPaste,
+  };
 })();

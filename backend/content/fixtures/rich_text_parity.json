@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "description": "Golden parity cases — expected = Python normalize_field output",
+  "cases": [
+    {
+      "id": "plain_prose_dynasty_roman",
+      "field": "solution",
+      "input": "I. Kök Türk Devleti'nin yıkılmasının ardından boylar yaşamıştır. verip II. Kök Türk (Kutluk) Devleti'ni kurarak soru?",
+      "html": "",
+      "notes": "Düz metinde II. Kök Türk satır kırılmamalı",
+      "expected": "I. Kök Türk Devleti'nin yıkılmasının ardından boylar yaşamıştır. verip II. Kök Türk (Kutluk) Devleti'ni kurarak soru?",
+      "effective_input": "I. Kök Türk Devleti'nin yıkılmasının ardından boylar yaşamıştır. verip II. Kök Türk (Kutluk) Devleti'ni kurarak soru?"
+    },
+    {
+      "id": "colon_premise_roman",
+      "field": "solution",
+      "input": "I. Birinci öncül metni: açıklama devam eder. II. İkinci öncül metni: ikinci açıklama burada.",
+      "html": "",
+      "notes": "Öncül listesi satır kırılmalı",
+      "expected": "**I. Birinci öncül metni:**\naçıklama devam eder.\n**II. İkinci öncül metni:**\nikinci açıklama burada.",
+      "effective_input": "I. Birinci öncül metni: açıklama devam eder. II. İkinci öncül metni: ikinci açıklama burada."
+    },
+    {
+      "id": "paste_fragment_markers_q_abe2d84408",
+      "field": "solution",
+      "input": "<!--Start\nFragment- →\nAdayların en çok düşeceği tuzak **Berlin Antlaşması<!--TgQPHd|||[]- →** 'dır (1878). Ancak Berlin Antlaşması; **genel, çok uluslu ve çok yönlü<!--TgQPHd|||[]- →** bir kongre metnidir.<!--TgQPHd|||[]- → <!--TgQPHd|||[]- →\n<!--End\nFragment- →",
+      "html": "",
+      "notes": "Google paste fragment artıkları temizlenmeli",
+      "expected": "Adayların en çok düşeceği tuzak **Berlin Antlaşması** 'dır (1878). Ancak Berlin Antlaşması;** genel, çok uluslu ve çok yönlü** bir kongre metnidir.",
+      "effective_input": "Adayların en çok düşeceği tuzak **Berlin Antlaşması** 'dır (1878). Ancak Berlin Antlaşması; **genel, çok uluslu ve çok yönlü** bir kongre metnidir."
+    },
+    {
+      "id": "block_underline_stage_headers",
+      "field": "solution",
+      "input": "__## 1. Aşama: Tarihsel Süreci İnceleme__\nI. Kök Türk Devleti'nin 630 yılında kurulması.\n__## 2. Aşama: Kahramanları Tanıma__\nII. Mete Han ve Türk ordusunun kuruluşu.",
+      "html": "",
+      "notes": "Blok altı çizgi başlıkları kalın paragrafa dönmeli",
+      "expected": "**1. Aşama: Tarihsel Süreci İnceleme**\nI. Kök Türk Devleti'nin 630 yılında kurulması.\n**2. Aşama: Kahramanları Tanıma**\nII. Mete Han ve Türk ordusunun kuruluşu.",
+      "effective_input": "**1. Aşama: Tarihsel Süreci İnceleme**\nI. Kök Türk Devleti'nin 630 yılında kurulması.\n**2. Aşama: Kahramanları Tanıma**\nII. Mete Han ve Türk ordusunun kuruluşu."
+    },
+    {
+      "id": "html_bold_and_bullets",
+      "field": "solution",
+      "input": "",
+      "html": "<p><strong>A) Karahanlılar</strong></p><ul><li><b>Neden Çeldirici?</b> Metin parçası.</li><li><b>KPSS Hap Bilgi:</b> Özet cümle.</li></ul>",
+      "notes": "HTML yapıştırma → markdown",
+      "expected": "**A) Karahanlılar**\n- **Neden Çeldirici?** Metin parçası.\n**KPSS Hap Bilgi:** Özet cümle.",
+      "effective_input": "**A) Karahanlılar**\n\n- **Neden Çeldirici?** Metin parçası.\n\n- **KPSS Hap Bilgi:** Özet cümle."
+    },
+    {
+      "id": "glued_named_sections",
+      "field": "solution",
+      "input": "Mühimme Defteri: Divan-ı Hümayun'da görüşülerek karara bağlanan kararların tutulduğu resmî defterlerdir.Kimin Sorumluluğundadır? Nişancı'ya bağlı çalışan Beylikçi (Amedi) Kalemi tarafından tutulurdu.Hap Bilgi: Askerî mali kayıtlar Defterdarlık (Maliye) kalemleri tarafından tutulurdu.",
+      "html": "",
+      "notes": "Yapışık adlandırılmış bölümler ayrılmalı",
+      "expected": "**Mühimme Defteri:** Divan-ı Hümayun'da görüşülerek karara bağlanan kararların tutulduğu resmî defterlerdir.\n\n**Kimin Sorumluluğundadır?** Nişancı'ya bağlı çalışan Beylikçi (Amedi) Kalemi tarafından tutulurdu.\n\n**Hap Bilgi:** Askerî mali kayıtlar Defterdarlık (Maliye) kalemleri tarafından tutulurdu.",
+      "effective_input": "Mühimme Defteri: Divan-ı Hümayun'da görüşülerek karara bağlanan kararların tutulduğu resmî defterlerdir.Kimin Sorumluluğundadır? Nişancı'ya bağlı çalışan Beylikçi (Amedi) Kalemi tarafından tutulurdu.Hap Bilgi: Askerî mali kayıtlar Defterdarlık (Maliye) kalemleri tarafından tutulurdu."
+    },
+    {
+      "id": "stem_bold_question",
+      "field": "stem",
+      "input": "Nizamülmülk, Siyasetname adlı eserinde bir kimsenin mahkemeye gelmek istememesi hâlinde ne kadar yüksek makam sahibi olursa olsun onun zorla mahkemeye getirilmesi gerektiğini ifade etmiştir.\n\n**Buna göre Nizamülmülk'ün aşağıdakilerden hangisini gerçekleştirmeyi hedeflediği söylenemez?**",
+      "html": "",
+      "notes": "Soru kökü outline pipeline almamalı",
+      "expected": "Nizamülmülk, Siyasetname adlı eserinde bir kimsenin mahkemeye gelmek istememesi hâlinde ne kadar yüksek makam sahibi olursa olsun onun zorla mahkemeye getirilmesi gerektiğini ifade etmiştir.\n\n**Buna göre Nizamülmülk'ün aşağıdakilerden hangisini gerçekleştirmeyi hedeflediği söylenemez?**",
+      "effective_input": "Nizamülmülk, Siyasetname adlı eserinde bir kimsenin mahkemeye gelmek istememesi hâlinde ne kadar yüksek makam sahibi olursa olsun onun zorla mahkemeye getirilmesi gerektiğini ifade etmiştir.\n\n**Buna göre Nizamülmülk'ün aşağıdakilerden hangisini gerçekleştirmeyi hedeflediği söylenemez?**"
+    },
+    {
+      "id": "option_html_bold",
+      "field": "option_a",
+      "input": "",
+      "html": "<p><strong>Osmanlı</strong></p>",
+      "notes": "Şık HTML kalın",
+      "expected": "**Osmanlı**",
+      "effective_input": "**Osmanlı**"
+    },
+    {
+      "id": "latex_bracket_to_dollar",
+      "field": "stem",
+      "input": "Denklem \\[ x^2 + 1 \\] ve inline \\( a+b \\).",
+      "html": "",
+      "notes": "LaTeX köşeli parantez → $",
+      "expected": "Denklem $$x^2 + 1$$ ve inline $a+b$.",
+      "effective_input": "Denklem $$x^2 + 1$$ ve inline $a+b$."
+    },
+    {
+      "id": "split_inline_dollar_math",
+      "field": "solution",
+      "input": "Sonuç: $Y\n= 7$ olur.",
+      "html": "",
+      "notes": "Satır içi bölünmüş $...$ birleşmeli",
+      "expected": "Sonuç: $Y = 7$ olur.",
+      "effective_input": "Sonuç: $Y = 7$ olur."
+    }
+  ]
+}

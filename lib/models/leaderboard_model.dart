@@ -2,17 +2,22 @@
 class LeaderboardEntryModel {
   final String kullaniciId;
   final String isim;
-  final int xp;
+  final int totalCorrect;
+  final int totalDurationSeconds;
   final int sira;
   final bool benMi;
 
   const LeaderboardEntryModel({
     required this.kullaniciId,
     required this.isim,
-    required this.xp,
+    this.totalCorrect = 0,
+    this.totalDurationSeconds = 0,
     required this.sira,
     this.benMi = false,
   });
+
+  /// Eski XP alanı — mini deneme sıralamasında toplam doğru.
+  int get xp => totalCorrect;
 }
 
 enum LeaderboardPeriod { haftalik, aylik }

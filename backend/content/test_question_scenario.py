@@ -8,6 +8,7 @@ from content.test_grouping import (
     order_questions_keeping_scenarios,
     rebalance_topic_tests,
 )
+from content.topic_slots import SLOTS_PER_TOPIC
 
 
 class QuestionScenarioTests(TestCase):
@@ -62,13 +63,13 @@ class QuestionScenarioTests(TestCase):
         self.assertIn("Ali", data["scenarioStem"])
         self.assertEqual(data["scenarioOrder"], 2)
 
-    def test_unpublished_scenario_hidden_from_api(self):
+    def test_attached_scenario_shown_even_if_unpublished(self):
         self.scenario.is_published = False
         self.scenario.save(update_fields=["is_published"])
         q = self._q(1, scenario=self.scenario, scenario_order=1)
         data = QuestionSerializer(q).data
-        self.assertIsNone(data["scenarioId"])
-        self.assertIsNone(data["scenarioStem"])
+        self.assertEqual(data["scenarioId"], str(self.scenario.id))
+        self.assertIn("Ali", data["scenarioStem"])
 
     def test_test_question_ids_follow_group_order(self):
         lone = self._q(9)
@@ -100,16 +101,19 @@ class QuestionScenarioTests(TestCase):
         self.topic.questions_per_test = 2
         self.topic.save(update_fields=["questions_per_test"])
         summary = rebalance_topic_tests(self.topic)
-        self.assertEqual(summary["tests"], 2)
+        # 5 sabit yuva hep yayında; sorular yalnızca ilk iki teste dağılır.
+        self.assertEqual(summary["tests"], SLOTS_PER_TOPIC)
         tests = list(self.topic.tests.order_by("created_at", "id"))
+        filled = [t for t in tests if t.questions.exists()]
+        self.assertEqual(len(filled), 2)
         grouped_test = next(
             t
-            for t in tests
+            for t in filled
             if t.questions.filter(scenario=self.scenario).count() == 3
         )
         self.assertEqual(grouped_test.questions.count(), 3)
         self.assertTrue(
-            extra in tests[0].questions.all() or extra in tests[1].questions.all()
+            extra in filled[0].questions.all() or extra in filled[1].questions.all()
         )
 
     def test_assign_auto_joins_sibling_test(self):

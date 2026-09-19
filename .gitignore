@@ -43,6 +43,8 @@ app.*.map.json
 # Environment
 .env
 .env.*
+!.env.example
+!**/.env.example
 
 # Firebase secrets
 backend/firebase-service-account.json
@@ -55,5 +57,15 @@ google-services.json
 backend/db.sqlite3
 backend/media/
 backend/staticfiles/
+telegram_bot.lock
+logs/telegram-auto.log
+logs/telegram-watch.log
+!logs/safety.log
+!logs/file-integrity.txt
+!logs/critical-bats-manifest.txt
+telegram_chat_messages.json
+_tmp_old_math.js
+_tmp_*.bat
+_tmp_*.txt
 **/__pycache__/
 *.py[cod]

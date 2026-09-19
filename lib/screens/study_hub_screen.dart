@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/kpss_curriculum.dart';
+import '../layout/app_breakpoints.dart';
 import '../services/content_bank_service.dart';
 import '../services/content_sync_service.dart';
 import '../theme/app_theme.dart';
@@ -12,8 +13,12 @@ import '../widgets/countdown_widget.dart';
 import '../widgets/daily_mission_center.dart';
 import '../widgets/daily_mini_exam_card.dart';
 import '../widgets/exam_focus_panel.dart';
+import '../widgets/exam_pack_showcase.dart';
 import '../widgets/premium_header_button.dart';
 import '../widgets/savings_insight_banner.dart';
+import '../widgets/branch_exams_entry.dart';
+import '../widgets/special_tests_entry.dart';
+import 'notes_screen.dart';
 import 'topic_detail_screen.dart';
 
 IconData subjectIcon(String subjectId) {
@@ -59,145 +64,183 @@ class StudyHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
+    final showHome = embedded && pane == StudyHubPane.home;
 
-    return ListenableBuilder(
-      listenable: ContentBankService.instance,
-      builder: (context, _) {
-        final subjects = KpssCurriculum.subjectsFor(kpssType);
-        final bank = ContentBankService.instance;
-        final showHome = embedded && pane == StudyHubPane.home;
-        final showSubjects = pane == StudyHubPane.subjects;
-
-        return Scaffold(
-          backgroundColor: AppTheme.page(context),
-          appBar: embedded
-              ? null
-              : AppBar(
-                  backgroundColor: AppTheme.page(context),
-                  foregroundColor: AppTheme.onPage(context),
-                  leading: const AppBackButton(),
-                  title: Text(
-                    'TÜM DERSLER',
-                    style: TextStyle(
-                      fontFamily: 'serif',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 20,
-                      color: AppTheme.onPage(context),
-                    ),
+    // Ana sayfa paneli katalog dinlemez — syncCatalog tüm home ağacını
+    // yeniden çizmesin. Dersler paneli yalnızca ilerleme/katalog satırlarını yeniler.
+    if (showHome) {
+      return Scaffold(
+        backgroundColor: AppTheme.page(context),
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppTheme.pageTop(context),
+                AppTheme.pageDeep(context),
+                AppTheme.page(context),
+              ],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+          ),
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              if (selectedType != null && isPremium != null)
+                SliverToBoxAdapter(
+                  child: _SoruHeader(
+                    topPad: topPad,
+                    selectedType: selectedType!,
+                    isPremium: isPremium!,
+                    onPremiumTap: onPremiumTap,
+                    onMoreTap: onMoreTap,
+                    hideBrandRow: shellTopBarVisible,
+                    onKpssTypeChanged: onKpssTypeChanged,
                   ),
                 ),
-          body: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppTheme.pageTop(context),
-                  AppTheme.pageDeep(context),
-                  AppTheme.page(context),
-                ],
-                stops: const [0.0, 0.45, 1.0],
+              const SliverToBoxAdapter(child: SizedBox(height: 28)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.page(context),
+      appBar: embedded
+          ? null
+          : AppBar(
+              backgroundColor: AppTheme.page(context),
+              foregroundColor: AppTheme.onPage(context),
+              leading: const AppBackButton(),
+              title: Text(
+                'TÜM DERSLER',
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 20,
+                  color: AppTheme.onPage(context),
+                ),
               ),
             ),
-            child: RefreshIndicator(
-              color: AppTheme.champagne,
-              backgroundColor: AppTheme.surfaceCard(context),
-              onRefresh: () =>
-                  ContentSyncService.instance.syncCatalog(force: true),
-              child: CustomScrollView(
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppTheme.pageTop(context),
+              AppTheme.pageDeep(context),
+              AppTheme.page(context),
+            ],
+            stops: const [0.0, 0.45, 1.0],
+          ),
+        ),
+        child: RefreshIndicator(
+          color: AppTheme.champagne,
+          backgroundColor: AppTheme.surfaceCard(context),
+          onRefresh: () =>
+              ContentSyncService.instance.syncCatalog(force: true),
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              ContentBankService.instance.catalogRevision,
+              ContentBankService.instance.progressRevision,
+            ]),
+            builder: (context, _) {
+              final subjects = KpssCurriculum.subjectsFor(kpssType);
+              final bank = ContentBankService.instance;
+              final gridColumns = AppBreakpoints.subjectGridColumns(context);
+              return CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
                 slivers: [
-                  if (showHome)
-                    SliverToBoxAdapter(
-                      child: _SoruHeader(
-                        topPad: topPad,
-                        selectedType: selectedType!,
-                        isPremium: isPremium!,
-                        onPremiumTap: onPremiumTap,
-                        onMoreTap: onMoreTap,
-                        hideBrandRow: shellTopBarVisible,
-                        onKpssTypeChanged: onKpssTypeChanged,
-                      ),
-                    ),
-                  if (showSubjects) ...[
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: _SubjectsHeader(
-                          totalQuestions: subjects.fold<int>(
-                            0,
-                            (sum, s) =>
-                                sum +
-                                bank.catalogQuestionCountForSubject(
-                                  kpssType,
-                                  s.id,
-                                ),
-                          ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: _SubjectsHeader(
+                        totalQuestions: subjects.fold<int>(
+                          0,
+                          (sum, s) =>
+                              sum +
+                              bank.catalogQuestionCountForSubject(
+                                kpssType,
+                                s.id,
+                              ),
                         ),
+                        kpssType: kpssType,
                       ),
                     ),
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        embedded ? 8 : 12,
-                        16,
-                        0,
-                      ),
-                      sliver: const SliverToBoxAdapter(
-                        child: ContinueStudyCard(),
-                      ),
+                  ),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      embedded ? 8 : 12,
+                      16,
+                      0,
                     ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 1.18,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final subject = subjects[index];
-                            final questionCount = bank
-                                .catalogQuestionCountForSubject(
-                              kpssType,
-                              subject.id,
-                            );
-                            return _SubjectTile(
-                              subjectId: subject.id,
-                              name: subject.name,
-                              icon: subjectIcon(subject.id),
-                              subtitle:
-                                  '${subject.topics.length} konu · $questionCount soru',
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => SubjectTopicsScreen(
-                                      kpssType: kpssType,
-                                      subject: subject,
-                                    ),
+                    sliver: const SliverToBoxAdapter(
+                      child: ContinueStudyCard(),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: gridColumns,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio:
+                            AppBreakpoints.subjectGridAspectRatio(gridColumns),
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final subject = subjects[index];
+                          final progress = bank.subjectQuestionProgress(
+                            kpssType,
+                            subject.id,
+                          );
+                          return _SubjectTile(
+                            subjectId: subject.id,
+                            name: subject.name,
+                            icon: subjectIcon(subject.id),
+                            subtitle: '${progress.total} soru',
+                            progress: progress.total == 0
+                                ? 0
+                                : progress.solved / progress.total,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => SubjectTopicsScreen(
+                                    kpssType: kpssType,
+                                    subject: subject,
                                   ),
-                                );
-                              },
-                            );
-                          },
-                          childCount: subjects.length,
-                        ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        childCount: subjects.length,
                       ),
                     ),
-                  ],
-                  if (showHome)
-                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                  ),
+                  SliverToBoxAdapter(
+                    child: ExamPackShowcase(kpssType: kpssType),
+                  ),
+                  SliverToBoxAdapter(
+                    child: SpecialTestsEntry(kpssType: kpssType),
+                  ),
+                  SliverToBoxAdapter(
+                    child: BranchExamsEntry(kpssType: kpssType),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
                 ],
-              ),
-            ),
+              );
+            },
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -216,7 +259,10 @@ class SubjectTopicsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ContentBankService.instance,
+      listenable: Listenable.merge([
+        ContentBankService.instance.catalogRevision,
+        ContentBankService.instance.progressRevision,
+      ]),
       builder: (context, _) {
         final bank = ContentBankService.instance;
 
@@ -285,44 +331,113 @@ class SubjectTopicsScreen extends StatelessWidget {
 
 class _SubjectsHeader extends StatelessWidget {
   final int totalQuestions;
+  final KpssType kpssType;
 
-  const _SubjectsHeader({required this.totalQuestions});
+  const _SubjectsHeader({
+    required this.totalQuestions,
+    required this.kpssType,
+  });
 
   @override
   Widget build(BuildContext context) {
     final countLabel =
         totalQuestions == 0 ? 'Henüz soru yok' : '$totalQuestions soru';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              'Dersler',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.onPage(context),
-                height: 1.1,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                countLabel,
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'Dersler',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.champagne.withValues(alpha: 0.95),
+                  fontFamily: 'serif',
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.onPage(context),
+                  height: 1.1,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  countLabel,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.champagne.withValues(alpha: 0.95),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        _MyNotesButton(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => NotesScreen(kpssType: kpssType),
+              ),
+            );
+          },
         ),
       ],
+    );
+  }
+}
+
+class _MyNotesButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _MyNotesButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(2),
+        splashColor: Colors.black.withValues(alpha: 0.08),
+        highlightColor: Colors.black.withValues(alpha: 0.04),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.all(Radius.circular(2)),
+            color: Color(0xFFF3F0EA),
+            border: Border.fromBorderSide(
+              BorderSide(color: Color(0xFFD8D2C8), width: 1),
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(10, 7, 10, 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.sticky_note_2_outlined,
+                  size: 14,
+                  color: Colors.black,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Notlarım',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                    height: 1,
+                    color: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -332,6 +447,7 @@ class _SubjectTile extends StatelessWidget {
   final String name;
   final IconData icon;
   final String subtitle;
+  final double progress;
   final VoidCallback onTap;
 
   const _SubjectTile({
@@ -339,6 +455,7 @@ class _SubjectTile extends StatelessWidget {
     required this.name,
     required this.icon,
     required this.subtitle,
+    required this.progress,
     required this.onTap,
   });
 
@@ -375,13 +492,13 @@ class _SubjectTile extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(9, 9, 9, 8),
+                padding: const EdgeInsets.fromLTRB(9, 7, 9, 7),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 38,
-                      height: 38,
+                      width: 34,
+                      height: 34,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
@@ -396,7 +513,7 @@ class _SubjectTile extends StatelessWidget {
                         border: Border.all(color: neon.withValues(alpha: 0.65)),
                         boxShadow: SubjectNeonPalette.glow(neon, blur: 6),
                       ),
-                      child: Icon(icon, size: 20, color: neon),
+                      child: Icon(icon, size: 18, color: neon),
                     ),
                     const Spacer(),
                     Text(
@@ -420,6 +537,16 @@ class _SubjectTile extends StatelessWidget {
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: neon.withValues(alpha: 0.88),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0),
+                        minHeight: 3,
+                        backgroundColor: neon.withValues(alpha: 0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(neon),
                       ),
                     ),
                   ],
@@ -486,7 +613,7 @@ class _SoruHeader extends StatelessWidget {
                   builder: (context, premium, _) {
                     return _HeaderChip(
                       isPremium: premium,
-                      onPremiumTap: premium ? null : onPremiumTap,
+                      onPremiumTap: onPremiumTap,
                       onMoreTap: onMoreTap,
                     );
                   },
@@ -498,37 +625,38 @@ class _SoruHeader extends StatelessWidget {
           ValueListenableBuilder<KpssType>(
             valueListenable: selectedType,
             builder: (context, type, _) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const ExamFocusPanel(
-                    light: true,
-                  ),
-                  DailyMiniExamCard(kpssType: type),
-                  const SizedBox(height: 10),
-                  DailyMissionCenter(
-                    kpssType: type,
-                    onSubjectTap: (subject) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => SubjectTopicsScreen(
-                            kpssType: type,
-                            subject: subject,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: isPremium,
-                    builder: (context, premium, _) {
-                      return SavingsInsightBanner(
+              return ValueListenableBuilder<bool>(
+                valueListenable: isPremium,
+                builder: (context, premium, _) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const ExamFocusPanel(
+                        light: true,
+                      ),
+                      DailyMiniExamCard(kpssType: type),
+                      const SizedBox(height: 10),
+                      DailyMissionCenter(
+                        kpssType: type,
+                        isPremium: premium,
+                        onSubjectTap: (subject) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => SubjectTopicsScreen(
+                                kpssType: type,
+                                subject: subject,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      SavingsInsightBanner(
                         isPremium: premium,
                         onPremiumTap: onPremiumTap,
-                      );
-                    },
-                  ),
-                ],
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),
@@ -554,18 +682,21 @@ class _HeaderChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PremiumHeaderButton(
-          isPremium: isPremium,
-          onTap: onPremiumTap,
-        ),
         IconButton(
           tooltip: 'Daha fazla',
           onPressed: onMoreTap,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           icon: Icon(
             Icons.apps_outlined,
             color: AppTheme.mutedOnPage(context),
             size: 22,
           ),
+        ),
+        PremiumHeaderButton(
+          isPremium: isPremium,
+          onTap: onPremiumTap,
         ),
       ],
     );

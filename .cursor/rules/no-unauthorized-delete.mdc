@@ -1,0 +1,25 @@
+---
+description: Onaysız dosya silme yasağı ve geri yükleme önceliği
+alwaysApply: true
+---
+
+# Dosya silme — zorunlu güvenlik
+
+## Yasak (onay olmadan)
+
+- Proje kökünde veya altında `Delete` / `rm` / `del` / `Remove-Item` ile **kaynak, bat, config, pubspec, lib, backend** silmek
+- `del %ROOT%\*` , `Remove-Item -Recurse`, `git clean -fd`, `git reset --hard` (kullanıcı açıkça istemedikçe)
+- Bozuk bat / script yüzünden oluşabilecek joker silmeleri çalıştırmak veya görmezden gelmek
+
+## Zorunlu
+
+1. Silme gerekiyorsa **önce kullanıcıya sor**; onay metninde dosya yollarını yaz.
+2. Eksik dosya görünce silindi varsayma — önce `git status` / `git ls-files --deleted` / `DOSYA-DURUM.bat`.
+3. Kurtarma: `GERI-YUKLE-KRITIK.bat` veya `git checkout HEAD -- <path>` (geri yükleme; silme değil).
+4. Geçici dosya (`_tmp_*`, lock) silmeden önce yolu logla: `logs/safety.log`.
+5. Bat içinde yalnızca **tek, açık dosya yolu** silinebilir (`telegram_bot.lock`); joker (`*`, `?`) yasak.
+
+## Teşhis
+
+- Bat hata ekranında `Are you sure (Y/N)?` / `D:\...\*` görünürse kullanıcıya **N** deyin; kök silme riski.
+- Ayrıntı: `logs/safety.log`, `logs/telegram-watch.log`

@@ -10,7 +10,10 @@ import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/gamification_service.dart';
 import '../services/last_study_session_service.dart';
+import '../services/question_attempt_service.dart';
+import '../services/question_fetch_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/wrong_notebook_capacity_upsell.dart';
 import 'scale_button.dart';
 
 /// Son çalışma oturumuna dönen CTA — oturum yoksa gizlenir.
@@ -60,7 +63,13 @@ class ContinueStudyCard extends StatelessWidget {
       return;
     }
 
-    final questions = bank.questionsByIds(session.questionIds);
+    await bank.initialize();
+    var questions = bank.questionsByIds(session.questionIds);
+    if (questions.length != session.questionIds.length) {
+      questions = await QuestionFetchService.instance.fetchByIds(
+        session.questionIds,
+      );
+    }
     if (questions.length != session.questionIds.length) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -71,6 +80,7 @@ class ContinueStudyCard extends StatelessWidget {
       }
       return;
     }
+    if (!context.mounted) return;
 
     AdManager.instance.skipNextPageTransition();
     final result = await Navigator.of(context).push<QuizResult>(
@@ -79,6 +89,7 @@ class ContinueStudyCard extends StatelessWidget {
           title: session.testDisplayName,
           questions: questions,
           timeLimitMinutes: session.timeLimitMinutes,
+          statisticsTestId: testId,
           initialIndex: session.currentIndex,
           initialAnswers: session.answers,
           initialElapsed: Duration(seconds: session.elapsedSeconds),
@@ -94,7 +105,13 @@ class ContinueStudyCard extends StatelessWidget {
 
     if (result == null || !result.completed) return;
 
-    await bank.recordAttempt(
+    await QuestionAttemptService.instance.submit(
+      testId: testId,
+      questionIds: result.questionIds,
+      selectedAnswers: result.selectedAnswers,
+      excludeQuestionIds: bank.statLockedWrongQuestionIds,
+    );
+    final capacity = await bank.recordAttempt(
       TestAttemptModel(
         id: 'att_${DateTime.now().millisecondsSinceEpoch}',
         testId: testId,
@@ -107,17 +124,18 @@ class ContinueStudyCard extends StatelessWidget {
         duration: result.duration,
         completedAt: DateTime.now(),
       ),
-      questionIds: [
-        ...result.correctQuestionIds,
-        ...result.wrongQuestionIds,
-      ],
+      questionIds: result.questionIds,
       wrongQuestionIds: result.wrongQuestionIds,
+      selectedAnswers: result.selectedAnswers,
     );
     await GamificationService.instance.recordTestCompleted(
       correct: result.correct,
       wrong: result.wrong,
       duration: result.duration,
     );
+    if (context.mounted) {
+      await WrongNotebookCapacityUpsell.maybeShowAfterAdd(context, capacity);
+    }
   }
 
   @override

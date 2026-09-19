@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/brand_constants.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/google_g_mark.dart';
 
 /// Yalnızca Google / Play Store hesabı ile giriş.
 class LoginScreen extends StatefulWidget {
@@ -49,7 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.ink,
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(28, 40, 28, 32),
           child: Column(
@@ -127,8 +130,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       : const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.g_mobiledata, size: 28),
-                            SizedBox(width: 6),
+                            GoogleGMark(size: 22),
+                            SizedBox(width: 10),
                             Text(
                               'Google ile devam et',
                               style: TextStyle(
@@ -152,6 +155,36 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
         ),
+      ),
+          if (busy)
+            Container(
+              color: AppTheme.ink.withValues(alpha: 0.85),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: AppTheme.champagne,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Giriş Yapılıyor…',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -20,6 +20,6 @@ void main() {
     expect(text, contains('%80 başarı'));
     expect(text, contains('Doğru 8'));
     expect(text, contains('Yanlış 2'));
-    expect(text, contains('#KPSSOdak'));
+    expect(text, contains(BrandConstants.shareHashtag));
   });
 }

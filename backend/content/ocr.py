@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from django.conf import settings
 from PIL import Image, ImageFilter, ImageOps
@@ -255,6 +255,55 @@ def _normalize_option_key(raw_key: str) -> str | None:
     return None
 
 
+# Yüksek güven: ğ kaybolup yerine boşluk/satır kırığı gelmiş yaygın kalıplar.
+# Yalnızca kanıtlı OCR/yazım bozulmaları; genel "g → ğ" yeniden yazımı yok.
+_MISSING_GBREVE_REPAIRS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"gerekti[\s\u00a0]+ini", re.IGNORECASE), "gerektiğini"),
+    (re.compile(r"oldugu[\s\u00a0]+una", re.IGNORECASE), "olduğuna"),
+    (re.compile(r"oldugu[\s\u00a0]+unu", re.IGNORECASE), "olduğunu"),
+)
+
+
+def _mojibake_marker_count(text: str) -> int:
+    return sum(text.count(ch) for ch in ("Ã", "Â", "Ä", "Å"))
+
+
+def _turkish_letter_count(text: str) -> int:
+    return sum(text.count(ch) for ch in "çğıöşüÇĞİÖŞÜ")
+
+
+def _repair_utf8_mojibake(text: str) -> str:
+    """UTF-8'in latin-1/cp1252 olarak okunmasından doğan bozulmayı düzelt.
+
+    Eski kapı yalnızca ``Ã`` azalmasını kabul ediyordu; ``ğ`` (C4 9F → Ä+…)
+    için ``Ã`` sayısı 0 kalır ve onarım reddedilirdi.
+    """
+    if not re.search(r"Ã.|Â.|Ä.|Å.", text):
+        return text
+    best = text
+    best_score = (_mojibake_marker_count(text), -_turkish_letter_count(text))
+    for encoding in ("latin-1", "cp1252"):
+        try:
+            repaired = text.encode(encoding).decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            continue
+        repaired = unicodedata.normalize("NFC", repaired)
+        score = (
+            _mojibake_marker_count(repaired),
+            -_turkish_letter_count(repaired),
+        )
+        if score < best_score:
+            best, best_score = repaired, score
+    return best
+
+
+def _repair_missing_gbreve(text: str) -> str:
+    """``gerekti ini`` gibi ğ→boşluk bozulmalarını güvenli kalıplarla onar."""
+    for pattern, replacement in _MISSING_GBREVE_REPAIRS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def normalize_turkish_text(text: str) -> str:
     """UTF-8 NFC + yaygın Türkçe OCR/encoding düzeltmeleri."""
     if not text:
@@ -262,13 +311,8 @@ def normalize_turkish_text(text: str) -> str:
     text = unicodedata.normalize("NFC", text)
     text = text.translate(_CP1254_MOJIBAKE)
     text = text.translate(_OCR_CHAR_FIXES)
-    if re.search(r"Ã.|Â.|Ä.|Å.", text):
-        try:
-            repaired = text.encode("latin-1").decode("utf-8")
-            if repaired.count("Ã") < text.count("Ã"):
-                text = unicodedata.normalize("NFC", repaired)
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            pass
+    text = _repair_utf8_mojibake(text)
+    text = _repair_missing_gbreve(text)
     lines = [
         ln.rstrip()
         for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -549,7 +593,27 @@ def strip_option_emphasis(text: str) -> str:
         protected = re.sub(pattern, r"\1", protected, flags=re.DOTALL)
     for i, chunk in enumerate(holders):
         protected = protected.replace(f"\x00MATH{i}\x00", chunk)
-    return protected.strip()
+    return wrap_option_latex(protected.strip())
+
+
+_BARE_LATEX_CMD = re.compile(
+    r"\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|"
+    r"underline|begin|infty)\b"
+)
+
+
+def wrap_option_latex(text: str) -> str:
+    """Kayıtta çıplak \\frac varsa $...$ içine al; frac{ → \\frac{."""
+    src = (text or "").strip()
+    if not src:
+        return src
+    if "$" in src or "\\(" in src or "\\[" in src:
+        return src
+    if "frac" in src and "\\frac" not in src:
+        src = re.sub(r"(?<![\\A-Za-z])frac\{", r"\\frac{", src)
+    if _BARE_LATEX_CMD.search(src):
+        return f"${src}$"
+    return src
 
 
 def _clean_option_body(text: str) -> str:
@@ -667,6 +731,37 @@ def _strip_ocr_emphasis(text: str) -> str:
         text,
     )
     return text
+
+
+_SINGLE_ITALIC = re.compile(r"(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)")
+
+
+def _sanitize_line_emphasis(line: str) -> str:
+    """Satırdaki yalnızca tek italik vurguyu düz metne çevir (OCR/Gemini false positive)."""
+    if "*" not in line:
+        return line
+    holders: list[str] = []
+
+    def _hold_math(match: re.Match[str]) -> str:
+        holders.append(match.group(0))
+        return f"\x00MATH{len(holders) - 1}\x00"
+
+    protected = re.sub(r"\$\$[\s\S]+?\$\$|\$[^$\n]+\$", _hold_math, line)
+    if not _SINGLE_ITALIC.search(protected):
+        return line
+    italic_spans = list(_SINGLE_ITALIC.finditer(protected))
+    if len(italic_spans) == 1:
+        protected = _SINGLE_ITALIC.sub(r"\1", protected, count=1)
+    for idx, chunk in enumerate(holders):
+        protected = protected.replace(f"\x00MATH{idx}\x00", chunk)
+    return protected
+
+
+def sanitize_ocr_emphasis(text: str) -> str:
+    """Görselde italik olmayan tek kelime/ifade vurgularını temizle."""
+    if not text or "*" not in text:
+        return text
+    return "\n".join(_sanitize_line_emphasis(ln) for ln in text.split("\n"))
 
 
 def _trim_equation_tail(eq: str) -> tuple[str, str | None]:
@@ -983,6 +1078,14 @@ class OcrQuestionResult:
     figure_svg: str = ""
     correct_option: str = ""
     solution: str = ""
+    topic_slug: str = ""
+    subject_slug: str = ""
+    options_visual: bool = False
+    option_boxes: dict[str, tuple[float, float, float, float]] | None = None
+    option_image_bytes: dict[str, bytes] | None = None
+    geometry_annotations: list[dict[str, Any]] | None = None
+    annotated_image_bytes: bytes | None = None
+    diagnostics: dict[str, Any] | None = None
 
 
 def _read_source_bytes(source: BinaryIO | bytes | Path | str) -> tuple[bytes, str]:
@@ -1185,12 +1288,22 @@ def _tesseract_once(img: Image.Image, lang: str, psm: int) -> str:
     return pytesseract.image_to_string(img, lang=lang, config=config) or ""
 
 
-def extract_text(source: BinaryIO | bytes | Path | str) -> str:
-    """Görselden ham OCR metni; biçimli (markdown) çıktı üretir."""
+def extract_text_with_diagnostics(
+    source: BinaryIO | bytes | Path | str,
+) -> tuple[str, dict[str, Any]]:
+    """Görselden ham OCR metni + Tesseract tanılama."""
+    diag: dict[str, Any] = {
+        "attempted": True,
+        "ok": False,
+        "error": "",
+        "best": {},
+        "attempts": [],
+    }
     _configure_tesseract()
     try:
         img = _load_image(source)
     except Exception as exc:  # noqa: BLE001
+        diag["error"] = _tesseract_user_error(exc)
         raise ValueError(
             "Görsel açılamadı. Desteklenen bir resim dosyası yükleyin."
         ) from exc
@@ -1212,21 +1325,37 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
     last_error: BaseException | None = None
     for lang in lang_candidates:
         for psm in (6, 4, 3):
+            attempt: dict[str, Any] = {
+                "lang": lang,
+                "psm": psm,
+                "ok": False,
+                "score": 0,
+                "chars": 0,
+                "filled_options": 0,
+                "error": "",
+            }
             try:
                 raw = normalize_turkish_text(_tesseract_once(img, lang, psm))
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
+                attempt["error"] = str(exc)[:300]
+                diag["attempts"].append(attempt)
                 continue
+            attempt["chars"] = len(raw.strip())
             if not raw.strip():
+                diag["attempts"].append(attempt)
                 continue
             stem, opts = parse_question_text(raw)
             filled = sum(1 for k in OPTION_KEYS if (opts.get(k) or "").strip())
-            # Tam A–E + uzun şık metinleri ödüllendir
             score = filled * 10 + sum(min(len(opts[k]), 80) for k in OPTION_KEYS)
             if filled == 5:
                 score += 50
             if stem:
                 score += min(len(stem), 200) // 10
+            attempt["ok"] = True
+            attempt["score"] = score
+            attempt["filled_options"] = filled
+            diag["attempts"].append(attempt)
             if score > best_score:
                 best_score = score
                 best_raw = raw
@@ -1237,16 +1366,24 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
 
     if not best_raw.strip():
         if last_error is not None:
-            raise RuntimeError(_tesseract_user_error(last_error)) from last_error
-        return best_raw
+            diag["error"] = _tesseract_user_error(last_error)
+            raise RuntimeError(diag["error"]) from last_error
+        diag["error"] = "Görselden metin okunamadı (tüm PSM/dil denemeleri boş)."
+        return best_raw, diag
 
-    # En iyi PSM/dil ile kelime kutularından biçim (kalın/italik/altı çizili)
+    diag["best"] = {
+        "lang": best_lang,
+        "psm": best_psm,
+        "score": best_score,
+    }
+
+    final_text = best_raw
+    styled_error = ""
     try:
         styled = normalize_turkish_text(
             extract_styled_text(img, best_lang, best_psm)
         )
         if styled.strip():
-            # Biçimli metin de şıkları bozmamalı; skor düşerse düz metne dön
             stem_s, opts_s = parse_question_text(styled)
             filled_s = sum(1 for k in OPTION_KEYS if (opts_s.get(k) or "").strip())
             score_s = filled_s * 10 + sum(
@@ -1257,10 +1394,23 @@ def extract_text(source: BinaryIO | bytes | Path | str) -> str:
             if stem_s:
                 score_s += min(len(stem_s), 200) // 10
             if score_s >= best_score - 15:
-                return styled
-    except Exception:
-        pass
-    return best_raw
+                final_text = styled
+                diag["best"]["styled"] = True
+    except Exception as exc:  # noqa: BLE001
+        styled_error = str(exc)[:200]
+        diag["styled_error"] = styled_error
+
+    diag["ok"] = bool(final_text.strip())
+    if not diag["ok"]:
+        diag["error"] = "Görselden metin okunamadı."
+    final_text = sanitize_ocr_emphasis(final_text)
+    return final_text, diag
+
+
+def extract_text(source: BinaryIO | bytes | Path | str) -> str:
+    """Görselden ham OCR metni; biçimli (markdown) çıktı üretir."""
+    text, _diag = extract_text_with_diagnostics(source)
+    return text
 
 
 def _merge_orphan_paren_lines(lines: list[str]) -> list[str]:
@@ -1585,7 +1735,7 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
         )
 
     try:
-        raw = extract_text(BytesIO(img_bytes))
+        raw, tess_diag = extract_text_with_diagnostics(source)
     except Exception as exc:  # noqa: BLE001
         return OcrQuestionResult(
             stem="",
@@ -1593,6 +1743,7 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
             raw_text="",
             ok=False,
             error=_tesseract_user_error(exc),
+            diagnostics={"tesseract": {"attempted": True, "ok": False, "error": str(exc)[:500]}},
         )
 
     if not (raw or "").strip():
@@ -1605,9 +1756,12 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
                 "Görselden metin okunamadı. Daha net bir görsel deneyin "
                 "veya alanları elle doldurun."
             ),
+            engine="tesseract",
+            diagnostics={"tesseract": tess_diag},
         )
 
     stem, options = parse_question_text(raw)
+    stem = sanitize_ocr_emphasis(stem)
     if _likely_geometry_question(stem, options, raw):
         from .ocr_gemini import _repair_geometry_payload
 
@@ -1635,4 +1789,5 @@ def ocr_question_image(source: BinaryIO | bytes | Path | str) -> OcrQuestionResu
         ok=ok,
         error="" if ok else "Görselden metin okunamadı." + hint,
         engine="tesseract",
+        diagnostics={"tesseract": tess_diag},
     )

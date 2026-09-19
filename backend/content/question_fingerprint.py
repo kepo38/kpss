@@ -7,6 +7,7 @@ import io
 import logging
 import re
 import unicodedata
+from difflib import SequenceMatcher
 from typing import BinaryIO
 
 from django.urls import reverse
@@ -16,16 +17,51 @@ from .models import Question
 logger = logging.getLogger(__name__)
 
 _PHASH_BITS = 64  # 8×8 DCT-based perceptual hash → 16-char hex
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_EDITOR_NOTE = re.compile(r"\(\s*not\s*:.*?\)", re.IGNORECASE | re.DOTALL)
+_MAP_PLACEHOLDER = re.compile(r"\[\s*harita\s*\]", re.IGNORECASE)
+_NEAR_STEM_RATIO = 0.68
 
 
 def normalize_question_text(value: str) -> str:
     text = unicodedata.normalize("NFKC", value or "")
-    text = text.casefold()
+    text = _HTML_COMMENT.sub(" ", text)
+    text = _EDITOR_NOTE.sub(" ", text)
+    text = text.casefold().replace("\u0307", "")
+    text = _MAP_PLACEHOLDER.sub(" ", text)
     # OCR / markdown gürültüsü
     text = re.sub(r"[*_`~#]+", "", text)
     text = re.sub(r"[^\w\sçğıöşüâîû]", " ", text, flags=re.UNICODE)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def options_fingerprint(
+    option_a: str = "",
+    option_b: str = "",
+    option_c: str = "",
+    option_d: str = "",
+    option_e: str = "",
+) -> str:
+    parts = [
+        normalize_question_text(option_a),
+        normalize_question_text(option_b),
+        normalize_question_text(option_c),
+        normalize_question_text(option_d),
+        normalize_question_text(option_e),
+    ]
+    filled = [part for part in parts if len(part) >= 3]
+    if len(filled) < 4:
+        return ""
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def stem_similarity(left: str, right: str) -> float:
+    a = normalize_question_text(left)
+    b = normalize_question_text(right)
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
 
 
 def content_fingerprint(
@@ -138,9 +174,6 @@ def phash_hamming(h1: str, h2: str) -> int:
         return _PHASH_BITS
 
 
-PHASH_THRESHOLD = 10  # ≤10 bit fark = muhtemelen aynı görsel
-
-
 def fingerprints_for_question(question: Question) -> tuple[str, str]:
     content = content_fingerprint(
         question.stem,
@@ -162,6 +195,12 @@ def find_duplicate_question(
     image_phash_hex: str = "",
     exclude_pk: int | None = None,
     require_options: bool = False,
+    stem: str = "",
+    option_a: str = "",
+    option_b: str = "",
+    option_c: str = "",
+    option_d: str = "",
+    option_e: str = "",
 ) -> tuple[Question | None, str]:
     """
     Dönüş: (soru, eşleşme türü)
@@ -179,15 +218,8 @@ def find_duplicate_question(
         if hit:
             return hit, "image"
 
-    # Perceptual hash — düzenlenmiş görselleri yakalar
-    if image_phash_hex and len(image_phash_hex) == 16:
-        candidates = qs.exclude(source_image_phash="").values_list(
-            "pk", "source_image_phash", named=True
-        )
-        for row in candidates.iterator(chunk_size=500):
-            if phash_hamming(image_phash_hex, row.source_image_phash) <= PHASH_THRESHOLD:
-                hit = qs.get(pk=row.pk)
-                return hit, "image_similar"
+    # phash yalnızca kayıt/analitik için tutulur; otomatik engelleme yapmaz.
+    # ÖSYM şablonlu farklı sorular 8x8 average hash'te ≤2 bit yakın çıkabiliyor.
 
     if content_hash:
         hit = qs.filter(content_hash=content_hash).exclude(content_hash="").first()
@@ -200,7 +232,56 @@ def find_duplicate_question(
         if hit:
             return hit, "stem"
 
+    near = _find_by_options_and_stem(
+        qs,
+        stem=stem,
+        option_a=option_a,
+        option_b=option_b,
+        option_c=option_c,
+        option_d=option_d,
+        option_e=option_e,
+    )
+    if near:
+        return near, "content"
+
     return None, ""
+
+
+def _find_by_options_and_stem(
+    qs,
+    *,
+    stem: str,
+    option_a: str,
+    option_b: str,
+    option_c: str,
+    option_d: str,
+    option_e: str,
+) -> Question | None:
+    incoming_opts = options_fingerprint(
+        option_a, option_b, option_c, option_d, option_e
+    )
+    if not incoming_opts:
+        return None
+    needle = (option_a or "").strip()[:12]
+    candidates = qs
+    if len(needle) >= 4:
+        candidates = candidates.filter(option_a__icontains=needle)
+    incoming_stem = normalize_question_text(stem)
+    for question in candidates.iterator():
+        stored_opts = options_fingerprint(
+            question.option_a,
+            question.option_b,
+            question.option_c,
+            question.option_d,
+            question.option_e,
+        )
+        if stored_opts != incoming_opts:
+            continue
+        if not incoming_stem:
+            return question
+        if stem_similarity(stem, question.stem) >= _NEAR_STEM_RATIO:
+            return question
+    return None
 
 
 def duplicate_payload(question: Question, match: str) -> dict:
@@ -215,6 +296,7 @@ def duplicate_payload(question: Question, match: str) -> dict:
         "content": "aynı soru metni ve şıklar",
         "stem": "aynı soru metni",
     }
+    match_label = labels.get(match, "benzer içerik")
     return {
         "id": question.id,
         "public_id": question.public_id,
@@ -223,12 +305,33 @@ def duplicate_payload(question: Question, match: str) -> dict:
         "subject_name": topic.subject.name,
         "edit_url": edit_url,
         "match": match,
-        "match_label": labels.get(match, "benzer içerik"),
+        "match_label": match_label,
         "message": (
-            f"Bu soru daha önce yüklendi ({labels.get(match, 'benzer')}): "
+            f"Bu soru daha önce yüklendi ({match_label}): "
             f"{topic.subject.name} · {topic.name} · {question.public_id}"
         ),
     }
+
+
+def duplicate_flash_html(
+    info: dict,
+    *,
+    prefix: str = "Bu soruyu daha önce yüklediniz — kayıt yapılmadı.",
+) -> str:
+    """Panel flash: mevcut soru kimliği tıklanınca düzenleme sayfasına gider."""
+    from django.utils.html import format_html
+
+    return format_html(
+        "{} Bu soru daha önce yüklendi ({}): {} · {} · "
+        '<a href="{}" style="color:#fde68a;font-weight:700;'
+        'text-decoration:underline;">{}</a>',
+        prefix,
+        info["match_label"],
+        info["subject_name"],
+        info["topic_name"],
+        info["edit_url"],
+        info["public_id"],
+    )
 
 
 def apply_fingerprints(

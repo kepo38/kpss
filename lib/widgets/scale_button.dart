@@ -55,12 +55,21 @@ class _ScaleButtonState extends State<ScaleButton>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTapDown: _onTapDown,
       onTapUp: _onTapUp,
       onTapCancel: _onTapCancel,
       onTap: widget.onPressed,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scaleAnimation.value,
+            // Görsel küçülme dokunma alanını daraltmasın (onTap iptali).
+            transformHitTests: false,
+            child: child,
+          );
+        },
         child: widget.child,
       ),
     );

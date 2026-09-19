@@ -66,6 +66,86 @@ void main() {
     );
   });
 
+  test('cihaz ücretsiz hakkı yanığı misafir→Google çift kullanımı engeller', () {
+    expect(
+      ContentBankService.effectiveCompletedForQuota(
+        userCompleted: 0,
+        deviceFreeConsumed: 1,
+      ),
+      ContentBankService.dailyFreeTestsPerSubject,
+    );
+    expect(
+      ContentBankService.hasDailyTestQuota(
+        completedTests: ContentBankService.effectiveCompletedForQuota(
+          userCompleted: 0,
+          deviceFreeConsumed: 1,
+        ),
+        adBonusTests: 0,
+      ),
+      isFalse,
+    );
+    expect(
+      ContentBankService.hasDailyTestQuota(
+        completedTests: ContentBankService.effectiveCompletedForQuota(
+          userCompleted: 0,
+          deviceFreeConsumed: 1,
+        ),
+        adBonusTests: 1,
+      ),
+      isTrue,
+    );
+  });
+
+  test('Google hesap yanığı telefon/tablet senkronunu temsil eder', () {
+    expect(
+      ContentBankService.effectiveCompletedForQuota(
+        userCompleted: 0,
+        deviceFreeConsumed: 0,
+        accountFreeConsumed: 1,
+      ),
+      ContentBankService.dailyFreeTestsPerSubject,
+    );
+    expect(
+      ContentBankService.hasDailyTestQuota(
+        completedTests: ContentBankService.effectiveCompletedForQuota(
+          userCompleted: 0,
+          deviceFreeConsumed: 0,
+          accountFreeConsumed: 1,
+        ),
+        adBonusTests: 0,
+      ),
+      isFalse,
+    );
+  });
+
+  test('Google A cihaz yanığı üretmez; yalnız misafir cihaz yanığı Google’ı keser',
+      () {
+    // Google A→B: cihaz=0, hesap B=0 → hak var
+    expect(
+      ContentBankService.hasDailyTestQuota(
+        completedTests: ContentBankService.effectiveCompletedForQuota(
+          userCompleted: 0,
+          deviceFreeConsumed: 0,
+          accountFreeConsumed: 0,
+        ),
+        adBonusTests: 0,
+      ),
+      isTrue,
+    );
+    // Misafir yakmış → cihaz=1 → Google de kilitli (çift hak yok)
+    expect(
+      ContentBankService.hasDailyTestQuota(
+        completedTests: ContentBankService.effectiveCompletedForQuota(
+          userCompleted: 0,
+          deviceFreeConsumed: 1,
+          accountFreeConsumed: 0,
+        ),
+        adBonusTests: 0,
+      ),
+      isFalse,
+    );
+  });
+
   test('günün denemesi bugünkü ödeve sayılmaz', () {
     TestAttemptModel attempt({required String testId}) {
       return TestAttemptModel(

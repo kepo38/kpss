@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 3 ödüllü reklam → 12 saat reklamsız mod kampanyası (yerel depolama).
+/// 3 ödüllü reklam → 12 saat quiz banner’sız kampanya (yerel depolama).
+/// Çözüm kilidi, günlük kota ve Premium araçlar açılmaz.
 ///
 /// Google politikası: reklamlar peş peşe değil, en az [minCooldownBetweenAds]
 /// arayla; buton metni ne kazanılacağını açıkça belirtir.
@@ -275,14 +276,16 @@ abstract final class AdFreeCampaignLogic {
     required Duration? cooldownRemaining,
   }) {
     if (adFreeActive && adFreeRemaining != null) {
-      return 'Reklamsız çalışma: ${formatDurationShort(adFreeRemaining)} kaldı';
+      return 'Banner reklamları kapalı: ${formatDurationShort(adFreeRemaining)} kaldı. '
+          'Çözüm kilidi ve günlük kota açılmaz';
     }
     if (!canWatch && cooldownRemaining != null) {
       return 'Reklamlar arası en az 4 saat beklenir · '
           '${formatDurationShort(cooldownRemaining)} sonra devam edebilirsiniz';
     }
     if (adsWatchedToday == 0) {
-      return 'Günde 3 reklam izleyerek 12 saat reklamsız çalışın';
+      return 'Günde 3 reklam → 12 saat banner’sız. '
+          'Çözüm, kota ve Premium araçlar açılmaz';
     }
     return '${AdFreeCampaignService.requiredAds - adsWatchedToday} reklam kaldı · '
         'her reklam arasında en az 4 saat';

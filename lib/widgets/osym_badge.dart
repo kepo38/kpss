@@ -127,7 +127,7 @@ class _PremiumBadgeFrameState extends State<_PremiumBadgeFrame>
             ],
           ),
           child: CustomPaint(
-            painter: _ShimmerBorderPainter(
+            painter: PremiumShimmerBorderPainter(
               progress: t,
               borderRadius: 10,
               strokeWidth: 1.7,
@@ -166,12 +166,13 @@ class _PremiumBadgeFrameState extends State<_PremiumBadgeFrame>
   }
 }
 
-class _ShimmerBorderPainter extends CustomPainter {
+/// Dönen şampanya/neon kenar — ÖSYM premium çerçeve ile aynı dil.
+class PremiumShimmerBorderPainter extends CustomPainter {
   final double progress;
   final double borderRadius;
   final double strokeWidth;
 
-  const _ShimmerBorderPainter({
+  const PremiumShimmerBorderPainter({
     required this.progress,
     required this.borderRadius,
     required this.strokeWidth,
@@ -209,7 +210,7 @@ class _ShimmerBorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ShimmerBorderPainter oldDelegate) =>
+  bool shouldRepaint(covariant PremiumShimmerBorderPainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.borderRadius != borderRadius ||
       oldDelegate.strokeWidth != strokeWidth;

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../constants/brand_constants.dart';
 import '../models/user_model.dart';
 import '../widgets/countdown_widget.dart';
 import '../services/ad_manager.dart';
@@ -12,22 +11,15 @@ import '../services/kpss_preference_service.dart';
 import '../services/play_billing_service.dart';
 import '../services/premium_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/ad_free_campaign_card.dart';
-import '../widgets/daily_mission_center.dart';
 import '../widgets/home_hero_section.dart';
-import '../widgets/home_module_row.dart';
 import '../widgets/home_premium_module_list.dart';
 import '../widgets/home_section_header.dart';
-import '../widgets/home_study_shortcuts.dart';
-import '../widgets/home_subject_chip_grid.dart';
 import '../widgets/home_tools_module_list.dart';
 import '../widgets/premium_gate.dart';
+import '../widgets/scale_button.dart';
 import 'premium/premium_paywall_screen.dart';
-import 'profile_screen.dart';
-import 'smart_review_screen.dart';
-import 'study_hub_screen.dart';
 
-/// Premium ana sayfa — marka hero + odaklı modül navigasyonu.
+/// Stüdyo — üst bardaki kare ikondan açılan araçlar & Premium hub.
 class HomeScreen extends StatefulWidget {
   final UserModel user;
 
@@ -45,34 +37,34 @@ class _HomeScreenState extends State<HomeScreen>
   late final Animation<double> _fadeLate;
   late final Animation<double> _fadeType;
 
-  final ValueNotifier<KpssType> _selectedType =
-      ValueNotifier(KpssType.lisans);
-  final ValueNotifier<bool> _isPremium =
-      ValueNotifier(PremiumService.instance.isPremium);
+  final ValueNotifier<KpssType> _selectedType = ValueNotifier(KpssType.lisans);
+  late final ValueNotifier<bool> _isPremium;
 
   @override
   void initState() {
     super.initState();
+    DatabaseService.instance.setCurrentUser(widget.user);
+    _isPremium = ValueNotifier(PremiumService.instance.isPremium);
     _enter = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
-      value: 1.0,
+      duration: const Duration(milliseconds: 420),
+      value: 1.0, // Stüdyo içeriği hemen görünsün (boş ekran riski yok)
     );
     _fadeEarly = CurvedAnimation(
       parent: _enter,
-      curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
+      curve: const Interval(0.0, 0.45, curve: Curves.easeOutCubic),
     );
     _fadeMid = CurvedAnimation(
       parent: _enter,
-      curve: const Interval(0.15, 0.55, curve: Curves.easeOut),
+      curve: const Interval(0.18, 0.7, curve: Curves.easeOutCubic),
     );
     _fadeLate = CurvedAnimation(
       parent: _enter,
-      curve: const Interval(0.35, 0.8, curve: Curves.easeOut),
+      curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic),
     );
     _fadeType = CurvedAnimation(
       parent: _enter,
-      curve: const Interval(0.3, 0.7, curve: Curves.easeOut),
+      curve: const Interval(0.25, 0.75, curve: Curves.easeOut),
     );
 
     _selectedType.value = KpssPreferenceService.instance.kpssType;
@@ -85,8 +77,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _bindServicesAfterAnimationFrame() {
-    AdManager.instance.setPremium(_isPremium.value);
     DatabaseService.instance.setCurrentUser(widget.user);
+    _onPremiumChanged();
     PlayBillingService.instance.premiumNotifier.addListener(_onPremiumChanged);
   }
 
@@ -115,7 +107,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _navigateTo(Widget screen) async {
-    await AdManager.instance.onPageTransition();
+    // Navigasyonu reklam yüklemesiyle bloklama — interstitial arka planda.
+    unawaited(AdManager.instance.onPageTransition());
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => screen),
@@ -141,18 +134,19 @@ class _HomeScreenState extends State<HomeScreen>
     final topPad = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
-      backgroundColor: AppTheme.page(context),
+      backgroundColor: AppTheme.ink,
       body: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              AppTheme.pageTop(context),
-              AppTheme.pageDeep(context),
-              AppTheme.page(context),
+              Color(0xFF1C2A44),
+              Color(0xFF152038),
+              AppTheme.ink,
+              Color(0xFF0A101C),
             ],
-            stops: const [0.0, 0.45, 1.0],
+            stops: [0.0, 0.28, 0.62, 1.0],
           ),
         ),
         child: CustomScrollView(
@@ -161,55 +155,54 @@ class _HomeScreenState extends State<HomeScreen>
             SliverToBoxAdapter(
               child: HomeHeroSection(
                 topPad: topPad,
-                isPremium: _isPremium,
                 fadeEarly: _fadeEarly,
                 fadeType: _fadeType,
-                onPremiumTap: _openPaywall,
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
               sliver: SliverToBoxAdapter(
                 child: FadeTransition(
                   opacity: _fadeMid,
-                  child: ValueListenableBuilder<KpssType>(
-                    valueListenable: _selectedType,
-                    builder: (context, type, _) {
-                      return DailyMissionCenter(
-                        kpssType: type,
-                        onSubjectTap: (subject) => _navigateTo(
-                          SubjectTopicsScreen(
-                            kpssType: type,
-                            subject: subject,
-                          ),
-                        ),
-                      );
-                    },
+                  child: const HomeSectionHeader(
+                    'Çalışma araçları',
+                    eyebrow: 'Ücretsiz',
+                    accent: Color(0xFF5EEAD4),
                   ),
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: FadeTransition(
-                opacity: _fadeLate,
-                child: const AdFreeCampaignCard(),
+            ContainedSliverFade(
+              fade: _fadeMid,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: ValueListenableBuilder<KpssType>(
+                valueListenable: _selectedType,
+                builder: (context, type, _) {
+                  return HomeToolsModuleList(
+                    kpssType: type,
+                    onNavigate: _navigateTo,
+                  );
+                },
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 4),
               sliver: SliverToBoxAdapter(
                 child: FadeTransition(
                   opacity: _fadeLate,
-                  child: ValueListenableBuilder<KpssType>(
-                    valueListenable: _selectedType,
-                    builder: (context, type, _) {
-                      return HomeStudyShortcuts(
-                        kpssType: type,
-                        onSmartReview: () => _navigateTo(
-                          SmartReviewScreen(kpssType: type),
-                        ),
-                        onStudyHub: () => _navigateTo(
-                          StudyHubScreen(kpssType: type),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _isPremium,
+                    builder: (context, premium, _) {
+                      return HomeSectionHeader(
+                        'Premium suite',
+                        eyebrow: premium ? 'Dahil' : 'Kilidi aç',
+                        accent: AppTheme.champagne,
+                        trailing: Icon(
+                          premium
+                              ? Icons.verified_rounded
+                              : Icons.lock_outline_rounded,
+                          size: 18,
+                          color: AppTheme.champagne.withValues(alpha: 0.85),
                         ),
                       );
                     },
@@ -217,102 +210,160 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
             ),
+            ContainedSliverFade(
+              fade: _fadeLate,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _isPremium,
+                builder: (context, premium, _) {
+                  return ValueListenableBuilder<KpssType>(
+                    valueListenable: _selectedType,
+                    builder: (context, type, _) {
+                      return HomePremiumModuleList(
+                        kpssType: type,
+                        isPremium: premium,
+                        onNavigate: _navigateTo,
+                        onNavigatePremium: _navigatePremium,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
               sliver: SliverToBoxAdapter(
                 child: FadeTransition(
                   opacity: _fadeLate,
-                  child: ValueListenableBuilder<KpssType>(
-                    valueListenable: _selectedType,
-                    builder: (context, type, _) {
-                      return HomeSubjectChipGrid(
-                        kpssType: type,
-                        onSubjectTap: (subject) => _navigateTo(
-                          SubjectTopicsScreen(
-                            kpssType: type,
-                            subject: subject,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            const SliverPadding(
-              padding: EdgeInsets.fromLTRB(22, 24, 22, 4),
-              sliver: SliverToBoxAdapter(
-                child: HomeSectionHeader('Diğer araçlar'),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(22, 4, 22, 8),
-              sliver: SliverToBoxAdapter(
-                child: ValueListenableBuilder<KpssType>(
-                  valueListenable: _selectedType,
-                  builder: (context, type, _) {
-                    return HomeToolsModuleList(
-                      kpssType: type,
-                      onNavigate: _navigateTo,
-                      onNavigatePremium: _navigatePremium,
-                    );
-                  },
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
-              sliver: SliverToBoxAdapter(
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _isPremium,
-                  builder: (context, premium, _) {
-                    return HomeSectionHeader(
-                      'Premium',
-                      trailing: premium
-                          ? null
-                          : const Icon(
-                              Icons.lock_outline,
-                              size: 16,
-                              color: AppTheme.champagne,
+                  child: Center(
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _isPremium,
+                      builder: (context, premium, _) {
+                        if (premium) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 11,
+                              vertical: 8,
                             ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(22, 4, 22, 8),
-              sliver: SliverToBoxAdapter(
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _isPremium,
-                  builder: (context, premium, _) {
-                    return ValueListenableBuilder<KpssType>(
-                      valueListenable: _selectedType,
-                      builder: (context, type, _) {
-                        return HomePremiumModuleList(
-                          kpssType: type,
-                          isPremium: premium,
-                          onNavigate: _navigateTo,
-                          onNavigatePremium: _navigatePremium,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppTheme.champagne.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppTheme.champagne.withValues(alpha: 0.22),
+                                  AppTheme.champagne.withValues(alpha: 0.08),
+                                ],
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.verified_rounded,
+                                  size: 15,
+                                  color: AppTheme.champagneLight,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Premium',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.champagneLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return ScaleButton(
+                          onPressed: _openPaywall,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFFFFF4DE),
+                                  Color(0xFFE8C878),
+                                  AppTheme.champagne,
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.champagne.withValues(
+                                    alpha: 0.42,
+                                  ),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.workspace_premium_rounded,
+                                  size: 16,
+                                  color: AppTheme.ink,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Premium’u keşfet',
+                                  style: TextStyle(
+                                    fontFamily: 'serif',
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.ink,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
                       },
-                    );
-                  },
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(22, 12, 22, 48),
-              sliver: SliverToBoxAdapter(
-                child: HomeModuleRow(
-                  icon: Icons.person_outline,
-                  title: 'Profil',
-                  subtitle: 'Hesap · ${BrandConstants.appName} v1.0.0',
-                  onTap: () => _navigateTo(ProfileScreen(user: widget.user)),
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Fade + padding sarmalayıcı (yerel yardımcı).
+class ContainedSliverFade extends StatelessWidget {
+  final Animation<double> fade;
+  final EdgeInsets padding;
+  final Widget child;
+
+  const ContainedSliverFade({
+    super.key,
+    required this.fade,
+    required this.padding,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPadding(
+      padding: padding,
+      sliver: SliverToBoxAdapter(
+        child: FadeTransition(
+          opacity: fade,
+          child: child,
         ),
       ),
     );
