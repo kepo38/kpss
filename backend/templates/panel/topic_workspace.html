@@ -36,12 +36,13 @@
     <strong>Bilgi kartları</strong>
     <a class="btn btn-primary" href="{% url 'panel_lesson_new' topic.id %}">Yeni bilgi</a>
   </div>
-  <div class="list">
+  <div class="list lesson-sort-list" id="lesson-sort-list" data-reorder-url="{% url 'panel_lesson_reorder' topic.id %}">
     {% for lesson in lessons %}
-    <div class="row">
+    <div class="row lesson-row" data-lesson-id="{{ lesson.id }}" draggable="true">
+      <button class="topic-drag-handle" type="button" title="Bilgi kartını sürükleyerek sırala" aria-label="{{ lesson.title }} kartını sürükleyerek sırala">⠿</button>
       <div class="name">
         <a href="{% url 'panel_lesson_edit' topic.id lesson.id %}">{{ lesson.title }}</a>
-        <div class="hint">Sıra {{ lesson.sort_order }} · {{ lesson.body|truncatechars:80 }}</div>
+        <div class="hint"><span data-lesson-position>Sıra {{ lesson.sort_order }}</span> · {{ lesson.body|truncatechars:80 }}</div>
       </div>
       {% if lesson.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
       <a class="btn btn-ghost" href="{% url 'panel_lesson_edit' topic.id lesson.id %}">Düzenle</a>
@@ -54,6 +55,62 @@
     <div class="empty">Henüz bilgi kartı yok. Öğrencinin “Konuyu öğren” ekranı buradan beslenir.</div>
     {% endfor %}
   </div>
+  {% if lessons %}
+  <script>
+    (() => {
+      const list = document.getElementById("lesson-sort-list");
+      if (!list || !list.querySelector("[data-lesson-id]")) return;
+
+      let dragged = null;
+      const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value;
+
+      list.addEventListener("dragstart", (event) => {
+        const row = event.target.closest("[data-lesson-id]");
+        if (!row) return;
+        dragged = row;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", row.dataset.lessonId);
+        requestAnimationFrame(() => row.classList.add("is-dragging"));
+      });
+
+      list.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        const row = event.target.closest("[data-lesson-id]");
+        if (!row || row === dragged) return;
+        const after = event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+        list.insertBefore(dragged, after ? row.nextSibling : row);
+      });
+
+      list.addEventListener("dragend", async () => {
+        if (!dragged) return;
+        dragged.classList.remove("is-dragging");
+        dragged = null;
+
+        const body = new URLSearchParams();
+        list.querySelectorAll("[data-lesson-id]").forEach((row) => {
+          body.append("lesson_ids", row.dataset.lessonId);
+        });
+
+        try {
+          const response = await fetch(list.dataset.reorderUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "X-CSRFToken": csrfToken || "",
+            },
+            body: body.toString(),
+          });
+          if (!response.ok) throw new Error("Bilgi kartı sırası kaydedilemedi.");
+          list.querySelectorAll("[data-lesson-position]").forEach((item, index) => {
+            item.textContent = `Sıra ${index + 1}`;
+          });
+        } catch (error) {
+          window.location.reload();
+        }
+      });
+    })();
+  </script>
+  {% endif %}
 
 {% elif tab == 'questions' %}
   <div class="toolbar">

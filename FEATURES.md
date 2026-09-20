@@ -1,6 +1,6 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-09-20 (Konuyu Öğren · özet kaldırma · kalem · stacked math · VPN)
+> **Son güncelleme:** 2026-09-20 (panel bilgi sıralama · varsayılan Sıra · Konuyu Öğren · kalem · VPN)
 
 Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kaynakta toplar. Yeni özellik eklendiğinde, mevcut bir özellik değiştirildiğinde veya kaldırıldığında **aynı PR/commit ile güncellenmelidir**.
 
@@ -33,6 +33,16 @@ Bu tur: canlı öğrenci yolu **bilgi kartları** (`LessonReaderScreen`); özet 
 | **Ders kalemi** | Üst satır `QuizPenToolbar`; çizimler `LessonCardDrawingService` (`lesson_card_drawings_v1_<user>`); sarı swatch; çizimde sayaç satırı yok | `lesson_reader_screen.dart`, `lesson_card_drawing_service.dart`, `quiz_pen_toolbar.dart` |
 | **Stacked arithmetic** | `uprightMathLetters` array hücreleri; `normalizeStackedArithmetic` (+/− operatör sütunu); panel `math-render.js` parity | `formatted_text.dart`, `math-render.js` |
 | **VPN / DNS** | Ücretsiz kilit; Premium muaf; QA/dev cihaz allowlist (MainActivity screenshot allowlist ile aynı ID/model/serial) → `DevDeviceAllowlist` / `NetworkSecurityGate` | `network_security_gate.dart`, `dev_device_allowlist.dart`, `MainActivity.kt` |
+
+### 20 Eylül 2026 (akşam) — Panel bilgi kartı sırası · varsayılan Sıra · basla-telefon
+
+Bu tur: panelde bilgi kartlarını sürükleyerek sıralama; yeni kartta Sıra varsayılanı; telefon LAN bat’ta `do was unexpected` düzeltmesi.
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Yeni bilgi · Sıra** | Formda `sort_order` varsayılanı `max(mevcut)+1` (0 değil); `default_sort_order` context | `panel_views.py`, `lesson_form.html` |
+| **Bilgi kartları DnD** | ⠿ tutamacıyla HTML5 sürükle-bırak; `POST /panel/konu/<id>/bilgiler/sirala/` (`panel_lesson_reorder`); başarıda canlı «Sıra N» | `topic_workspace.html`, `panel_urls.py`, `panel_views.py`, `panel.css` |
+| **basla-telefon** | `if (...)` içinde `findstr /C:"IPv4"` tırnakları `do was unexpected` kırıyordu → `/C:IPv4` | `basla-telefon.bat`, `basla-telefon-test.bat` |
 
 ### 23 Ağustos 2026 (gece) — TG ders filtresi · koçluk konumu · yanlış defteri · inline math · TG tema
 
@@ -911,7 +921,7 @@ Sol menü bölümleri: **İçerik** · **Deneme & sınav** · **Kullanıcı & sa
 | Konu CRUD, sıralama, aktif/pasif | `/panel/konu/...` |
 | Konu kapasitesi (test gruplama) | `/panel/konu/<id>/kapasite/` |
 | Konu sekmeleri: dersler, **bilgi kartları** (özet sekmesi soft-redirect), sorular, testler, senaryolar | `/panel/konu/<id>/<tab>/` |
-| Bilgi kartı (ders) CRUD | `/panel/konu/<id>/bilgi/...` |
+| Bilgi kartı (ders) CRUD + sıralama | Yeni/düzenle; yeni kartta Sıra = `max(sort_order)+1`; listede ⠿ ile sürükle-bırak → `POST …/bilgiler/sirala/` (`panel_lesson_reorder`); canlı «Sıra N» | `/panel/konu/<id>/bilgi/...`, `/panel/konu/<id>/bilgiler/sirala/`, `topic_workspace.html`, `lesson_form.html` |
 | **Özet konu kartı** | *(kapalı)* stüdyo soft-redirect → bilgi; DB `TopicSummaryCard` kalabilir | `/panel/ozet-kart/`, `/panel/konu/<id>/ozet/...` |
 | Test CRUD, soru atama | `/panel/konu/<id>/test/...` |
 | Senaryo grupları (ortak paragraf) | `/panel/konu/<id>/grup/...` |
@@ -1422,6 +1432,9 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ## Sürüm notu (2026-09-20)
 
+- **Panel bilgi sırası:** ⠿ sürükle-bırak → `POST /panel/konu/<id>/bilgiler/sirala/`; canlı «Sıra N»
+- **Yeni bilgi Sıra:** varsayılan `max(sort_order)+1` (0 değil)
+- **basla-telefon:** `findstr /C:IPv4` — `do was unexpected` düzeltmesi
 - **Konuyu Öğren:** `_KonuyuOgrenButton` (pulse/shimmer) → `LessonReaderScreen`; Unuttum/Biliyorum/kalp; «N bilgi kartı · kaydırarak çalış»
 - **Özet kartlar:** öğrenci yolu kapatıldı; API `summaryCards: []`; panel özet stüdyo soft-redirect → bilgi; `TopicSummaryCard` DB kalabilir
 - **Favorilerim:** **Bilgi Kartları** sekmesi; `LessonCardProgressService` + `LessonCardFace.showViewer`

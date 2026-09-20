@@ -55,7 +55,8 @@ for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass
 if defined LAN_IP echo [.] get-lan-ip.ps1 =^> !LAN_IP!
 if not defined LAN_IP (
   echo [!] get-lan-ip.ps1 bos ? ipconfig...
-  for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /I /C:"IPv4"') do (
+  rem NOTE: do not use /C:"IPv4" inside if (...); the quote+paren ends the IF early ("do was unexpected")
+  for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /I /C:IPv4') do (
     for /f "tokens=1" %%B in ("%%A") do (
       set "CAND=%%B"
       echo [.] ipconfig aday: !CAND!
@@ -65,7 +66,7 @@ if not defined LAN_IP (
   )
 )
 if not defined LAN_IP (
-  for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /I /C:"IPv4"') do (
+  for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /I /C:IPv4') do (
     for /f "tokens=1" %%B in ("%%A") do (
       set "CAND=%%B"
       echo !CAND! | findstr /R "^10\." >nul

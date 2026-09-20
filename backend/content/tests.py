@@ -852,6 +852,34 @@ class PanelTopicManageTests(TestCase):
         self.assertEqual(self.t1.sort_order, 2)
         self.assertEqual(self.t2.sort_order, 1)
 
+    def test_reorder_lessons_from_drag_order(self):
+        from content.models import TopicLesson
+
+        self.client.force_login(self.staff)
+        l1 = TopicLesson.objects.create(
+            topic=self.t1,
+            public_id="les_reorder_1",
+            title="Kart A",
+            body="A",
+            sort_order=1,
+        )
+        l2 = TopicLesson.objects.create(
+            topic=self.t1,
+            public_id="les_reorder_2",
+            title="Kart B",
+            body="B",
+            sort_order=2,
+        )
+        res = self.client.post(
+            f"/panel/konu/{self.t1.id}/bilgiler/sirala/",
+            {"lesson_ids": [str(l2.id), str(l1.id)]},
+        )
+        self.assertEqual(res.status_code, 204)
+        l1.refresh_from_db()
+        l2.refresh_from_db()
+        self.assertEqual(l1.sort_order, 2)
+        self.assertEqual(l2.sort_order, 1)
+
     def test_delete_topic_removes_questions(self):
         from content.models import Question, Topic
 

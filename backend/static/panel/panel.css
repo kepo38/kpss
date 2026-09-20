@@ -352,17 +352,21 @@ h2 {
   color: var(--muted);
   margin-top: 2px;
 }
-.topic-sort-list {
+.topic-sort-list,
+.lesson-sort-list {
   gap: 10px;
 }
-.topic-row {
+.topic-row,
+.lesson-row {
   cursor: grab;
   transition: opacity .15s, border-color .15s, transform .15s;
 }
-.topic-row:active {
+.topic-row:active,
+.lesson-row:active {
   cursor: grabbing;
 }
-.topic-row.is-dragging {
+.topic-row.is-dragging,
+.lesson-row.is-dragging {
   opacity: .45;
   border-color: var(--champagne);
 }

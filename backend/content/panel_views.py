@@ -1754,6 +1754,15 @@ def panel_lesson_edit(
         lesson.save()
         return redirect("panel_topic", topic_id=topic.id, tab="lessons")
 
+    # New lesson: default Sıra to max(existing)+1 (not 0).
+    if lesson is None:
+        last = topic.lessons.order_by("-sort_order").values_list(
+            "sort_order", flat=True
+        ).first()
+        default_sort_order = (last or 0) + 1
+    else:
+        default_sort_order = lesson.sort_order
+
     return render(
         request,
         "panel/lesson_form.html",
@@ -1761,9 +1770,27 @@ def panel_lesson_edit(
             "topic": topic,
             "subject": topic.subject,
             "lesson": lesson,
+            "default_sort_order": default_sort_order,
             "page_title": "Bilgi kartı" if lesson else "Yeni bilgi",
         },
     )
+
+
+def _reorder_lessons(topic: Topic, lesson_ids: list[str]) -> bool:
+    """Persist a complete drag-and-drop lesson order as contiguous values."""
+    lessons = list(topic.lessons.order_by("sort_order", "id"))
+    expected_ids = {str(lesson.id) for lesson in lessons}
+    if len(lesson_ids) != len(lessons) or set(lesson_ids) != expected_ids:
+        return False
+
+    by_id = {str(lesson.id): lesson for lesson in lessons}
+    with transaction.atomic():
+        for sort_order, lesson_id in enumerate(lesson_ids, start=1):
+            lesson = by_id[lesson_id]
+            if lesson.sort_order != sort_order:
+                lesson.sort_order = sort_order
+                lesson.save(update_fields=["sort_order"])
+    return True
 
 
 @login_required
@@ -1774,6 +1801,17 @@ def panel_lesson_delete(request: HttpRequest, lesson_id: int) -> HttpResponse:
     topic_id = lesson.topic_id
     lesson.delete()
     return redirect("panel_topic", topic_id=topic_id, tab="lessons")
+
+
+@login_required
+@staff_required
+@require_POST
+def panel_lesson_reorder(request: HttpRequest, topic_id: int) -> HttpResponse:
+    topic = get_object_or_404(Topic, pk=topic_id)
+    lesson_ids = request.POST.getlist("lesson_ids")
+    if _reorder_lessons(topic, lesson_ids):
+        return HttpResponse(status=204)
+    return HttpResponseBadRequest("Geçersiz bilgi kartı sırası.")
 
 
 @login_required

@@ -26,7 +26,7 @@
         <textarea class="js-rich" name="body" id="lesson-body" required rows="12">{{ lesson.body|default:'' }}</textarea>
       </label>
       <label>Sıra
-        <input type="number" name="sort_order" value="{{ lesson.sort_order|default:0 }}">
+        <input type="number" name="sort_order" value="{{ default_sort_order }}">
       </label>
       <label>Görsel
         <input type="file" name="image" id="lesson-image" accept="image/*">

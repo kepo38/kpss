@@ -112,6 +112,11 @@ urlpatterns = [
         name="panel_lesson_delete",
     ),
     path(
+        "konu/<int:topic_id>/bilgiler/sirala/",
+        panel_views.panel_lesson_reorder,
+        name="panel_lesson_reorder",
+    ),
+    path(
         "konu/<int:topic_id>/ozet/yeni/",
         panel_views.panel_summary_card_edit,
         name="panel_summary_card_new",
