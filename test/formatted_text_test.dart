@@ -800,11 +800,11 @@ void main() {
     const input =
         r'\begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.05em} \\ CA3 \end{array}';
     final out = FormattedText.normalizeStackedArithmetic(input);
-    expect(out, contains(r'\begin{array}{@{}r@{\,}r@{}}'));
+    expect(out, contains(r'\begin{array}{rr}'));
     expect(out, contains(r'&AB8'));
     expect(out, contains(r'- &16C'));
     expect(out, contains(r'&CA3'));
-    expect(out, isNot(contains(r'{r}')));
+    expect(out, isNot(contains(r'{@{}')));
   });
 
   test('normalizeStackedArithmetic leaves unsigned columns alone', () {
@@ -816,11 +816,40 @@ void main() {
     const input =
         r'\begin{array}{r} AB8 \\ +16C \\ \hline CA3 \end{array}';
     final prepared = FormattedText.prepareTex(input);
-    expect(prepared, contains(r'@{\,}r'));
+    expect(prepared, contains(r'\begin{array}{rr}'));
     expect(prepared, contains(r'+ &'));
     final upright = FormattedText.uprightMathLetters(prepared);
     expect(upright, contains(r'\mathrm{A}\mathrm{B}8'));
     expect(upright, contains(r'16\mathrm{C}'));
+    expect(upright.contains('§§'), isFalse);
+  });
+
+  testWidgets('stacked array math renders without raw latex fallback',
+      (tester) async {
+    const stem =
+        r'A, B ve C rakamları için $$\begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}$$ olduğuna göre.';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: FormattedText(
+              stem,
+              preserveLineBreaks: true,
+              examLayout: true,
+              examWrap: true,
+              style: ExamTypography.body(color: Colors.white, fontSize: 18),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Math), findsOneWidget);
+    expect(find.textContaining(r'\begin{array}'), findsNothing);
+    expect(find.textContaining(r'$$'), findsNothing);
   });
 
   testWidgets('exam stem renders display array math not raw latex', (tester) async {

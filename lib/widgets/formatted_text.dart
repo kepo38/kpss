@@ -365,36 +365,68 @@ class FormattedText extends StatelessWidget {
   }
 
   /// Latin / Türkçe harfleri dik (\mathrm). Array/matrix hücre gövdelerine uygula;
-  /// sütun spec (`{r}`, `{clr}`) ve yapısal komutlara dokunma.
+  /// sütun spec (`{r}`, `{clr}`, `{@{}r@{}…}`) ve yapısal komutlara dokunma.
   static String uprightMathLetters(String tex) {
     if (tex.isEmpty) return tex;
 
     final holders = <String>[];
-    // Latin harf yok — core'daki \mathrm sarmalayıcı placeholder'ı bozmasın.
     String hold(String raw) {
       holders.add(raw);
       return '§§«${holders.length - 1}»§§';
     }
 
-    // Tabular ortamları: yalnızca hücre içeriğini dikleştir, sonra tut.
-    var t = tex.replaceAllMapped(
-      RegExp(
-        r'\\begin\{(array|matrix|pmatrix|bmatrix|vmatrix|cases)\}'
-        r'(\{[^{}]*\})?'
-        r'(.*?)'
-        r'\\end\{\1\}',
-        dotAll: true,
-      ),
-      (m) {
-        final env = m.group(1)!;
-        final colSpec = m.group(2) ?? '';
-        final body = _uprightArrayBody(m.group(3)!);
-        return hold('\\begin{$env}$colSpec$body\\end{$env}');
-      },
+    // Tabular ortamları: dengeli süslü parantezle colSpec al, hücreleri dikleştir.
+    final beginRe = RegExp(
+      r'\\begin\{(array|matrix|pmatrix|bmatrix|vmatrix|cases)\}',
     );
+    var t = tex;
+    final matches = beginRe.allMatches(tex).toList().reversed;
+    for (final m in matches) {
+      final env = m.group(1)!;
+      var i = m.end;
+      var colSpec = '';
+      if (i < t.length && t[i] == '{') {
+        final specEnd = _closingBraceIndex(t, i);
+        if (specEnd < 0) continue;
+        colSpec = t.substring(i, specEnd + 1);
+        i = specEnd + 1;
+      }
+      final endToken = '\\end{$env}';
+      final endAt = t.indexOf(endToken, i);
+      if (endAt < 0) continue;
+      final body = t.substring(i, endAt);
+      final uprightBody = _uprightArrayBody(body);
+      final replacement =
+          hold('\\begin{$env}$colSpec$uprightBody\\end{$env}');
+      t = t.replaceRange(m.start, endAt + endToken.length, replacement);
+    }
 
     t = _uprightMathLettersCore(t);
     return _expandHolders(t, holders, r'§§«(\d+)»§§');
+  }
+
+  /// `openBraceAt` konumundaki `{` için eşleşen `}` indeksi (iç içe destekli).
+  static int _closingBraceIndex(String s, int openBraceAt) {
+    if (openBraceAt < 0 ||
+        openBraceAt >= s.length ||
+        s[openBraceAt] != '{') {
+      return -1;
+    }
+    var depth = 0;
+    for (var i = openBraceAt; i < s.length; i++) {
+      final ch = s[i];
+      if (ch == '\\' && i + 1 < s.length) {
+        i++; // \{ \} veya komut atla
+        continue;
+      }
+      if (ch == '{') {
+        depth++;
+      } else if (ch == '}') {
+        depth--;
+        if (depth == 0) return i;
+      }
+    }
+    return -1;
   }
 
   /// Array satır/hücrelerinde harfleri dikleştir (\\rule / \\hline satırına dokunma).
@@ -482,7 +514,9 @@ class FormattedText extends StatelessWidget {
   ///
   /// Örnek:
   /// `\begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}`
-  /// → `\begin{array}{@{}r@{\,}r@{}} &AB8 \\ - &16C \\ \hline &CA3 \end{array}`
+  /// → `\begin{array}{rr} &AB8 \\ - &16C \\ \hline &CA3 \end{array}`
+  ///
+  /// Not: `{@{}…}` sütun spec flutter_math_fork'ta parse edilemediği için `{rr}` kullanılır.
   static String normalizeStackedArithmetic(String tex) {
     if (!tex.contains(r'\begin{array}')) return tex;
     return tex.replaceAllMapped(
@@ -505,11 +539,9 @@ class FormattedText extends StatelessWidget {
         final rebuilt = <String>[];
         for (final row in rows) {
           if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(row)) {
-            // Tek sütun kural satırı → sağ sütunda (işaret boş).
             rebuilt.add(' &$row');
             continue;
           }
-          // Zaten çok sütunlu satır — dokunma, tüm array'i bırak.
           if (row.contains('&')) return m.group(0)!;
 
           contentCount++;
@@ -526,7 +558,7 @@ class FormattedText extends StatelessWidget {
         }
         if (!hasSigned || contentCount < 2) return m.group(0)!;
 
-        return '\\begin{array}{@{}r@{\\,}r@{}}'
+        return '\\begin{array}{rr}'
             '${rebuilt.join(r' \\ ')}'
             r'\end{array}';
       },

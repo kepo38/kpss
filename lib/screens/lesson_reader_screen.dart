@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/content_models.dart';
 import '../services/lesson_card_drawing_service.dart';
+import '../services/lesson_card_notes_service.dart';
 import '../services/lesson_card_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
@@ -73,9 +74,139 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
         if (mounted) setState(() {});
       }),
     );
+    unawaited(
+      LessonCardNotesService.instance.initialize().then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
     _cardScroll.addListener(() {
       if (_drawingEnabled && mounted) setState(() {});
     });
+  }
+
+  Future<void> _openNotesSheet(TopicLessonModel lesson) async {
+    await LessonCardNotesService.instance.initialize();
+    if (!mounted) return;
+    final controller = TextEditingController(
+      text: LessonCardNotesService.instance.noteFor(lesson.id),
+    );
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF121C2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, 18 + bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Notlar',
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.champagneLight,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                lesson.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                maxLines: 8,
+                minLines: 5,
+                autofocus: true,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+                cursorColor: AppTheme.champagne,
+                decoration: InputDecoration(
+                  hintText: 'Bu bilgi kartına not ekle…',
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.35),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.champagne.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.champagne.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: Text(
+                      'Vazgeç',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.champagne,
+                      foregroundColor: AppTheme.ink,
+                    ),
+                    child: const Text('Kaydet'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (saved == true) {
+      await LessonCardNotesService.instance.save(lesson.id, controller.text);
+      if (mounted) setState(() {});
+    }
+    controller.dispose();
   }
 
   @override
@@ -175,7 +306,7 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
         foregroundColor: Colors.white,
         centerTitle: false,
         titleSpacing: 0,
-        leading: const AppBackButton(),
+        leading: AppBackButton.onDark(accent: AppTheme.champagneLight),
         title: FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
@@ -409,6 +540,9 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
                             onStrokeComplete: _onStrokeComplete,
                             onUndo: _onUndo,
                             onClear: _onClear,
+                            onNotesTap: _busy
+                                ? null
+                                : () => _openNotesSheet(card),
                             onScrollLockChanged: (locked) {
                               if (_drawingEnabled) return;
                               if (_scrollLocked == locked) return;
@@ -453,6 +587,67 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
   }
 }
 
+class _NotesChip extends StatelessWidget {
+  final bool hasNote;
+  final VoidCallback? onTap;
+
+  const _NotesChip({
+    required this.hasNote,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: hasNote
+                ? AppTheme.champagne.withValues(alpha: 0.18)
+                : const Color(0xFF132A5C).withValues(alpha: 0.85),
+            border: Border.all(
+              color: hasNote
+                  ? AppTheme.champagne.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.14),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                hasNote
+                    ? Icons.sticky_note_2_rounded
+                    : Icons.sticky_note_2_outlined,
+                size: 16,
+                color: hasNote
+                    ? AppTheme.champagneLight
+                    : Colors.white.withValues(alpha: 0.75),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'NOTLAR',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  color: hasNote
+                      ? AppTheme.champagneLight
+                      : Colors.white.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Neon bilgi kartı yüzü.
 class LessonCardFace extends StatelessWidget {
   final TopicLessonModel lesson;
@@ -470,6 +665,7 @@ class LessonCardFace extends StatelessWidget {
   final ValueChanged<QuizStroke>? onStrokeComplete;
   final VoidCallback? onUndo;
   final VoidCallback? onClear;
+  final VoidCallback? onNotesTap;
 
   const LessonCardFace({
     super.key,
@@ -488,6 +684,7 @@ class LessonCardFace extends StatelessWidget {
     this.onStrokeComplete,
     this.onUndo,
     this.onClear,
+    this.onNotesTap,
   });
 
   /// Favorilerden tam kart göstermek için.
@@ -654,69 +851,91 @@ class LessonCardFace extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      if (showCounter)
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              padding:
-                                  const EdgeInsets.fromLTRB(10, 5, 10, 5),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(999),
-                                color:
-                                    AppTheme.inkSoft.withValues(alpha: 0.92),
-                                border: Border.all(
-                                  color: AppTheme.neonEdge
-                                      .withValues(alpha: 0.65),
-                                ),
-                              ),
-                              child: Text(
-                                '$index / $total',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.7,
-                                  color: AppTheme.neonEdge
-                                      .withValues(alpha: 0.95),
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        const Spacer(),
-                      if (showHeart)
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: showCounter
+                              ? Container(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      10, 5, 10, 5),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(999),
+                                    color: AppTheme.inkSoft
+                                        .withValues(alpha: 0.92),
+                                    border: Border.all(
+                                      color: AppTheme.neonEdge
+                                          .withValues(alpha: 0.65),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '$index / $total',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.7,
+                                      color: AppTheme.neonEdge
+                                          .withValues(alpha: 0.95),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
+                      if (onNotesTap != null)
                         ListenableBuilder(
-                          listenable: LessonCardProgressService.instance,
+                          listenable: LessonCardNotesService.instance,
                           builder: (context, _) {
-                            final fav = LessonCardProgressService.instance
-                                .isFavorite(lesson.id);
-                            return Container(
-                              width: 38,
-                              height: 38,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha: 0.06),
-                                border: Border.all(
-                                  color: fav
-                                      ? const Color(0xFFF87171)
-                                          .withValues(alpha: 0.55)
-                                      : Colors.white.withValues(alpha: 0.14),
-                                ),
-                              ),
-                              child: FavoriteHeartButton(
-                                isFavorite: fav,
-                                onToggle: () async {
-                                  await LessonCardProgressService.instance
-                                      .toggleFavorite(lesson.id);
-                                },
-                              ),
+                            final hasNote = LessonCardNotesService.instance
+                                .hasNote(lesson.id);
+                            return _NotesChip(
+                              hasNote: hasNote,
+                              onTap: onNotesTap,
                             );
                           },
                         ),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: showHeart
+                              ? ListenableBuilder(
+                                  listenable:
+                                      LessonCardProgressService.instance,
+                                  builder: (context, _) {
+                                    final fav = LessonCardProgressService
+                                        .instance
+                                        .isFavorite(lesson.id);
+                                    return Container(
+                                      width: 38,
+                                      height: 38,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.06),
+                                        border: Border.all(
+                                          color: fav
+                                              ? const Color(0xFFF87171)
+                                                  .withValues(alpha: 0.55)
+                                              : Colors.white
+                                                  .withValues(alpha: 0.14),
+                                        ),
+                                      ),
+                                      child: FavoriteHeartButton(
+                                        isFavorite: fav,
+                                        onToggle: () async {
+                                          await LessonCardProgressService
+                                              .instance
+                                              .toggleFavorite(lesson.id);
+                                        },
+                                      ),
+                                    );
+                                  },
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
                     ],
                   ),
                   if (showCounter) ...[

@@ -1248,7 +1248,7 @@
         }
         if (!hasSigned || contentCount < 2) return full;
         return (
-          "\\begin{array}{@{}r@{\\,}r@{}}" +
+          "\\begin{array}{rr}" +
           rebuilt.join(" \\\\ ") +
           "\\end{array}"
         );

@@ -434,7 +434,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
   }
 }
 
-class _KonuyuOgrenButton extends StatelessWidget {
+class _KonuyuOgrenButton extends StatefulWidget {
   final bool enabled;
   final String? subtitle;
   final VoidCallback? onTap;
@@ -446,10 +446,46 @@ class _KonuyuOgrenButton extends StatelessWidget {
   });
 
   @override
+  State<_KonuyuOgrenButton> createState() => _KonuyuOgrenButtonState();
+}
+
+class _KonuyuOgrenButtonState extends State<_KonuyuOgrenButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+    if (widget.enabled) {
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _KonuyuOgrenButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.enabled && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!widget.enabled && _pulse.isAnimating) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final borderColor = enabled
-        ? AppTheme.champagne.withValues(alpha: 0.55)
-        : Colors.white.withValues(alpha: 0.1);
+    final enabled = widget.enabled;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final labelColor = enabled
         ? AppTheme.champagneLight
         : Colors.white.withValues(alpha: 0.35);
@@ -457,92 +493,216 @@ class _KonuyuOgrenButton extends StatelessWidget {
         ? AppTheme.champagne
         : Colors.white.withValues(alpha: 0.22);
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        splashColor: AppTheme.champagne.withValues(alpha: 0.12),
-        highlightColor: AppTheme.champagne.withValues(alpha: 0.06),
-        child: Ink(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: borderColor, width: 1.15),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: enabled
+    Widget button({
+      required double glow,
+      required double shimmer,
+      required double chevronNudge,
+    }) {
+      final borderAlpha = enabled ? (0.45 + glow * 0.4) : 0.1;
+      final glowAlpha = enabled ? (0.14 + glow * 0.22) : 0.0;
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(18),
+          splashColor: AppTheme.champagne.withValues(alpha: 0.14),
+          highlightColor: AppTheme.champagne.withValues(alpha: 0.07),
+          child: Ink(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: enabled
+                    ? AppTheme.champagne.withValues(alpha: borderAlpha)
+                    : Colors.white.withValues(alpha: 0.1),
+                width: enabled ? 1.35 : 1.15,
+              ),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: enabled
+                    ? [
+                        AppTheme.champagne.withValues(alpha: 0.28 + glow * 0.1),
+                        AppTheme.neonGold.withValues(alpha: 0.12 + glow * 0.06),
+                        Colors.white.withValues(alpha: 0.06),
+                        AppTheme.inkSoft.withValues(alpha: 0.55),
+                      ]
+                    : [
+                        Colors.white.withValues(alpha: 0.03),
+                        Colors.white.withValues(alpha: 0.015),
+                      ],
+                stops: enabled ? const [0.0, 0.28, 0.55, 1.0] : null,
+              ),
+              boxShadow: enabled
                   ? [
-                      AppTheme.champagne.withValues(alpha: 0.22),
-                      Colors.white.withValues(alpha: 0.06),
-                      AppTheme.inkSoft.withValues(alpha: 0.55),
+                      BoxShadow(
+                        color: AppTheme.champagne.withValues(alpha: glowAlpha),
+                        blurRadius: 18 + glow * 14,
+                        spreadRadius: glow * 1.5,
+                        offset: const Offset(0, 6),
+                      ),
+                      BoxShadow(
+                        color: AppTheme.neonGold
+                            .withValues(alpha: 0.06 + glow * 0.1),
+                        blurRadius: 28,
+                        offset: const Offset(0, 10),
+                      ),
                     ]
-                  : [
-                      Colors.white.withValues(alpha: 0.03),
-                      Colors.white.withValues(alpha: 0.015),
-                    ],
-              stops: enabled ? const [0.0, 0.45, 1.0] : null,
+                  : null,
             ),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: AppTheme.champagne.withValues(alpha: 0.12),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              const SizedBox(width: 28),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Konuyu Öğren',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 19,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.4,
-                        height: 1.1,
-                        color: labelColor,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (enabled && !reduceMotion)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: FractionalTranslation(
+                          translation: Offset(shimmer * 2.2 - 1.1, 0),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Colors.transparent,
+                                  AppTheme.champagneLight
+                                      .withValues(alpha: 0.14),
+                                  AppTheme.neonGold.withValues(alpha: 0.22),
+                                  AppTheme.champagneLight
+                                      .withValues(alpha: 0.14),
+                                  Colors.transparent,
+                                ],
+                                stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.25,
-                          fontWeight: FontWeight.w500,
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
                           color: enabled
-                              ? Colors.white.withValues(alpha: 0.55)
+                              ? AppTheme.champagne.withValues(alpha: 0.16)
+                              : Colors.white.withValues(alpha: 0.04),
+                          border: Border.all(
+                            color: enabled
+                                ? AppTheme.champagne
+                                    .withValues(alpha: 0.45 + glow * 0.25)
+                                : Colors.white.withValues(alpha: 0.1),
+                          ),
+                          boxShadow: enabled
+                              ? [
+                                  BoxShadow(
+                                    color: AppTheme.champagne
+                                        .withValues(alpha: 0.2 + glow * 0.25),
+                                    blurRadius: 10 + glow * 8,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Icon(
+                          Icons.auto_stories_rounded,
+                          size: 18,
+                          color: enabled
+                              ? AppTheme.champagneLight
                               : Colors.white.withValues(alpha: 0.28),
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Konuyu Öğren',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.45,
+                                height: 1.1,
+                                color: labelColor,
+                                shadows: enabled
+                                    ? [
+                                        Shadow(
+                                          color: AppTheme.champagne
+                                              .withValues(
+                                                  alpha: 0.35 + glow * 0.25),
+                                          blurRadius: 10 + glow * 6,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                            ),
+                            if (widget.subtitle != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                widget.subtitle!,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.25,
+                                  fontWeight: FontWeight.w500,
+                                  color: enabled
+                                      ? Colors.white.withValues(alpha: 0.58)
+                                      : Colors.white.withValues(alpha: 0.28),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Transform.translate(
+                        offset: Offset(chevronNudge, 0),
+                        child: Icon(
+                          Icons.chevron_right_rounded,
+                          size: 30,
+                          color: chevronColor,
+                        ),
+                      ),
                     ],
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 28,
-                color: chevronColor,
-              ),
-            ],
+            ),
           ),
         ),
-      ),
+      );
+    }
+
+    if (!enabled || reduceMotion) {
+      return button(glow: 0.35, shimmer: 0.5, chevronNudge: 0);
+    }
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, _) {
+        final t = Curves.easeInOut.transform(_pulse.value);
+        // İkinci faz: shimmer tek yön tarama (pulse 0→1→0 iken sürekli akış hissi).
+        final shimmerT = (_pulse.value < 0.5)
+            ? (_pulse.value * 2)
+            : (1 - (_pulse.value - 0.5) * 2);
+        return Transform.scale(
+          scale: 1.0 + t * 0.012,
+          child: button(
+            glow: t,
+            shimmer: shimmerT,
+            chevronNudge: t * 3.5,
+          ),
+        );
+      },
     );
   }
 }
