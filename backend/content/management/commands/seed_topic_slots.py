@@ -7,8 +7,8 @@ from content.topic_slots import ensure_all_topic_slots
 
 class Command(BaseCommand):
     help = (
-        "Tüm aktif konular için 5 özet kart + 5 test yuvası oluşturur. "
-        "İçerik boş yuvada kalır; mobilde pasif görünür."
+        "Tüm aktif konular için 5 test yuvası oluşturur. "
+        "Özet kart yuvası artık üretilmez (mobil bilgi kartına geçildi)."
     )
 
     def add_arguments(self, parser):
@@ -66,8 +66,6 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"{stats['topics']} konu · "
-                f"{stats['cards_created']} yeni kart, "
-                f"{stats['cards_updated']} kart güncellendi · "
                 f"{stats['tests_created']} yeni test, "
                 f"{stats['tests_updated']} test güncellendi · "
                 f"{stats['questions_migrated']} soru Test 1'e taşındı"

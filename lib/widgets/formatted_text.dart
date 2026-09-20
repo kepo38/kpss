@@ -250,6 +250,24 @@ class FormattedText extends StatelessWidget {
         t.contains(r'\hline');
   }
 
+  /// Yanlışlıkla ``$…$`` sarılmış düz metin / markdown (math değil).
+  ///
+  /// Örn. q_8c3be52663: `[HARITA]` sonrası kısa satırdaki ``__görülmez__``
+  /// ``looksLikeMath`` ile sarılıp Math WidgetSpan + strut taşması → A şıkkı üstüne biner.
+  static bool isProseMistakenForMath(String tex) {
+    final t = tex.trim();
+    if (t.isEmpty) return false;
+    if (t.contains(r'\')) return false;
+    if (RegExp(r'\*\*|__').hasMatch(t)) return true;
+    if (RegExp(
+          r'[A-Za-zÇĞİÖŞÜçğıöşüâîû]{3,}\s+[A-Za-zÇĞİÖŞÜçğıöşüâîû]{3,}',
+        ).hasMatch(t) &&
+        !RegExp(r'[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(t)) {
+      return true;
+    }
+    return false;
+  }
+
   /// Tam denklem (`=`, dizi, toplam). Basit `x/y` kesiri cümlede kalır.
   static bool isStandaloneDisplayEquation(String tex) {
     final t = tex.trim();
@@ -922,16 +940,25 @@ class FormattedText extends StatelessWidget {
         RegExp(r'(^|[^\\A-Za-z])frac\{').hasMatch(t)) {
       return true;
     }
+    // Markdown vurgu / renk: __altı çizili__, **kalın**, {green}… — math değil.
+    // Aksi halde `[HARITA]` sonrası kısa ``**… __söylenemez__?**`` satırı
+    // ``_`` yüzünden ``$…$`` sarılıp telefonda ham görünür.
+    final probe = t
+        .replaceAllMapped(RegExp(r'__([^_\n]+?)__'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp(r'\*\*([^*]+?)\*\*'), (m) => m.group(1)!)
+        .replaceAll(RegExp(r'\{(?:/?green|/?red|/?blue)\}'), '');
     // ^ _ { — yalnızca kısa ifadelerde; uzun paragraflarda düz metin kalsın.
-    if (t.length <= 96 &&
-        (t.contains(r'^') || t.contains(r'_') || t.contains('{'))) {
+    if (probe.length <= 96 &&
+        (probe.contains(r'^') ||
+            probe.contains(r'_') ||
+            probe.contains('{'))) {
       return true;
     }
     // Basit cebir yalnızca kısa şık/ifadelerde.
     // Tire (-) tarih aralığı / bileşik kelime (2-3, XVIII - XIX, zarf-fiil,
     // ül-Muhtasar) yanlış pozitif üretmesin — tüm kökü $…$ sarmalama.
-    if (t.length > 64) return false;
-    return RegExp(r'[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(t);
+    if (probe.length > 64) return false;
+    return RegExp(r'[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(probe);
   }
 
   static String wrapBareLatex(String input) {
@@ -948,6 +975,10 @@ class FormattedText extends StatelessWidget {
     if (wrapped != null) {
       final inner = wrapped.group(1)!.trim();
       final rest = src.substring(wrapped.end);
+      // Yanlış sarılmış düz metni aç (HARITA sonrası underline satırı).
+      if (isProseMistakenForMath(inner)) {
+        return rest.trim().isEmpty ? inner : '$inner$rest';
+      }
       if (looksLikeMath(inner)) return src;
       if (rest.trim().isEmpty) return inner;
       return '$inner$rest';
@@ -966,7 +997,11 @@ class FormattedText extends StatelessWidget {
       }
       return '\$-\\frac{$num}{$den}\$';
     }
-    if (looksLikeMath(src)) return '\$${src}\$';
+    if (looksLikeMath(src)) {
+      // Çok kelimeli düz metin / markdown asla $…$ sarılmasın (HARITA sonrası kök).
+      if (isProseMistakenForMath(src)) return src;
+      return '\$${src}\$';
+    }
     return src;
   }
 
@@ -1832,7 +1867,8 @@ class FormattedText extends StatelessWidget {
           ? TextDecoration.underline
           : base.decoration,
       decorationColor: underline ? color : base.decorationColor,
-      decorationThickness: underline ? 2.4 : base.decorationThickness,
+      // 2.4 telefonda harfe yapışık/kalın duruyordu; font varsayılanına yakın tut.
+      decorationThickness: underline ? 1.15 : base.decorationThickness,
       decorationStyle: underline ? TextDecorationStyle.solid : base.decorationStyle,
     );
   }
@@ -1981,8 +2017,11 @@ class FormattedText extends StatelessWidget {
       }
       final raw = (m.group(1) ?? m.group(2) ?? '').trim();
       if (raw.isNotEmpty) {
-        // Tek harf: gövde fontu / punto (Math WidgetSpan şişirmesin).
-        if (m.group(1) == null && isPlainMathLetter(raw)) {
+        // Yanlış ``$düz metin$`` → markdown olarak göster (strut taşması olmasın).
+        if (isProseMistakenForMath(raw)) {
+          spans.addAll(_parseMarkdown(raw, base));
+        } else if (m.group(1) == null && isPlainMathLetter(raw)) {
+          // Tek harf: gövde fontu / punto (Math WidgetSpan şişirmesin).
           spans.add(TextSpan(text: raw, style: base));
         } else {
           final isBlock = m.group(1) != null;

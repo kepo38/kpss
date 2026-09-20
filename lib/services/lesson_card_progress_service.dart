@@ -3,11 +3,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_service.dart';
 
-/// Özet konu kartı: favori / biliyorum / unuttum (zayıf) — kullanıcı scope.
-class SummaryCardProgressService extends ChangeNotifier {
-  SummaryCardProgressService._();
-  static final SummaryCardProgressService instance =
-      SummaryCardProgressService._();
+/// Bilgi kartı: favori / biliyorum / unuttum (zayıf) — kullanıcı scope.
+class LessonCardProgressService extends ChangeNotifier {
+  LessonCardProgressService._();
+  static final LessonCardProgressService instance =
+      LessonCardProgressService._();
 
   final Set<String> _favoriteIds = {};
   final Set<String> _weakIds = {};
@@ -24,7 +24,7 @@ class SummaryCardProgressService extends ChangeNotifier {
 
   String get _userId => AuthService.instance.user?.id ?? 'guest';
 
-  String _key(String suffix) => 'summary_card_${suffix}_$_userId';
+  String _key(String suffix) => 'lesson_card_${suffix}_$_userId';
 
   Future<void> initialize() async {
     if (_loaded && _activeUserId == _userId) return;

@@ -388,7 +388,7 @@ class _SmartReviewScreenState extends State<SmartReviewScreen> {
                           );
                         },
                         child: const Text(
-                          'Müfredata git',
+                          'Derslere Git',
                           style: TextStyle(
                             color: AppTheme.champagne,
                             fontWeight: FontWeight.w600,

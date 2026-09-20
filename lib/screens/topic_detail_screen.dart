@@ -22,10 +22,9 @@ import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/daily_test_quota_dialog.dart';
 import '../widgets/premium_gate.dart';
-import '../services/summary_card_progress_service.dart';
+import '../services/lesson_card_progress_service.dart';
 import 'lesson_reader_screen.dart';
 import 'quiz_screen.dart';
-import 'topic_summary_study_screen.dart';
 
 class TopicDetailScreen extends StatefulWidget {
   final KpssType kpssType;
@@ -53,7 +52,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
   void initState() {
     super.initState();
     _bank.addListener(_onBankChanged);
-    unawaited(SummaryCardProgressService.instance.initialize());
+    unawaited(LessonCardProgressService.instance.initialize());
     unawaited(_refreshContent(showSuccess: false));
     unawaited(_refreshAccountQuota());
   }
@@ -103,10 +102,7 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     final tests = _bank.testsForTopic(widget.kpssType, widget.topicId);
     final stats = _bank.topicStats(widget.topicId);
     final lessons = _bank.lessonsForTopic(widget.topicId);
-    final summaryCards = _bank.summaryCardsForTopic(widget.topicId);
-    final readySummaryCards =
-        summaryCards.where((card) => card.hasContent).toList();
-    final canLearn = readySummaryCards.isNotEmpty || lessons.isNotEmpty;
+    final canLearn = lessons.isNotEmpty;
     final progress =
         _bank.topicQuestionProgress(widget.kpssType, widget.topicId);
 
@@ -174,25 +170,10 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
             const SizedBox(height: 20),
             _KonuyuOgrenButton(
               enabled: canLearn,
-              subtitle: _learnButtonSubtitle(
-                readySummaryCount: readySummaryCards.length,
-                totalSummaryCount: summaryCards.length,
-                lessonCount: lessons.length,
-              ),
+              subtitle: _learnButtonSubtitle(lessonCount: lessons.length),
               onTap: !canLearn
                   ? null
                   : () {
-                      if (readySummaryCards.isNotEmpty) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => TopicSummaryStudyScreen(
-                              topicName: topic?.name ?? 'Konu',
-                              cards: readySummaryCards,
-                            ),
-                          ),
-                        );
-                        return;
-                      }
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => LessonReaderScreen(
@@ -445,20 +426,9 @@ class _TopicDetailScreenState extends State<TopicDetailScreen> {
     }
   }
 
-  String? _learnButtonSubtitle({
-    required int readySummaryCount,
-    required int totalSummaryCount,
-    required int lessonCount,
-  }) {
-    // Yalnızca dolu kart sayısı — boş yuvalar (5 slot) kullanıcıya 6 gibi görünmesin.
-    if (readySummaryCount > 0) {
-      return '$readySummaryCount özet kart · kaydırarak çalış';
-    }
+  String? _learnButtonSubtitle({required int lessonCount}) {
     if (lessonCount > 0) {
-      return '$lessonCount bilgi kartı';
-    }
-    if (totalSummaryCount > 0) {
-      return 'Özet kartlar henüz hazır değil';
+      return '$lessonCount bilgi kartı · kaydırarak çalış';
     }
     return null;
   }

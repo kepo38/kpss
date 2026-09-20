@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../data/kpss_curriculum.dart';
 import '../models/content_models.dart';
 import '../models/question_model.dart';
 import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
-import '../services/summary_card_progress_service.dart';
+import '../services/lesson_card_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/countdown_widget.dart';
 import '../widgets/question_stem_content.dart';
 import '../widgets/study_empty_cta.dart';
-import '../widgets/topic_summary_swipe_deck.dart';
+import 'lesson_reader_screen.dart';
 import 'quiz_screen.dart';
 
-/// Favori sorular + özet konu kartları.
+/// Favori sorular + bilgi kartları.
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
 
@@ -25,7 +26,7 @@ class FavoritesScreen extends StatefulWidget {
 class _FavoritesScreenState extends State<FavoritesScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  /// Özet kartlar: favorites | weak
+  /// Bilgi kartları: favorites | weak
   String _cardFilter = 'favorites';
 
   @override
@@ -35,7 +36,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     FavoritesService.instance.initialize().then((_) {
       if (mounted) setState(() {});
     });
-    SummaryCardProgressService.instance.initialize().then((_) {
+    LessonCardProgressService.instance.initialize().then((_) {
       if (mounted) setState(() {});
     });
   }
@@ -71,7 +72,6 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     if (test != null) {
       questions = bank.questionsForTest(test);
       if (questions.isEmpty) {
-        // Katalogda test var ama gövdeler henüz yüklenmemiş — tek soru aç.
         questions = [question];
         title = 'Favori soru';
       } else {
@@ -99,8 +99,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     if (mounted) setState(() {});
   }
 
-  Future<void> _openSummaryCard(TopicSummaryCardModel card) async {
-    await SummaryCardFace.showViewer(context, card);
+  Future<void> _openLessonCard(TopicLessonModel lesson) async {
+    await LessonCardFace.showViewer(context, lesson);
     if (mounted) setState(() {});
   }
 
@@ -109,7 +109,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     return ListenableBuilder(
       listenable: Listenable.merge([
         FavoritesService.instance,
-        SummaryCardProgressService.instance,
+        LessonCardProgressService.instance,
         ContentBankService.instance,
       ]),
       builder: (context, _) {
@@ -117,11 +117,11 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         final bank = ContentBankService.instance;
         final questions = bank.questionsByIds(ids);
         final grouped = _groupBySubject(questions);
-        final progress = SummaryCardProgressService.instance;
+        final progress = LessonCardProgressService.instance;
         final cardIds = _cardFilter == 'weak'
             ? progress.weakIds
             : progress.favoriteIds;
-        final cards = bank.summaryCardsByIds(cardIds);
+        final cards = bank.lessonsByIds(cardIds);
 
         return Scaffold(
           backgroundColor: AppTheme.page(context),
@@ -170,7 +170,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                 Tab(text: 'Soru Favorileri (${questions.length})'),
                 Tab(
                   text:
-                      'Özet Kartlar (${progress.favoriteCount + progress.weakCount})',
+                      'Bilgi Kartları (${progress.favoriteCount + progress.weakCount})',
                 ),
               ],
             ),
@@ -269,8 +269,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                                 padding: const EdgeInsets.all(28),
                                 child: Text(
                                   _cardFilter == 'weak'
-                                      ? 'Unuttuğun özet kart yok.\nKonu detayında sola kaydırınca buraya düşer.'
-                                      : 'Favori özet kart yok.\nKart üzerindeki kalbe dokununca burada toplanır.',
+                                      ? 'Unuttuğun bilgi kartı yok.\nKonuyu öğrenirken sola kaydırınca buraya düşer.'
+                                      : 'Favori bilgi kartı yok.\nKart üzerindeki kalbe dokununca burada toplanır.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AppTheme.mutedOnPage(context),
@@ -287,10 +287,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                                   const SizedBox(height: 10),
                               itemBuilder: (context, index) {
                                 final card = cards[index];
-                                return _SummaryFavoriteTile(
-                                  card: card,
+                                return _LessonFavoriteTile(
+                                  lesson: card,
                                   isWeak: progress.isWeak(card.id),
-                                  onOpen: () => _openSummaryCard(card),
+                                  onOpen: () => _openLessonCard(card),
                                   onRemove: () async {
                                     if (_cardFilter == 'weak') {
                                       await progress.removeWeak(card.id);
@@ -356,18 +356,26 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _SummaryFavoriteTile extends StatelessWidget {
-  final TopicSummaryCardModel card;
+class _LessonFavoriteTile extends StatelessWidget {
+  final TopicLessonModel lesson;
   final bool isWeak;
   final VoidCallback onOpen;
   final VoidCallback onRemove;
 
-  const _SummaryFavoriteTile({
-    required this.card,
+  const _LessonFavoriteTile({
+    required this.lesson,
     required this.isWeak,
     required this.onOpen,
     required this.onRemove,
   });
+
+  String get _topicLabel {
+    for (final type in KpssType.values) {
+      final topic = KpssCurriculum.findTopic(type, lesson.topicId);
+      if (topic != null) return topic.name;
+    }
+    return lesson.topicId;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -390,9 +398,9 @@ class _SummaryFavoriteTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        card.kindLabel,
-                        style: const TextStyle(
+                      const Text(
+                        'Bilgi kartı',
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.champagne,
@@ -414,7 +422,7 @@ class _SummaryFavoriteTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    card.title,
+                    lesson.title,
                     style: TextStyle(
                       fontFamily: 'serif',
                       fontSize: 16,
@@ -424,7 +432,7 @@ class _SummaryFavoriteTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    card.body,
+                    lesson.body,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -435,7 +443,7 @@ class _SummaryFavoriteTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${card.subjectName} · ${card.topicName}',
+                    _topicLabel,
                     style: TextStyle(
                       fontSize: 11.5,
                       color: AppTheme.mutedOnPage(context)

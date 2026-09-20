@@ -171,9 +171,7 @@ def ensure_all_topic_slots(
     }
     for topic in qs.order_by("subject__sort_order", "sort_order", "id"):
         stats["topics"] += 1
-        c_created, c_updated = ensure_topic_summary_slots(topic)
-        stats["cards_created"] += c_created
-        stats["cards_updated"] += c_updated
+        # Özet kart yuvaları artık üretilmez (mobil bilgi kartına geçildi).
         t_created, t_updated, moved = ensure_topic_test_slots(
             topic, migrate_legacy=migrate_legacy_tests
         )

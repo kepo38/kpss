@@ -459,7 +459,7 @@ Bu tur: Pomodoro ortam sesleri yenilendi; çözüm reklam kotası; profil NEDEN 
 | **Açılış splash** | 657 + defne çelengi **parlak altın** (`#FFE08A`); daire **tam ekran ortası** (Y); üstte HEDEF KAMU, altta Ataman + kayan çizgi | `boot_splash_screen.dart` |
 | **Stüdyo hero** | Üst sağ **Premium’u keşfet**; ortada **STÜDYO** pill; alt yazı kaldırıldı | `home_hero_section.dart` |
 | **ÖDÜL UI** | Kürsüde/CTA’da sarkan madalyon; Premium 1–2–3 + haftalık/aylık sütun butonları; «Senin sıran» gold CTA | `daily_mini_odul_button.dart`, `daily_mini_rewards_screen.dart` |
-| **Konuyu Öğren** | Konu detayından gömülü deste kaldırıldı; geniş **Konuyu Öğren** → `TopicSummaryStudyScreen` (Unuttum/Biliyorum) | `topic_detail_screen.dart`, `topic_summary_study_screen.dart` |
+| **Konuyu Öğren** | Yalnızca bilgi kartları → `LessonReaderScreen` (Unuttum/Biliyorum/kalp) | `topic_detail_screen.dart`, `lesson_reader_screen.dart`, `lesson_card_progress_service.dart` |
 | **İstatistik** | Başlık **Deneme İstatistiklerim**; alt yazı **Netlerine göre tahmini**; Pazar 10:00 deneme hatırlatması | `statistics_overview_tab.dart`, `notification_service.dart` |
 | **Destek UI** | Bilgi satırları butonumsu değil; UYARI amber/bronz; başlık ortalı; e-posta metni yok | `support_contact_screen.dart` |
 | **ContentBank performans** | Pack/metadata + JSON decode **Isolate**; sorular SQLite `content_question_bank` (db v5); notify debounce 80ms | `content_bank_isolate.dart`, `content_bank_service.dart`, `local_database.dart` |

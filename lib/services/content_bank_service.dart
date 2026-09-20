@@ -833,6 +833,21 @@ class ContentBankService extends ChangeNotifier {
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   }
 
+  TopicLessonModel? lessonById(String id) {
+    for (final l in _lessons) {
+      if (l.id == id) return l;
+    }
+    return null;
+  }
+
+  List<TopicLessonModel> lessonsByIds(Iterable<String> ids) {
+    final map = {for (final l in _lessons) l.id: l};
+    return [
+      for (final id in ids)
+        if (map[id] != null) map[id]!,
+    ];
+  }
+
   List<TopicSummaryCardModel> summaryCardsForTopic(String topicId) {
     // Boş slot kartları (yalnızca başlık) sayılmasın / desteye girmesin.
     return _summaryCards

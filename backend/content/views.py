@@ -33,7 +33,6 @@ from .models import (
     QuestionView,
     Subject,
     TopicLesson,
-    TopicSummaryCard,
     TopicTest,
     TopicTestCompletion,
 )
@@ -110,8 +109,7 @@ class ContentPackView(APIView):
             .select_related("topic")
             .order_by("sort_order", "id")
         )
-        summary_cards = TopicSummaryCard.for_mobile_pack()
-
+        # Özet kartlar mobilde bilgi kartına taşındı; eski APK uyumu için boş liste.
         payload = {
             "version": get_content_version(),
             "generatedAt": timezone.now(),
@@ -119,7 +117,7 @@ class ContentPackView(APIView):
             "questions": questions,
             "tests": tests,
             "lessons": lessons,
-            "summaryCards": summary_cards,
+            "summaryCards": [],
         }
         data = ContentPackSerializer(payload, context={"request": request}).data
         return Response(data)
@@ -148,14 +146,14 @@ class ContentCatalogView(APIView):
             .select_related("topic")
             .order_by("sort_order", "id")
         )
-        summary_cards = TopicSummaryCard.for_mobile_pack()
+        # Özet kartlar mobilde bilgi kartına taşındı; eski APK uyumu için boş liste.
         payload = {
             "version": get_content_version(),
             "generatedAt": timezone.now(),
             "subjects": subjects_qs,
             "tests": tests,
             "lessons": lessons,
-            "summaryCards": summary_cards,
+            "summaryCards": [],
         }
         data = ContentCatalogSerializer(payload, context={"request": request}).data
         return Response(data)

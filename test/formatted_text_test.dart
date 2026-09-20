@@ -650,6 +650,40 @@ void main() {
     }
   });
 
+  test('wrapBareLatex does not wrap bold/underline markdown as math', () {
+    // q_9c64671ba3: [HARITA] sonrası kısa satır __…__ yüzünden $…$ sarılmamalı.
+    const line =
+        '**Buna göre aşağıdakilerden hangisi __söylenemez__?**';
+    expect(FormattedText.looksLikeMath(line), isFalse);
+    expect(FormattedText.wrapBareLatex(line), line);
+    expect(FormattedText.looksLikeMath(r'x_1 + y_2'), isTrue);
+    expect(FormattedText.wrapBareLatex(r'x_1'), r'$x_1$');
+  });
+
+  test('q_8c3be52663 HARITA sonrası underline satırı A şıkkına binmez', () {
+    // 86 karakter ≤96; eski looksLikeMath ``_`` ile $…$ sarıyordu → Math
+    // hata fallback + strut taşması A'nın üstüne biniyordu.
+    const afterMap =
+        'Haritada numaralandırılarak gösterilen alanların hangisinde '
+        'bu yer şekli __görülmez__?';
+    expect(afterMap.length, lessThanOrEqualTo(96));
+    expect(FormattedText.looksLikeMath(afterMap), isFalse);
+    expect(FormattedText.wrapBareLatex(afterMap), afterMap);
+    expect(
+      FormattedText.isProseMistakenForMath(
+        'Haritada numaralandırılarak gösterilen alanların hangisinde '
+        'bu yer şekli __görülmez__?',
+      ),
+      isTrue,
+    );
+    // Zaten yanlış sarılmışsa parse Math WidgetSpan yapmaz.
+    final spans = FormattedText.parseSpans(
+      r'$Haritada numaralandırılarak __görülmez__?$',
+      const TextStyle(fontSize: 18, color: Colors.white),
+    );
+    expect(spans.any((s) => s is WidgetSpan), isFalse);
+  });
+
   test('wrapBareLatex keeps stem after leading single-letter dollars', () {
     const stem =
         r'$a$ sıfırdan farklı bir gerçel sayı olmak üzere bir $f$ fonksiyonu'
