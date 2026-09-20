@@ -43,6 +43,7 @@ import 'services/theme_preference_service.dart';
 import 'services/user_savings_insight_service.dart';
 import 'services/daily_mini_exam_service.dart';
 import 'services/daily_mini_ranking_service.dart';
+import 'services/dev_device_allowlist.dart';
 import 'services/network_security_gate.dart';
 import 'services/network_security_service.dart';
 import 'services/notification_preference_service.dart';
@@ -95,7 +96,7 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     AuthService.instance.addListener(_onAuthChanged);
     KpssPreferenceService.instance.addListener(_onKpssRouteChanged);
     PlayBillingService.instance.premiumNotifier
-        .addListener(_liftVpnLockIfPremium);
+        .addListener(_onPremiumNotifierChanged);
     // Varsayılan tercihler — ilk karede UI çizebilsin.
     final defaults = BootSnapshot.defaults();
     ThemePreferenceService.instance.applyBootSnapshot(defaults);
@@ -142,13 +143,13 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     AuthService.instance.removeListener(_onAuthChanged);
     KpssPreferenceService.instance.removeListener(_onKpssRouteChanged);
     PlayBillingService.instance.premiumNotifier
-        .removeListener(_liftVpnLockIfPremium);
+        .removeListener(_onPremiumNotifierChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   void _onAuthChanged() {
-    _liftVpnLockIfPremium();
+    unawaited(_liftVpnLockIfPremium());
     if (!mounted || !_bootReady) return;
     final auth = AuthService.instance;
     final user = auth.user;
@@ -406,8 +407,14 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
     });
   }
 
-  void _liftVpnLockIfPremium() {
-    if (!NetworkSecurityGate.isPremiumExempt) return;
+  void _onPremiumNotifierChanged() {
+    unawaited(_liftVpnLockIfPremium());
+  }
+
+  Future<void> _liftVpnLockIfPremium() async {
+    final exempt = NetworkSecurityGate.isPremiumExempt ||
+        await DevDeviceAllowlist.isExempt();
+    if (!exempt) return;
     if (!_isConnectionBlocked && !_vpnModalShown) return;
     if (mounted) {
       setState(() => _isConnectionBlocked = false);

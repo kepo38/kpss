@@ -291,7 +291,7 @@ class QuizPenToolbar extends StatelessWidget {
   static const colors = [
     Color(0xFFE53935),
     Color(0xFF1E88E5),
-    Colors.black,
+    Color(0xFFF5C542), // sarı (eski siyah)
   ];
   static const widths = [2.5, 4.5, 7.5];
   static const highlighterColor = Color(0xFFCCFF00);

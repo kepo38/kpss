@@ -282,55 +282,42 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Text(
-                '${queue.length} / ${widget.lessons.length}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.champagne.withValues(alpha: 0.75),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _drawingEnabled
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF132A5C)
-                                .withValues(alpha: 0.97),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color:
-                                  AppTheme.champagne.withValues(alpha: 0.35),
-                            ),
-                          ),
-                          child: QuizPenToolbar(
-                            compact: true,
-                            color: _penColor,
-                            width: _penWidth,
-                            highlighter: _highlighter,
-                            onColor: (c) => setState(() {
-                              _penColor = c;
-                              _highlighter = false;
-                            }),
-                            onWidth: (w) => setState(() {
-                              _penWidth = w;
-                              _highlighter = false;
-                            }),
-                            onHighlighter: () =>
-                                setState(() => _highlighter = true),
-                            onUndo: strokes.isEmpty ? null : _onUndo,
-                            onClear: _onClear,
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ),
+              if (_drawingEnabled)
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          const Color(0xFF132A5C).withValues(alpha: 0.97),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.champagne.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: QuizPenToolbar(
+                      color: _penColor,
+                      width: _penWidth,
+                      highlighter: _highlighter,
+                      onColor: (c) => setState(() {
+                        _penColor = c;
+                        _highlighter = false;
+                      }),
+                      onWidth: (w) => setState(() {
+                        _penWidth = w;
+                        _highlighter = false;
+                      }),
+                      onHighlighter: () =>
+                          setState(() => _highlighter = true),
+                      onUndo: strokes.isEmpty ? null : _onUndo,
+                      onClear: _onClear,
+                    ),
+                  ),
+                )
+              else
+                const Spacer(),
               IconButton(
                 tooltip:
                     _drawingEnabled ? 'Çizimi kapat' : 'Kalem (işaretle)',

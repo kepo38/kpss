@@ -28,6 +28,9 @@ class MainActivity : FlutterActivity() {
                     Log.i(TAG, "screenshotGate setAllowed=$allow")
                     result.success(null)
                 }
+                "isDevAllowlisted" -> {
+                    result.success(isDevAllowlisted())
+                }
                 else -> result.notImplemented()
             }
         }
@@ -74,7 +77,11 @@ class MainActivity : FlutterActivity() {
      */
     private fun shouldAllowScreenshots(): Boolean {
         if (BuildConfig.ALLOW_SCREENSHOTS) return true
+        return isDevAllowlisted()
+    }
 
+    /** Geliştirici / QA telefonu — SS + VPN uyarısı muafiyeti. */
+    private fun isDevAllowlisted(): Boolean {
         val androidId = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ANDROID_ID,
@@ -86,7 +93,7 @@ class MainActivity : FlutterActivity() {
 
         Log.i(
             TAG,
-            "screenshotPolicy allow=$allowed model=$model androidId=$androidId",
+            "devAllowlist allow=$allowed model=$model androidId=$androidId",
         )
         return allowed
     }

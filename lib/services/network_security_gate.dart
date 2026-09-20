@@ -1,9 +1,10 @@
 import 'auth_service.dart';
+import 'dev_device_allowlist.dart';
 import 'network_security_service.dart';
 import 'play_billing_service.dart';
 import 'premium_service.dart';
 
-/// VPN/DNS kilidi: ücretsiz kullanıcıda kilit, Premium süresince serbest.
+/// VPN/DNS kilidi: ücretsiz kullanıcıda kilit, Premium / QA cihaz süresince serbest.
 class NetworkSecurityGate {
   NetworkSecurityGate._();
 
@@ -12,6 +13,8 @@ class NetworkSecurityGate {
   static Future<bool> shouldBlock(NetworkSecurityService security) async {
     final unsafe = await security.hasUnsafeConnection();
     if (!unsafe) return false;
+    // Geliştirici telefonu (screenshot allowlist ile aynı cihazlar).
+    if (await DevDeviceAllowlist.isExempt()) return false;
     await ensurePremiumKnown();
     return !isPremiumExempt;
   }
