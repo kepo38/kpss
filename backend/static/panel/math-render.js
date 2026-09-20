@@ -1211,6 +1211,51 @@
     return t;
   }
 
+  /** Tek sütun {r}/{c}/{l} dikey toplama: +/− operatör sütununa. */
+  function normalizeStackedArithmetic(tex) {
+    var src = String(tex || "");
+    if (src.indexOf("\\begin{array}") === -1) return src;
+    return src.replace(
+      /\\begin\{array\}\{([rcl])\}([\s\S]*?)\\end\{array\}/g,
+      function (full, _col, body) {
+        var rawRows = body.split(/\\\\/);
+        var rows = [];
+        for (var i = 0; i < rawRows.length; i++) {
+          var row = String(rawRows[i] || "").trim();
+          if (row) rows.push(row);
+        }
+        if (rows.length < 2) return full;
+
+        var hasSigned = false;
+        var contentCount = 0;
+        var rebuilt = [];
+        for (var j = 0; j < rows.length; j++) {
+          var r = rows[j];
+          if (/^\\(?:rule|hline)\b/.test(r)) {
+            rebuilt.push(" &" + r);
+            continue;
+          }
+          if (r.indexOf("&") !== -1) return full;
+          contentCount++;
+          var signed = /^([+\u2212\-])\s*(.+)$/.exec(r);
+          if (signed) {
+            hasSigned = true;
+            var op = signed[1] === "\u2212" ? "-" : signed[1];
+            rebuilt.push(op + " &" + signed[2].trim());
+          } else {
+            rebuilt.push(" &" + r.trim());
+          }
+        }
+        if (!hasSigned || contentCount < 2) return full;
+        return (
+          "\\begin{array}{@{}r@{\\,}r@{}}" +
+          rebuilt.join(" \\\\ ") +
+          "\\end{array}"
+        );
+      }
+    );
+  }
+
   function normalizeFractionStyles(tex) {
     var t = String(tex || "");
     t = t.replace(/\\dfrac/g, "§§DFRAC§§");
@@ -1243,7 +1288,7 @@
 
   function prepareTex(tex, forceDisplayStyle) {
     return forceDisplaySizeAll(
-      replaceHlineWithColoredRule(String(tex || "")),
+      normalizeStackedArithmetic(replaceHlineWithColoredRule(String(tex || ""))),
       forceDisplayStyle
     );
   }

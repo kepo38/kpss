@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/content_models.dart';
+import '../services/lesson_card_drawing_service.dart';
 import '../services/lesson_card_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
 import '../widgets/embossed_app_bar_title.dart';
 import '../widgets/favorite_heart_button.dart';
 import '../widgets/formatted_text.dart';
+import '../widgets/quiz_drawing_overlay.dart';
 
 /// Konu bilgi kartları — Tinder tarzı Unuttum / Biliyorum destesi.
 class LessonReaderScreen extends StatefulWidget {
@@ -24,25 +28,117 @@ class LessonReaderScreen extends StatefulWidget {
 }
 
 class _LessonReaderScreenState extends State<LessonReaderScreen> {
+  static const _maxStrokes = 80;
+
   double _dragDx = 0;
   bool _busy = false;
   bool _scrollLocked = false;
   double _verticalSlop = 0;
   double _horizontalSlop = 0;
+  /// Bu oturumda Unuttum/Biliyorum ile geçilen kartlar (desteden çıkar).
+  final Set<String> _sessionPassed = {};
+
+  bool _drawingEnabled = false;
+  Color _penColor = QuizPenToolbar.colors.first;
+  double _penWidth = QuizPenToolbar.widths[1];
+  bool _highlighter = false;
+  final Map<String, List<QuizStroke>> _drawings = {};
+  final ScrollController _cardScroll = ScrollController();
+  String? _loadedLessonId;
 
   List<TopicLessonModel> get _queue {
     final progress = LessonCardProgressService.instance;
-    final pending =
-        widget.lessons.where((c) => !progress.isKnown(c.id)).toList();
+    final pending = widget.lessons
+        .where(
+          (c) =>
+              !progress.isKnown(c.id) && !_sessionPassed.contains(c.id),
+        )
+        .toList();
     if (pending.isNotEmpty) return pending;
-    return widget.lessons;
+    final rest = widget.lessons
+        .where((c) => !_sessionPassed.contains(c.id))
+        .toList();
+    return rest;
   }
 
   TopicLessonModel? get _top => _queue.isEmpty ? null : _queue.first;
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      LessonCardDrawingService.instance.initialize().then((_) async {
+        if (!mounted) return;
+        await _ensureStrokesLoaded(_top?.id);
+        if (mounted) setState(() {});
+      }),
+    );
+    _cardScroll.addListener(() {
+      if (_drawingEnabled && mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    final id = _top?.id;
+    if (id != null) {
+      unawaited(_persistLesson(id));
+    }
+    _cardScroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _ensureStrokesLoaded(String? lessonId) async {
+    if (lessonId == null) return;
+    if (_loadedLessonId == lessonId && _drawings.containsKey(lessonId)) {
+      return;
+    }
+    await LessonCardDrawingService.instance.initialize();
+    if (!_drawings.containsKey(lessonId)) {
+      _drawings[lessonId] = List<QuizStroke>.from(
+        LessonCardDrawingService.instance.strokesFor(lessonId),
+      );
+    }
+    _loadedLessonId = lessonId;
+  }
+
+  Future<void> _persistLesson(String lessonId) async {
+    await LessonCardDrawingService.instance.saveStrokes(
+      lessonId,
+      strokes: _drawings[lessonId] ?? const [],
+    );
+  }
+
+  Future<void> _onStrokeComplete(QuizStroke stroke) async {
+    final id = _top?.id;
+    if (id == null) return;
+    final list = _drawings.putIfAbsent(id, () => <QuizStroke>[]);
+    if (list.length >= _maxStrokes) list.removeAt(0);
+    list.add(stroke);
+    setState(() {});
+    await _persistLesson(id);
+  }
+
+  Future<void> _onUndo() async {
+    final id = _top?.id;
+    if (id == null) return;
+    final list = _drawings[id];
+    if (list == null || list.isEmpty) return;
+    setState(() => list.removeLast());
+    await _persistLesson(id);
+  }
+
+  Future<void> _onClear() async {
+    final id = _top?.id;
+    if (id == null) return;
+    setState(() => _drawings[id] = <QuizStroke>[]);
+    await _persistLesson(id);
+  }
+
   Future<void> _resolve({required bool known}) async {
     final card = _top;
-    if (card == null || _busy) return;
+    if (card == null || _busy || _drawingEnabled) return;
+    await _persistLesson(card.id);
     setState(() {
       _busy = true;
       _dragDx = known ? 420 : -420;
@@ -56,9 +152,16 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
     }
     if (!mounted) return;
     setState(() {
+      _sessionPassed.add(card.id);
       _dragDx = 0;
       _busy = false;
+      _scrollLocked = false;
     });
+    if (_cardScroll.hasClients) {
+      _cardScroll.jumpTo(0);
+    }
+    await _ensureStrokesLoaded(_top?.id);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -70,9 +173,18 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         foregroundColor: Colors.white,
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 0,
         leading: const AppBackButton(),
-        title: EmbossedAppBarTitle(widget.topicName),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: EmbossedAppBarTitle(
+            widget.topicName,
+            alignLeft: true,
+            fontSize: 15,
+          ),
+        ),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -150,27 +262,26 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
       return _EmptyDeck(total: widget.lessons.length);
     }
 
+    if (_loadedLessonId != card.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _ensureStrokesLoaded(card.id);
+        if (mounted) setState(() {});
+      });
+    }
+
     final progress = (_dragDx / 140).clamp(-1.0, 1.0);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final queue = _queue;
+    final strokes = _drawings[card.id] ?? const <QuizStroke>[];
+    final swipeBlocked = _busy || _scrollLocked || _drawingEnabled;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              Text(
-                'BİLGİ KARTLARI',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  letterSpacing: 1.6,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.neonEdge.withValues(alpha: 0.9),
-                ),
-              ),
-              const Spacer(),
               Text(
                 '${queue.length} / ${widget.lessons.length}',
                 style: TextStyle(
@@ -179,18 +290,77 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
                   color: AppTheme.champagne.withValues(alpha: 0.75),
                 ),
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _drawingEnabled
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF132A5C)
+                                .withValues(alpha: 0.97),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color:
+                                  AppTheme.champagne.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: QuizPenToolbar(
+                            compact: true,
+                            color: _penColor,
+                            width: _penWidth,
+                            highlighter: _highlighter,
+                            onColor: (c) => setState(() {
+                              _penColor = c;
+                              _highlighter = false;
+                            }),
+                            onWidth: (w) => setState(() {
+                              _penWidth = w;
+                              _highlighter = false;
+                            }),
+                            onHighlighter: () =>
+                                setState(() => _highlighter = true),
+                            onUndo: strokes.isEmpty ? null : _onUndo,
+                            onClear: _onClear,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+              IconButton(
+                tooltip:
+                    _drawingEnabled ? 'Çizimi kapat' : 'Kalem (işaretle)',
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                          _drawingEnabled = !_drawingEnabled;
+                          _scrollLocked = _drawingEnabled;
+                        }),
+                icon: Icon(
+                  _drawingEnabled
+                      ? Icons.edit_off_outlined
+                      : Icons.edit_rounded,
+                  color: _drawingEnabled
+                      ? AppTheme.champagne
+                      : Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
             ],
           ),
         ),
         Expanded(
           child: GestureDetector(
-            onHorizontalDragStart: _busy || _scrollLocked
+            onHorizontalDragStart: swipeBlocked
                 ? null
                 : (_) {
                     _verticalSlop = 0;
                     _horizontalSlop = 0;
                   },
-            onHorizontalDragUpdate: _busy || _scrollLocked
+            onHorizontalDragUpdate: swipeBlocked
                 ? null
                 : (d) {
                     _verticalSlop += d.delta.dy.abs();
@@ -201,7 +371,7 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
                     }
                     setState(() => _dragDx += d.delta.dx);
                   },
-            onHorizontalDragEnd: _busy || _scrollLocked
+            onHorizontalDragEnd: swipeBlocked
                 ? null
                 : (d) {
                     if (_dragDx > 110 || (d.primaryVelocity ?? 0) > 700) {
@@ -243,19 +413,29 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
                             lesson: card,
                             index: widget.lessons.indexOf(card) + 1,
                             total: widget.lessons.length,
+                            scrollController: _cardScroll,
+                            strokes: strokes,
+                            drawingEnabled: _drawingEnabled,
+                            penColor: _penColor,
+                            penWidth: _penWidth,
+                            highlighter: _highlighter,
+                            onStrokeComplete: _onStrokeComplete,
+                            onUndo: _onUndo,
+                            onClear: _onClear,
                             onScrollLockChanged: (locked) {
+                              if (_drawingEnabled) return;
                               if (_scrollLocked == locked) return;
                               setState(() => _scrollLocked = locked);
                             },
                           ),
-                          if (progress > 0.15)
+                          if (!_drawingEnabled && progress > 0.15)
                             _SwipeStamp(
                               label: 'BİLİYORUM',
                               color: const Color(0xFF34D399),
                               alignment: Alignment.topLeft,
                               opacity: progress,
                             ),
-                          if (progress < -0.15)
+                          if (!_drawingEnabled && progress < -0.15)
                             _SwipeStamp(
                               label: 'UNUTTUM',
                               color: const Color(0xFFF87171),
@@ -275,7 +455,8 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
         Padding(
           padding: EdgeInsets.only(bottom: bottomInset + 12),
           child: _ActionBar(
-            busy: _busy,
+            busy: _busy || _drawingEnabled,
+            drawingHint: _drawingEnabled,
             onForgot: () => _resolve(known: false),
             onKnow: () => _resolve(known: true),
           ),
@@ -293,6 +474,15 @@ class LessonCardFace extends StatelessWidget {
   final bool showCounter;
   final bool showHeart;
   final ValueChanged<bool>? onScrollLockChanged;
+  final ScrollController? scrollController;
+  final List<QuizStroke>? strokes;
+  final bool drawingEnabled;
+  final Color? penColor;
+  final double? penWidth;
+  final bool highlighter;
+  final ValueChanged<QuizStroke>? onStrokeComplete;
+  final VoidCallback? onUndo;
+  final VoidCallback? onClear;
 
   const LessonCardFace({
     super.key,
@@ -302,6 +492,15 @@ class LessonCardFace extends StatelessWidget {
     this.showCounter = true,
     this.showHeart = true,
     this.onScrollLockChanged,
+    this.scrollController,
+    this.strokes,
+    this.drawingEnabled = false,
+    this.penColor,
+    this.penWidth,
+    this.highlighter = false,
+    this.onStrokeComplete,
+    this.onUndo,
+    this.onClear,
   });
 
   /// Favorilerden tam kart göstermek için.
@@ -320,6 +519,7 @@ class LessonCardFace extends StatelessWidget {
         child: SizedBox(
           height: MediaQuery.sizeOf(ctx).height * 0.62,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               LessonCardFace(
                 lesson: lesson,
@@ -327,14 +527,36 @@ class LessonCardFace extends StatelessWidget {
                 total: total,
               ),
               Positioned(
-                top: 6,
-                right: 2,
-                child: IconButton(
-                  tooltip: 'Kapat',
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  icon: Icon(
-                    Icons.close_rounded,
-                    color: Colors.white.withValues(alpha: 0.85),
+                top: -6,
+                right: -6,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => Navigator.of(ctx).pop(),
+                    customBorder: const CircleBorder(),
+                    child: Ink(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF1A2438).withValues(alpha: 0.95),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 20,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -347,6 +569,10 @@ class LessonCardFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = strokes ?? const <QuizStroke>[];
+    final scrollOffset =
+        scrollController?.hasClients == true ? scrollController!.offset : 0.0;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -523,15 +749,19 @@ class LessonCardFace extends StatelessWidget {
                     ),
                   ] else
                     const SizedBox(height: 8),
-                  Text(
-                    lesson.title,
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 22,
-                      height: 1.15,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
-                      color: Colors.white,
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      lesson.title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 22,
+                        height: 1.15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                   if (lesson.imageUrl != null &&
@@ -553,33 +783,60 @@ class LessonCardFace extends StatelessWidget {
                   ],
                   const SizedBox(height: 12),
                   Expanded(
-                    child: NotificationListener<ScrollNotification>(
-                      onNotification: (n) {
-                        if (onScrollLockChanged == null) return false;
-                        if (n is ScrollStartNotification) {
-                          onScrollLockChanged!(true);
-                        } else if (n is ScrollEndNotification) {
-                          onScrollLockChanged!(false);
-                        }
-                        return false;
-                      },
-                      child: SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(
-                          parent: BouncingScrollPhysics(),
-                        ),
-                        padding: const EdgeInsets.only(right: 4, bottom: 4),
-                        child: FormattedText(
-                          lesson.body,
-                          preserveLineBreaks: true,
-                          examWrap: true,
-                          examScaleDown: false,
-                          style: TextStyle(
-                            fontSize: 15.5,
-                            height: 1.55,
-                            color: Colors.white.withValues(alpha: 0.9),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        NotificationListener<ScrollNotification>(
+                          onNotification: (n) {
+                            if (onScrollLockChanged == null) return false;
+                            if (n is ScrollStartNotification) {
+                              onScrollLockChanged!(true);
+                            } else if (n is ScrollEndNotification) {
+                              onScrollLockChanged!(false);
+                            }
+                            return false;
+                          },
+                          child: SingleChildScrollView(
+                            controller: scrollController,
+                            physics: drawingEnabled
+                                ? const NeverScrollableScrollPhysics()
+                                : const ClampingScrollPhysics(
+                                    parent: BouncingScrollPhysics(),
+                                  ),
+                            padding:
+                                const EdgeInsets.only(right: 4, bottom: 4),
+                            child: FormattedText(
+                              lesson.body,
+                              preserveLineBreaks: true,
+                              examWrap: true,
+                              examScaleDown: false,
+                              style: TextStyle(
+                                fontSize: 15.5,
+                                height: 1.55,
+                                color: Colors.white.withValues(alpha: 0.9),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        if (!drawingEnabled && ink.isNotEmpty)
+                          QuizStrokeLayer(strokes: ink),
+                        if (drawingEnabled &&
+                            onStrokeComplete != null &&
+                            onClear != null)
+                          QuizDrawingOverlay(
+                            showToolbar: false,
+                            penColor: penColor,
+                            penWidth: penWidth,
+                            highlighter: highlighter,
+                            scrollOffset: scrollOffset,
+                            contentPadding:
+                                const EdgeInsets.only(right: 4, bottom: 4),
+                            strokes: ink,
+                            onStrokeComplete: onStrokeComplete!,
+                            onUndo: onUndo,
+                            onClear: onClear!,
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -594,6 +851,7 @@ class LessonCardFace extends StatelessWidget {
 
 class _ActionBar extends StatelessWidget {
   final bool busy;
+  final bool drawingHint;
   final VoidCallback onForgot;
   final VoidCallback onKnow;
 
@@ -601,6 +859,7 @@ class _ActionBar extends StatelessWidget {
     required this.busy,
     required this.onForgot,
     required this.onKnow,
+    this.drawingHint = false,
   });
 
   @override
@@ -666,7 +925,9 @@ class _ActionBar extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Sola kaydır: Unuttum · Sağa kaydır: Biliyorum',
+          drawingHint
+              ? 'Kalem açıkken kaydırma kapalı · kalemi kapatınca devam'
+              : 'Sola kaydır: Unuttum · Sağa kaydır: Biliyorum',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 11,

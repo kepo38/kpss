@@ -784,10 +784,43 @@ void main() {
     expect(frac, contains(r'\frac'));
   });
 
-  test('uprightMathLetters skips array environments', () {
+  test('uprightMathLetters uprights letters inside array cells', () {
     const array =
         r'\displaystyle \begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.05em} \\ CA3 \end{array}';
-    expect(FormattedText.uprightMathLetters(array), array);
+    final out = FormattedText.uprightMathLetters(array);
+    expect(out.contains('§§'), isFalse);
+    expect(out, contains(r'\begin{array}{r}'));
+    expect(out, contains(r'\mathrm{A}\mathrm{B}8'));
+    expect(out, contains(r'16\mathrm{C}'));
+    expect(out, contains(r'\mathrm{C}\mathrm{A}3'));
+    expect(out, contains(r'\rule{5em}{0.05em}'));
+  });
+
+  test('normalizeStackedArithmetic moves +/- into operator column', () {
+    const input =
+        r'\begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.05em} \\ CA3 \end{array}';
+    final out = FormattedText.normalizeStackedArithmetic(input);
+    expect(out, contains(r'\begin{array}{@{}r@{\,}r@{}}'));
+    expect(out, contains(r'&AB8'));
+    expect(out, contains(r'- &16C'));
+    expect(out, contains(r'&CA3'));
+    expect(out, isNot(contains(r'{r}')));
+  });
+
+  test('normalizeStackedArithmetic leaves unsigned columns alone', () {
+    const input = r'\begin{array}{r} 12 \\ 34 \\ 46 \end{array}';
+    expect(FormattedText.normalizeStackedArithmetic(input), input);
+  });
+
+  test('prepareTex stacks arithmetic then uprights letters', () {
+    const input =
+        r'\begin{array}{r} AB8 \\ +16C \\ \hline CA3 \end{array}';
+    final prepared = FormattedText.prepareTex(input);
+    expect(prepared, contains(r'@{\,}r'));
+    expect(prepared, contains(r'+ &'));
+    final upright = FormattedText.uprightMathLetters(prepared);
+    expect(upright, contains(r'\mathrm{A}\mathrm{B}8'));
+    expect(upright, contains(r'16\mathrm{C}'));
   });
 
   testWidgets('exam stem renders display array math not raw latex', (tester) async {

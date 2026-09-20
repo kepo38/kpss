@@ -364,11 +364,70 @@ class FormattedText extends StatelessWidget {
     return _expandHolders(t, holders, r'§§@(\d+)@§§');
   }
 
-  /// Latin / Türkçe harfleri dik (\mathrm). Array/matrix ortamlarına dokunma.
+  /// Latin / Türkçe harfleri dik (\mathrm). Array/matrix hücre gövdelerine uygula;
+  /// sütun spec (`{r}`, `{clr}`) ve yapısal komutlara dokunma.
   static String uprightMathLetters(String tex) {
     if (tex.isEmpty) return tex;
-    // array/matrix sütun spec ve hücreleri bozulmasın.
-    if (RegExp(r'\\begin\{').hasMatch(tex)) return tex;
+
+    final holders = <String>[];
+    // Latin harf yok — core'daki \mathrm sarmalayıcı placeholder'ı bozmasın.
+    String hold(String raw) {
+      holders.add(raw);
+      return '§§«${holders.length - 1}»§§';
+    }
+
+    // Tabular ortamları: yalnızca hücre içeriğini dikleştir, sonra tut.
+    var t = tex.replaceAllMapped(
+      RegExp(
+        r'\\begin\{(array|matrix|pmatrix|bmatrix|vmatrix|cases)\}'
+        r'(\{[^{}]*\})?'
+        r'(.*?)'
+        r'\\end\{\1\}',
+        dotAll: true,
+      ),
+      (m) {
+        final env = m.group(1)!;
+        final colSpec = m.group(2) ?? '';
+        final body = _uprightArrayBody(m.group(3)!);
+        return hold('\\begin{$env}$colSpec$body\\end{$env}');
+      },
+    );
+
+    t = _uprightMathLettersCore(t);
+    return _expandHolders(t, holders, r'§§«(\d+)»§§');
+  }
+
+  /// Array satır/hücrelerinde harfleri dikleştir (\\rule / \\hline satırına dokunma).
+  static String _uprightArrayBody(String body) {
+    if (body.isEmpty) return body;
+    final rows = body.split(RegExp(r'\\\\'));
+    final out = <String>[];
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      final trimmed = row.trimLeft();
+      if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(trimmed)) {
+        out.add(row);
+        continue;
+      }
+      // Son boş parça (trailing \\) olduğu gibi kalsın.
+      if (row.trim().isEmpty && i == rows.length - 1) {
+        out.add(row);
+        continue;
+      }
+      final cells = row.split('&');
+      out.add(
+        cells.map((cell) {
+          final t = cell.trimLeft();
+          if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(t)) return cell;
+          return _uprightMathLettersCore(cell);
+        }).join('&'),
+      );
+    }
+    return out.join(r'\\');
+  }
+
+  static String _uprightMathLettersCore(String tex) {
+    if (tex.isEmpty) return tex;
 
     final holders = <String>[];
     // Placeholder'da Latin harf OLMAMALI: aksi halde aşağıdaki
@@ -416,9 +475,62 @@ class FormattedText extends StatelessWidget {
     }
 
     t = _wrapLettersUpright(t);
-    t = _expandHolders(t, holders, r'§§#(\d+)#§§');
+    return _expandHolders(t, holders, r'§§#(\d+)#§§');
+  }
 
-    return t;
+  /// Tek sütun {r}/{c}/{l} dikey toplama-çıkarma: +/− işaretini operatör sütununa al.
+  ///
+  /// Örnek:
+  /// `\begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}`
+  /// → `\begin{array}{@{}r@{\,}r@{}} &AB8 \\ - &16C \\ \hline &CA3 \end{array}`
+  static String normalizeStackedArithmetic(String tex) {
+    if (!tex.contains(r'\begin{array}')) return tex;
+    return tex.replaceAllMapped(
+      RegExp(
+        r'\\begin\{array\}\{([rcl])\}(.*?)\\end\{array\}',
+        dotAll: true,
+      ),
+      (m) {
+        final body = m.group(2)!;
+        final rawRows = body.split(RegExp(r'\\\\'));
+        final rows = <String>[];
+        for (final row in rawRows) {
+          if (row.trim().isEmpty) continue;
+          rows.add(row.trim());
+        }
+        if (rows.length < 2) return m.group(0)!;
+
+        var hasSigned = false;
+        var contentCount = 0;
+        final rebuilt = <String>[];
+        for (final row in rows) {
+          if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(row)) {
+            // Tek sütun kural satırı → sağ sütunda (işaret boş).
+            rebuilt.add(' &$row');
+            continue;
+          }
+          // Zaten çok sütunlu satır — dokunma, tüm array'i bırak.
+          if (row.contains('&')) return m.group(0)!;
+
+          contentCount++;
+          final signed = RegExp(r'^([+\u2212\-])\s*(.+)$').firstMatch(row);
+          if (signed != null) {
+            hasSigned = true;
+            var op = signed.group(1)!;
+            if (op == '\u2212') op = '-';
+            final operand = signed.group(2)!.trim();
+            rebuilt.add('$op &$operand');
+          } else {
+            rebuilt.add(' &${row.trim()}');
+          }
+        }
+        if (!hasSigned || contentCount < 2) return m.group(0)!;
+
+        return '\\begin{array}{@{}r@{\\,}r@{}}'
+            '${rebuilt.join(r' \\ ')}'
+            r'\end{array}';
+      },
+    );
   }
 
   /// İç içe placeholder'ları tamamen aç (tek geçişte içtekiler kaçmasın).
@@ -1092,6 +1204,7 @@ class FormattedText extends StatelessWidget {
       (m) => '\\${m.group(1)}',
     );
     t = replaceHlineWithColoredRule(t);
+    t = normalizeStackedArithmetic(t);
     return forceDisplaySizeAll(t, forceDisplayStyle: forceDisplayStyle);
   }
 

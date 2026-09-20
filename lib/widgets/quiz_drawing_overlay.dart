@@ -49,6 +49,12 @@ class QuizDrawingOverlay extends StatefulWidget {
   final VoidCallback? onUndo;
   final double scrollOffset;
   final EdgeInsets contentPadding;
+  /// false ise yüzen araç çubuğu gizlenir; [penColor]/[penWidth]/[highlighter]
+  /// dışarıdan verilir (bilgi kartı üst şeridi).
+  final bool showToolbar;
+  final Color? penColor;
+  final double? penWidth;
+  final bool highlighter;
 
   const QuizDrawingOverlay({
     super.key,
@@ -58,6 +64,10 @@ class QuizDrawingOverlay extends StatefulWidget {
     this.onUndo,
     this.scrollOffset = 0,
     this.contentPadding = EdgeInsets.zero,
+    this.showToolbar = true,
+    this.penColor,
+    this.penWidth,
+    this.highlighter = false,
   });
 
   @override
@@ -65,14 +75,10 @@ class QuizDrawingOverlay extends StatefulWidget {
 }
 
 class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
-  static const _colors = [
-    Color(0xFFE53935),
-    Color(0xFF1E88E5),
-    Colors.black,
-  ];
-  static const _widths = [2.5, 4.5, 7.5];
-  static const _highlighterColor = Color(0xFFCCFF00);
-  static const _highlighterWidth = 28.0;
+  static const _colors = QuizPenToolbar.colors;
+  static const _widths = QuizPenToolbar.widths;
+  static const _highlighterColor = QuizPenToolbar.highlighterColor;
+  static const _highlighterWidth = QuizPenToolbar.highlighterWidth;
   static const _maxPointsPerStroke = 400;
   static const _minPointDelta = 2.0;
   static const _toolbarMinBottom = 8.0;
@@ -85,6 +91,21 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
 
   /// Araç çubuğunun alttan uzaklığı — sürükleyerek değişir.
   double _toolbarBottom = 12;
+
+  Color get _activeColor => widget.showToolbar
+      ? (_highlighter ? _highlighterColor : _color)
+      : (widget.highlighter
+          ? _highlighterColor
+          : (widget.penColor ?? _colors.first));
+
+  double get _activeWidth => widget.showToolbar
+      ? (_highlighter ? _highlighterWidth : _width)
+      : (widget.highlighter
+          ? _highlighterWidth
+          : (widget.penWidth ?? _widths[1]));
+
+  bool get _activeHighlighter =>
+      widget.showToolbar ? _highlighter : widget.highlighter;
 
   Offset _toContent(Offset viewport) => Offset(
         viewport.dx - widget.contentPadding.left,
@@ -115,10 +136,10 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
     widget.onStrokeComplete(
       QuizStroke(
         points: List.of(_points),
-        color: _highlighter ? _highlighterColor : _color,
-        width: _highlighter ? _highlighterWidth : _width,
+        color: _activeColor,
+        width: _activeWidth,
         eraser: false,
-        highlighter: _highlighter,
+        highlighter: _activeHighlighter,
       ),
     );
     _points.clear();
@@ -150,8 +171,6 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                   if (_points.length != before) setState(() {});
                 },
                 onPanEnd: (_) => setState(_finishStroke),
-                // child yok: CustomPaint Positioned.fill boyutunu alır.
-                // SizedBox.expand + boş saveLayer Impeller'da beyaz örtü yapıyordu.
                 child: RepaintBoundary(
                   child: CustomPaint(
                     painter: QuizStrokePainter(
@@ -160,14 +179,10 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                         if (_points.isNotEmpty)
                           QuizStroke(
                             points: _points,
-                            color: _highlighter
-                                ? _highlighterColor
-                                : _color,
-                            width: _highlighter
-                                ? _highlighterWidth
-                                : _width,
+                            color: _activeColor,
+                            width: _activeWidth,
                             eraser: false,
-                            highlighter: _highlighter,
+                            highlighter: _activeHighlighter,
                           ),
                       ],
                       paintOffset: _paintOffset,
@@ -176,183 +191,228 @@ class _QuizDrawingOverlayState extends State<QuizDrawingOverlay> {
                 ),
               ),
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: bottom,
-              child: Material(
-                color: Colors.transparent,
-                elevation: 0,
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF132A5C).withValues(alpha: 0.97),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: AppTheme.champagne.withValues(alpha: 0.35),
+            if (widget.showToolbar)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: bottom,
+                child: Material(
+                  color: Colors.transparent,
+                  elevation: 0,
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF132A5C).withValues(alpha: 0.97),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.champagne.withValues(alpha: 0.35),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onVerticalDragUpdate: (details) {
-                          setState(() {
-                            _toolbarBottom = (_toolbarBottom - details.delta.dy)
-                                .clamp(_toolbarMinBottom, maxBottom)
-                                .toDouble();
-                          });
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                          child: Column(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.45),
-                                  borderRadius: BorderRadius.circular(99),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Sürükle',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.4,
-                                  color: Colors.white.withValues(alpha: 0.45),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              for (final color in _colors)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: _ToolButton(
-                                    selected:
-                                        !_highlighter && _color == color,
-                                    tooltip: 'Kalem rengi',
-                                    onTap: () => setState(() {
-                                      _color = color;
-                                      _highlighter = false;
-                                    }),
-                                    child: _ColorSwatch(
-                                      color: color,
-                                      selected:
-                                          !_highlighter && _color == color,
-                                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragUpdate: (details) {
+                            setState(() {
+                              _toolbarBottom = (_toolbarBottom - details.delta.dy)
+                                  .clamp(_toolbarMinBottom, maxBottom)
+                                  .toDouble();
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.45),
+                                    borderRadius: BorderRadius.circular(99),
                                   ),
                                 ),
-                              Padding(
-                                padding: const EdgeInsets.only(right: 4),
-                                child: _ToolButton(
-                                  selected: _highlighter,
-                                  tooltip: 'Yeşil fosfor',
-                                  highlight: true,
-                                  onTap: () => setState(() {
-                                    _highlighter = true;
-                                  }),
-                                  child: Container(
-                                    width: 24,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: _highlighterColor.withValues(
-                                        alpha: 0.72,
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: _highlighter
-                                            ? Colors.white
-                                            : Colors.white
-                                                .withValues(alpha: 0.7),
-                                        width: _highlighter ? 2 : 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _highlighterColor.withValues(
-                                            alpha: _highlighter ? 0.7 : 0.35,
-                                          ),
-                                          blurRadius: _highlighter ? 10 : 6,
-                                        ),
-                                      ],
-                                    ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Sürükle',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.4,
+                                    color: Colors.white.withValues(alpha: 0.45),
                                   ),
                                 ),
-                              ),
-                              const _ToolbarDivider(),
-                              for (final width in _widths)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 2),
-                                  child: _ToolButton(
-                                    selected:
-                                        !_highlighter && _width == width,
-                                    tooltip: 'Kalem kalınlığı',
-                                    onTap: () => setState(() {
-                                      _width = width;
-                                      _highlighter = false;
-                                    }),
-                                    child: Icon(
-                                      Icons.circle,
-                                      size: width + 2,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              const _ToolbarDivider(tall: true),
-                              if (widget.onUndo != null) ...[
-                                _ToolButton(
-                                  selected: false,
-                                  tooltip: 'Son çizimi geri al',
-                                  onTap: widget.onUndo!,
-                                  child: Icon(
-                                    Icons.undo_rounded,
-                                    size: 22,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.98),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
                               ],
-                              _ToolButton(
-                                selected: false,
-                                tooltip: 'Tüm çizimi temizle',
-                                onTap: widget.onClear,
-                                child: const Icon(
-                                  Icons.delete_outline_rounded,
-                                  size: 22,
-                                  color: Color(0xFFFF8A80),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+                          child: QuizPenToolbar(
+                            color: _color,
+                            width: _width,
+                            highlighter: _highlighter,
+                            onColor: (c) => setState(() {
+                              _color = c;
+                              _highlighter = false;
+                            }),
+                            onWidth: (w) => setState(() {
+                              _width = w;
+                              _highlighter = false;
+                            }),
+                            onHighlighter: () => setState(() {
+                              _highlighter = true;
+                            }),
+                            onUndo: widget.onUndo,
+                            onClear: widget.onClear,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Test / bilgi kartı kalem araç şeridi (renk, fosfor, kalınlık, geri al, sil).
+class QuizPenToolbar extends StatelessWidget {
+  static const colors = [
+    Color(0xFFE53935),
+    Color(0xFF1E88E5),
+    Colors.black,
+  ];
+  static const widths = [2.5, 4.5, 7.5];
+  static const highlighterColor = Color(0xFFCCFF00);
+  static const highlighterWidth = 28.0;
+
+  final Color color;
+  final double width;
+  final bool highlighter;
+  final ValueChanged<Color> onColor;
+  final ValueChanged<double> onWidth;
+  final VoidCallback onHighlighter;
+  final VoidCallback? onUndo;
+  final VoidCallback onClear;
+  final bool compact;
+
+  const QuizPenToolbar({
+    super.key,
+    required this.color,
+    required this.width,
+    required this.highlighter,
+    required this.onColor,
+    required this.onWidth,
+    required this.onHighlighter,
+    required this.onClear,
+    this.onUndo,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      reverse: compact,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final c in colors)
+            Padding(
+              padding: EdgeInsets.only(right: compact ? 2 : 4),
+              child: _ToolButton(
+                selected: !highlighter && color == c,
+                tooltip: 'Kalem rengi',
+                onTap: () => onColor(c),
+                child: _ColorSwatch(
+                  color: c,
+                  selected: !highlighter && color == c,
+                ),
+              ),
+            ),
+          Padding(
+            padding: EdgeInsets.only(right: compact ? 2 : 4),
+            child: _ToolButton(
+              selected: highlighter,
+              tooltip: 'Yeşil fosfor',
+              highlight: true,
+              onTap: onHighlighter,
+              child: Container(
+                width: 24,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: highlighterColor.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: highlighter
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.7),
+                    width: highlighter ? 2 : 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: highlighterColor.withValues(
+                        alpha: highlighter ? 0.7 : 0.35,
+                      ),
+                      blurRadius: highlighter ? 10 : 6,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const _ToolbarDivider(),
+          for (final w in widths)
+            Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: _ToolButton(
+                selected: !highlighter && width == w,
+                tooltip: 'Kalem kalınlığı',
+                onTap: () => onWidth(w),
+                child: Icon(
+                  Icons.circle,
+                  size: w + 2,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          const _ToolbarDivider(tall: true),
+          if (onUndo != null) ...[
+            _ToolButton(
+              selected: false,
+              tooltip: 'Son çizimi geri al',
+              onTap: onUndo!,
+              child: Icon(
+                Icons.undo_rounded,
+                size: 22,
+                color: Colors.white.withValues(alpha: 0.98),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          _ToolButton(
+            selected: false,
+            tooltip: 'Tüm çizimi temizle',
+            onTap: onClear,
+            child: const Icon(
+              Icons.delete_outline_rounded,
+              size: 22,
+              color: Color(0xFFFF8A80),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
