@@ -1065,7 +1065,33 @@
 
   function stripPasteFragmentMarkers(text) {
     var src = String(text || "");
-    if (!src || (src.indexOf("<!--") === -1 && src.indexOf("- →") === -1)) return src;
+    if (!src) return src;
+    // Google Docs XPM plain dump: data-xpm-latex → $…$
+    if (/TgQPHd|data-xpm-latex|<!--\s*qkimaf|<!--\s*cqw1tb/i.test(src)) {
+      src = src.replace(
+        /<!--TgQPHd\|\|\|(?:\[\[[\s\S]*?\]\]|\[\])-?\s*→?/gi,
+        function (blob) {
+          var decoded = blob
+            .replace(/\\u([0-9a-fA-F]{4})/g, function (_, h) {
+              return String.fromCharCode(parseInt(h, 16));
+            })
+            .replace(/\\"/g, '"');
+          var m = decoded.match(/data-xpm-latex\s*=\s*"((?:\\.|[^"\\])*)"/i);
+          if (!m) return "";
+          var latex = m[1].replace(/\\\\/g, "\\").trim();
+          if (!latex) return "";
+          if (latex.charAt(0) === "$" && latex.charAt(latex.length - 1) === "$") {
+            return latex;
+          }
+          return "$" + latex + "$";
+        }
+      );
+      src = src.replace(/<!--\s*(?:qkimaf|cqw1tb)\b[^<\n]*(?:\n[^\n<]*)?/gi, "");
+      src = src.replace(/<!--TgQPHd[^<\n]*/gi, "");
+      src = src.replace(/^[ \t]*.*\bequals\b.*$/gim, "");
+      src = src.replace(/(?:four-thirds|open paren|close paren|\bcross\b)/gi, "");
+    }
+    if (src.indexOf("<!--") === -1 && src.indexOf("- →") === -1) return src;
     src = src.replace(/<!--\s*(?:Start|End)\s*Fragment-\s*→\s*/gi, "");
     src = src.replace(/<!--TgQPHd\|\|\|\[\]-\s*→\s*/gi, "");
     src = src.replace(/<!--TgQPHd[^>]*?-->/gi, "");

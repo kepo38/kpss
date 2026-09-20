@@ -283,6 +283,19 @@ def _convert_span(match: re.Match[str]) -> str:
 
 def html_to_markdown(html: str) -> str:
     text = _decode_entities(html)
+    # Google Docs XPM: data-xpm-latex → $…$ (SVG/MathML düşmeden önce)
+    text = re.sub(
+        r'<[^>]*\bdata-xpm-latex\s*=\s*"([^"]+)"[^>]*>',
+        lambda m: (
+            f"$${m.group(1).strip()}$$"
+            if re.search(r'data-xpm-math-type\s*=\s*"block"', m.group(0), re.I)
+            else f"${m.group(1).strip()}$"
+        ),
+        text,
+        flags=re.I,
+    )
+    text = re.sub(r"<svg\b[^>]*>[\s\S]*?</svg\s*>", "", text, flags=re.I)
+    text = re.sub(r"<math\b[^>]*>[\s\S]*?</math\s*>", "", text, flags=re.I)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</p\s*>", "\n\n", text, flags=re.I)
     text = re.sub(r"<p\b[^>]*>", "", text, flags=re.I)
@@ -587,12 +600,14 @@ _XPM_SPEECH_DUP_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _XPM_SPEECH_GLUE_RE = re.compile(
-    r"(?:four-thirds|open paren|close paren|\bcross\b|\bend-fraction\b)",
+    r"(?:four-thirds|open paren|close paren|\bcross\b|\bend-fraction\b|"
+    r"\bplus\b|\bminus\b|\bspace\b)",
     re.IGNORECASE,
 )
 _GOOGLE_SPEECH_SIGNAL_RE = re.compile(
     r"\bequals\b|\bfour-thirds\b|\bend-fraction\b|\bcap\s+[A-Za-z]\b|"
-    r"\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]",
+    r"\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]|"
+    r"\bplus\b|\bminus\b|\bspace\b",
     re.IGNORECASE,
 )
 # MathML annotation artığı: kısa sembol satırları (``x`` / ``+5`` / ``)`` / ``=3x``).
@@ -613,25 +628,33 @@ def _unescape_google_paste_escapes(text: str) -> str:
 
 
 def _latex_from_xpm_blob(blob: str) -> str:
+    """Blob içindeki tüm ``data-xpm-latex`` değerlerini ``$…$`` yap (çoklu destek)."""
     decoded = _unescape_google_paste_escapes(blob)
-    match = _XPM_LATEX_ATTR_RE.search(decoded)
-    if not match:
+    parts: list[str] = []
+    for match in _XPM_LATEX_ATTR_RE.finditer(decoded):
+        latex = match.group(1)
+        latex = latex.replace(r"\\", "\\")
+        latex = (
+            latex.replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("&quot;", '"')
+        )
+        latex = latex.strip()
+        if not latex:
+            continue
+        if latex.startswith("$") and latex.endswith("$"):
+            parts.append(latex)
+        else:
+            parts.append(f"${latex}$")
+    if not parts:
         return ""
-    latex = match.group(1)
-    # JSON/HTML kaçışı: ``\\frac`` → ``\frac``
-    latex = latex.replace(r"\\", "\\")
-    latex = (
-        latex.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-        .replace("&quot;", '"')
-    )
-    latex = latex.strip()
-    if not latex:
-        return ""
-    if latex.startswith("$") and latex.endswith("$"):
-        return latex
-    return f"${latex}$"
+    # Aynı blob'ta tekrarlayan latex'i tekilleştir
+    uniq: list[str] = []
+    for p in parts:
+        if p not in uniq:
+            uniq.append(p)
+    return " ".join(uniq) if len(uniq) > 1 else uniq[0]
 
 
 def _plain_formula_lookalike(plain: str) -> bool:
@@ -700,6 +723,63 @@ def _next_nonempty(lines: list[str], start: int) -> tuple[int, str]:
     return j, lines[j].strip()
 
 
+def _strip_speech_preserving_math(line: str) -> str:
+    """Satırdaki ``$…$`` koru; İngilizce konuşma token'larını satır nuke etmeden sil."""
+    holders: list[str] = []
+
+    def stash(match: re.Match[str]) -> str:
+        holders.append(match.group(0))
+        return f"§§X{len(holders) - 1}§§"
+
+    protected = re.sub(r"\$[^$\n]+\$", stash, line)
+    if _GOOGLE_SPEECH_SIGNAL_RE.search(protected) or _XPM_SPEECH_GLUE_RE.search(
+        protected
+    ):
+        # Konuşma ağırlıklı ve matematik yoksa satırı düş
+        if not holders and (
+            re.search(r"\bequals\b|\bimplies\b|\bfour-thirds\b", protected, re.I)
+            or (
+                re.search(r"\b(?:cap|cross|plus|minus|space)\b", protected, re.I)
+                and len(re.findall(r"[A-Za-z]{3,}", protected)) >= 2
+            )
+        ):
+            return ""
+        protected = _XPM_SPEECH_GLUE_RE.sub("", protected)
+        protected = re.sub(
+            r"\b(?:equals|implies|cross|four-thirds|end-fraction|"
+            r"open paren|close paren|cap|plus|minus|space)\b",
+            "",
+            protected,
+            flags=re.I,
+        )
+        protected = re.sub(r"[ \t]{2,}", " ", protected).strip()
+        # Konuşma scrub sonrası yalnız düz formül + rakam artığı kaldıysa satırı düş
+        if not holders and (
+            not protected
+            or re.fullmatch(
+                r"[A-Za-z0-9+\-×÷=⇒→().,\s]{0,40}",
+                protected,
+            )
+        ):
+            return ""
+        # ``M+3x=50(1. Denklem) M 3 x 50 (1. Denklem)`` — konuşma kopyası tekrarı
+        if holders and re.search(
+            r"\)\s*[A-Za-z0-9].{0,40}\(\d+\.\s*Denklem\)",
+            protected,
+            re.I,
+        ):
+            protected = re.split(r"\)\s+(?=[A-Za-z])", protected, maxsplit=1)[0] + ")"
+            protected = protected.strip()
+    restored = re.sub(
+        r"§§X(\d+)§§",
+        lambda m: holders[int(m.group(1))]
+        if int(m.group(1)) < len(holders)
+        else m.group(0),
+        protected,
+    )
+    return restored
+
+
 def scrub_google_math_speech_debris(text: str) -> str:
     """XPM sonrası kalan İngilizce konuşma / çift düz+LaTeX satırlarını temizle."""
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -715,18 +795,19 @@ def scrub_google_math_speech_debris(text: str) -> str:
         or re.search(r"(?<=\d)\n\d+\$", src)
         or re.search(r"(?i)\bMcap\b|\bover\b.*\bend-fraction\b", src)
         or re.search(r"\$[^$\n]+\$\d", src)
+        or re.search(r"yaşındadır", src, re.I)
+        or re.search(r"kmx\s*\d", src, re.I)
     ):
         return src
 
-    src = _XPM_SPEECH_DUP_RE.sub("", src)
-    # Satır ortası yapışık konuşma: ``14.39Varış Saati equals 10.``
-    src = re.sub(
-        r"(?<=\d)([A-ZÇĞİÖŞÜa-zçğıöşüâîû][^\n]*\bequals\b[^\n]*)",
-        "",
-        src,
-        flags=re.I,
-    )
-    src = _XPM_SPEECH_GLUE_RE.sub("", src)
+    # F3 fix: satır nuke yerine matematik korumalı scrub
+    pre: list[str] = []
+    for line in src.split("\n"):
+        cleaned = _strip_speech_preserving_math(line)
+        if cleaned.strip() or not line.strip():
+            pre.append(cleaned)
+    src = "\n".join(pre)
+
     src = re.sub(r"(?<=\d)(?:four-thirds|thirds)\b", "", src, flags=re.I)
     src = re.sub(r"(?i)\b([A-Za-z])cap\s*\1\b", r"$\1$", src)
     src = re.sub(r"\bxx\s*[𝑥𝑋xX]\b", "x", src)
@@ -815,7 +896,13 @@ def scrub_google_math_speech_debris(text: str) -> str:
             _math_prose_split,
             line,
         )
-        # ``$x$ yaşındadır)`` — annotation kapanış artığı
+        # ``$x$ yaşındadır)`` / ``$x$ yaşındadır-`` — annotation artığı
+        line = re.sub(
+            r"(\$[^$\n]+\$)\s*yaşındadır\.?\)?-?",
+            r"\1",
+            line,
+            flags=re.I,
+        )
         line = re.sub(
             r"(\$[^$\n]+\$)\s+([a-zçğıöşüâîû]{3,})\)(?=\s*[-—.]|\s*$)",
             r"\1 \2",
@@ -823,6 +910,18 @@ def scrub_google_math_speech_debris(text: str) -> str:
             flags=re.I,
         )
         line = re.sub(r"\b([a-zçğıöşüâîû]{4,})\)(?=-)", r"\1", line, flags=re.I)
+        # ``Analizi-`` / ``Adımları-`` başlık tire artığı
+        line = re.sub(
+            r"([A-Za-zÇĞİÖŞÜçğıöşüâîû]{3,})-\s*$",
+            r"\1",
+            line,
+        )
+        # ``104 kmx 78 26 4 104 km`` / ``$x$):x=78…kmx 78`` düz kopya artığı
+        line = re.sub(
+            r"(?:\$[^$\n]+\$\)?:?)?[A-Za-z]?=?[\d×xX*+\-./]+\s*kmx?\s*[\d\s]+km\b",
+            "",
+            line,
+        )
         line = re.sub(r"\(xx?\)?\s*$", "", line)
         # Orphan ``**x`` / ``**M`` before math already extracted
         if re.fullmatch(r"\*\*[A-Za-z]\s*", plain or ""):
@@ -911,6 +1010,35 @@ def scrub_google_math_speech_debris(text: str) -> str:
         out2.append(lines[i])
         i += 1
     src = "\n".join(out2)
+    # ``$…$👶 Sonuç`` / ``}$👶``
+    src = re.sub(r"(\$[^$\n]*\$)\s*[👶📌🚨]", r"\1\n\n", src)
+    src = re.sub(r"([^\s\n])([👶📌🚨])", r"\1\n\n\2", src)
+    # ``$x$):x=78×43=26×4`` düz formül öneki — sonraki $…$ varsa satırı düş
+    lines = src.split("\n")
+    out3: list[str] = []
+    i = 0
+    while i < len(lines):
+        plain = lines[i].strip()
+        if re.match(r"^\$[^$\n]+\$\)?:[A-Za-z0-9]", plain or ""):
+            nxt_i, nxt = _next_nonempty(lines, i + 1)
+            if _leading_inline_math(nxt):
+                i += 1
+                continue
+        # ``…yaşı)2 M 64 M 32 (Annenin`` — parantez sonrası digit-letter kopya
+        if re.search(r"\)\d+\s+[A-Za-z]\s+\d+", plain or ""):
+            plain = re.split(r"(?<=\))\d+\s+[A-Za-z]", plain, maxsplit=1)[0]
+            lines[i] = plain
+        if re.fullmatch(
+            r"(?:\d+\s+[A-Za-z]\s+)+\d+(?:\s*\([^)]*\))?",
+            plain or "",
+        ):
+            nxt_i, nxt = _next_nonempty(lines, i + 1)
+            if _leading_inline_math(nxt):
+                i += 1
+                continue
+        out3.append(lines[i])
+        i += 1
+    src = "\n".join(out3)
     src = re.sub(r"[ \t]{2,}", " ", src)
     src = re.sub(r"\n{3,}", "\n\n", src)
     return src.strip()
@@ -1935,6 +2063,9 @@ def has_latex(text: str) -> bool:
 
 def latex_score(text: str) -> int:
     src = text or ""
+    # TgQPHd / XPM dump sahte yüksek skor üretmesin
+    if _GOOGLE_XPM_SIGNAL_RE.search(src):
+        return 0
     dollars = len(re.findall(r"\$", src))
     commands = len(_LATEX_SCORE_FRAC_RE.findall(src))
     return dollars + commands * 2
@@ -1949,7 +2080,8 @@ def _html_looks_rich(html: str) -> bool:
         re.search(
             r"<(?:strong|b|em|i|u)\b|"
             r"font-weight\s*:\s*(?:bold|bolder|[6-9]00)|"
-            r"text-decoration(?:-line)?\s*:[^;\"']*underline",
+            r"text-decoration(?:-line)?\s*:[^;\"']*underline|"
+            r"data-xpm-latex",
             html,
             re.I,
         )
@@ -2058,6 +2190,8 @@ def _repair_math_step_solution_glue(text: str) -> str:
 def is_structured_solution_outline(text: str) -> bool:
     """Daha önce biçimlenmiş çözümü ikinci normalizasyondan koru."""
     src = text or ""
+    if _GOOGLE_XPM_SIGNAL_RE.search(src) or _GOOGLE_SPEECH_SIGNAL_RE.search(src):
+        return False
     if _has_math_step_solution_glue(src):
         return False
     structured_lines = re.findall(
@@ -2275,6 +2409,16 @@ def _solution_needs_pipeline_repair(text: str) -> bool:
     if _GOOGLE_XPM_SIGNAL_RE.search(src):
         return True
     if _GOOGLE_SPEECH_SIGNAL_RE.search(src):
+        return True
+    # XPM sonrası glue: math+prose / kırık bold / emoji sonuç
+    if re.search(r"\$[^$\n]+\$[A-ZÇĞİÖŞÜ]", src):
+        return True
+    if re.search(r"\$[^$\n]+\$\*\*\d+\.", src):
+        return True
+    # ``yaşındadır- Büyük`` (küçük harf + tire + büyük); Teklif-i / satırsonu Analizi-\n**A değil
+    if re.search(r"[a-zçğıöşüâîû]\)?-[ \t]*(?:\*\*)?[A-ZÇĞİÖŞÜ]", src):
+        return True
+    if re.search(r"\}\$\s*[👶📌🚨]", src):
         return True
     if re.search(r"(?m)^[ \t]*#{1,3}[ \t]+\S", src):
         return True
@@ -2731,6 +2875,19 @@ def choose_paste_text(plain: str, html: str = "") -> str:
     from_html = html_clipboard_to_text(html) if (html or "").strip() else ""
     if from_html and from_plain:
         from_html = _align_list_to_plain(from_html, from_plain)
+    # Google Docs XPM: HTML latex çıkardıysa plain dump'ı seçme
+    if (
+        from_html
+        and _GOOGLE_XPM_SIGNAL_RE.search(plain or "")
+        and not _GOOGLE_XPM_SIGNAL_RE.search(from_html)
+    ):
+        return collapse_bullet_prefixes(from_html)
+    if (
+        from_html
+        and re.search(r"data-xpm-latex", html or "", re.I)
+        and not _GOOGLE_XPM_SIGNAL_RE.search(from_html)
+    ):
+        return collapse_bullet_prefixes(from_html)
     if not from_html:
         return from_plain
     if not from_plain:

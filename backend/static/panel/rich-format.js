@@ -217,7 +217,68 @@
     return (attr || "").trim();
   }
 
+  /**
+   * Google Docs / XPM denklem: data-xpm-latex → $…$ / $$…$$.
+   * SVG, MathML, speech annotation DOM'dan düşer — TgQPHd dump üretilmez.
+   */
+  function replaceGoogleXpmMath(root) {
+    if (!root || !root.querySelectorAll) return;
+    var doc = root.ownerDocument || document;
+    var nodes = root.querySelectorAll(
+      "[data-xpm-latex], [data-xpm-copy-root]"
+    );
+    // İçten dışa: önce leaf latex, sonra root
+    var list = Array.prototype.slice.call(nodes);
+    list.sort(function (a, b) {
+      var da = 0;
+      var db = 0;
+      var p = a;
+      while (p && p !== root) {
+        da++;
+        p = p.parentNode;
+      }
+      p = b;
+      while (p && p !== root) {
+        db++;
+        p = p.parentNode;
+      }
+      return db - da;
+    });
+    list.forEach(function (node) {
+      if (!node.parentNode) return;
+      var tex =
+        (node.getAttribute && node.getAttribute("data-xpm-latex")) || "";
+      if (!tex && node.querySelector) {
+        var inner = node.querySelector("[data-xpm-latex]");
+        if (inner) tex = inner.getAttribute("data-xpm-latex") || "";
+      }
+      tex = String(tex || "").trim();
+      if (!tex) {
+        // UUID / boş XPM root — sessizce kaldır
+        node.parentNode.removeChild(node);
+        return;
+      }
+      var mathType =
+        (node.getAttribute && node.getAttribute("data-xpm-math-type")) ||
+        (node.closest &&
+          node.closest("[data-xpm-math-type]") &&
+          node.closest("[data-xpm-math-type]").getAttribute("data-xpm-math-type")) ||
+        "";
+      var display = String(mathType).toLowerCase() === "block";
+      var wrapped = wrapTex(tex, display);
+      var target =
+        node.hasAttribute && node.hasAttribute("data-xpm-copy-root")
+          ? node
+          : node.closest
+            ? node.closest("[data-xpm-copy-root]") || node
+            : node;
+      if (!target.parentNode) return;
+      target.parentNode.replaceChild(doc.createTextNode(wrapped), target);
+    });
+  }
+
   function replaceClipboardMath(root) {
+    replaceGoogleXpmMath(root);
     var displays = root.querySelectorAll(".katex-display, .MathJax_Display");
     Array.prototype.forEach.call(displays, function (node) {
       var tex = texFromKatexNode(node);
@@ -233,8 +294,16 @@
     });
   }
 
+  function hasGoogleXpmSignal(text) {
+    return /TgQPHd|data-xpm-latex|<!--\s*qkimaf|<!--\s*cqw1tb/i.test(
+      String(text || "")
+    );
+  }
+
   function latexScore(text) {
     var src = String(text || "");
+    // TgQPHd dump içinde sahte yüksek skor olmasın
+    if (hasGoogleXpmSignal(src)) return 0;
     var dollars = (src.match(/\$/g) || []).length;
     var commands = (src.match(/\\(frac|sqrt|circ|cdot|left|right|text)/g) || []).length;
     return dollars + commands * 2;
@@ -266,7 +335,8 @@
       /font-weight\s*:\s*(bold|bolder|[6-9]00)/i.test(src) ||
       /mso-(?:bidi|ansi)-font-weight\s*:\s*bold/i.test(src) ||
       /text-decoration(?:-line)?\s*:[^;"']*underline/i.test(src) ||
-      /text-underline\s*:\s*single/i.test(src)
+      /text-underline\s*:\s*single/i.test(src) ||
+      /data-xpm-latex/i.test(src)
     );
   }
 
@@ -326,6 +396,13 @@
     );
     var fromHtml = html ? htmlClipboardToText(html) : "";
     if (fromHtml) fromHtml = alignListToPlain(fromHtml, fromPlain);
+    // Google Docs XPM: HTML yolu latex'i çıkardıysa plain dump'ı asla seçme
+    if (fromHtml && hasGoogleXpmSignal(plain) && !hasGoogleXpmSignal(fromHtml)) {
+      return collapseBulletPrefixes(fromHtml);
+    }
+    if (fromHtml && /data-xpm-latex/i.test(String(html || "")) && !hasGoogleXpmSignal(fromHtml)) {
+      return collapseBulletPrefixes(fromHtml);
+    }
     if (!fromHtml) return fromPlain;
     if (!fromPlain) return collapseBulletPrefixes(fromHtml);
     var htmlRich = htmlLooksRich(html);

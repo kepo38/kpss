@@ -16,6 +16,7 @@ from content.rich_text_common import (
     choose_paste_text,
     demote_block_underline_markup,
     html_to_markdown,
+    looks_storage_normalized_solution,
     merge_split_inline_dollar_math,
     needs_block_underline_repair,
     normalize_latex,
@@ -24,6 +25,7 @@ from content.rich_text_common import (
     repair_block_underline_solution,
     repair_latex_escapes,
     restore_collapsed_breaks,
+    scrub_google_math_speech_debris,
 )
 from content.telegram_conversation import (
     ai_solution_status_note,
@@ -1152,6 +1154,80 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIn("**Sonuç**", out)
         self.assertIn("sıralama **y < z < x**", out)
 
+    def test_choose_paste_prefers_html_when_xpm_latex_extracted(self):
+        """Plain TgQPHd dump yüksek skorlu olsa bile HTML data-xpm-latex tercih edilir."""
+        plain = (
+            '43<!--TgQPHd|||[[[null,"\\u003cdiv data-xpm-latex\\u003d\\"\\\\frac{4}{3}\\"'
+            "]]] saat equals 104"
+        )
+        html = (
+            '<p>A-B arasını <span data-xpm-latex="\\frac{4}{3}"></span> '
+            "saat sürede almıştır.</p>"
+        )
+        out = choose_paste_text(plain, html)
+        self.assertNotIn("TgQPHd", out)
+        self.assertNotIn("equals", out)
+        self.assertIn(r"\frac{4}{3}", out)
+        self.assertIn("saat sürede", out)
+
+    def test_html_to_markdown_extracts_data_xpm_latex(self):
+        html = (
+            '<p>Sonuç: <span data-xpm-latex="x=\\frac{2}{3}"></span> '
+            "bulunur.</p>"
+        )
+        out = html_to_markdown(html)
+        self.assertIn(r"$x=\frac{2}{3}$", out)
+        self.assertIn("bulunur", out)
+        self.assertNotIn("data-xpm", out)
+
+    def test_scrub_f3_preserves_inline_math_on_speech_line(self):
+        """F3: konuşma satırı nuke edilmez; $…$ korunur."""
+        src = (
+            "Hız oranı $v_1:v_2=3:4$ equals four-thirds cross "
+            "x equals 12 km.\n"
+            "x equals 78 cross four-thirds equals 104 km"
+        )
+        out = scrub_google_math_speech_debris(src)
+        self.assertIn("$v_1:v_2=3:4$", out)
+        self.assertNotIn("equals", out)
+        self.assertNotIn("four-thirds", out)
+
+    def test_scrub_plus_speech_and_yasindir_annotation(self):
+        """plus/space konuşması ve $x$ yaşındadır- annotation temizlenir."""
+        src = (
+            "İkizler $x$ yaşındadır- Büyük çocuk $x + 4$ yaşındadır.\n"
+            "M+3x+4=54⇒M+3x=50(1. Denklem) M plus 3 x plus 4 54 "
+            "M plus 3 x 50 space (1. Denklem)\n"
+            "$M+3x+4=54\\Rightarrow M+3x=50\\quad \\text{(1.\\ Denklem)}$\n"
+            "Otobüsün Hareket Analizi-\n"
+            "$x$):x=78×43=26×4=104 kmx 78 26 4 104 km\n"
+            r"$x=78\times \frac{4}{3}=104\text{\ km}$"
+        )
+        out = scrub_google_math_speech_debris(src)
+        self.assertIn("$x$", out)
+        self.assertNotIn("yaşındadır-", out)
+        self.assertNotIn(" plus ", out)
+        self.assertNotIn(" space ", out)
+        self.assertNotIn("kmx", out)
+        self.assertNotIn("Analizi-", out)
+        self.assertIn(r"\Rightarrow", out)
+
+    def test_looks_storage_false_on_math_prose_glue(self):
+        """Math+prose yapışması pipeline'ı tetikler; looks_storage False."""
+        import re
+
+        glued = r"$x=\frac{4}{3}$Yaşındadır- **1. Adım: hız"
+        self.assertFalse(looks_storage_normalized_solution(glued))
+        self.assertFalse(looks_storage_normalized_solution("<!--TgQPHd|||[] dump"))
+        # Teklif-i / satır sonu Analizi-\n**A false positive olmamalı
+        ok = (
+            "- **2. Mustafa Kemal Paşa'nın Teklif-i Milliye Emirleri'ni "
+            "yayımlaması (7-8 Ağustos 1921):** Emirler yayımlandı.\n\n"
+            "- **3. Zafer:** Ordumuz zafer kazandı."
+        )
+        self.assertIsNone(
+            re.search(r"[a-zçğıöşüâîû]\)?-[ \t]*(?:\*\*)?[A-ZÇĞİÖŞÜ]", ok)
+        )
 
 class TelegramSolutionNormalizationIntegrationTests(TestCase):
     def setUp(self):
