@@ -79,134 +79,15 @@ class _LessonReaderScreenState extends State<LessonReaderScreen> {
         if (mounted) setState(() {});
       }),
     );
+    // Kalem kapalıyken de ink paintOffset’i scroll ile güncellensin.
     _cardScroll.addListener(() {
-      if (_drawingEnabled && mounted) setState(() {});
+      if (mounted) setState(() {});
     });
   }
 
   Future<void> _openNotesSheet(TopicLessonModel lesson) async {
-    await LessonCardNotesService.instance.initialize();
-    if (!mounted) return;
-    final controller = TextEditingController(
-      text: LessonCardNotesService.instance.noteFor(lesson.id),
-    );
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF121C2E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (ctx) {
-        final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(18, 14, 18, 18 + bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Notlar',
-                style: TextStyle(
-                  fontFamily: 'serif',
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.champagneLight,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                lesson.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: controller,
-                maxLines: 8,
-                minLines: 5,
-                autofocus: true,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  height: 1.4,
-                ),
-                cursorColor: AppTheme.champagne,
-                decoration: InputDecoration(
-                  hintText: 'Bu bilgi kartına not ekle…',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.06),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppTheme.champagne.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppTheme.champagne.withValues(alpha: 0.65),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: Text(
-                      'Vazgeç',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.champagne,
-                      foregroundColor: AppTheme.ink,
-                    ),
-                    child: const Text('Kaydet'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (saved == true) {
-      await LessonCardNotesService.instance.save(lesson.id, controller.text);
-      if (mounted) setState(() {});
-    }
-    controller.dispose();
+    await LessonCardFace.openNotesSheet(context, lesson);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -648,6 +529,232 @@ class _NotesChip extends StatelessWidget {
   }
 }
 
+/// Favori / tekrar listesinden açılan kart: kayıtlı çizim + NOTLAR + kalem.
+class _LessonCardViewerDialog extends StatefulWidget {
+  final TopicLessonModel lesson;
+  final int index;
+  final int total;
+
+  const _LessonCardViewerDialog({
+    required this.lesson,
+    required this.index,
+    required this.total,
+  });
+
+  @override
+  State<_LessonCardViewerDialog> createState() =>
+      _LessonCardViewerDialogState();
+}
+
+class _LessonCardViewerDialogState extends State<_LessonCardViewerDialog> {
+  static const _maxStrokes = 80;
+
+  final ScrollController _scroll = ScrollController();
+  List<QuizStroke> _strokes = [];
+  bool _ready = false;
+  bool _drawingEnabled = false;
+  Color _penColor = QuizPenToolbar.colors.first;
+  double _penWidth = QuizPenToolbar.widths[1];
+  bool _highlighter = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      if (mounted) setState(() {});
+    });
+    unawaited(_bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    await Future.wait([
+      LessonCardDrawingService.instance.initialize(),
+      LessonCardNotesService.instance.initialize(),
+      LessonCardProgressService.instance.initialize(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _strokes = List<QuizStroke>.from(
+        LessonCardDrawingService.instance.strokesFor(widget.lesson.id),
+      );
+      _ready = true;
+    });
+  }
+
+  Future<void> _persist() async {
+    await LessonCardDrawingService.instance.saveStrokes(
+      widget.lesson.id,
+      strokes: _strokes,
+    );
+  }
+
+  Future<void> _onStrokeComplete(QuizStroke stroke) async {
+    if (_strokes.length >= _maxStrokes) {
+      _strokes = List<QuizStroke>.from(_strokes)..removeAt(0);
+    }
+    setState(() => _strokes = [..._strokes, stroke]);
+    await _persist();
+  }
+
+  Future<void> _onUndo() async {
+    if (_strokes.isEmpty) return;
+    setState(() => _strokes = List<QuizStroke>.from(_strokes)..removeLast());
+    await _persist();
+  }
+
+  Future<void> _onClear() async {
+    setState(() => _strokes = <QuizStroke>[]);
+    await _persist();
+  }
+
+  Future<void> _openNotes() async {
+    await LessonCardFace.openNotesSheet(context, widget.lesson);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+      child: SizedBox(
+        height: h * (_drawingEnabled ? 0.72 : 0.66),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  if (_drawingEnabled)
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              const Color(0xFF132A5C).withValues(alpha: 0.97),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color:
+                                AppTheme.champagne.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: QuizPenToolbar(
+                          color: _penColor,
+                          width: _penWidth,
+                          highlighter: _highlighter,
+                          onColor: (c) => setState(() {
+                            _penColor = c;
+                            _highlighter = false;
+                          }),
+                          onWidth: (w) => setState(() {
+                            _penWidth = w;
+                            _highlighter = false;
+                          }),
+                          onHighlighter: () =>
+                              setState(() => _highlighter = true),
+                          onUndo: _strokes.isEmpty ? null : _onUndo,
+                          onClear: _onClear,
+                        ),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  IconButton(
+                    tooltip: _drawingEnabled
+                        ? 'Çizimi kapat'
+                        : 'Kalem (işaretle)',
+                    onPressed: !_ready
+                        ? null
+                        : () => setState(
+                              () => _drawingEnabled = !_drawingEnabled,
+                            ),
+                    icon: Icon(
+                      _drawingEnabled
+                          ? Icons.edit_off_outlined
+                          : Icons.edit_rounded,
+                      color: _drawingEnabled
+                          ? AppTheme.champagne
+                          : Colors.white.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  LessonCardFace(
+                    lesson: widget.lesson,
+                    index: widget.index,
+                    total: widget.total,
+                    scrollController: _scroll,
+                    strokes: _ready ? _strokes : const <QuizStroke>[],
+                    drawingEnabled: _drawingEnabled,
+                    penColor: _penColor,
+                    penWidth: _penWidth,
+                    highlighter: _highlighter,
+                    onStrokeComplete: _onStrokeComplete,
+                    onUndo: _onUndo,
+                    onClear: _onClear,
+                    onNotesTap: _ready ? _openNotes : null,
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        customBorder: const CircleBorder(),
+                        child: Ink(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF1A2438)
+                                .withValues(alpha: 0.95),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.28),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 20,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Neon bilgi kartı yüzü.
 class LessonCardFace extends StatelessWidget {
   final TopicLessonModel lesson;
@@ -687,7 +794,7 @@ class LessonCardFace extends StatelessWidget {
     this.onNotesTap,
   });
 
-  /// Favorilerden tam kart göstermek için.
+  /// Favorilerden tam kart göstermek için (çizimler + notlar dahil).
   static Future<void> showViewer(
     BuildContext context,
     TopicLessonModel lesson, {
@@ -697,65 +804,154 @@ class LessonCardFace extends StatelessWidget {
     return showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.72),
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 40),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.62,
-          child: Stack(
-            clipBehavior: Clip.none,
+      builder: (ctx) => _LessonCardViewerDialog(
+        lesson: lesson,
+        index: index,
+        total: total,
+      ),
+    );
+  }
+
+  /// Bilgi kartı notları bottom sheet (deste + favori viewer ortak).
+  static Future<void> openNotesSheet(
+    BuildContext context,
+    TopicLessonModel lesson,
+  ) async {
+    await LessonCardNotesService.instance.initialize();
+    if (!context.mounted) return;
+    final controller = TextEditingController(
+      text: LessonCardNotesService.instance.noteFor(lesson.id),
+    );
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF121C2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, 18 + bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              LessonCardFace(
-                lesson: lesson,
-                index: index,
-                total: total,
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
               ),
-              Positioned(
-                top: -6,
-                right: -6,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => Navigator.of(ctx).pop(),
-                    customBorder: const CircleBorder(),
-                    child: Ink(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFF1A2438).withValues(alpha: 0.95),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.28),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 20,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
+              const SizedBox(height: 14),
+              const Text(
+                'Notlar',
+                style: TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.champagneLight,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                lesson.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                maxLines: 8,
+                minLines: 5,
+                autofocus: true,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+                cursorColor: AppTheme.champagne,
+                decoration: InputDecoration(
+                  hintText: 'Bu bilgi kartına not ekle…',
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.35),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.champagne.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.champagne.withValues(alpha: 0.65),
                     ),
                   ),
                 ),
               ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: Text(
+                      'Vazgeç',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.champagne,
+                      foregroundColor: AppTheme.ink,
+                    ),
+                    child: const Text('Kaydet'),
+                  ),
+                ],
+              ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
+    if (saved == true) {
+      await LessonCardNotesService.instance.save(lesson.id, controller.text);
+    }
+    controller.dispose();
   }
+
+  static const _bodyScrollPadding = EdgeInsets.only(right: 4, bottom: 4);
 
   @override
   Widget build(BuildContext context) {
     final ink = strokes ?? const <QuizStroke>[];
     final scrollOffset =
         scrollController?.hasClients == true ? scrollController!.offset : 0.0;
+    // QuizDrawingOverlay._paintOffset ile aynı: içerik koordinatlarını viewport’a çevir.
+    final strokePaintOffset = Offset(
+      -_bodyScrollPadding.left,
+      -_bodyScrollPadding.top + scrollOffset,
+    );
 
     return Container(
       width: double.infinity,
@@ -1009,8 +1205,7 @@ class LessonCardFace extends StatelessWidget {
                                 : const ClampingScrollPhysics(
                                     parent: BouncingScrollPhysics(),
                                   ),
-                            padding:
-                                const EdgeInsets.only(right: 4, bottom: 4),
+                            padding: _bodyScrollPadding,
                             child: FormattedText(
                               lesson.body,
                               preserveLineBreaks: true,
@@ -1025,7 +1220,10 @@ class LessonCardFace extends StatelessWidget {
                           ),
                         ),
                         if (!drawingEnabled && ink.isNotEmpty)
-                          QuizStrokeLayer(strokes: ink),
+                          QuizStrokeLayer(
+                            strokes: ink,
+                            paintOffset: strokePaintOffset,
+                          ),
                         if (drawingEnabled &&
                             onStrokeComplete != null &&
                             onClear != null)
@@ -1035,8 +1233,7 @@ class LessonCardFace extends StatelessWidget {
                             penWidth: penWidth,
                             highlighter: highlighter,
                             scrollOffset: scrollOffset,
-                            contentPadding:
-                                const EdgeInsets.only(right: 4, bottom: 4),
+                            contentPadding: _bodyScrollPadding,
                             strokes: ink,
                             onStrokeComplete: onStrokeComplete!,
                             onUndo: onUndo,

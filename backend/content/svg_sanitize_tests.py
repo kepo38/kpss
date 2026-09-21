@@ -11,7 +11,13 @@ from PIL import Image
 
 from .models import Question, Subject, Topic
 from .serializers import QuestionSerializer
-from .svg_sanitize import extract_svg, is_safe_svg, sanitize_figure_svg, strip_raster_embeds
+from .svg_sanitize import (
+    extract_svg,
+    is_safe_svg,
+    sanitize_figure_svg,
+    strip_raster_embeds,
+    strip_watermark_marks,
+)
 
 
 TRIANGLE = (
@@ -70,6 +76,22 @@ class SvgExtractTests(SimpleTestCase):
         )
         self.assertEqual(sanitize_figure_svg(raw), "")
         self.assertEqual(strip_raster_embeds(raw).count("image"), 0)
+
+
+
+    def test_strips_osym_text_keeps_geometry(self):
+        raw = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+            '<text x="80" y="12">ÖSYM</text>'
+            '<polygon points="10,90 90,90 10,10" fill="none" stroke="black"/>'
+            '<text x="8" y="98">A</text>'
+            "</svg>"
+        )
+        cleaned = sanitize_figure_svg(raw)
+        self.assertIn("<polygon", cleaned)
+        self.assertIn(">A<", cleaned)
+        self.assertNotRegex(cleaned, r"(?i)ö\s*s\s*y\s*m|osym|ösym")
+        self.assertEqual(strip_watermark_marks(raw).lower().count("ösym"), 0)
 
 
 class CorrectOptionNormalizationTests(SimpleTestCase):

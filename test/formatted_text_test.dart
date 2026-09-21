@@ -407,7 +407,7 @@ void main() {
         r'\begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}';
     final out = FormattedText.replaceHlineWithColoredRule(array);
     expect(out, isNot(contains(r'\hline')));
-    expect(out, contains(r'\rule{5em}{0.05em}'));
+    expect(out, contains(r'\rule{5em}{0.08em}'));
     expect(out, contains('CA3'));
   });
 
@@ -623,7 +623,7 @@ void main() {
     final out = FormattedText.prepareTex(broken);
     expect(out.contains('\u00AD'), isFalse);
     expect(out, contains(r'\begin{array}'));
-    expect(out, contains(r'\rule{5em}{0.05em}'));
+    expect(out, contains(r'-\rule{5em}{0.08em}'));
     expect(out, isNot(contains(r'\hline')));
   });
 
@@ -786,25 +786,49 @@ void main() {
 
   test('uprightMathLetters uprights letters inside array cells', () {
     const array =
-        r'\displaystyle \begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.05em} \\ CA3 \end{array}';
+        r'\displaystyle \begin{array}{r} AB8 \\ 16C \\ -\rule{5em}{0.08em} \\ CA3 \end{array}';
     final out = FormattedText.uprightMathLetters(array);
     expect(out.contains('§§'), isFalse);
     expect(out, contains(r'\begin{array}{r}'));
     expect(out, contains(r'\mathrm{A}\mathrm{B}8'));
     expect(out, contains(r'16\mathrm{C}'));
     expect(out, contains(r'\mathrm{C}\mathrm{A}3'));
-    expect(out, contains(r'\rule{5em}{0.05em}'));
+    expect(out, contains(r'-\rule{5em}{0.08em}'));
   });
 
-  test('normalizeStackedArithmetic moves +/- into operator column', () {
+  test('normalizeStackedArithmetic glues +/- onto rule in one {r} cell', () {
     const input =
-        r'\begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.05em} \\ CA3 \end{array}';
+        r'\begin{array}{r} AB8 \\ -16C \\ \rule{5em}{0.08em} \\ CA3 \end{array}';
     final out = FormattedText.normalizeStackedArithmetic(input);
-    expect(out, contains(r'\begin{array}{rr}'));
-    expect(out, contains(r'&AB8'));
-    expect(out, contains(r'- &16C'));
-    expect(out, contains(r'&CA3'));
+    expect(
+      out,
+      r'\begin{array}{r} AB8 \\ 16C \\ -\rule{5em}{0.08em} \\ CA3 \end{array}',
+    );
+    expect(out, isNot(contains(r'{rr}')));
+    expect(out, isNot(contains('&')));
     expect(out, isNot(contains(r'{@{}')));
+  });
+
+  test('normalizeStackedArithmetic glues + onto rule in one {r} cell', () {
+    const input =
+        r'\begin{array}{r} ABC \\ +C49 \\ \rule{5em}{0.08em} \\ 80B \end{array}';
+    final out = FormattedText.normalizeStackedArithmetic(input);
+    expect(
+      out,
+      r'\begin{array}{r} ABC \\ C49 \\ +\rule{5em}{0.08em} \\ 80B \end{array}',
+    );
+    expect(out, isNot(contains(r'{rr}')));
+    expect(out, isNot(contains('&')));
+  });
+
+  test('normalizeStackedArithmetic keeps sign on operand when no rule', () {
+    const input = r'\begin{array}{r} AB8 \\ -16C \\ CA3 \end{array}';
+    final out = FormattedText.normalizeStackedArithmetic(input);
+    expect(out, contains(r'\begin{array}{r}'));
+    expect(out, contains(r'-16C'));
+    expect(out, isNot(contains(r'{rr}')));
+    expect(out, isNot(contains('&')));
+    expect(out, isNot(contains(r'\rule')));
   });
 
   test('normalizeStackedArithmetic leaves unsigned columns alone', () {
@@ -816,8 +840,11 @@ void main() {
     const input =
         r'\begin{array}{r} AB8 \\ +16C \\ \hline CA3 \end{array}';
     final prepared = FormattedText.prepareTex(input);
-    expect(prepared, contains(r'\begin{array}{rr}'));
-    expect(prepared, contains(r'+ &'));
+    expect(prepared, contains(r'\begin{array}{r}'));
+    expect(prepared, contains(r'+\rule{5em}{0.08em}'));
+    expect(prepared, isNot(contains(r'{rr}')));
+    expect(prepared, isNot(contains('&')));
+    expect(prepared, isNot(contains(r'+16')));
     final upright = FormattedText.uprightMathLetters(prepared);
     expect(upright, contains(r'\mathrm{A}\mathrm{B}8'));
     expect(upright, contains(r'16\mathrm{C}'));

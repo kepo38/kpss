@@ -1346,8 +1346,12 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         "options": opts,
         "soru_metni": stem_out,
         "siklar": opts,
-        "sekil_kodu": getattr(result, "figure_svg", "") or "",
-        "figure_svg": getattr(result, "figure_svg", "") or "",
+        "sekil_kodu": _sanitize_figure_svg(
+            getattr(result, "figure_svg", "") or ""
+        ),
+        "figure_svg": _sanitize_figure_svg(
+            getattr(result, "figure_svg", "") or ""
+        ),
         "dogru_cevap": getattr(result, "correct_option", "") or "",
         "correct_option": getattr(result, "correct_option", "") or "",
         "detayli_cozum": getattr(result, "solution", "") or "",

@@ -75,7 +75,7 @@ class IngestQuestionResult:
 
 def normalize_correct_option(raw: str) -> str:
     letter = (raw or "").strip().upper()
-    return letter if letter in "ABCDE" else ""
+    return letter if letter in frozenset("ABCDE") else ""
 
 
 _OPTION_FORM_PLACEHOLDERS = frozenset({"", "—", "-", "Görsel şık"})

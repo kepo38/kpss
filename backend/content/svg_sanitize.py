@@ -27,6 +27,17 @@ _DRAW_TAG = re.compile(
     r"<\s*(path|line|polyline|polygon|circle|rect|ellipse|text|g)\b",
     re.IGNORECASE,
 )
+# ÖSYM / sınav filigranı — köşe <text> veya tspan olarak çizilmesin.
+_WATERMARK_TEXT = re.compile(
+    r"<\s*text\b[^>]*>[^<]*?(?:ö\s*s\s*y\s*m|osym|ösym|dösym|dosym|dösvm|"
+    r"ölçme\s*seçme|olcme\s*secme)[^<]*?<\s*/\s*text\s*>",
+    re.IGNORECASE,
+)
+_WATERMARK_TSPAN = re.compile(
+    r"<\s*tspan\b[^>]*>[^<]*?(?:ö\s*s\s*y\s*m|osym|ösym|dösym|dosym)[^<]*?"
+    r"<\s*/\s*tspan\s*>",
+    re.IGNORECASE,
+)
 
 
 def extract_svg(raw: str) -> str:
@@ -54,6 +65,15 @@ def strip_raster_embeds(code: str) -> str:
     return cleaned.strip()
 
 
+def strip_watermark_marks(code: str) -> str:
+    """SVG içindeki ÖSYM / watermark metinlerini çıkar."""
+    if not code:
+        return ""
+    cleaned = _WATERMARK_TEXT.sub("", code)
+    cleaned = _WATERMARK_TSPAN.sub("", cleaned)
+    return cleaned.strip()
+
+
 def is_safe_svg(code: str) -> bool:
     if not code:
         return False
@@ -73,4 +93,5 @@ def sanitize_figure_svg(raw: str) -> str:
     if not code:
         return ""
     code = strip_raster_embeds(code)
+    code = strip_watermark_marks(code)
     return code if is_safe_svg(code) else ""

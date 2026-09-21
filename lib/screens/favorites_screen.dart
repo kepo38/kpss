@@ -6,6 +6,8 @@ import '../models/question_model.dart';
 import '../services/ad_manager.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
+import '../services/lesson_card_drawing_service.dart';
+import '../services/lesson_card_notes_service.dart';
 import '../services/lesson_card_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_back_button.dart';
@@ -37,6 +39,12 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       if (mounted) setState(() {});
     });
     LessonCardProgressService.instance.initialize().then((_) {
+      if (mounted) setState(() {});
+    });
+    LessonCardDrawingService.instance.initialize().then((_) {
+      if (mounted) setState(() {});
+    });
+    LessonCardNotesService.instance.initialize().then((_) {
       if (mounted) setState(() {});
     });
   }

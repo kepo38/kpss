@@ -49,7 +49,7 @@ from .ocr import (
     strip_option_emphasis,
 )
 from .ocr_diagnostics import attach_gemini_failure, attach_gemini_success, new_diagnostics
-from .svg_sanitize import extract_svg, is_safe_svg
+from .svg_sanitize import sanitize_figure_svg
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -172,6 +172,9 @@ Kurallar:
 - Açı değerlerini (ör. 40°, 90°) ilgili yay/köşe üzerine yaz.
 - Kenar uzunluklarını ilgili kenarın yanına yerleştir.
 - Oranları ve ölçüleri görseldekiyle aynı tut.
+- Şekli path/line/polygon/circle/rect/ellipse ile vektör olarak çiz.
+- Fotoğrafı <image>, data:image veya harici href ile gömme (yasak).
+- ÖSYM / watermark / logo / filigran çizme veya yazma (yasak).
 - script, foreignObject, harici href kullanma.
 """
 
@@ -401,8 +404,9 @@ def _payload_figure(data: dict[str, Any]) -> str:
     for key in ("sekil_kodu", "sekilKodu", "figure_svg", "figure_tikz", "svg"):
         val = data.get(key)
         if val:
-            code = extract_svg(str(val))
-            if is_safe_svg(code):
+            # Gömülü tarama fotoğrafı / ÖSYM yazısı varsa temizle; vektör kalsın.
+            code = sanitize_figure_svg(str(val))
+            if code:
                 return code
     return ""
 
@@ -888,10 +892,13 @@ def gemini_supplement_answer_solution(
 
 
 def _svg_from_raw(raw: str) -> str:
-    code = extract_svg(raw)
-    if is_safe_svg(code):
+    code = sanitize_figure_svg(raw)
+    if code:
         return code
-    return _payload_figure(_extract_json(raw))
+    try:
+        return _payload_figure(_extract_json(raw))
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _fetch_geometry_svg(image_bytes: bytes, mime: str) -> str:

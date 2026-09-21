@@ -1206,12 +1206,12 @@
   function replaceHlineWithColoredRule(tex) {
     var t = String(tex || "");
     if (t.indexOf("\\hline") === -1) return t;
-    t = t.replace(/\\\\\s*\\hline\s*/g, "\\\\ \\rule{5em}{0.05em} \\\\ ");
-    t = t.replace(/\\hline\s*(?=\\\\|\\end)/g, "\\rule{5em}{0.05em} \\\\ ");
+    t = t.replace(/\\\\\s*\\hline\s*/g, "\\\\ \\rule{5em}{0.08em} \\\\ ");
+    t = t.replace(/\\hline\s*(?=\\\\|\\end)/g, "\\rule{5em}{0.08em} \\\\ ");
     return t;
   }
 
-  /** Tek sütun {r}/{c}/{l} dikey toplama: +/− operatör sütununa. */
+  /** Tek sütun {r} dikey toplama: +/− çizginin sol üstüne (ÖSYM). */
   function normalizeStackedArithmetic(tex) {
     var src = String(tex || "");
     if (src.indexOf("\\begin{array}") === -1) return src;
@@ -1227,12 +1227,25 @@
         if (rows.length < 2) return full;
 
         var hasSigned = false;
+        var hasRule = false;
         var contentCount = 0;
-        var rebuilt = [];
+        var op = null;
+        // Parallel to rows: null = rule/hline row; else operand/result text.
+        var contents = [];
         for (var j = 0; j < rows.length; j++) {
           var r = rows[j];
+          // Already glued: `-\rule{…}` / `+\rule{…}`
+          var glued = /^([+\u2212\-])\s*(\\rule\b.*)$/.exec(r);
+          if (glued) {
+            hasRule = true;
+            hasSigned = true;
+            op = op || (glued[1] === "\u2212" ? "-" : glued[1]);
+            contents.push(null);
+            continue;
+          }
           if (/^\\(?:rule|hline)\b/.test(r)) {
-            rebuilt.push(" &" + r);
+            hasRule = true;
+            contents.push(null);
             continue;
           }
           if (r.indexOf("&") !== -1) return full;
@@ -1240,17 +1253,36 @@
           var signed = /^([+\u2212\-])\s*(.+)$/.exec(r);
           if (signed) {
             hasSigned = true;
-            var op = signed[1] === "\u2212" ? "-" : signed[1];
-            rebuilt.push(op + " &" + signed[2].trim());
+            op = signed[1] === "\u2212" ? "-" : signed[1];
+            contents.push(signed[2].trim());
           } else {
-            rebuilt.push(" &" + r.trim());
+            contents.push(r.trim());
           }
         }
-        if (!hasSigned || contentCount < 2) return full;
+        if (!hasSigned || contentCount < 2 || !op) return full;
+
+        // No rule: keep sign on the signed operand row in a simple `{r}`.
+        if (!hasRule) {
+          return (
+            "\\begin{array}{r} " + rows.join(" \\\\ ") + " \\end{array}"
+          );
+        }
+
+        var rebuilt = [];
+        for (var k = 0; k < rows.length; k++) {
+          var content = contents[k];
+          if (content === null) {
+            var raw = rows[k].replace(/^[+\u2212\-]\s*/, "");
+            var rule = /^\\hline\b/.test(raw) ? "\\rule{5em}{0.08em}" : raw;
+            rebuilt.push(op + rule);
+          } else {
+            rebuilt.push(content);
+          }
+        }
         return (
-          "\\begin{array}{rr}" +
+          "\\begin{array}{r} " +
           rebuilt.join(" \\\\ ") +
-          "\\end{array}"
+          " \\end{array}"
         );
       }
     );

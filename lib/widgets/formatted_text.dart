@@ -437,7 +437,7 @@ class FormattedText extends StatelessWidget {
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
       final trimmed = row.trimLeft();
-      if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(trimmed)) {
+      if (RegExp(r'^[+\u2212\-]?\s*\\(?:rule|hline)\b').hasMatch(trimmed)) {
         out.add(row);
         continue;
       }
@@ -450,7 +450,9 @@ class FormattedText extends StatelessWidget {
       out.add(
         cells.map((cell) {
           final t = cell.trimLeft();
-          if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(t)) return cell;
+          if (RegExp(r'^[+\u2212\-]?\s*\\(?:rule|hline)\b').hasMatch(t)) {
+            return cell;
+          }
           return _uprightMathLettersCore(cell);
         }).join('&'),
       );
@@ -510,13 +512,12 @@ class FormattedText extends StatelessWidget {
     return _expandHolders(t, holders, r'§§#(\d+)#§§');
   }
 
-  /// Tek sütun {r}/{c}/{l} dikey toplama-çıkarma: +/− işaretini operatör sütununa al.
+  /// Tek sütun {r}/{c}/{l} dikey toplama-çıkarma (ÖSYM çizgili işlem).
   ///
-  /// Örnek:
-  /// `\begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}`
-  /// → `\begin{array}{rr} &AB8 \\ - &16C \\ \hline &CA3 \end{array}`
+  /// Çizgi varsa: `{r}` + operatörü kural satırına yapıştır
+  /// (`-\rule{5em}{0.08em}`). Çizgi yoksa: işaret operand satırında kalır.
   ///
-  /// Not: `{@{}…}` sütun spec flutter_math_fork'ta parse edilemediği için `{rr}` kullanılır.
+  /// Not: `{@{}…}` sütun spec flutter_math_fork'ta parse edilemez — kullanma.
   static String normalizeStackedArithmetic(String tex) {
     if (!tex.contains(r'\begin{array}')) return tex;
     return tex.replaceAllMapped(
@@ -535,11 +536,28 @@ class FormattedText extends StatelessWidget {
         if (rows.length < 2) return m.group(0)!;
 
         var hasSigned = false;
+        var hasRule = false;
         var contentCount = 0;
-        final rebuilt = <String>[];
+        String? op;
+        // Parallel to [rows]: null = rule/hline row; else operand/result text.
+        final contents = <String?>[];
         for (final row in rows) {
+          // Already glued: `-\rule{…}` / `+\rule{…}`
+          final glued = RegExp(
+            r'^([+\u2212\-])\s*(\\rule\b.*)$',
+          ).firstMatch(row);
+          if (glued != null) {
+            hasRule = true;
+            hasSigned = true;
+            var foundOp = glued.group(1)!;
+            if (foundOp == '\u2212') foundOp = '-';
+            op ??= foundOp;
+            contents.add(null);
+            continue;
+          }
           if (RegExp(r'^\\(?:rule|hline)\b').hasMatch(row)) {
-            rebuilt.add(' &$row');
+            hasRule = true;
+            contents.add(null);
             continue;
           }
           if (row.contains('&')) return m.group(0)!;
@@ -548,19 +566,41 @@ class FormattedText extends StatelessWidget {
           final signed = RegExp(r'^([+\u2212\-])\s*(.+)$').firstMatch(row);
           if (signed != null) {
             hasSigned = true;
-            var op = signed.group(1)!;
-            if (op == '\u2212') op = '-';
-            final operand = signed.group(2)!.trim();
-            rebuilt.add('$op &$operand');
+            var foundOp = signed.group(1)!;
+            if (foundOp == '\u2212') foundOp = '-';
+            op = foundOp;
+            contents.add(signed.group(2)!.trim());
           } else {
-            rebuilt.add(' &${row.trim()}');
+            contents.add(row.trim());
           }
         }
-        if (!hasSigned || contentCount < 2) return m.group(0)!;
+        if (!hasSigned || contentCount < 2 || op == null) return m.group(0)!;
 
-        return '\\begin{array}{rr}'
+        // No rule: keep sign on the signed operand row in a simple `{r}`.
+        if (!hasRule) {
+          return '\\begin{array}{r} '
+              '${rows.join(r' \\ ')}'
+              r' \end{array}';
+        }
+
+        final rebuilt = <String>[];
+        for (var i = 0; i < rows.length; i++) {
+          final content = contents[i];
+          if (content == null) {
+            // Operator glued to rule in ONE cell (ÖSYM: sol üst).
+            var raw = rows[i].replaceFirst(RegExp(r'^[+\u2212\-]\s*'), '');
+            final rule = RegExp(r'^\\hline\b').hasMatch(raw)
+                ? r'\rule{5em}{0.08em}'
+                : raw;
+            rebuilt.add('$op$rule');
+          } else {
+            rebuilt.add(content);
+          }
+        }
+
+        return '\\begin{array}{r} '
             '${rebuilt.join(r' \\ ')}'
-            r'\end{array}';
+            r' \end{array}';
       },
     );
   }
@@ -591,11 +631,11 @@ class FormattedText extends StatelessWidget {
     var t = tex;
     t = t.replaceAllMapped(
       RegExp(r'\\\\\s*\\hline\s*'),
-      (_) => r'\\ \rule{5em}{0.05em} \\ ',
+      (_) => r'\\ \rule{5em}{0.08em} \\ ',
     );
     t = t.replaceAllMapped(
       RegExp(r'(?<!\\begin\{[^}]*\})\s*\\hline\s*(?=\\\\|\\end)'),
-      (_) => r'\rule{5em}{0.05em} \\ ',
+      (_) => r'\rule{5em}{0.08em} \\ ',
     );
     return t;
   }

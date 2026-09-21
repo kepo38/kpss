@@ -240,6 +240,56 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertTrue(result.ok)
 
     @override_settings(GEMINI_API_KEY="test-key")
+    def test_geometry_svg_strips_embedded_photo_and_osym(self):
+        """Gemini bazen tarama fotoğrafını <image> olarak gömer; vektör kalmalı."""
+        import json as json_lib
+        from unittest.mock import patch
+
+        from content.ocr_gemini import ocr_question_image_gemini
+
+        text_json = json_lib.dumps(
+            {
+                "soru_metni": "ABC üçgeninde x kaç birimdir?",
+                "siklar": {
+                    "A": "10",
+                    "B": "12",
+                    "C": "14",
+                    "D": "16",
+                    "E": "18",
+                },
+                "dogru_cevap": "A",
+                "detayli_cozum": "x=10",
+            }
+        )
+        dirty_svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80">'
+            '<image href="data:image/png;base64,iVBORw0KGgo=" width="100" height="80"/>'
+            '<text x="90" y="10">ÖSYM</text>'
+            '<polygon points="10,70 90,70 10,10" fill="none" stroke="black"/>'
+            '<text x="8" y="78">A</text></svg>'
+        )
+
+        def fake_post(
+            image_bytes,
+            mime,
+            model,
+            prompt="",
+            timeout=45,
+            json_mode=True,
+        ):
+            if not json_mode:
+                return dirty_svg
+            return text_json
+
+        with patch("content.ocr_gemini._post_gemini_model", side_effect=fake_post):
+            result = ocr_question_image_gemini(b"fake-png-bytes")
+        self.assertIn("<polygon", result.figure_svg)
+        self.assertNotIn("data:image", result.figure_svg)
+        self.assertNotIn("<image", result.figure_svg.lower())
+        self.assertNotRegex(result.figure_svg, r"(?i)ösym|osym")
+        self.assertTrue(result.ok)
+
+    @override_settings(GEMINI_API_KEY="test-key")
     def test_geometry_text_survives_svg_failure(self):
         import json as json_lib
         from unittest.mock import patch

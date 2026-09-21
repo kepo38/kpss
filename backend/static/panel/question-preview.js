@@ -399,20 +399,10 @@
       return window.KpssMapQuestionEditor.previewImageSrc();
     }
 
-    var stem = currentStemImageSrc();
-    if (stem) return stem;
-
-    var ocrPreview = document.getElementById("q-image-preview-img");
-    var ocrBox = document.getElementById("q-image-preview");
-    if (
-      ocrBox &&
-      !ocrBox.hidden &&
-      ocrPreview &&
-      ocrPreview.getAttribute("src")
-    ) {
-      return ocrPreview.src;
-    }
-    return "";
+    // Yalnızca kalıcı «Soru fotoğrafı» (stem_image). OCR tarama fotoğrafı
+    // uygulamaya gitmez; telefon önizlemesinde de gösterilmez — geometride
+    // şekil figure_svg (vektör) ile gelir.
+    return currentStemImageSrc();
   }
 
   function stemImagePosition() {

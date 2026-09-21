@@ -19,12 +19,18 @@ class QuizStroke {
 }
 
 /// Kaydedilmiş çizimleri etkileşimsiz gösterir (kalem kapalıyken).
+///
+/// [paintOffset] scroll’lu viewport’ta [QuizDrawingOverlay._paintOffset] ile
+/// aynı formül olmalı: `Offset(-padding.left, -padding.top + scrollOffset)`.
+/// İçerik Stack’inde (quiz) kayıyorsa varsayılan `Offset.zero` yeterlidir.
 class QuizStrokeLayer extends StatelessWidget {
   final List<QuizStroke> strokes;
+  final Offset paintOffset;
 
   const QuizStrokeLayer({
     super.key,
     required this.strokes,
+    this.paintOffset = Offset.zero,
   });
 
   @override
@@ -34,7 +40,7 @@ class QuizStrokeLayer extends StatelessWidget {
       child: CustomPaint(
         painter: QuizStrokePainter(
           strokes,
-          paintOffset: Offset.zero,
+          paintOffset: paintOffset,
         ),
         child: const SizedBox.expand(),
       ),
