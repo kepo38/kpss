@@ -1,10 +1,11 @@
 """OCR ingest — Gemini fallback logging ve onarım."""
 
-import io
 import json
 from unittest.mock import MagicMock, patch
 
 from types import SimpleNamespace
+
+import io
 
 from django.test import SimpleTestCase, TestCase
 
@@ -626,25 +627,25 @@ class IngestQuestionImageNotSavedTests(TestCase):
         self.topic = Topic.objects.create(
             subject=subject,
             slug="tarih_inkilap",
-            name="Inkilap Tarihi",
+            name="İnkılap Tarihi",
         )
 
     def _ocr_ok(self):
         return OcrQuestionResult(
-            stem="Test soru metni?",
+            stem="Test soru kökü?",
             options={
                 "A": "Bir",
-                "B": "Iki",
-                "C": "Uc",
-                "D": "Dort",
-                "E": "Bes",
+                "B": "İki",
+                "C": "Üç",
+                "D": "Dört",
+                "E": "Beş",
             },
-            raw_text="Test soru metni?",
+            raw_text="Test soru kökü?",
             ok=True,
             error="",
             engine="gemini:test",
             correct_option="B",
-            solution="Cozum",
+            solution="Çözüm",
             figure_svg="",
         )
 
@@ -674,4 +675,5 @@ class IngestQuestionImageNotSavedTests(TestCase):
         self.assertIsNotNone(result.question)
         result.question.refresh_from_db()
         self.assertFalse(bool(result.question.image))
-        self.assertEqual(result.question.stem, "Test soru metni?")
+        self.assertEqual(result.question.stem, "Test soru kökü?")
+

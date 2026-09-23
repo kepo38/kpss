@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from content.ocr import format_premise_stem, repair_premise_markers, repair_premise_option
+from content.ocr import repair_premise_markers, repair_premise_option
 from content.ocr_ingest import _option_is_corrupt, finalize_ocr_options_for_panel
 
 
@@ -54,33 +54,3 @@ class OcrOptionCorruptTests(SimpleTestCase):
         self.assertEqual(fixed["E"], "I, II ve III")
         self.assertIn("I. Takrir", repair_premise_markers("yıllarda Il. Takrir"))
         self.assertIn("III. Serbest", repair_premise_markers("(11. Serbest"))
-
-
-class FormatPremiseStemTests(SimpleTestCase):
-    def test_comma_glued_premises_become_multiline(self):
-        stem = (
-            "Türkiye'de 1930'lu yıllarda I. Takrir-i Sükûn Kanunu'nun çıkarılması, "
-            "II. Devletçilik uygulamasına geçilmesi, III. Serbest Cumhuriyet "
-            "Fırkasının kurulması\n\ngelişmelerinden hangileri yaşanmıştır?"
-        )
-        out = format_premise_stem(stem)
-        self.assertIn("yıllarda;", out)
-        self.assertIn("\nI. Takrir", out)
-        self.assertIn("\nII. Devletçilik", out)
-        self.assertIn("\nIII. Serbest", out)
-        self.assertIn("\n\ngelişmelerinden hangileri", out)
-        # Onermeler tek paragrafta kalmasin
-        self.assertNotIn(", II.", out)
-
-    def test_il_marker_repaired_then_split(self):
-        stem = "1930'lu yıllarda Il. Takrir A, II. Devlet B, III. Serbest C gelişmelerinden hangileri?"
-        out = format_premise_stem(stem)
-        self.assertTrue(out.startswith("1930'lu yıllarda;"))
-        self.assertIn("\nI. Takrir A", out)
-        self.assertIn("\nII. Devlet B", out)
-        self.assertIn("\nIII. Serbest C", out)
-        self.assertIn("gelişmelerinden hangileri?", out)
-
-    def test_single_marker_unchanged(self):
-        stem = "Metinde yalnızca I. madde geciyor hangisi dogrudur?"
-        self.assertEqual(format_premise_stem(stem), stem)

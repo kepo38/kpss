@@ -754,11 +754,8 @@
 
     var solImgEl = document.getElementById("pv-solution-img");
     var solImgSrc = currentSolutionImageSrc();
-    // [ŞEKİL] veya vektör şekil varken üstteki çözüm PNG bloğunu gösterme
-    // (eski OCR overlay ile düzeltilmiş SVG uyuşmaz).
-    if (figureInlineInSol || (solutionSvgText && solutionSvgText.indexOf("<svg") !== -1)) {
-      solImgSrc = "";
-    }
+    // [ŞEKİL] varken üstteki çözüm PNG bloğunu gösterme (çift şekil).
+    if (figureInlineInSol) solImgSrc = "";
     if (solWrap && solBody) {
       if (solImgEl) {
         if (solImgSrc) {
@@ -790,12 +787,7 @@
             renderSolutionChunk
           ).html;
         } else {
-          // Stem parity: [ŞEKİL] yoksa SVG metnin altında.
-          var solHtml = renderSolutionChunk(sol);
-          if (solutionSvgText && solutionSvgText.indexOf("<svg") !== -1) {
-            solHtml += inlineFigureHtml(solutionSvgText);
-          }
-          solBody.innerHTML = solHtml;
+          solBody.innerHTML = renderSolutionChunk(sol);
         }
         solBody.setAttribute("data-initial-text", sol);
         solBody.removeAttribute("data-server-rendered");

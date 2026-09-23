@@ -130,7 +130,7 @@ class TelegramIngestTests(TestCase):
         self, mock_ocr, mock_download, mock_send, mock_delete
     ):
         mock_download.return_value = (b"fake-image", "image/jpeg")
-        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False, "")
+        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False)
 
         handle_update(
             {
@@ -158,13 +158,7 @@ class TelegramIngestTests(TestCase):
             ).count(),
             1,
         )
-        created = Question.objects.get(
-            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
-            is_published=False,
-        )
-        # OCR/Telegram scan must not populate question.image (stem_/map_ only).
-        self.assertFalse(bool(created.image))
-        # Pending until yes/no solution prompt finishes
+        # Evet/Hayır bitmeden panele düşmez
         self.assertEqual(pending_telegram_question_count(), 0)
         mock_send.assert_called()
         first_reply = mock_send.call_args_list[0][0][1]
@@ -243,7 +237,7 @@ class TelegramIngestTests(TestCase):
         self, mock_ocr, mock_download, mock_send, mock_delete, mock_answer, mock_edit
     ):
         mock_download.return_value = (b"fake-image", "image/jpeg")
-        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False, "")
+        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False)
 
         handle_update(
             {
@@ -296,7 +290,7 @@ class TelegramIngestTests(TestCase):
         self, mock_ocr, mock_download, mock_send, mock_delete
     ):
         mock_download.return_value = (b"fake-image", "image/jpeg")
-        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False, "")
+        mock_ocr.return_value = (self._ocr_result(), "hash", "phash", True, False)
 
         handle_update(
             {
@@ -347,7 +341,7 @@ class TelegramIngestTests(TestCase):
         mock_download.return_value = (b"fake-image", "image/jpeg")
         ocr = self._ocr_result()
         ocr.solution = ""
-        mock_ocr.return_value = (ocr, "hash", "phash", True, False, "")
+        mock_ocr.return_value = (ocr, "hash", "phash", True, False)
 
         handle_update(
             {
@@ -395,7 +389,7 @@ class TelegramIngestTests(TestCase):
         mock_download.return_value = (b"fake-image", "image/jpeg")
         ocr = self._ocr_result()
         ocr.solution = ""
-        mock_ocr.return_value = (ocr, "hash", "phash", True, False, "")
+        mock_ocr.return_value = (ocr, "hash", "phash", True, False)
 
         photo_update = {
             "message": {

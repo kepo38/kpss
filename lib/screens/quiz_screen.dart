@@ -3038,7 +3038,9 @@ class _SolutionPanel extends StatelessWidget {
             ExamSolutionBlock(
               text: question.cozumMetni,
               imageUrl: question.cozumImageUrl,
-              sekilKodu: question.effectiveSolutionSekilKodu,
+              sekilKodu: QuestionStemContent.hasInlineFigure(question.cozumMetni)
+                  ? question.effectiveSolutionSekilKodu
+                  : null,
             )
           else if (!parts.hasLockedRemainder) ...[
             // Kısa çözümlerde de kota sonrası reklam zorunlu — tam metin sızmaz.
@@ -3053,7 +3055,10 @@ class _SolutionPanel extends StatelessWidget {
                       child: ExamSolutionBlock(
                         text: question.cozumMetni,
                         imageUrl: question.cozumImageUrl,
-                        sekilKodu: question.effectiveSolutionSekilKodu,
+                        sekilKodu: QuestionStemContent.hasInlineFigure(
+                                question.cozumMetni)
+                            ? question.effectiveSolutionSekilKodu
+                            : null,
                       ),
                     ),
                   ),
@@ -3101,7 +3106,9 @@ class _SolutionPanel extends StatelessWidget {
             ExamSolutionBlock(
               text: parts.preview,
               imageUrl: question.cozumImageUrl,
-              sekilKodu: question.effectiveSolutionSekilKodu,
+              sekilKodu: QuestionStemContent.hasInlineFigure(parts.preview)
+                  ? question.effectiveSolutionSekilKodu
+                  : null,
             ),
             const SizedBox(height: 14),
             ClipRRect(
@@ -3114,7 +3121,10 @@ class _SolutionPanel extends StatelessWidget {
                       opacity: 0.55,
                       child: ExamSolutionBlock(
                         text: parts.remainder,
-                        sekilKodu: question.effectiveSolutionSekilKodu,
+                        sekilKodu: QuestionStemContent.hasInlineFigure(
+                                parts.remainder)
+                            ? question.effectiveSolutionSekilKodu
+                            : null,
                       ),
                     ),
                   ),

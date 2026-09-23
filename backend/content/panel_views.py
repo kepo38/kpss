@@ -395,27 +395,6 @@ def _discard_solution_image(question: Question) -> None:
     question.solution_image = None
 
 
-def _is_geometry_solution_overlay(question: Question) -> bool:
-    """OCR/Gemini `solution_overlay_*` annotasyon PNG'si mi?"""
-    name = (getattr(question.solution_image, "name", None) or "").replace(
-        "\\", "/"
-    )
-    return "solution_overlay_" in name.split("/")[-1]
-
-
-def _discard_stale_geometry_solution_overlay(
-    question: Question, *, figure_svg: str
-) -> None:
-    """Vektör şekil varken eski annotasyon PNG soru/çözüm şeklini bozar — sil."""
-    if not (figure_svg or "").strip():
-        return
-    if not question.solution_image:
-        return
-    if not _is_geometry_solution_overlay(question):
-        return
-    _discard_solution_image(question)
-
-
 def _sanitize_figure_svg(raw: str) -> str:
     return sanitize_figure_svg(raw)
 
@@ -2247,11 +2226,6 @@ def panel_question_edit(
             )
         elif request.POST.get("clear_solution_image") == "1":
             _discard_solution_image(question)
-        else:
-            # figure_svg güncellenince eski OCR overlay PNG'si uyumsuz kalır.
-            _discard_stale_geometry_solution_overlay(
-                question, figure_svg=figure_svg
-            )
 
         _apply_option_images_from_request(question, request)
         _apply_question_scenario(question, target_topic, request.POST)

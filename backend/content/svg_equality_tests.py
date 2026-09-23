@@ -9,8 +9,10 @@ from django.test import SimpleTestCase
 
 from content.svg_equality import (
     build_equality_tick_markup,
+    collect_svg_geometry_anchors,
     extract_equal_segment_groups,
     parse_svg_point_labels,
+    parse_svg_vertex_points,
     repair_equality_ticks,
     strip_short_hatch_lines,
 )
@@ -156,11 +158,39 @@ class ParseSvgPointLabelsTests(SimpleTestCase):
         self.assertEqual(parse_svg_point_labels(svg)["A"], (9.0, 8.0))
 
 
+class SnapVertexPointsQ62Tests(SimpleTestCase):
+    def test_anchors_from_polygon_and_circles(self):
+        anchors = collect_svg_geometry_anchors(BUGGY_SVG_Q62)
+        self.assertIn((50.0, 200.0), anchors)
+        self.assertIn((350.0, 200.0), anchors)
+        self.assertIn((200.0, 50.0), anchors)
+        self.assertIn((200.0, 200.0), anchors)
+        self.assertIn((275.0, 125.0), anchors)
+
+    def test_vertex_snap_onto_geometry(self):
+        pts = parse_svg_vertex_points(BUGGY_SVG_Q62)
+        # Text ofsetli; tick için gerçek köşeler
+        self.assertEqual(pts["A"], (50.0, 200.0))
+        self.assertEqual(pts["B"], (350.0, 200.0))
+        self.assertEqual(pts["C"], (200.0, 50.0))
+        self.assertEqual(pts["D"], (200.0, 200.0))
+        self.assertEqual(pts["E"], (275.0, 125.0))
+
+
 class RepairEqualityTicksQ62Tests(SimpleTestCase):
+    # Gerçek geometrik köşeler (text etiket ofseti değil)
+    GEO = {
+        "A": (50.0, 200.0),
+        "B": (350.0, 200.0),
+        "C": (200.0, 50.0),
+        "D": (200.0, 200.0),
+        "E": (275.0, 125.0),
+    }
+
     def test_repair_matches_stem_groups(self):
         repaired = repair_equality_ticks(BUGGY_SVG_Q62, STEM_Q62)
         self.assertIn("equality-ticks", repaired)
-        pts = parse_svg_point_labels(repaired)
+        pts = self.GEO
 
         mid_db = _midpoint(pts["D"], pts["B"])
         mid_de = _midpoint(pts["D"], pts["E"])
@@ -177,6 +207,20 @@ class RepairEqualityTicksQ62Tests(SimpleTestCase):
         self.assertNotEqual(n_ad, n_db)
         self.assertGreaterEqual(n_ad, 1)
         self.assertGreaterEqual(n_db, 1)
+
+    def test_no_roman_ticks_below_base(self):
+        """Etiket ofseti yüzünden AB altına I/II düşmemeli."""
+        repaired = repair_equality_ticks(BUGGY_SVG_Q62, STEM_Q62)
+        # Eski hatalı midpoints: AD text mid ~ (117.5, 220), DB ~ (275, 220)
+        self.assertEqual(_short_lines_near(repaired, (117.5, 220.0), radius=12), 0)
+        self.assertEqual(_short_lines_near(repaired, (275.0, 220.0), radius=12), 0)
+        # Tüm kısa tick merkezleri tabanın üstünde (y <= 205; AB y=200)
+        for x1, y1, x2, y2 in _all_lines(repaired):
+            length = math.hypot(x2 - x1, y2 - y1)
+            if length > 18.0:
+                continue
+            cy = (y1 + y2) / 2.0
+            self.assertLessEqual(cy, 205.0, f"tick below base: {(x1, y1, x2, y2)}")
 
     def test_strips_old_short_hatches(self):
         cleaned = strip_short_hatch_lines(BUGGY_SVG_Q62)

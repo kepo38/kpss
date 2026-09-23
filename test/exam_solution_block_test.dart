@@ -54,24 +54,4 @@ void main() {
     expect(find.textContaining('Açıklama'), findsOneWidget);
     expect(find.textContaining('Sonuç'), findsOneWidget);
   });
-
-  testWidgets('ExamSolutionBlock prefers SVG over annotation PNG without [ŞEKİL]',
-      (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ExamSolutionBlock(
-            text: 'Çözüm metni — şekil metnin altında',
-            imageUrl: 'https://example.com/solution_overlay.png',
-            sekilKodu:
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>',
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('Şekil üzerinde işaretli çözüm'), findsNothing);
-    expect(find.textContaining('Çözüm metni'), findsOneWidget);
-    expect(find.byType(QuestionSvgFigure), findsOneWidget);
-  });
 }

@@ -18,9 +18,18 @@ _EQUALITY_CHAIN = re.compile(
 )
 
 _LINE_TAG = re.compile(r"<\s*line\b[^>]*?/?>", re.IGNORECASE)
+_CIRCLE_TAG = re.compile(r"<\s*circle\b[^>]*?/?>", re.IGNORECASE)
+_POLYGON_TAG = re.compile(r"<\s*polygon\b([^>]*)/?>", re.IGNORECASE)
 _ATTR = re.compile(
-    r"""\b(x1|y1|x2|y2|x|y)\s*=\s*["']?\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*["']?""",
+    r"""\b(x1|y1|x2|y2|x|y|cx|cy|r)\s*=\s*["']?\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*["']?""",
     re.IGNORECASE,
+)
+_POINTS_ATTR = re.compile(
+    r"""\bpoints\s*=\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_POINT_PAIR = re.compile(
+    r"([+-]?(?:\d+\.?\d*|\.\d+))\s*[, ]\s*([+-]?(?:\d+\.?\d*|\.\d+))"
 )
 _TEXT_BLOCK = re.compile(
     r"<\s*text\b([^>]*)>(.*?)<\s*/\s*text\s*>",
@@ -31,6 +40,10 @@ _TSPAN_BLOCK = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _TAG_STRIP = re.compile(r"<[^>]+>")
+_DEFS_BLOCK = re.compile(
+    r"<\s*defs\b[^>]*>.*?<\s*/\s*defs\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
 _EQUALITY_BLOCK = re.compile(
     r"<!--\s*equality-ticks\s*-->.*?<!--\s*/equality-ticks\s*-->",
     re.IGNORECASE | re.DOTALL,
@@ -38,6 +51,9 @@ _EQUALITY_BLOCK = re.compile(
 
 _TICK_LEN = 9.0
 _TICK_SPACING = 3.5
+# Etiket <text> köşeden dışarı ofsetli; tick için geometrik köşeye snap.
+_SNAP_MAX_DIST = 48.0
+_MIN_EDGE_LEN = 24.0  # kısa hatch / marker kenarlarını anchor sayma
 
 
 def _norm_letter(ch: str) -> str:
@@ -149,6 +165,7 @@ def parse_svg_point_labels(svg: str) -> dict[str, tuple[float, float]]:
     """Map single-letter (or short) <text x=".." y="..">L</text> labels to coordinates.
 
     Also support x/y on parent <text> with tspan. Prefer last occurrence if duplicates.
+    Returns raw text positions (not snapped); use parse_svg_vertex_points for ticks.
     """
     points: dict[str, tuple[float, float]] = {}
     for tm in _TEXT_BLOCK.finditer(svg or ""):
@@ -179,6 +196,104 @@ def parse_svg_point_labels(svg: str) -> dict[str, tuple[float, float]]:
         elif len(label) <= 3 and label.isalpha():
             points[key] = (parent_attrs["x"], parent_attrs["y"])
     return points
+
+
+def collect_svg_geometry_anchors(svg: str) -> list[tuple[float, float]]:
+    """Köşe / uç nokta adayları: circle merkezleri, polygon vertices, uzun çizgi uçları.
+
+    <defs> içindeki marker polygon'ları atlanır. Kısa hatch kenarları anchor değildir.
+    """
+    code = _DEFS_BLOCK.sub("", svg or "")
+    anchors: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+
+    def _add(x: float, y: float) -> None:
+        key = (round(x, 2), round(y, 2))
+        if key in seen:
+            return
+        seen.add(key)
+        anchors.append((x, y))
+
+    for m in _CIRCLE_TAG.finditer(code):
+        a = _attrs(m.group(0))
+        if "cx" in a and "cy" in a:
+            _add(a["cx"], a["cy"])
+
+    for m in _POLYGON_TAG.finditer(code):
+        pm = _POINTS_ATTR.search(m.group(1) or "")
+        if not pm:
+            continue
+        pairs = _POINT_PAIR.findall(pm.group(1))
+        # Marker / dekoratif küçük polygon'ları ele
+        if len(pairs) < 3:
+            continue
+        xs = [float(p[0]) for p in pairs]
+        ys = [float(p[1]) for p in pairs]
+        span = max(max(xs) - min(xs), max(ys) - min(ys))
+        if span < 20.0:
+            continue
+        for x, y in pairs:
+            _add(float(x), float(y))
+
+    for m in _LINE_TAG.finditer(code):
+        a = _attrs(m.group(0))
+        if not all(k in a for k in ("x1", "y1", "x2", "y2")):
+            continue
+        length = math.hypot(a["x2"] - a["x1"], a["y2"] - a["y1"])
+        if length < _MIN_EDGE_LEN:
+            continue
+        _add(a["x1"], a["y1"])
+        _add(a["x2"], a["y2"])
+
+    return anchors
+
+
+def snap_labels_to_geometry(
+    labels: dict[str, tuple[float, float]],
+    anchors: list[tuple[float, float]],
+    *,
+    max_dist: float = _SNAP_MAX_DIST,
+) -> dict[str, tuple[float, float]]:
+    """Her etiketi en yakın geometrik köşeye taşı; eşleşme yoksa text konumunu koru.
+
+    Aynı anchora birden fazla etiket düşerse, en yakın etiket kazanır; diğerleri
+    sıradaki adaya veya text konumuna düşer.
+    """
+    if not labels:
+        return {}
+    if not anchors:
+        return dict(labels)
+
+    # (label, anchor_idx, dist) adayları, mesafe artan
+    candidates: list[tuple[str, int, float]] = []
+    for lab, (lx, ly) in labels.items():
+        for i, (ax, ay) in enumerate(anchors):
+            d = math.hypot(lx - ax, ly - ay)
+            if d <= max_dist:
+                candidates.append((lab, i, d))
+    candidates.sort(key=lambda t: t[2])
+
+    used_labels: set[str] = set()
+    used_anchors: set[int] = set()
+    snapped: dict[str, tuple[float, float]] = {}
+    for lab, ai, _d in candidates:
+        if lab in used_labels or ai in used_anchors:
+            continue
+        used_labels.add(lab)
+        used_anchors.add(ai)
+        snapped[lab] = anchors[ai]
+
+    for lab, pos in labels.items():
+        if lab not in snapped:
+            snapped[lab] = pos
+    return snapped
+
+
+def parse_svg_vertex_points(svg: str) -> dict[str, tuple[float, float]]:
+    """Tick yerleştirme için köşe koordinatları: text etiket + geometri snap."""
+    labels = parse_svg_point_labels(svg)
+    anchors = collect_svg_geometry_anchors(svg)
+    return snap_labels_to_geometry(labels, anchors)
 
 
 def strip_short_hatch_lines(svg: str, max_len: float = 18.0) -> str:
@@ -273,13 +388,15 @@ def repair_equality_ticks(svg: str, stem: str) -> str:
     """If no groups or <2 labels, return svg unchanged.
 
     Else: strip short hatches, inject build_equality_tick_markup before </svg>.
+    Noktalar text etiketinden okunur ama polygon/circle/line uçlarına snap edilir
+    (etiket ofseti yüzünden AB altına 'I/II' düşmesini engeller).
     Re-sanitize via sanitize_figure_svg at end.
     """
     code = (svg or "").strip()
     if not code:
         return svg or ""
     groups = extract_equal_segment_groups(stem or "")
-    points = parse_svg_point_labels(code)
+    points = parse_svg_vertex_points(code)
     if not groups or len(points) < 2:
         return code
 
