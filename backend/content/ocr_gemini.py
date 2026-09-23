@@ -8,10 +8,12 @@ import re
 import socket
 import urllib.error
 import urllib.request
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
+
 
 # Bu makinede IPv6 → Google zaman aşımına düşüyor; urllib önce AAAA deniyor
 # ve OCR "Fotoğraf alındı…" sonrası dakikalarca asılı kalıyordu.
@@ -59,11 +61,16 @@ _GEMINI_URL = (
 # Kota / 503 durumunda sırayla dene. Ölü (404) modeller _DEAD_GEMINI_MODELS ile
 # süreç boyunca atlanır — aksi halde her OCR 6×404 ile free-tier kotayı yakar.
 _GEMINI_MODEL_FALLBACKS = (
+    "gemini-3.6-flash",
     "gemini-flash-latest",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
-    "gemini-2.5-flash",
 )
+
+# 503 / UNAVAILABLE / 429: ayni modelde kisa backoff ile tekrar dene.
+_GEMINI_TRANSIENT_TOKENS = ("503", "UNAVAILABLE", "429")
+_GEMINI_SAME_MODEL_ATTEMPTS = 3
+_GEMINI_TRANSIENT_BACKOFFS = (1.5, 3.0)
 
 # Süreç içi: "no longer available" / "is not found" → bir daha deneme.
 _DEAD_GEMINI_MODELS: set[str] = set()
@@ -561,7 +568,7 @@ def _fetch_geometry_solution_overlay(
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,
@@ -701,7 +708,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _model_candidates() -> list[str]:
     configured = (
-        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-flash-latest"
+        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.6-flash"
     ).strip()
     out: list[str] = []
     for model in (configured, *_GEMINI_MODEL_FALLBACKS):
@@ -725,6 +732,48 @@ def _mark_dead_gemini_model(model: str, exc: BaseException) -> None:
     ):
         _DEAD_GEMINI_MODELS.add(model)
 
+
+
+
+def _is_transient_gemini_error(exc: BaseException) -> bool:
+    msg = str(exc)
+    return any(token in msg for token in _GEMINI_TRANSIENT_TOKENS)
+
+
+def _post_gemini_model_with_retries(
+    image_bytes: bytes,
+    mime: str,
+    model: str,
+    prompt: str = _PROMPT,
+    *,
+    timeout: int = 45,
+    json_mode: bool = True,
+) -> str:
+    """Ayni modelde 503/429 icin backoff; 404'te uyumadan bir sonraki modele birak."""
+    last_err: Exception | None = None
+    for attempt in range(_GEMINI_SAME_MODEL_ATTEMPTS):
+        try:
+            return _post_gemini_model(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=timeout,
+                json_mode=json_mode,
+            )
+        except RuntimeError as exc:
+            last_err = exc
+            # 404 / dead: hemen cik (uyuma)
+            if model in _DEAD_GEMINI_MODELS or not _is_transient_gemini_error(exc):
+                raise
+            if attempt >= _GEMINI_SAME_MODEL_ATTEMPTS - 1:
+                raise
+            delay = _GEMINI_TRANSIENT_BACKOFFS[
+                min(attempt, len(_GEMINI_TRANSIENT_BACKOFFS) - 1)
+            ]
+            time.sleep(delay)
+    assert last_err is not None
+    raise last_err
 
 def _post_gemini_model(
     image_bytes: bytes,
@@ -825,7 +874,7 @@ def _post_gemini(
     prompt = _ocr_prompt_with_panel_catalog()
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes, mime, model, prompt, timeout=45, json_mode=True
             )
             data = _extract_json(raw)
@@ -893,7 +942,7 @@ def gemini_supplement_answer_solution(
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,
@@ -955,7 +1004,7 @@ def _fetch_geometry_svg(image_bytes: bytes, mime: str) -> str:
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,

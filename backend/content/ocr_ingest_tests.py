@@ -589,7 +589,8 @@ class FinalizeOcrOptionsForPanelTests(SimpleTestCase):
         self.assertEqual(opts["A"], "")
         self.assertEqual(opts["C"], "")
 
-    def test_blanks_roman_yalniz_garbage(self):
+    def test_repairs_roman_yalniz_garbage(self):
+        """YalnızlI / İvelil gibi OCR çöpü kanonik öncül şıkka çevrilir; onarılamayan boşalır."""
         stem = "1930'lu yıllarda hangileri gerçekleşmiştir?"
         bad = {
             "A": "YalnızlI",
@@ -600,7 +601,11 @@ class FinalizeOcrOptionsForPanelTests(SimpleTestCase):
         }
         _, opts, corrupt = finalize_ocr_options_for_panel(stem, bad, "")
         self.assertTrue(corrupt)
-        self.assertEqual(opts, {k: "" for k in "ABCDE"})
+        self.assertEqual(opts["A"], "Yalnız II")
+        self.assertEqual(opts["B"], "Yalnız II")
+        self.assertEqual(opts["C"], "I ve II")
+        self.assertEqual(opts["D"], "II ve III")
+        self.assertEqual(opts["E"], "")
 
     def test_repairs_from_raw_when_possible(self):
         stem = "Atatürk ilkeleri ile ilgili soru."
