@@ -68,7 +68,9 @@ class ProFeatureLock extends StatelessWidget {
               onTap: () => _handleTap(context),
               borderRadius: BorderRadius.circular(14),
               child: Center(
-                child: Container(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -119,6 +121,7 @@ class ProFeatureLock extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
             ),

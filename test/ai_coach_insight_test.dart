@@ -94,7 +94,7 @@ void main() {
     );
 
     expect(
-      find.textContaining('Birkaç test çözdükten sonra'),
+      find.textContaining('Birkaç konu testi çözdükten sonra'),
       findsOneWidget,
     );
     expect(find.textContaining('Coğrafya dersinde'), findsNothing);

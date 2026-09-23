@@ -17,15 +17,14 @@ class AiCoachInsightCard extends StatelessWidget {
     required this.insight,
     required this.isPremium,
     this.fallbackMessage =
-        'Birkaç test çözdükten sonra kişisel çalışma değerlendirmen burada '
-        'görünecek.',
+        'Birkaç konu testi çözdükten sonra performans özetin ve '
+        'çalışma yönlendirmen burada görünecek.',
     this.onTopicTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final message = insight?.message ?? fallbackMessage;
-    final subject = insight?.subject;
     final topic = insight?.topic;
 
     return Column(
@@ -35,16 +34,16 @@ class AiCoachInsightCard extends StatelessWidget {
         const SizedBox(height: 12),
         ProFeatureLock(
           locked: !isPremium,
-          upsellTitle: 'AI KOÇ',
+          upsellTitle: 'HEDEF KAMU KOÇ',
           upsellSubtitle:
-              'Konu testlerindeki performansına göre net trendini, zayıf '
-              'alanlarını ve çalışma önceliğini söyler.',
-          lockHint: 'AI KOÇ\nNet trendin · zayıf konun · kişisel önerin',
+              'Son konu testlerine göre net trendini, gelişim alanlarını '
+              've çalışma önceliğini özetler.',
+          lockHint:
+              'HEDEF KAMU KOÇ\nNet trend · gelişim alanları · çalışma önceliği',
           lockCta: 'Keşfet',
           lockIcon: Icons.auto_awesome_rounded,
           child: _PremiumCoachCard(
             message: message,
-            subject: subject,
             topic: topic,
             onTopicTap: isPremium ? onTopicTap : null,
           ),
@@ -94,7 +93,7 @@ class _CoachSectionHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Trend analizi ve kişisel yorum',
+                'Performans özeti ve çalışma yönlendirmesi',
                 style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.mutedOnPage(context),
@@ -110,13 +109,11 @@ class _CoachSectionHeader extends StatelessWidget {
 
 class _PremiumCoachCard extends StatelessWidget {
   final String message;
-  final String? subject;
   final String? topic;
   final VoidCallback? onTopicTap;
 
   const _PremiumCoachCard({
     required this.message,
-    this.subject,
     this.topic,
     this.onTopicTap,
   });
@@ -327,26 +324,13 @@ class _PremiumCoachCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (subject != null || topic != null) ...[
+                  if (topic != null) ...[
                     const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (subject != null)
-                          _InsightChip(
-                            icon: Icons.menu_book_outlined,
-                            label: subject!,
-                          ),
-                        if (topic != null)
-                          _InsightChip(
-                            icon: Icons.track_changes_rounded,
-                            label: topic!,
-                            accent: true,
-                            onTap: onTopicTap,
-                          ),
-                      ],
+                    _InsightChip(
+                      icon: Icons.track_changes_rounded,
+                      label: topic!,
+                      accent: true,
+                      onTap: onTopicTap,
                     ),
                   ],
                 ],
