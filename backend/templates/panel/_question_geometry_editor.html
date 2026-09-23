@@ -1,0 +1,51 @@
+{% load static %}
+<section class="geo-editor-box" id="geometry-question-editor" data-geo-mode="stem">
+  <div class="media-title">Şekil çiz (geometri)</div>
+  <p class="media-hint">
+    Harita gibi buradan çizin. Çizim <strong>SVG</strong> olarak kaydedilir (ÖSYM logosuz şekil).
+    Araç: çizgi, çember, kare, üçgen, yarım daire, açı + sayı, yarıçap.
+    Soru metninde <code>[ŞEKİL]</code> yazın; çözüm için alttaki <strong>Çözüm çizimi</strong> bölümünü kullanın.
+  </p>
+  <div class="geo-editor-actions">
+    <button type="button" class="btn btn-ghost" id="geo-insert-placeholder">Metne [ŞEKİL] ekle</button>
+    <span class="media-hint" id="geo-insert-status"></span>
+  </div>
+  <div class="geo-editor-toolbar" id="geo-toolbar">
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="select" aria-pressed="true">Seç</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="line">Çizgi</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="circle">Çember</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="square">Kare</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="triangle">Üçgen</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="semicircle">Yarım daire</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="angle">Açı</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="radius">Yarıçap</button>
+    <label class="geo-color-wrap">
+      Renk
+      <input type="color" id="geo-color" value="#E8C87A">
+    </label>
+    <label class="geo-stroke-wrap">
+      Kalınlık
+      <input type="range" id="geo-stroke" min="1" max="6" step="0.5" value="2">
+      <span id="geo-stroke-val">2</span>
+    </label>
+    <label class="geo-angle-label-wrap">
+      Açı sayısı
+      <input type="text" id="geo-angle-label" value="1" maxlength="8" placeholder="1 veya 90°">
+    </label>
+    <button type="button" class="btn btn-ghost" id="geo-undo">Geri al</button>
+    <button type="button" class="btn btn-ghost" id="geo-clear">Temizle</button>
+    <span class="media-hint" id="geo-status"></span>
+  </div>
+  <div class="geo-canvas-wrap" id="geo-canvas-wrap">
+    <svg id="geo-canvas" viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg" aria-label="Geometri çizim alanı">
+      <rect class="geo-bg" x="0" y="0" width="400" height="320" fill="#0C1424"/>
+      <g id="geo-grid" opacity="0.18" stroke="#5EEAD4" stroke-width="0.5"></g>
+      <g id="geo-shapes"></g>
+      <g id="geo-preview"></g>
+      <g id="geo-handles"></g>
+    </svg>
+  </div>
+  <p class="media-hint" id="geo-help">
+    Seç: sürükle taşı · köşeden boyut · üst tutamaktan döndür · Delete sil. Çizgi / çember / kare / yarım daire / yarıçap: sürükle. Üçgen ve açı: 3 noktaya tıkla.
+  </p>
+</section>

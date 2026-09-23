@@ -1,12 +1,14 @@
 """OCR ingest — Gemini fallback logging ve onarım."""
 
+import io
 import json
 from unittest.mock import MagicMock, patch
 
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
+from .models import Question, Subject, Topic
 from .ocr import OcrQuestionResult
 from .ocr_gemini import GeminiSupplementResult, _format_ocr_context
 from .ocr_ingest import (
@@ -17,6 +19,8 @@ from .ocr_ingest import (
     _option_is_corrupt,
     _question_needs_gemini_repair,
     coalesce_ocr_options,
+    finalize_ocr_options_for_panel,
+    ingest_question_from_image,
     normalize_correct_option,
     panel_form_options,
     question_form_bootstrap,
@@ -194,6 +198,56 @@ class GeminiSupplementFallbackTests(SimpleTestCase):
         mock_supplement.assert_called_once()
         self.assertTrue(mock_supplement.call_args.kwargs.get("need_options"))
 
+    @patch("content.ocr_gemini.gemini_supplement_answer_solution")
+    def test_supplement_replaces_corrupt_roman_options(self, mock_supplement):
+        """Tesseract YalnızlI çöpü — weak değil; supplement şıkları ezmeli."""
+        mock_supplement.return_value = GeminiSupplementResult(
+            correct_option="B",
+            solution="II. Devletçilik 1930'larda uygulanmıştır.",
+            model="gemini-3-flash-preview",
+            attempts=[{"model": "gemini-3-flash-preview", "ok": True, "error": ""}],
+            ok=True,
+            options={
+                "A": "Yalnız I",
+                "B": "Yalnız II",
+                "C": "Yalnız III",
+                "D": "I ve II",
+                "E": "I, II ve III",
+            },
+        )
+        ocr = OcrQuestionResult(
+            stem=(
+                "1930'lu yıllarda I. Takrir-i Sükûn, II. Devletçilik, "
+                "III. Serbest Cumhuriyet Fırkası — hangileri?"
+            ),
+            options={
+                "A": "YalnızlI",
+                "B": "Yalnızlil",
+                "C": "İvelil",
+                "D": "İl velli",
+                "E": "1.1l ve lll",
+            },
+            raw_text="",
+            ok=True,
+            correct_option="",
+            solution="",
+            engine="tesseract",
+        )
+        self.assertGreaterEqual(_count_corrupt_options(ocr.options), 1)
+        applied, err, meta = _apply_gemini_supplement_after_fallback(
+            ocr, b"fake-image", mime="image/jpeg"
+        )
+        self.assertTrue(applied)
+        self.assertEqual(err, "")
+        self.assertTrue(meta["got_options"])
+        self.assertTrue(meta["got_answer"])
+        self.assertEqual(ocr.options["A"], "Yalnız I")
+        self.assertEqual(ocr.options["B"], "Yalnız II")
+        self.assertEqual(ocr.options["E"], "I, II ve III")
+        self.assertEqual(_count_corrupt_options(ocr.options), 0)
+        mock_supplement.assert_called_once()
+        self.assertTrue(mock_supplement.call_args.kwargs.get("need_options"))
+
 
 class PanelFormOptionsTests(SimpleTestCase):
     def test_hydrates_from_stem_when_placeholders(self):
@@ -290,7 +344,27 @@ class CorruptOptionDetectionTests(SimpleTestCase):
         self.assertTrue(_option_is_corrupt("Yalnız ll"))
         self.assertTrue(_option_is_corrupt("| ve ll"))
         self.assertFalse(_option_is_corrupt("Yalnız I"))
+        self.assertFalse(_option_is_corrupt("Yalnız II"))
         self.assertFalse(_option_is_corrupt("II ve III"))
+
+    def test_detects_glued_roman_ocr_garbage(self):
+        for junk in (
+            "YalnızlI",
+            "Yalnızlil",
+            "Yalnızlll",
+            "İvelil",
+            "İl velli",
+            "ve lll",
+            "1.1l ve",
+        ):
+            with self.subTest(junk=junk):
+                self.assertTrue(_option_is_corrupt(junk))
+
+    def test_detects_bare_choice_label(self):
+        self.assertTrue(_option_is_corrupt("B)"))
+        self.assertTrue(_option_is_corrupt("D."))
+        self.assertTrue(_option_is_corrupt("A)"))
+        self.assertFalse(_option_is_corrupt("B) Cumhurbaşkanı"))
 
     def test_detects_ui_junk_in_option(self):
         self.assertTrue(
@@ -306,6 +380,72 @@ class CorruptOptionDetectionTests(SimpleTestCase):
             "E": "I, II ve III",
         }
         self.assertEqual(_count_corrupt_options(opts), 1)
+
+    def test_shifted_labels_need_coalesce(self):
+        from .ocr_ingest import _options_need_coalesce
+
+        opts = {
+            "A": "B)",
+            "B": "—",
+            "C": "D)",
+            "D": "I, II ve III uzun metin devamı",
+            "E": "I, II ve III uzun metin devamı ekstra",
+        }
+        self.assertTrue(_options_need_coalesce(opts))
+        self.assertGreaterEqual(_count_corrupt_options(opts), 2)
+
+
+class LogIngestTests(SimpleTestCase):
+    @patch("content.ocr_ingest.OcrIngestLog.objects.create")
+    @patch("content.ocr_ingest.log_ocr_event")
+    def test_log_ingest_does_not_nameerror(self, _log_event, mock_create):
+        from .ocr_ingest import _log_ingest
+
+        result = OcrQuestionResult(
+            stem="Soru?",
+            options={"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"},
+            raw_text="",
+            ok=False,
+            error="Gemini HTTP 503",
+            engine="gemini:gemini-2.0-flash",
+            diagnostics={},
+        )
+        # Önceden undefined error_message → NameError yutuluyordu; create hiç çağrılmıyordu.
+        _log_ingest(
+            topic=None,
+            image_path="telegram.jpg",
+            source_image_hash="abc",
+            source_image_phash="",
+            result=result,
+            gemini_error="Gemini HTTP 503",
+        )
+        mock_create.assert_called_once()
+        kwargs = mock_create.call_args.kwargs
+        self.assertIn("503", kwargs.get("error_message") or "")
+
+    @patch("content.ocr_ingest.OcrIngestLog.objects.create")
+    @patch("content.ocr_ingest.log_ocr_event")
+    def test_log_ingest_accepts_explicit_error_message(self, _log_event, mock_create):
+        from .ocr_ingest import _log_ingest
+
+        result = OcrQuestionResult(
+            stem="",
+            options={},
+            raw_text="",
+            ok=False,
+            error="",
+            engine="tesseract",
+        )
+        _log_ingest(
+            topic=None,
+            image_path="x.jpg",
+            source_image_hash="",
+            source_image_phash="",
+            result=result,
+            gemini_error="ignored-if-explicit",
+            error_message="explicit boom",
+        )
+        self.assertEqual(mock_create.call_args.kwargs.get("error_message"), "explicit boom")
 
 
 class QuestionNeedsGeminiRepairTests(SimpleTestCase):
@@ -438,3 +578,100 @@ class RepairQuestionPreservesSolutionTests(SimpleTestCase):
         result = repair_question_with_gemini(question, dry_run=False)
         self.assertTrue(result.get("ok"))
         self.assertEqual(result.get("updates", {}).get("solution"), "OCR çözüm metni")
+
+class FinalizeOcrOptionsForPanelTests(SimpleTestCase):
+    def test_clears_unrepaired_corrupt_and_flags(self):
+        stem = "Atatürk ilkeleri ile ilgili soru."
+        bad = {"A": "B)", "B": "", "C": "D)", "D": "", "E": ""}
+        out_stem, opts, corrupt = finalize_ocr_options_for_panel(stem, bad, "")
+        self.assertTrue(corrupt)
+        self.assertEqual(opts["A"], "")
+        self.assertEqual(opts["C"], "")
+
+    def test_blanks_roman_yalniz_garbage(self):
+        stem = "1930'lu yıllarda hangileri gerçekleşmiştir?"
+        bad = {
+            "A": "YalnızlI",
+            "B": "Yalnızlil",
+            "C": "İvelil",
+            "D": "İl velli",
+            "E": "1.1l ve lll",
+        }
+        _, opts, corrupt = finalize_ocr_options_for_panel(stem, bad, "")
+        self.assertTrue(corrupt)
+        self.assertEqual(opts, {k: "" for k in "ABCDE"})
+
+    def test_repairs_from_raw_when_possible(self):
+        stem = "Atatürk ilkeleri ile ilgili soru."
+        bad = {"A": "B)", "B": "", "C": "D)", "D": "", "E": ""}
+        raw = (
+            "Atatürk ilkeleri ile ilgili soru.\n"
+            "A) Devletçilik\n"
+            "B) Milliyetçilik\n"
+            "C) Laiklik\n"
+            "D) Cumhuriyetçilik\n"
+            "E) Halkçılık"
+        )
+        _, opts, corrupt = finalize_ocr_options_for_panel(stem, bad, raw)
+        self.assertFalse(corrupt)
+        self.assertIn("Devletçilik", opts["A"])
+        self.assertNotEqual(opts["A"], "B)")
+
+
+class IngestQuestionImageNotSavedTests(TestCase):
+    """OCR/Telegram source_bytes must not become question.image (stem_/map_ only)."""
+
+    def setUp(self):
+        subject = Subject.objects.create(slug="tarih", name="Tarih")
+        self.topic = Topic.objects.create(
+            subject=subject,
+            slug="tarih_inkilap",
+            name="Inkilap Tarihi",
+        )
+
+    def _ocr_ok(self):
+        return OcrQuestionResult(
+            stem="Test soru metni?",
+            options={
+                "A": "Bir",
+                "B": "Iki",
+                "C": "Uc",
+                "D": "Dort",
+                "E": "Bes",
+            },
+            raw_text="Test soru metni?",
+            ok=True,
+            error="",
+            engine="gemini:test",
+            correct_option="B",
+            solution="Cozum",
+            figure_svg="",
+        )
+
+    @patch("content.ocr_ingest.refresh_question_embedding")
+    @patch("content.ocr_ingest._run_ocr")
+    def test_ingest_does_not_set_question_image(self, mock_run_ocr, _emb):
+        mock_run_ocr.return_value = (
+            self._ocr_ok(),
+            "hash-abc",
+            "phash-abc",
+            True,
+            False,
+            "",
+        )
+        result = ingest_question_from_image(
+            io.BytesIO(b"fake-jpeg-bytes"),
+            topic=self.topic,
+            filename="telegram_99.jpg",
+            mime="image/jpeg",
+            publish=False,
+            submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
+            telegram_chat_id=1,
+            telegram_message_id=99,
+            telegram_file_unique_id="uniq-no-image",
+        )
+        self.assertTrue(result.ok)
+        self.assertIsNotNone(result.question)
+        result.question.refresh_from_db()
+        self.assertFalse(bool(result.question.image))
+        self.assertEqual(result.question.stem, "Test soru metni?")

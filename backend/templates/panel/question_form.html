@@ -69,7 +69,7 @@
     </label>
 
     <label>Soru metni
-      <textarea class="js-rich" name="stem" id="question-stem" placeholder="Metin ve/veya görsel kullanın. Haritayı cümleler arasına koymak için [HARITA] yazın veya aşağıdaki düğmeyi kullanın.">{{ question.stem|default:'' }}</textarea>
+      <textarea class="js-rich" name="stem" id="question-stem" placeholder="Metin ve/veya görsel kullanın. [HARITA] veya [ŞEKİL] yazarak görseli/şekli metne gömebilirsiniz.">{{ question.stem|default:'' }}</textarea>
       <span class="hint">Kalın/altı çizili için metni seçip K / A düğmelerine basın. Kayıtta <code>**kalın**</code> veya <code>__altı__</code> görünmeli; yoksa uygulamada biçim olmaz.</span>
     </label>
 
@@ -147,10 +147,13 @@
     </div>
     </details>
 
+    {% include "panel/_question_geometry_editor.html" %}
+
     <label>Şekil kodu (SVG)
-      <textarea name="figure_svg" id="figure-svg" class="tikz-field" rows="10" spellcheck="false" placeholder="<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 200 160&quot;>&#10;  ...&#10;</svg>">{{ question.figure_svg|default:'' }}</textarea>
-      <span class="hint">Geometri şekli için SVG kodunu elle yapıştırabilirsiniz. OCR tarama görseli uygulamaya gönderilmez.</span>
+      <textarea name="figure_svg" id="figure-svg" class="tikz-field" rows="8" spellcheck="false" placeholder="<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 200 160&quot;>&#10;  ...&#10;</svg>">{{ question.figure_svg|default:'' }}</textarea>
+      <span class="hint">Üstteki <strong>Şekil çiz</strong> araçlarıyla oluşturun veya SVG’yi buraya yapıştırın. OCR tarama görseli uygulamaya gönderilmez.</span>
     </label>
+    <textarea name="solution_figure_svg" id="solution-figure-svg" class="tikz-field" rows="4" spellcheck="false" hidden aria-hidden="true">{{ question.solution_figure_svg|default:'' }}</textarea>
 
     {% include "panel/_question_map_editor.html" %}
 
@@ -200,8 +203,11 @@
 
     <label>Çözüm
       <textarea class="js-rich" name="solution" id="question-solution" placeholder="Gemini sohbetinden çözümü kopyala-yapıştır." data-bootstrap-value="{% firstof form_bootstrap.solution question.solution '' %}">{% firstof form_bootstrap.solution question.solution '' %}</textarea>
-      <span class="hint">Çözüm için Gemini kullanın: sohbetten kopyala → buraya yapıştır. \( ... \) otomatik $...$ olur.</span>
+      <span class="hint">Çözüm için Gemini kullanın: sohbetten kopyala → buraya yapıştır. \( ... \) otomatik $...$ olur. Şekli metin içine almak için <code>[ŞEKİL]</code> yazabilirsiniz.</span>
     </label>
+
+    {% include "panel/_question_geometry_solution_editor.html" %}
+
     <div class="solution-image-section">
       <label>Çözüm görseli (isteğe bağlı)
         <input type="file" name="solution_image" id="solution-image-input" accept="image/png,image/jpeg,image/webp,image/gif">
@@ -211,8 +217,8 @@
       <div class="solution-image-preview">
         <img src="{{ question.solution_image.url }}" alt="Mevcut çözüm görseli" id="solution-existing-thumb" style="max-width:240px;border-radius:6px;margin-top:6px;">
         <label style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;">
-          <input type="checkbox" name="keep_solution_image" value="1" checked>
-          Mevcut çözüm görselini koru (işaretlemezsen kaydet ile silinir)
+          <input type="checkbox" name="clear_solution_image" value="1" id="clear-solution-image">
+          Çözüm görselini kaldır
         </label>
       </div>
       {% endif %}
@@ -368,13 +374,16 @@
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=2"></script>
       <script src="{% static 'panel/map-question-editor.js' %}?v=20"></script>
+<script src="{% static 'panel/js/geometry-editor-core.js' %}?v=2"></script>
+<script src="{% static 'panel/js/geometry-question-editor.js' %}?v=5"></script>
+<script src="{% static 'panel/js/geometry-solution-editor.js' %}?v=2"></script>
 <script src="{% static 'panel/question-options.js' %}?v=7"></script>
 <script src="{% static 'panel/option-table.js' %}?v=8"></script>
 {{ form_bootstrap|json_script:"question-form-bootstrap" }}
 {{ preview_seed|json_script:"question-preview-seed" }}
 {{ scenarios_json|json_script:"question-scenarios-data" }}
 <script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
-<script src="{% static 'panel/question-preview.js' %}?v=29"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=31"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {
@@ -529,11 +538,19 @@
     return merged;
   }
 
-  function setFieldValue(name, value) {
+  function setFieldValue(name, value, opts) {
     var field = document.querySelector('[name="' + name + '"]');
-    if (!field || value == null || value === '') return;
+    if (!field) return;
+    var allowEmpty = !!(opts && opts.allowEmpty);
+    if (value == null) value = '';
+    if (!allowEmpty && value === '') return;
     field.value = value;
+    // js-rich is a textarea/input (toolbar only); input+change keeps preview in sync.
     field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    if (window.KpssRichFormat && typeof window.KpssRichFormat.refresh === 'function') {
+      window.KpssRichFormat.refresh(field);
+    }
   }
 
   function hasVisualOptionCrops(data) {
@@ -581,7 +598,7 @@
   async function fill(data) {
     var stemText = data.stem || data.soru_metni || '';
     var opts = mergeOptionsFromStem(stemText, data.options || data.siklar || {});
-    setFieldValue('stem', stemText);
+    setFieldValue('stem', stemText, { allowEmpty: true });
 
     var map = { A: 'option_a', B: 'option_b', C: 'option_c', D: 'option_d', E: 'option_e' };
     var visualReady = hasVisualOptionCrops(data);
@@ -597,12 +614,14 @@
     var visualUrls = (data.optionImageDataUrls || data.option_image_data_urls) || {};
     Object.keys(map).forEach(function (k) {
       if (visualApplied && visualUrls[k]) return;
-      var val = (opts[k] || '').trim();
-      if (!val || val === 'Görsel şık') return;
-      setFieldValue(map[k], val);
+      var val = (opts[k] == null ? '' : String(opts[k])).trim();
+      if (val === 'Görsel şık') val = '';
+      // Always overwrite A–E (including empty) so re-OCR clears corrupt leftovers.
+      setFieldValue(map[k], val, { allowEmpty: true });
     });
 
-    setFieldValue('figure_svg', data.sekil_kodu || data.figure_svg || data.figure_tikz || '');
+    var figureSvg = data.sekil_kodu || data.figure_svg || data.figure_tikz || '';
+    setFieldValue('figure_svg', figureSvg);
 
     var answerRaw = (data.dogru_cevap || data.correct_option || '').toString().toUpperCase();
     var answer = 'ABCDE'.split('').find(function (k) { return answerRaw.indexOf(k) !== -1; });
@@ -612,7 +631,24 @@
       answerSel.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    setFieldValue('solution', data.detayli_cozum || data.solution || '');
+    // Geometri: Gemini çözüm metnini forma yazma; [ŞEKİL] ile soru şeklini koru.
+    var hasFigure = !!(figureSvg && String(figureSvg).trim());
+    var solutionText = '';
+    if (!hasFigure) {
+      solutionText = data.detayli_cozum || data.solution || '';
+    }
+    if (hasFigure) {
+      if (window.KpssGeometryEditorCore && typeof window.KpssGeometryEditorCore.ensureSekilInText === 'function') {
+        solutionText = window.KpssGeometryEditorCore.ensureSekilInText(solutionText);
+      } else if (solutionText.indexOf('[ŞEKİL]') === -1) {
+        solutionText = solutionText.trim() ? ('[ŞEKİL]\n\n' + solutionText) : '[ŞEKİL]\n';
+      }
+    }
+    setFieldValue('solution', solutionText);
+    if (hasFigure && window.KpssGeometryEditorCore && window.KpssGeometryEditorCore.ensureSolutionSekilPlaceholder) {
+      window.KpssGeometryEditorCore.ensureSolutionSekilPlaceholder();
+    }
+    document.dispatchEvent(new CustomEvent('geometry-question-change'));
 
     try {
       await applySuggestedTopic(data);
@@ -693,6 +729,9 @@
         if (!hasOcrContent(data)) {
           status.style.color = '#f87171';
           status.textContent = data.error || 'Metin okunamadı — görseli veya API anahtarını kontrol edin.';
+        } else if (data.options_corrupt) {
+          status.style.color = '#f87171';
+          status.textContent = 'Şıklar bozuk okundu — elle düzeltin';
         } else if (data.duplicate) {
           status.textContent = 'Uyarı: bu soru daha önce yüklendi — kaydetmeden önce kontrol edin.';
           status.style.color = '#f87171';

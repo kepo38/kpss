@@ -3,6 +3,7 @@
  */
 (function () {
   var MAP_PLACEHOLDER = "[HARITA]";
+  var FIGURE_PLACEHOLDER = "[ŞEKİL]";
   var OPTION_PLACEHOLDERS = { "": true, "—": true, "-": true, "Görsel şık": true };
   var scenarioCatalog = {};
   var formBootstrap = { options: {}, solution: "", correct_option: "" };
@@ -469,6 +470,32 @@
     return { html: html, inline: true };
   }
 
+  function inlineFigureHtml(svgText) {
+    var clean = (svgText || "").replace(/<script[\s\S]*?<\/script>/gi, "").trim();
+    if (!clean || clean.indexOf("<svg") === -1) {
+      return '<div class="quiz-mock-svg-inline quiz-mock-img-slot">Şekil</div>';
+    }
+    return '<div class="quiz-mock-svg-inline">' + clean + "</div>";
+  }
+
+  function textWithInlineFigure(text, svgText, renderChunkHtml) {
+    if (!text || text.indexOf(FIGURE_PLACEHOLDER) === -1) {
+      return { html: renderChunkHtml(text || ""), inline: false };
+    }
+    var parts = text.split(FIGURE_PLACEHOLDER);
+    var html = "";
+    parts.forEach(function (part, index) {
+      var chunk = (part || "").trim();
+      if (chunk) {
+        html += renderChunkHtml(chunk);
+      }
+      if (index < parts.length - 1) {
+        html += inlineFigureHtml(svgText);
+      }
+    });
+    return { html: html, inline: true };
+  }
+
   function currentFigureSvg() {
     var el =
       document.getElementById("figure-svg") ||
@@ -476,10 +503,18 @@
     return el ? (el.value || "").trim() : "";
   }
 
+  function currentSolutionFigureSvg() {
+    var el =
+      document.getElementById("solution-figure-svg") ||
+      document.querySelector('[name="solution_figure_svg"]');
+    var sol = el ? (el.value || "").trim() : "";
+    if (sol) return sol;
+    return currentFigureSvg();
+  }
+
   function currentSolutionImageSrc() {
-    var solutionInput = document.getElementById("solution-image-input");
-    var keep = document.querySelector('[name="keep_solution_image"]');
-    if (keep && !keep.checked) return "";
+    var clearEl = document.querySelector('[name="clear_solution_image"]');
+    if (clearEl && clearEl.checked) return "";
 
     var previewBox = document.getElementById("solution-image-preview");
     var previewImg = document.getElementById("solution-image-preview-img");
@@ -497,9 +532,6 @@
       return existing.src;
     }
 
-    if (solutionInput && solutionInput.files && solutionInput.files[0]) {
-      return "";
-    }
     return "";
   }
 
@@ -547,7 +579,19 @@
       stem = peelStemForPreview(stem, optionTexts);
     }
     var src = currentImageSrc();
-    var rendered = stemWithInlineMap(stem, src);
+    var svgText = currentFigureSvg();
+    var rendered;
+    if (stem && stem.indexOf(FIGURE_PLACEHOLDER) !== -1) {
+      var mapWasInline = false;
+      var figureRendered = textWithInlineFigure(stem, svgText, function (chunk) {
+        var mapPart = stemWithInlineMap(chunk, src);
+        if (mapPart.inline) mapWasInline = true;
+        return mapPart.html;
+      });
+      rendered = { html: figureRendered.html, inline: mapWasInline };
+    } else {
+      rendered = stemWithInlineMap(stem, src);
+    }
     if (stem) {
       stemEl.innerHTML = rendered.html;
       stemEl.classList.remove("is-empty");
@@ -585,7 +629,14 @@
 
     syncStemImageSection();
 
-    syncFigureSvg(svgEl, currentFigureSvg());
+    var sol = solutionValue();
+    var figureInlineInStem = !!(stem && stem.indexOf(FIGURE_PLACEHOLDER) !== -1);
+    var figureInlineInSol = !!(sol && sol.indexOf(FIGURE_PLACEHOLDER) !== -1);
+    var solutionSvgText = currentSolutionFigureSvg();
+    syncFigureSvg(
+      svgEl,
+      figureInlineInStem || figureInlineInSol ? "" : svgText
+    );
 
     var correct = val("correct_option");
     if (!correct && (formBootstrap.correct_option || "").trim()) {
@@ -701,9 +752,13 @@
       item.row.classList.toggle("is-correct", correct === item.k);
     });
 
-    var sol = solutionValue();
     var solImgEl = document.getElementById("pv-solution-img");
     var solImgSrc = currentSolutionImageSrc();
+    // [ŞEKİL] veya vektör şekil varken üstteki çözüm PNG bloğunu gösterme
+    // (eski OCR overlay ile düzeltilmiş SVG uyuşmaz).
+    if (figureInlineInSol || (solutionSvgText && solutionSvgText.indexOf("<svg") !== -1)) {
+      solImgSrc = "";
+    }
     if (solWrap && solBody) {
       if (solImgEl) {
         if (solImgSrc) {
@@ -719,13 +774,29 @@
       if (sol) {
         // Sunucu gövdesi düz markdown metnidir (HTML değil); her sync'te
         // MathRender ile boya — aksi halde ## / * literal görünür.
-        solBody.innerHTML = window.KpssMathRender
-          ? (window.KpssMathRender.solutionStoredDocumentHtml
-              ? window.KpssMathRender.solutionStoredDocumentHtml(sol)
+        function renderSolutionChunk(chunk) {
+          return window.KpssMathRender
+            ? window.KpssMathRender.solutionStoredDocumentHtml
+              ? window.KpssMathRender.solutionStoredDocumentHtml(chunk)
               : window.KpssMathRender.solutionDocumentHtml
-                ? window.KpssMathRender.solutionDocumentHtml(sol)
-                : window.KpssMathRender.examDocumentHtml(sol))
-          : stemToHtml(sol);
+                ? window.KpssMathRender.solutionDocumentHtml(chunk)
+                : window.KpssMathRender.examDocumentHtml(chunk)
+            : stemToHtml(chunk);
+        }
+        if (sol.indexOf(FIGURE_PLACEHOLDER) !== -1) {
+          solBody.innerHTML = textWithInlineFigure(
+            sol,
+            solutionSvgText,
+            renderSolutionChunk
+          ).html;
+        } else {
+          // Stem parity: [ŞEKİL] yoksa SVG metnin altında.
+          var solHtml = renderSolutionChunk(sol);
+          if (solutionSvgText && solutionSvgText.indexOf("<svg") !== -1) {
+            solHtml += inlineFigureHtml(solutionSvgText);
+          }
+          solBody.innerHTML = solHtml;
+        }
         solBody.setAttribute("data-initial-text", sol);
         solBody.removeAttribute("data-server-rendered");
         solBody.classList.remove("is-empty");
@@ -850,9 +921,15 @@
         reader.readAsDataURL(file);
       });
     }
-    var keepSolutionImage = document.querySelector('[name="keep_solution_image"]');
+    var keepSolutionImage = document.querySelector('[name="clear_solution_image"]');
     if (keepSolutionImage) {
-      keepSolutionImage.addEventListener("change", sync);
+      keepSolutionImage.addEventListener("change", function () {
+        var thumb = document.getElementById("solution-existing-thumb");
+        if (thumb) {
+          thumb.style.display = keepSolutionImage.checked ? "none" : "";
+        }
+        sync();
+      });
     }
 
     var stemInput = document.getElementById("stem-image-input");

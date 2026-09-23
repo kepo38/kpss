@@ -201,7 +201,7 @@ class _ProUpsellBodyState extends State<_ProUpsellBody>
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: Text(
-                      'Şimdilik geç',
+                      'Daha sonra',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
                         fontWeight: FontWeight.w600,

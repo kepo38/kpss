@@ -20,6 +20,7 @@ _PHASH_BITS = 64  # 8×8 DCT-based perceptual hash → 16-char hex
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _EDITOR_NOTE = re.compile(r"\(\s*not\s*:.*?\)", re.IGNORECASE | re.DOTALL)
 _MAP_PLACEHOLDER = re.compile(r"\[\s*harita\s*\]", re.IGNORECASE)
+_FIGURE_PLACEHOLDER = re.compile(r"\[\s*(?:şekil|sekil)\s*\]", re.IGNORECASE)
 _NEAR_STEM_RATIO = 0.68
 
 
@@ -29,6 +30,7 @@ def normalize_question_text(value: str) -> str:
     text = _EDITOR_NOTE.sub(" ", text)
     text = text.casefold().replace("\u0307", "")
     text = _MAP_PLACEHOLDER.sub(" ", text)
+    text = _FIGURE_PLACEHOLDER.sub(" ", text)
     # OCR / markdown gürültüsü
     text = re.sub(r"[*_`~#]+", "", text)
     text = re.sub(r"[^\w\sçğıöşüâîû]", " ", text, flags=re.UNICODE)

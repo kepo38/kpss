@@ -678,6 +678,31 @@ class QuestionFingerprintTests(TestCase):
         )
         self.assertEqual(without_map, with_map)
 
+    def test_figure_placeholder_does_not_change_fingerprint(self):
+        from content.question_fingerprint import content_fingerprint
+
+        base = "Asagidaki sekilde ABC ucgeni verilmistir."
+        without_fig = content_fingerprint(base, "A", "B", "C", "D", "E")
+        with_fig = content_fingerprint(
+            base + "\n\n[" + "ŞEKİL" + "]\n\n",
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+        )
+        with_ascii = content_fingerprint(
+            base + "\n\n[sekil]\n\n",
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+        )
+        self.assertEqual(without_fig, with_fig)
+        self.assertEqual(without_fig, with_ascii)
+
+
     def test_screenshot_text_matches_mapped_question(self):
         from content.question_fingerprint import (
             content_fingerprint,
@@ -1058,6 +1083,7 @@ class QuestionOsymSorduTests(TestCase):
         )
         data = QuestionSerializer(question).data
         self.assertTrue(data["osymSordu"])
+        self.assertEqual(data["osymSinav"], "2021 KPSS · Gizli etiket")
         self.assertNotIn("osym_cikmis_adi", data)
         self.assertNotIn("osymCikmisAdi", data)
 

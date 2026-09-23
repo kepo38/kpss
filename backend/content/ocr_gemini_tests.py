@@ -237,6 +237,7 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertEqual(result.options["A"], "10")
         self.assertEqual(result.options["C"], "14")
         self.assertIn("<svg", result.figure_svg)
+        self.assertEqual(result.solution, "")
         self.assertTrue(result.ok)
 
     @override_settings(GEMINI_API_KEY="test-key")
@@ -287,6 +288,7 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertNotIn("data:image", result.figure_svg)
         self.assertNotIn("<image", result.figure_svg.lower())
         self.assertNotRegex(result.figure_svg, r"(?i)ösym|osym")
+        self.assertEqual(result.solution, "")
         self.assertTrue(result.ok)
 
     @override_settings(GEMINI_API_KEY="test-key")
@@ -327,6 +329,7 @@ class GeminiJsonExtractTests(SimpleTestCase):
             result = ocr_question_image_gemini(b"fake-png-bytes")
         self.assertEqual(result.options["E"], "18")
         self.assertEqual(result.figure_svg, "")
+        self.assertEqual(result.solution, "")
         self.assertTrue(result.ok)
 
 
@@ -362,6 +365,31 @@ class OcrScoreTests(SimpleTestCase):
         self.assertTrue(_likely_geometry_question(stem, opts, stem))
         self.assertTrue(_likely_math_question(stem, opts, stem))
         self.assertTrue(_needs_gemini_fallback(stem, opts, stem))
+
+    def test_verbal_history_not_geometry_strip(self):
+        """Tarih / Yalnız I-II-III sorusu geometri sayılmamalı; çözüm silinmemeli."""
+        from content.ocr_gemini import strip_geometry_auto_solution
+
+        stem = (
+            "1929 yılında başlayan Büyük Buhran sonrası Türkiye'de "
+            "1930'lu yıllarda I. Takrir-i Sükûn Kanunu'nun çıkarılması, "
+            "II. Devletçilik uygulamasına geçilmesi, "
+            "III. Serbest Cumhuriyet Fırkasının kurulması "
+            "gelişmelerinden hangileri gerçekleşmiştir?"
+        )
+        opts = {
+            "A": "Yalnız I",
+            "B": "Yalnız II",
+            "C": "Yalnız III",
+            "D": "I ve II",
+            "E": "I, II ve III",
+        }
+        solution = "**II. Devletçilik:** 1930'larda uygulanmıştır."
+        self.assertFalse(_likely_geometry_question(stem, opts, stem))
+        self.assertEqual(
+            strip_geometry_auto_solution(stem, opts, "", solution),
+            solution,
+        )
 
     def test_good_latex_stem_scores_higher(self):
         stem = (
@@ -543,3 +571,79 @@ class OcrScoreTests(SimpleTestCase):
     @override_settings(GEMINI_API_KEY="test-key")
     def test_configured(self):
         self.assertTrue(gemini_configured())
+
+
+class GeminiDeadModelSkipTests(SimpleTestCase):
+    def test_dead_model_skipped_after_404(self):
+        from content import ocr_gemini as og
+
+        og._DEAD_GEMINI_MODELS.clear()
+        og._mark_dead_gemini_model(
+            "gemini-2.0-flash",
+            RuntimeError("Gemini HTTP 404: no longer available"),
+        )
+        self.assertIn("gemini-2.0-flash", og._DEAD_GEMINI_MODELS)
+        with override_settings(GEMINI_OCR_MODEL="gemini-2.0-flash"):
+            cands = og._model_candidates()
+        self.assertNotIn("gemini-2.0-flash", cands)
+        self.assertTrue(any("flash" in m for m in cands))
+        og._DEAD_GEMINI_MODELS.clear()
+
+
+class GeminiTransientRetryTests(SimpleTestCase):
+    def tearDown(self):
+        from content import ocr_gemini as og
+
+        og._DEAD_GEMINI_MODELS.clear()
+
+    def test_transient_503_retries_same_model(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._DEAD_GEMINI_MODELS.clear()
+        sleeps: list[float] = []
+        calls = {"n": 0}
+
+        def fake_post(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise RuntimeError('Gemini HTTP 503: UNAVAILABLE')
+            return '{"ok": true}'
+
+        with patch.object(og, "_post_gemini_model", side_effect=fake_post):
+            with patch.object(og.time, "sleep", side_effect=lambda s: sleeps.append(s)):
+                raw = og._post_gemini_model_with_retries(
+                    b"img", "image/png", "gemini-3.6-flash"
+                )
+        self.assertEqual(raw, '{"ok": true}')
+        self.assertEqual(calls["n"], 3)
+        self.assertEqual(sleeps, [1.5, 3.0])
+
+    def test_404_skips_without_sleep(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._DEAD_GEMINI_MODELS.clear()
+        sleeps: list[float] = []
+
+        def fake_post(*args, **kwargs):
+            err = RuntimeError(
+                'Gemini HTTP 404: {"error": {"code": 404, "message": "no longer available"}}'
+            )
+            og._mark_dead_gemini_model("gemini-2.5-flash", err)
+            raise err
+
+        with patch.object(og, "_post_gemini_model", side_effect=fake_post):
+            with patch.object(og.time, "sleep", side_effect=lambda s: sleeps.append(s)):
+                with self.assertRaises(RuntimeError):
+                    og._post_gemini_model_with_retries(
+                        b"img", "image/png", "gemini-2.5-flash"
+                    )
+        self.assertEqual(sleeps, [])
+        self.assertIn("gemini-2.5-flash", og._DEAD_GEMINI_MODELS)
+
+    def test_fallback_order_prefers_3_6(self):
+        from content import ocr_gemini as og
+
+        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[0], "gemini-3.6-flash")
+        self.assertNotIn("gemini-2.5-flash", og._GEMINI_MODEL_FALLBACKS)

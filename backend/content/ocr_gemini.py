@@ -8,10 +8,12 @@ import re
 import socket
 import urllib.error
 import urllib.request
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
+
 
 # Bu makinede IPv6 → Google zaman aşımına düşüyor; urllib önce AAAA deniyor
 # ve OCR "Fotoğraf alındı…" sonrası dakikalarca asılı kalıyordu.
@@ -49,21 +51,29 @@ from .ocr import (
     strip_option_emphasis,
 )
 from .ocr_diagnostics import attach_gemini_failure, attach_gemini_success, new_diagnostics
+from .svg_equality import repair_equality_ticks
 from .svg_sanitize import sanitize_figure_svg
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
-# Kota / 503 / 404 durumunda sırayla dene (ücretsiz katman)
+# Kota / 503 durumunda sırayla dene. Ölü (404) modeller _DEAD_GEMINI_MODELS ile
+# süreç boyunca atlanır — aksi halde her OCR 6×404 ile free-tier kotayı yakar.
 _GEMINI_MODEL_FALLBACKS = (
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash-8b",
+    "gemini-3.6-flash",
     "gemini-flash-latest",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
 )
+
+# 503 / UNAVAILABLE / 429: ayni modelde kisa backoff ile tekrar dene.
+_GEMINI_TRANSIENT_TOKENS = ("503", "UNAVAILABLE", "429")
+_GEMINI_SAME_MODEL_ATTEMPTS = 3
+_GEMINI_TRANSIENT_BACKOFFS = (1.5, 3.0)
+
+# Süreç içi: "no longer available" / "is not found" → bir daha deneme.
+_DEAD_GEMINI_MODELS: set[str] = set()
 
 _PROMPT = """Bu görselde bir KPSS çoktan seçmeli soru var.
 Görev: aşağıdaki JSON şablonunun tüm alanlarını doldur.
@@ -133,6 +143,7 @@ detayli_cozum:
 - Yön okları yalnızca → sembolü; sağında solunda boşluk bırak.
 
 Geometri sorusu ise:
+- detayli_cozum: BOŞ string yaz (""). Geometri çözüm metnini uydurma; panelde yazar çizer.
 - soru_metni: Şeklin yanındaki/altındaki verilen bilgiler + en sondaki soru cümlesi.
   Köşe harflerini (A, B, C…) soru_metnine serpiştirme; verilenler düzgün satırlar olsun.
   Örnek soru_metni:
@@ -176,6 +187,10 @@ Kurallar:
 - Fotoğrafı <image>, data:image veya harici href ile gömme (yasak).
 - ÖSYM / watermark / logo / filigran çizme veya yazma (yasak).
 - script, foreignObject, harici href kullanma.
+- Eşitlik (congruence) tick'leri: soru metnindeki |XY|=|ZW| çiftleriyle
+  birebir aynı sayıda tick kullan. Aynı eşitlik grubundaki kenarlarda tick
+  sayısı aynı olmalı; farklı gruplarda farklı tick sayısı kullan.
+  Emin değilsen freehand tick çizme (sonradan stem'den eklenecek).
 """
 
 _MARKDOWN_SOLUTION_RULES = """
@@ -388,6 +403,29 @@ def _post_process_gemini_payload(
     return stem, options
 
 
+def _is_geometry_ocr(
+    stem: str,
+    options: dict[str, str] | None,
+    figure_svg: str = "",
+) -> bool:
+    """Şekil SVG veya geometri ipuçları varsa çözüm metni otomatik üretilmez."""
+    if (figure_svg or "").strip():
+        return True
+    return _likely_geometry_question(stem, options or {}, stem)
+
+
+def strip_geometry_auto_solution(
+    stem: str,
+    options: dict[str, str] | None,
+    figure_svg: str,
+    solution: str,
+) -> str:
+    """Geometri OCR: panel yazarın çizmesi için çözüm metnini boş bırak."""
+    if _is_geometry_ocr(stem, options, figure_svg):
+        return ""
+    return solution or ""
+
+
 def gemini_configured() -> bool:
     return bool(getattr(settings, "GEMINI_API_KEY", ""))
 
@@ -530,7 +568,7 @@ def _fetch_geometry_solution_overlay(
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,
@@ -670,14 +708,72 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _model_candidates() -> list[str]:
     configured = (
-        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-flash-latest"
+        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.6-flash"
     ).strip()
     out: list[str] = []
     for model in (configured, *_GEMINI_MODEL_FALLBACKS):
-        if model and model not in out:
+        if model and model not in out and model not in _DEAD_GEMINI_MODELS:
             out.append(model)
     return out
 
+
+def _mark_dead_gemini_model(model: str, exc: BaseException) -> None:
+    """Kalıcı 404 modellerini süreç boyunca atla (kota yakmayı önler)."""
+    msg = str(exc)
+    if any(
+        token in msg
+        for token in (
+            "no longer available",
+            "is not found",
+            "NOT_FOUND",
+            '"code": 404',
+            "HTTP 404",
+        )
+    ):
+        _DEAD_GEMINI_MODELS.add(model)
+
+
+
+
+def _is_transient_gemini_error(exc: BaseException) -> bool:
+    msg = str(exc)
+    return any(token in msg for token in _GEMINI_TRANSIENT_TOKENS)
+
+
+def _post_gemini_model_with_retries(
+    image_bytes: bytes,
+    mime: str,
+    model: str,
+    prompt: str = _PROMPT,
+    *,
+    timeout: int = 45,
+    json_mode: bool = True,
+) -> str:
+    """Ayni modelde 503/429 icin backoff; 404'te uyumadan bir sonraki modele birak."""
+    last_err: Exception | None = None
+    for attempt in range(_GEMINI_SAME_MODEL_ATTEMPTS):
+        try:
+            return _post_gemini_model(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=timeout,
+                json_mode=json_mode,
+            )
+        except RuntimeError as exc:
+            last_err = exc
+            # 404 / dead: hemen cik (uyuma)
+            if model in _DEAD_GEMINI_MODELS or not _is_transient_gemini_error(exc):
+                raise
+            if attempt >= _GEMINI_SAME_MODEL_ATTEMPTS - 1:
+                raise
+            delay = _GEMINI_TRANSIENT_BACKOFFS[
+                min(attempt, len(_GEMINI_TRANSIENT_BACKOFFS) - 1)
+            ]
+            time.sleep(delay)
+    assert last_err is not None
+    raise last_err
 
 def _post_gemini_model(
     image_bytes: bytes,
@@ -721,7 +817,9 @@ def _post_gemini_model(
             payload = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini HTTP {exc.code}: {detail[:400]}") from exc
+        err = RuntimeError(f"Gemini HTTP {exc.code}: {detail[:400]}")
+        _mark_dead_gemini_model(model, err)
+        raise err from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Gemini bağlantı hatası: {exc.reason}") from exc
 
@@ -776,7 +874,7 @@ def _post_gemini(
     prompt = _ocr_prompt_with_panel_catalog()
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes, mime, model, prompt, timeout=45, json_mode=True
             )
             data = _extract_json(raw)
@@ -844,7 +942,7 @@ def gemini_supplement_answer_solution(
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,
@@ -906,7 +1004,7 @@ def _fetch_geometry_svg(image_bytes: bytes, mime: str) -> str:
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,
@@ -995,26 +1093,13 @@ def ocr_question_image_gemini(
     if not figure_svg and _likely_geometry_question(stem, options, stem):
         figure_svg = _fetch_geometry_svg(image_bytes, mime)
 
+    if figure_svg and stem:
+        figure_svg = repair_equality_ticks(figure_svg, stem)
+
+    # Geometri: çözüm metni / overlay annotasyon PNG üretme (yazar panelde çizer).
     geometry_annotations: list[dict[str, Any]] = []
     annotated_image_bytes: bytes | None = None
-    if _likely_geometry_question(stem, options, stem):
-        overlay_solution, geometry_annotations = _fetch_geometry_solution_overlay(
-            image_bytes,
-            mime,
-            stem=stem,
-            options=options,
-        )
-        if overlay_solution and (
-            not solution or len(overlay_solution) >= len(solution)
-        ):
-            solution = overlay_solution
-        if geometry_annotations:
-            from .geometry_overlay_renderer import render_geometry_annotations
-
-            annotated_image_bytes = render_geometry_annotations(
-                image_bytes,
-                geometry_annotations,
-            )
+    solution = strip_geometry_auto_solution(stem, options, figure_svg, solution)
 
     options_visual = _payload_options_visual(data)
     from .option_image_crop import (

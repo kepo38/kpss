@@ -44,6 +44,9 @@ class QuestionSerializer(serializers.ModelSerializer):
     imageUrl = serializers.SerializerMethodField()
     stemImagePosition = serializers.CharField(source="stem_image_position")
     sekilKodu = serializers.CharField(source="figure_svg", allow_blank=True)
+    sekilKoduCozum = serializers.CharField(
+        source="solution_figure_svg", allow_blank=True
+    )
     siklar = serializers.SerializerMethodField()
     optionsAreImages = serializers.BooleanField(source="options_are_images")
     optionImageUrls = serializers.SerializerMethodField()
@@ -53,6 +56,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     cozumImageUrl = serializers.SerializerMethodField()
     guncellenmeTarihi = serializers.DateTimeField(source="updated_at")
     osymSordu = serializers.BooleanField(source="osym_sordu")
+    osymSinav = serializers.CharField(source="osym_cikmis_adi", allow_blank=True)
     difficulty = serializers.CharField()
     attemptCount = serializers.IntegerField(source="attempt_count")
     viewCount = serializers.IntegerField(source="view_count", read_only=True)
@@ -77,6 +81,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "imageUrl",
             "stemImagePosition",
             "sekilKodu",
+            "sekilKoduCozum",
             "siklar",
             "optionsAreImages",
             "optionImageUrls",
@@ -86,6 +91,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             "cozumImageUrl",
             "guncellenmeTarihi",
             "osymSordu",
+            "osymSinav",
             "difficulty",
             "attemptCount",
             "viewCount",

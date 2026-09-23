@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -15,11 +16,14 @@ class OsymBadge extends StatelessWidget {
 
   final double height;
   final OsymBadgeVariant variant;
+  /// Dokununca 2 sn görünen sınav adı (ör. 2025 KPSS).
+  final String? examLabel;
 
   const OsymBadge({
     super.key,
     required this.height,
     this.variant = OsymBadgeVariant.standard,
+    this.examLabel,
   });
 
   @override
@@ -56,9 +60,103 @@ class OsymBadge extends StatelessWidget {
         ),
     };
 
+    final label = (examLabel ?? '').trim();
     return Semantics(
-      label: 'ÖSYM sordu',
-      child: badge,
+      label: label.isEmpty ? 'ÖSYM sordu' : 'ÖSYM sordu, $label',
+      button: label.isNotEmpty,
+      child: label.isEmpty ? badge : _OsymExamHint(label: label, child: badge),
+    );
+  }
+}
+
+class _OsymExamHint extends StatefulWidget {
+  final String label;
+  final Widget child;
+
+  const _OsymExamHint({required this.label, required this.child});
+
+  @override
+  State<_OsymExamHint> createState() => _OsymExamHintState();
+}
+
+class _OsymExamHintState extends State<_OsymExamHint> {
+  OverlayEntry? _entry;
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _entry?.remove();
+    _entry = null;
+    super.dispose();
+  }
+
+  void _hide() {
+    _timer?.cancel();
+    _timer = null;
+    _entry?.remove();
+    _entry = null;
+  }
+
+  void _show() {
+    _hide();
+    final box = context.findRenderObject() as RenderBox?;
+    final overlay = Overlay.maybeOf(context);
+    if (box == null || !box.hasSize || overlay == null) return;
+    final origin = box.localToGlobal(Offset.zero);
+    final size = box.size;
+    _entry = OverlayEntry(
+      builder: (context) {
+        final screen = MediaQuery.sizeOf(context).width;
+        final maxW = math.min(260.0, screen - 24);
+        var left = origin.dx + size.width / 2 - maxW / 2;
+        left = left.clamp(12.0, screen - maxW - 12);
+        return Positioned(
+          left: left,
+          top: origin.dy + size.height + 6,
+          width: maxW,
+          child: IgnorePointer(
+            child: Material(
+              color: Colors.transparent,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xF01A140C),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppTheme.champagne.withValues(alpha: 0.55),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    widget.label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppTheme.champagneLight,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    overlay.insert(_entry!);
+    _timer = Timer(const Duration(seconds: 2), () {
+      if (mounted) _hide();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _show,
+      behavior: HitTestBehavior.opaque,
+      child: widget.child,
     );
   }
 }

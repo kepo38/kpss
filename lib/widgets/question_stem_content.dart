@@ -8,9 +8,10 @@ import 'cached_remote_image.dart';
 import 'formatted_text.dart';
 import 'watermark_widget.dart';
 
-/// Soru kökünde `[HARITA]` ile görseli metnin ortasına yerleştirir.
+/// Soru kökünde `[HARITA]` / `[ŞEKİL]` ile görseli metnin ortasına yerleştirir.
 class QuestionStemContent extends StatelessWidget {
   static const inlineImagePlaceholder = '[HARITA]';
+  static const inlineFigurePlaceholder = '[ŞEKİL]';
 
   final String stem;
   final String? imageUrl;
@@ -36,11 +37,16 @@ class QuestionStemContent extends StatelessWidget {
     return stem.contains(inlineImagePlaceholder);
   }
 
+  static bool hasInlineFigure(String text) {
+    return text.contains(inlineFigurePlaceholder);
+  }
+
   /// Liste önizlemelerinde yer tutucuyu ve biçim işaretlerini gizler.
   static String previewText(String stem) {
     return FormattedText.stripMarkup(
       OptionColumnLayout.visibleStem(stem)
           .replaceAll(inlineImagePlaceholder, ' ')
+          .replaceAll(inlineFigurePlaceholder, ' ')
           .replaceAll(RegExp(r'[ \t]+\n'), '\n')
           .replaceAll(RegExp(r'\n{3,}'), '\n\n')
           .trim(),
@@ -63,21 +69,83 @@ class QuestionStemContent extends StatelessWidget {
 
   bool get _imageAbove => stemImagePosition == 'above';
 
+  /// Bir metin parçasını `[HARITA]` ile (varsa) böler.
+  List<Widget> _widgetsForTextChunk(String chunk) {
+    final parts = chunk.split(inlineImagePlaceholder);
+    final inlineMap = _hasImage && parts.length > 1;
+    final out = <Widget>[];
+
+    if (!inlineMap) {
+      final trimmed = chunk.trim();
+      if (trimmed.isNotEmpty) {
+        out.add(_stemText(trimmed));
+      }
+      return out;
+    }
+
+    for (var i = 0; i < parts.length; i++) {
+      final text = parts[i].trim();
+      if (text.isNotEmpty) {
+        if (out.isNotEmpty) {
+          out.add(const SizedBox(height: 12));
+        }
+        out.add(_stemText(text));
+      }
+      if (i < parts.length - 1) {
+        if (out.isNotEmpty) {
+          out.add(const SizedBox(height: 16));
+        }
+        out.add(_QuestionImage(url: imageUrl!));
+        out.add(const SizedBox(height: 16));
+      }
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final parts = stem.split(inlineImagePlaceholder);
-    final inline = _hasImage && parts.length > 1;
+    final figureParts = stem.split(inlineFigurePlaceholder);
+    final inlineFigure = _hasSvg && figureParts.length > 1;
 
-    if (!inline) {
+    if (inlineFigure) {
+      final children = <Widget>[];
+      for (var i = 0; i < figureParts.length; i++) {
+        final chunkWidgets = _widgetsForTextChunk(figureParts[i]);
+        if (chunkWidgets.isNotEmpty) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(height: 12));
+          }
+          children.addAll(chunkWidgets);
+        }
+        if (i < figureParts.length - 1) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(height: 16));
+          }
+          children.add(QuestionSvgFigure(svg: sekilKodu!));
+          children.add(const SizedBox(height: 16));
+        }
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      );
+    }
+
+    final mapParts = stem.split(inlineImagePlaceholder);
+    final inlineMap = _hasImage && mapParts.length > 1;
+    final showSvgBelow =
+        _hasSvg && !stem.contains(inlineFigurePlaceholder);
+
+    if (!inlineMap) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_imageAbove && _hasImage) _QuestionImage(url: imageUrl!),
           if (_imageAbove && _hasImage) const SizedBox(height: 16),
           _stemText(stem),
-          if (_hasSvg) ...[
+          if (showSvgBelow) ...[
             const SizedBox(height: 16),
-            _QuestionSvgFigure(svg: sekilKodu!),
+            QuestionSvgFigure(svg: sekilKodu!),
           ] else if (!_imageAbove && _hasImage) ...[
             const SizedBox(height: 16),
             _QuestionImage(url: imageUrl!),
@@ -87,21 +155,25 @@ class QuestionStemContent extends StatelessWidget {
     }
 
     final children = <Widget>[];
-    for (var i = 0; i < parts.length; i++) {
-      final chunk = parts[i].trim();
+    for (var i = 0; i < mapParts.length; i++) {
+      final chunk = mapParts[i].trim();
       if (chunk.isNotEmpty) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(height: 12));
         }
         children.add(_stemText(chunk));
       }
-      if (i < parts.length - 1) {
+      if (i < mapParts.length - 1) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(height: 16));
         }
         children.add(_QuestionImage(url: imageUrl!));
         children.add(const SizedBox(height: 16));
       }
+    }
+    if (showSvgBelow) {
+      children.add(const SizedBox(height: 16));
+      children.add(QuestionSvgFigure(svg: sekilKodu!));
     }
 
     return Column(
@@ -111,10 +183,11 @@ class QuestionStemContent extends StatelessWidget {
   }
 }
 
-class _QuestionSvgFigure extends StatelessWidget {
+/// Geometri SVG şekli (soru kökü veya çözüm içinde).
+class QuestionSvgFigure extends StatelessWidget {
   final String svg;
 
-  const _QuestionSvgFigure({required this.svg});
+  const QuestionSvgFigure({super.key, required this.svg});
 
   @override
   Widget build(BuildContext context) {

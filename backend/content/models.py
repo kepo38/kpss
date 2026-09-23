@@ -186,6 +186,11 @@ class Question(models.Model):
         verbose_name="Şekil kodu (SVG)",
         help_text="Geometri soruları için SVG çizim kodu.",
     )
+    solution_figure_svg = models.TextField(
+        blank=True,
+        verbose_name="Çözüm şekil kodu (SVG)",
+        help_text="Çözüm için işaretli geometri SVG’si (soru şekli + çözüm çizimleri).",
+    )
     map_template = models.CharField(
         max_length=64,
         blank=True,

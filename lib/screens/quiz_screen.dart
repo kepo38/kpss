@@ -1177,11 +1177,24 @@ class _QuizScreenState extends State<QuizScreen>
             const SizedBox(height: 16),
           ],
           QuestionStemPanel(
-            child: QuestionStemContent(
-              stem: _currentQuestion.soruMetni,
-              imageUrl: _currentQuestion.imageUrl,
-              stemImagePosition: _currentQuestion.stemImagePosition,
-              sekilKodu: _currentQuestion.sekilKodu,
+            child: Builder(
+              builder: (context) {
+                final stem = _currentQuestion.soruMetni;
+                final sol = _currentQuestion.cozumMetni;
+                final svg = _currentQuestion.sekilKodu;
+                final stemSvg = (svg != null &&
+                        svg.isNotEmpty &&
+                        sol.contains('[ŞEKİL]') &&
+                        !stem.contains('[ŞEKİL]'))
+                    ? null
+                    : svg;
+                return QuestionStemContent(
+                  stem: stem,
+                  imageUrl: _currentQuestion.imageUrl,
+                  stemImagePosition: _currentQuestion.stemImagePosition,
+                  sekilKodu: stemSvg,
+                );
+              },
             ),
           ),
           const SizedBox(height: 20),
@@ -2521,6 +2534,9 @@ class _QuizScreenState extends State<QuizScreen>
                       // TG denemede havuz sorularının ÖSYM damgası gösterilmez.
                       osymSordu:
                           !widget.tgExamMode && _currentQuestion.osymSordu,
+                      osymSinav: widget.tgExamMode
+                          ? ''
+                          : _currentQuestion.osymSinav,
                       durationText: _formatDuration(duration),
                       isCountdown: _isCountdown,
                       urgent: urgent,
@@ -3022,6 +3038,7 @@ class _SolutionPanel extends StatelessWidget {
             ExamSolutionBlock(
               text: question.cozumMetni,
               imageUrl: question.cozumImageUrl,
+              sekilKodu: question.effectiveSolutionSekilKodu,
             )
           else if (!parts.hasLockedRemainder) ...[
             // Kısa çözümlerde de kota sonrası reklam zorunlu — tam metin sızmaz.
@@ -3036,6 +3053,7 @@ class _SolutionPanel extends StatelessWidget {
                       child: ExamSolutionBlock(
                         text: question.cozumMetni,
                         imageUrl: question.cozumImageUrl,
+                        sekilKodu: question.effectiveSolutionSekilKodu,
                       ),
                     ),
                   ),
@@ -3083,6 +3101,7 @@ class _SolutionPanel extends StatelessWidget {
             ExamSolutionBlock(
               text: parts.preview,
               imageUrl: question.cozumImageUrl,
+              sekilKodu: question.effectiveSolutionSekilKodu,
             ),
             const SizedBox(height: 14),
             ClipRRect(
@@ -3095,6 +3114,7 @@ class _SolutionPanel extends StatelessWidget {
                       opacity: 0.55,
                       child: ExamSolutionBlock(
                         text: parts.remainder,
+                        sekilKodu: question.effectiveSolutionSekilKodu,
                       ),
                     ),
                   ),

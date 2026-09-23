@@ -48,7 +48,7 @@ from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
 from .ocr_gemini import gemini_configured, ocr_question_image_gemini
 from .ocr_ingest import (
-    coalesce_ocr_options,
+    finalize_ocr_options_for_panel,
     normalize_correct_option,
     _option_is_corrupt,
     _run_ocr,
@@ -61,6 +61,7 @@ from .ocr_ingest import (
 )
 from .topic_classifier import classify_topic_from_ocr
 from .ocr_diagnostics import compose_error_message, log_ocr_event
+from .svg_equality import repair_equality_ticks
 from .svg_sanitize import sanitize_figure_svg
 from .push import firebase_ready, send_announcement_push
 from .question_fingerprint import (
@@ -392,6 +393,27 @@ def _discard_solution_image(question: Question) -> None:
     except Exception:  # noqa: BLE001
         pass
     question.solution_image = None
+
+
+def _is_geometry_solution_overlay(question: Question) -> bool:
+    """OCR/Gemini `solution_overlay_*` annotasyon PNG'si mi?"""
+    name = (getattr(question.solution_image, "name", None) or "").replace(
+        "\\", "/"
+    )
+    return "solution_overlay_" in name.split("/")[-1]
+
+
+def _discard_stale_geometry_solution_overlay(
+    question: Question, *, figure_svg: str
+) -> None:
+    """Vektör şekil varken eski annotasyon PNG soru/çözüm şeklini bozar — sil."""
+    if not (figure_svg or "").strip():
+        return
+    if not question.solution_image:
+        return
+    if not _is_geometry_solution_overlay(question):
+        return
+    _discard_solution_image(question)
 
 
 def _sanitize_figure_svg(raw: str) -> str:
@@ -1273,10 +1295,19 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
             charset="utf-8",
         )
 
-    stem_out, opts = coalesce_ocr_options(
+    stem_out, opts, options_corrupt = finalize_ocr_options_for_panel(
         result.stem or "",
         result.options or {},
         result.raw_text or "",
+    )
+    from .ocr_gemini import strip_geometry_auto_solution
+
+    figure_out = _sanitize_figure_svg(getattr(result, "figure_svg", "") or "")
+    solution_out = strip_geometry_auto_solution(
+        stem_out,
+        opts,
+        figure_out,
+        getattr(result, "solution", "") or "",
     )
     c_hash = content_fingerprint(
         stem_out,
@@ -1344,18 +1375,15 @@ def panel_ocr_question(request: HttpRequest) -> HttpResponse:
         "ok": result.ok,
         "stem": stem_out,
         "options": opts,
+        "options_corrupt": options_corrupt,
         "soru_metni": stem_out,
         "siklar": opts,
-        "sekil_kodu": _sanitize_figure_svg(
-            getattr(result, "figure_svg", "") or ""
-        ),
-        "figure_svg": _sanitize_figure_svg(
-            getattr(result, "figure_svg", "") or ""
-        ),
+        "sekil_kodu": figure_out,
+        "figure_svg": figure_out,
         "dogru_cevap": getattr(result, "correct_option", "") or "",
         "correct_option": getattr(result, "correct_option", "") or "",
-        "detayli_cozum": getattr(result, "solution", "") or "",
-        "solution": getattr(result, "solution", "") or "",
+        "detayli_cozum": solution_out,
+        "solution": solution_out,
         "raw_text": result.raw_text,
         "error": result.error,
         "engine": getattr(result, "engine", "tesseract"),
@@ -2128,7 +2156,12 @@ def panel_question_edit(
         figure_svg = _sanitize_figure_svg(
             request.POST.get("figure_svg", "")
         )
+        if figure_svg and stem:
+            figure_svg = repair_equality_ticks(figure_svg, stem)
         question.figure_svg = figure_svg
+        question.solution_figure_svg = _sanitize_figure_svg(
+            request.POST.get("solution_figure_svg", "")
+        )
 
         image_hash = (request.POST.get("source_image_hash") or "").strip()
         image_phash_val = (request.POST.get("source_image_phash") or "").strip()
@@ -2205,7 +2238,6 @@ def panel_question_edit(
                 _discard_question_image(question)
 
         solution_image = request.FILES.get("solution_image")
-        keep_solution_image = request.POST.get("keep_solution_image") == "1"
         if solution_image:
             _discard_solution_image(question)
             question.solution_image.save(
@@ -2213,8 +2245,13 @@ def panel_question_edit(
                 solution_image,
                 save=False,
             )
-        elif not keep_solution_image:
+        elif request.POST.get("clear_solution_image") == "1":
             _discard_solution_image(question)
+        else:
+            # figure_svg güncellenince eski OCR overlay PNG'si uyumsuz kalır.
+            _discard_stale_geometry_solution_overlay(
+                question, figure_svg=figure_svg
+            )
 
         _apply_option_images_from_request(question, request)
         _apply_question_scenario(question, target_topic, request.POST)
@@ -2463,6 +2500,7 @@ def panel_question_copy(
         stem=source.stem,
         stem_image_position=source.stem_image_position,
         figure_svg=source.figure_svg,
+        solution_figure_svg=source.solution_figure_svg,
         map_template=source.map_template,
         map_markers=list(source.map_markers or []),
         option_a=source.option_a,

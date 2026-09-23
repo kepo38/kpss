@@ -274,3 +274,148 @@ class FigureSvgPanelTests(TestCase):
         )
         data = QuestionSerializer(question).data
         self.assertIn("<svg", data["sekilKodu"])
+
+    def test_panel_save_stores_solution_figure_svg(self):
+        self.client.force_login(self.staff)
+        marked = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160" '
+            'data-geo-editor="1" data-geo-role="solution">'
+            '<g data-geo-layer="base">'
+            '<polygon points="20,140 180,140 20,20" fill="none" stroke="black"/>'
+            "</g>"
+            '<g data-geo-layer="overlay">'
+            '<circle cx="40" cy="40" r="8" fill="none" stroke="red"/>'
+            "</g>"
+            "</svg>"
+        )
+        response = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._payload(
+                figure_svg=TRIANGLE,
+                solution_figure_svg=marked,
+                solution="Çözüm [ŞEKİL]",
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        question = Question.objects.get()
+        self.assertIn("<svg", question.figure_svg)
+        self.assertIn("data-geo-role", question.solution_figure_svg)
+        self.assertIn("overlay", question.solution_figure_svg)
+
+    def test_serializer_exposes_sekil_kodu_cozum(self):
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_svg_sol",
+            stem="Geometri",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            figure_svg=TRIANGLE,
+            solution_figure_svg=TRIANGLE.replace("<svg", '<svg data-geo-role="solution"', 1),
+        )
+        data = QuestionSerializer(question).data
+        self.assertIn("<svg", data["sekilKodu"])
+        self.assertIn("data-geo-role", data["sekilKoduCozum"])
+
+    def test_clear_solution_image_discards_existing(self):
+        self.client.force_login(self.staff)
+        buf = BytesIO()
+        Image.new("RGB", (10, 10), "green").save(buf, format="PNG")
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_sol_img",
+            stem="Çözüm görseli",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=True,
+        )
+        question.solution_image.save(
+            "sol.png",
+            SimpleUploadedFile("sol.png", buf.getvalue(), content_type="image/png"),
+            save=True,
+        )
+        self.assertTrue(bool(question.solution_image))
+        response = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{question.id}/",
+            self._payload(
+                stem="Çözüm görseli",
+                clear_solution_image="1",
+                is_published="on",
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        question.refresh_from_db()
+        self.assertFalse(bool(question.solution_image))
+
+    def test_solution_image_untouched_without_clear(self):
+        self.client.force_login(self.staff)
+        buf = BytesIO()
+        Image.new("RGB", (10, 10), "red").save(buf, format="PNG")
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_sol_keep",
+            stem="Koru çözüm",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            is_published=True,
+        )
+        question.solution_image.save(
+            "keep_sol.png",
+            SimpleUploadedFile("keep_sol.png", buf.getvalue(), content_type="image/png"),
+            save=True,
+        )
+        response = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{question.id}/",
+            self._payload(stem="Koru çözüm", is_published="on"),
+        )
+        self.assertEqual(response.status_code, 302)
+        question.refresh_from_db()
+        self.assertTrue(bool(question.solution_image))
+
+    def test_geometry_overlay_discarded_when_figure_svg_saved(self):
+        """Eski OCR solution_overlay_*, figure_svg varken kaydetmede silinir."""
+        self.client.force_login(self.staff)
+        buf = BytesIO()
+        Image.new("RGB", (10, 10), "blue").save(buf, format="PNG")
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_sol_overlay",
+            stem="$|AD| = |DC|$\n$|DB| = |DE|$",
+            option_a="A",
+            option_b="B",
+            option_c="C",
+            option_d="D",
+            option_e="E",
+            figure_svg=TRIANGLE,
+            is_published=True,
+        )
+        question.solution_image.save(
+            "solution_overlay_q_sol_overlay.png",
+            SimpleUploadedFile(
+                "solution_overlay_q_sol_overlay.png",
+                buf.getvalue(),
+                content_type="image/png",
+            ),
+            save=True,
+        )
+        self.assertTrue(bool(question.solution_image))
+        response = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{question.id}/",
+            self._payload(
+                stem=question.stem,
+                figure_svg=TRIANGLE,
+                is_published="on",
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        question.refresh_from_db()
+        self.assertFalse(bool(question.solution_image))
+        self.assertTrue(bool(question.figure_svg))

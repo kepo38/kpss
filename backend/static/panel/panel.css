@@ -1113,6 +1113,34 @@ h2 {
   background: #f8fafc;
   border: 1px solid rgba(255,255,255,0.1);
 }
+.quiz-mock-svg-inline {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 12px 0;
+  padding: 8px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(255,255,255,0.12);
+  overflow: hidden;
+}
+.quiz-mock-svg-inline svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 180px;
+}
+.quiz-mock-svg-inline.quiz-mock-img-slot {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(12, 20, 36, 0.45);
+  font-size: 13px;
+  font-weight: 600;
+  background: #f8fafc;
+}
 .quiz-mock-opts-label {
   font-size: 10px;
   letter-spacing: 0.12em;

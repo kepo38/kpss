@@ -8,6 +8,8 @@ class QuestionModel {
   /// `above` | `below` — soru görselinin metne göre konumu.
   final String stemImagePosition;
   final String? sekilKodu;
+  /// Çözüm [ŞEKİL] için işaretli SVG (`sekilKoduCozum`). Boşsa `sekilKodu` kullanılır.
+  final String? solutionSekilKodu;
   final Map<String, String> siklar;
   final bool optionsAreImages;
   final Map<String, String?> optionImageUrls;
@@ -18,6 +20,8 @@ class QuestionModel {
   final int hataBildirimSayisi;
   final DateTime guncellenmeTarihi;
   final bool osymSordu;
+  /// Paneldeki çıkmış sınav etiketi (ör. 2025 KPSS). Rozete dokununca gösterilir.
+  final String osymSinav;
   final String difficulty;
   final int attemptCount;
   final int viewCount;
@@ -38,6 +42,7 @@ class QuestionModel {
     this.imageUrl,
     this.stemImagePosition = 'below',
     this.sekilKodu,
+    this.solutionSekilKodu,
     required this.siklar,
     this.optionsAreImages = false,
     this.optionImageUrls = const {},
@@ -48,6 +53,7 @@ class QuestionModel {
     this.hataBildirimSayisi = 0,
     required this.guncellenmeTarihi,
     this.osymSordu = false,
+    this.osymSinav = '',
     this.difficulty = 'medium',
     this.attemptCount = 0,
     this.viewCount = 0,
@@ -70,6 +76,15 @@ class QuestionModel {
   bool get hasVisualOptions =>
       optionsAreImages &&
       optionImageUrls.values.any((u) => u != null && u.trim().isNotEmpty);
+
+  /// Çözüm metnindeki [ŞEKİL] için SVG: çözüm çizimi varsa o, yoksa soru şekli.
+  String? get effectiveSolutionSekilKodu {
+    final solution = solutionSekilKodu?.trim();
+    if (solution != null && solution.isNotEmpty) return solution;
+    final stem = sekilKodu?.trim();
+    if (stem != null && stem.isNotEmpty) return stem;
+    return null;
+  }
 
   static bool _keepDisplayMathDelimiters(String inner) {
     final t = inner.trim();
@@ -120,6 +135,9 @@ class QuestionModel {
 
   factory QuestionModel.fromJson(Map<String, dynamic> json) {
     final rawSvg = (json['sekilKodu'] as String?)?.trim();
+    final rawSolutionSvg =
+        ((json['sekilKoduCozum'] as String?) ?? (json['solutionSekilKodu'] as String?))
+            ?.trim();
     final rawStem = (json['soruMetni'] as String? ?? '');
     final rawOptions = Map<String, String>.from(json['siklar'] as Map);
     final normalizedOptions = {
@@ -160,6 +178,8 @@ class QuestionModel {
       imageUrl: json['imageUrl'] as String?,
       stemImagePosition: _parseStemImagePosition(json),
       sekilKodu: (rawSvg == null || rawSvg.isEmpty) ? null : rawSvg,
+      solutionSekilKodu:
+          (rawSolutionSvg == null || rawSolutionSvg.isEmpty) ? null : rawSolutionSvg,
       siklar: normalizedOptions,
       optionsAreImages: json['optionsAreImages'] as bool? ??
           json['options_are_images'] as bool? ??
@@ -174,6 +194,7 @@ class QuestionModel {
       hataBildirimSayisi: json['hataBildirimSayisi'] as int? ?? 0,
       guncellenmeTarihi: DateTime.parse(json['guncellenmeTarihi'] as String),
       osymSordu: json['osymSordu'] as bool? ?? false,
+      osymSinav: (json['osymSinav'] as String? ?? '').trim(),
       difficulty: json['difficulty'] as String? ?? 'medium',
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
@@ -199,6 +220,7 @@ class QuestionModel {
         'imageUrl': imageUrl,
         'stemImagePosition': stemImagePosition,
         'sekilKodu': sekilKodu,
+        'sekilKoduCozum': solutionSekilKodu,
         'siklar': siklar,
         'optionsAreImages': optionsAreImages,
         'optionImageUrls': optionImageUrls,
@@ -209,6 +231,7 @@ class QuestionModel {
         'hataBildirimSayisi': hataBildirimSayisi,
         'guncellenmeTarihi': guncellenmeTarihi.toIso8601String(),
         'osymSordu': osymSordu,
+        'osymSinav': osymSinav,
         'difficulty': difficulty,
         'attemptCount': attemptCount,
         'viewCount': viewCount,
@@ -230,6 +253,7 @@ class QuestionModel {
     String? imageUrl,
     String? stemImagePosition,
     String? sekilKodu,
+    String? solutionSekilKodu,
     Map<String, String>? siklar,
     bool? optionsAreImages,
     Map<String, String?>? optionImageUrls,
@@ -240,6 +264,7 @@ class QuestionModel {
     int? hataBildirimSayisi,
     DateTime? guncellenmeTarihi,
     bool? osymSordu,
+    String? osymSinav,
     String? difficulty,
     int? attemptCount,
     int? viewCount,
@@ -260,6 +285,7 @@ class QuestionModel {
       imageUrl: imageUrl ?? this.imageUrl,
       stemImagePosition: stemImagePosition ?? this.stemImagePosition,
       sekilKodu: sekilKodu ?? this.sekilKodu,
+      solutionSekilKodu: solutionSekilKodu ?? this.solutionSekilKodu,
       siklar: siklar ?? this.siklar,
       optionsAreImages: optionsAreImages ?? this.optionsAreImages,
       optionImageUrls: optionImageUrls ?? this.optionImageUrls,
@@ -270,6 +296,7 @@ class QuestionModel {
       hataBildirimSayisi: hataBildirimSayisi ?? this.hataBildirimSayisi,
       guncellenmeTarihi: guncellenmeTarihi ?? this.guncellenmeTarihi,
       osymSordu: osymSordu ?? this.osymSordu,
+      osymSinav: osymSinav ?? this.osymSinav,
       difficulty: difficulty ?? this.difficulty,
       attemptCount: attemptCount ?? this.attemptCount,
       viewCount: viewCount ?? this.viewCount,

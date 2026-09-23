@@ -429,7 +429,12 @@ class _BankBody extends StatelessWidget {
             QuestionStemContent(
               stem: question.soruMetni,
               imageUrl: question.imageUrl,
-              sekilKodu: question.sekilKodu,
+              sekilKodu: (question.sekilKodu != null &&
+                      question.sekilKodu!.isNotEmpty &&
+                      question.cozumMetni.contains('[ŞEKİL]') &&
+                      !question.soruMetni.contains('[ŞEKİL]'))
+                  ? null
+                  : question.sekilKodu,
               watermarkOnText: false,
               style: ExamTypography.body(
                 color: Colors.white.withValues(alpha: 0.97),

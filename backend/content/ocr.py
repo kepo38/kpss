@@ -643,7 +643,153 @@ def _clean_option_body(text: str) -> str:
         roman = _normalize_roman_token(text)
         if roman:
             return roman
-    return text.strip()
+    repaired = repair_premise_option(text)
+    return repaired.strip()
+
+
+# Öncüllü şıklar: Tesseract "Yalnız lI", "İvelil", "1, İl ve lll" üretir.
+# İşaret satırındaki lil→III eşlemesi burada kullanılmaz (II sıkça "lil" okunur).
+_PREMISE_ROMAN = {
+    "i": "I",
+    "l": "I",
+    "1": "I",
+    "|": "I",
+    "ii": "II",
+    "li": "II",
+    "il": "II",
+    "ll": "II",
+    "lil": "II",
+    "iii": "III",
+    "lll": "III",
+    "lli": "III",
+    "lili": "III",
+    "ili": "III",
+    "iv": "IV",
+    "v": "V",
+    "vi": "VI",
+}
+
+
+def _premise_fold(raw: str) -> str:
+    s = (raw or "").strip().strip(".,;:")
+    s = s.replace("İ", "I").replace("ı", "i").replace("|", "I")
+    return s.lower()
+
+
+def _premise_roman_token(raw: str) -> str | None:
+    key = _premise_fold(raw).replace(" ", "")
+    if not key or not re.fullmatch(r"[ilvxl1]+", key):
+        return None
+    return _PREMISE_ROMAN.get(key)
+
+
+def repair_premise_option(text: str) -> str:
+    """Yalnız / I ve II / I, II ve III OCR çöpünü kanonik öncül şıkkına çevir."""
+    raw = (text or "").strip()
+    if not raw:
+        return raw
+    folded = _premise_fold(raw)
+    yalniz = re.match(r"^yaln[iı]z\s*(.*)$", folded, re.IGNORECASE)
+    if yalniz:
+        roman = _premise_roman_token(yalniz.group(1) or "")
+        if roman:
+            return f"Yalnız {roman}"
+        return raw
+
+    pieces = re.split(r"\s*,\s*|\s+ve\s+|ve", folded, flags=re.IGNORECASE)
+    pieces = [p.strip(" .,;") for p in pieces if p and p.strip(" .,;")]
+    if len(pieces) < 2:
+        return raw
+    romans: list[str] = []
+    for piece in pieces:
+        roman = _premise_roman_token(piece)
+        if not roman:
+            return raw
+        romans.append(roman)
+    if "," in raw or len(romans) >= 3:
+        return ", ".join(romans[:-1]) + " ve " + romans[-1]
+    return romans[0] + " ve " + romans[1]
+
+
+def repair_premise_markers(text: str) -> str:
+    """Kökteki |. / INI. madde işaretlerini I. / III. yap."""
+    if not text:
+        return text
+    text = re.sub(r"(^|[\s,;])\|\.", r"\1I.", text)
+    text = re.sub(r"(?<![IVX])Il\.", "I.", text)
+    text = re.sub(r"\(11\.", "III.", text)
+    text = re.sub(r"\bINI\.", "III.", text)
+    return text
+
+
+_PREMISE_MARKER_RE = re.compile(
+    r"(?:(?<=^)|(?<=[\s,;]))((?:I{1,3}|IV)\.)(?=\s)"
+)
+_PREMISE_ITEM_SPLIT_RE = re.compile(
+    r"(?:^|[,;]\s*|\s+)(?=((?:I{1,3}|IV)\.)\s+)"
+)
+_PREMISE_CLOSING_PRIMARY_RE = re.compile(
+    r"(?is)(?:gelişmelerinden|yukarıdakilerden|bunlardan)\b.*$"
+)
+_PREMISE_CLOSING_HANGILERI_RE = re.compile(
+    r"(?is)(?:\n\s*|\.\s+)hangileri\b.*$"
+)
+
+
+def _split_premise_closing(body: str) -> tuple[str, str]:
+    """Onerme govdesinden kapanis soru cumlesini ayir."""
+    close_m = _PREMISE_CLOSING_PRIMARY_RE.search(body)
+    if not close_m:
+        close_m = _PREMISE_CLOSING_HANGILERI_RE.search(body)
+    if not close_m:
+        return body, ""
+    closing = close_m.group(0).strip()
+    body = body[: close_m.start()].rstrip(" ,;\n\t")
+    return body, closing
+
+
+def format_premise_stem(text: str) -> str:
+    """Virgül/noktalı virgülle yapışmış I./II./III. önermelerini satıra böl.
+
+    En az iki madde işareti yoksa metne dokunma. Giriş ; ile bitsin;
+    kapanış soru cümlesi boş satırdan sonra kalsın.
+    """
+    text = repair_premise_markers(text or "")
+    if not text:
+        return text
+
+    matches = list(_PREMISE_MARKER_RE.finditer(text))
+    if len(matches) < 2:
+        return text
+
+    intro = text[: matches[0].start()].rstrip(" \t,")
+    intro = intro.rstrip()
+    if intro and not intro.endswith((";", ":")):
+        intro = intro + ";"
+
+    body = text[matches[0].start() :].rstrip()
+    body, closing = _split_premise_closing(body)
+
+    starts = list(_PREMISE_ITEM_SPLIT_RE.finditer(body))
+    if len(starts) < 2:
+        return text
+
+    items: list[str] = []
+    for i, m in enumerate(starts):
+        start_i = m.start(1)
+        end_i = starts[i + 1].start() if i + 1 < len(starts) else len(body)
+        chunk = body[start_i:end_i].strip().rstrip(" ,;")
+        if chunk:
+            items.append(chunk)
+
+    if len(items) < 2:
+        return text
+
+    lines = ([intro] if intro else []) + items
+    result = "\n".join(lines)
+    if closing:
+        result = f"{result}\n\n{closing}"
+    return result
 
 
 def _strip_watermarks(text: str) -> str:

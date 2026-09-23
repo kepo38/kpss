@@ -101,6 +101,7 @@ class BrandMark extends StatelessWidget {
 /// Quiz üst şeridi — süre | ÖSYM rozeti | soru sayacı; altında seviye + aday.
 class QuizHeaderStrip extends StatelessWidget {
   final bool osymSordu;
+  final String osymSinav;
   final String durationText;
   final bool isCountdown;
   final bool urgent;
@@ -121,6 +122,7 @@ class QuizHeaderStrip extends StatelessWidget {
   const QuizHeaderStrip({
     super.key,
     this.osymSordu = false,
+    this.osymSinav = '',
     required this.durationText,
     required this.isCountdown,
     required this.urgent,
@@ -305,6 +307,7 @@ class QuizHeaderStrip extends StatelessWidget {
                   OsymBadge(
                     height: badgeHeight,
                     variant: OsymBadgeVariant.premium,
+                    examLabel: osymSinav,
                   )
                 else if (center != null)
                   center!,
