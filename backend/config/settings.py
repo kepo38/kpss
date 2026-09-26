@@ -65,6 +65,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "content.panel_context.panel_nav_context",
             ],
         },
     },
@@ -119,9 +120,22 @@ DEFAULT_CHARSET = "utf-8"
 
 # Gemini Vision — matematik OCR fallback (ücretsiz kota: AI Studio)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_OCR_MODEL = os.environ.get("GEMINI_OCR_MODEL", "gemini-flash-latest")
+GEMINI_OCR_MODEL = os.environ.get("GEMINI_OCR_MODEL", "gemini-3.6-flash")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+
+# Telegram soru botu — fotoğraf → OCR → onay bekleyen soru
+# Token / kullanıcı ID: backend/.env.example (TELEGRAM_*)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+TELEGRAM_ALLOWED_USER_IDS = [
+    int(part.strip())
+    for part in os.environ.get("TELEGRAM_ALLOWED_USER_IDS", "").split(",")
+    if part.strip().isdigit()
+]
+TELEGRAM_DEFAULT_TOPIC_SLUG = os.environ.get(
+    "TELEGRAM_DEFAULT_TOPIC_SLUG", "turkce_anlam"
+)
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -136,6 +150,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "question_rating": "60/min",
         "question_error_report": "30/min",
+        "promo_redeem": "5/min",
     },
 }
 

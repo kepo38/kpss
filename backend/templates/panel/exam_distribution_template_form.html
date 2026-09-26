@@ -1,0 +1,38 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_exam_distribution_list' %}">Deneme şablonu</a> / {% if template %}Düzenle{% else %}Yeni{% endif %}</div>
+<h1>{% if template %}Şablon düzenle{% else %}Yeni şablon satırı{% endif %}</h1>
+
+<form method="post" class="form-stack">
+  {% csrf_token %}
+  <label>Sınav tipi
+    <select name="exam_type" required>
+      {% for e in exam_types %}
+      <option value="{{ e.id }}" {% if template and template.exam_type_id == e.id %}selected{% endif %}>{{ e.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Ders
+    <select name="subject" required>
+      {% for s in subjects %}
+      <option value="{{ s.id }}" {% if template and template.subject_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Konu (opsiyonel — boş = ders toplamı)
+    <select name="topic">
+      <option value="">— Ders toplamı —</option>
+      {% for t in topics %}
+      <option value="{{ t.id }}" {% if template and template.topic_id == t.id %}selected{% endif %}>{{ t.subject.name }} · {{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Soru sayısı
+    <input type="number" name="question_count" min="1" max="200" value="{{ template.question_count|default:20 }}" required>
+  </label>
+  <div class="toolbar">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_exam_distribution_list' %}">İptal</a>
+  </div>
+</form>
+{% endblock %}

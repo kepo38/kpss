@@ -1,0 +1,69 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../config/api_config.dart';
+import 'auth_service.dart';
+
+class QuestionViewResult {
+  final int viewCount;
+  final int attemptCount;
+  final double? correctRate;
+  final Map<String, double>? optionPercentages;
+
+  const QuestionViewResult({
+    required this.viewCount,
+    required this.attemptCount,
+    this.correctRate,
+    this.optionPercentages,
+  });
+}
+
+/// Quiz'de soru görüntülemeyi (benzersiz kullanıcı) sunucuya bildirir.
+class QuestionViewService {
+  QuestionViewService._();
+  static final QuestionViewService instance = QuestionViewService._();
+
+  static Map<String, double>? _parseOptionPercentages(Object? raw) {
+    if (raw is! Map) return null;
+    final out = <String, double>{};
+    for (final entry in raw.entries) {
+      final value = entry.value;
+      if (value is num) {
+        out[entry.key.toString()] = value.toDouble();
+      }
+    }
+    return out.isEmpty ? null : out;
+  }
+
+  /// Başarılıysa güncel görüntüleme + başarı oranı + şık yüzdeleri.
+  /// Oturum yoksa da sunucu istatistik dönebilir (sayaç artmaz).
+  Future<QuestionViewResult?> recordView(String questionId) async {
+    if (questionId.isEmpty) return null;
+    try {
+      final auth = AuthService.instance;
+      final response = await http
+          .post(
+            ApiConfig.questionViewUri(questionId),
+            headers: {
+              ...auth.authHeaders,
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map) return null;
+      final viewCount = (decoded['viewCount'] as num?)?.toInt();
+      if (viewCount == null) return null;
+      return QuestionViewResult(
+        viewCount: viewCount,
+        attemptCount: (decoded['attemptCount'] as num?)?.toInt() ?? 0,
+        correctRate: (decoded['correctRate'] as num?)?.toDouble(),
+        optionPercentages: _parseOptionPercentages(decoded['optionPercentages']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}

@@ -1,0 +1,122 @@
+"""ÖSYM arşiv etiket ayrıştırma testleri."""
+
+from django.test import SimpleTestCase
+
+from content.osym_archive import (
+    OsymArchiveSlot,
+    archive_key_from_label,
+    archive_families,
+    parse_archive_key,
+    resolve_to_catalog_key,
+)
+
+
+class OsmArchiveLabelTests(SimpleTestCase):
+    def test_strips_soru_suffix(self):
+        raw = "2025 KPSS Lisans · Genel Yetenek - Genel Kültür · Soru 12"
+        self.assertEqual(
+            archive_key_from_label(raw),
+            "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
+        )
+
+    def test_parse_year_and_rest(self):
+        year, rest = parse_archive_key("2024 TYT · Temel Yeterlilik Testi")
+        self.assertEqual(year, 2024)
+        self.assertEqual(rest, "TYT · Temel Yeterlilik Testi")
+
+    def test_empty_label(self):
+        self.assertEqual(archive_key_from_label(""), "")
+        self.assertEqual(archive_key_from_label("   "), "")
+
+    def test_ags_catalog_slot(self):
+        slot = OsymArchiveSlot(
+            family="AGS",
+            exam_name="AGS",
+            session_key="ags",
+            session_name="MEB Akademi Giriş Sınavı",
+            expected_count=80,
+        )
+        self.assertEqual(
+            slot.canonical_label(2025),
+            "2025 AGS · MEB Akademi Giriş Sınavı",
+        )
+        self.assertIn("AGS", archive_families())
+
+    def test_short_ags_label_resolves_to_catalog(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2026 AGS"),
+            "2026 AGS · MEB Akademi Giriş Sınavı",
+        )
+
+    def test_ambiguous_kpss_short_label_stays(self):
+        self.assertEqual(resolve_to_catalog_key("2026 KPSS"), "2026 KPSS")
+
+    def test_kpss_lisans_without_session_resolves(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2025 KPSS Lisans"),
+            "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
+        )
+
+    def test_kpss_lisans_gygk_alias_resolves(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2025 KPSS Lisans · GYGK"),
+            "2025 KPSS Lisans · Genel Yetenek - Genel Kültür",
+        )
+
+    def test_kaymakamlik_and_hakimlik_families(self):
+        families = archive_families()
+        self.assertIn("Kaymakamlık", families)
+        self.assertIn("Hakimlik", families)
+        self.assertEqual(
+            resolve_to_catalog_key("2025 Kaymakamlık"),
+            "2025 Kaymakamlık",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 kaymakamlik"),
+            "2025 Kaymakamlık",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 Adli Yargı Hakimliği"),
+            "2025 Adli Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 İdari Yargı Hakimliği"),
+            "2025 İdari Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 adli"),
+            "2025 Adli Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 idari"),
+            "2025 İdari Yargı Hakimliği · Yazılı Sınav",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 Hakimlik"),
+            "2025 Hakimlik",
+        )
+
+    def test_ayt_short_label_resolves_to_catalog(self):
+        slot = OsymArchiveSlot(
+            family="YKS",
+            exam_name="AYT",
+            session_key="ayt",
+            session_name="",
+            expected_count=80,
+        )
+        self.assertEqual(slot.canonical_label(2026), "2026 AYT")
+        self.assertEqual(resolve_to_catalog_key("2026 AYT"), "2026 AYT")
+
+    def test_legacy_ayt_subtypes_collapse(self):
+        self.assertEqual(
+            archive_key_from_label("2026 AYT Eşit Ağırlık · Alan Yeterlilik Testi"),
+            "2026 AYT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 AYT Sayısal"),
+            "2025 AYT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2024 AYT Dil · Yabancı Dil Testi"),
+            "2024 AYT",
+        )

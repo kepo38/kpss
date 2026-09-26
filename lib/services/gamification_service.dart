@@ -90,6 +90,32 @@ class GamificationService extends ChangeNotifier {
     notifyListeners();
   }
 
+  int xpForCompletedTest({
+    required int correct,
+    required int wrong,
+    required Duration duration,
+  }) {
+    final minutes = duration.inMinutes.clamp(0, 240);
+    return xpTestBonus +
+        correct * xpPerCorrect +
+        wrong * xpPerWrong +
+        minutes * xpPerStudyMinute;
+  }
+
+  /// Sonuç ekranı için: kayıt henüz yapılmasa da seri tahmini.
+  int previewStreakAfterTest() {
+    final now = DateTime.now();
+    final last = _stats.sonCalismaTarihi?.toLocal();
+    if (last == null) return 1;
+    if (_isSameDay(last, now)) {
+      return _stats.streak < 1 ? 1 : _stats.streak;
+    }
+    final yesterday = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+    if (_isSameDay(last, yesterday)) return _stats.streak + 1;
+    return 1;
+  }
+
   void addXp(int amount) {
     if (amount <= 0) return;
     _addTotalXp(amount);

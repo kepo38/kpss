@@ -36,12 +36,13 @@
     <strong>Bilgi kartları</strong>
     <a class="btn btn-primary" href="{% url 'panel_lesson_new' topic.id %}">Yeni bilgi</a>
   </div>
-  <div class="list">
+  <div class="list lesson-sort-list" id="lesson-sort-list" data-reorder-url="{% url 'panel_lesson_reorder' topic.id %}">
     {% for lesson in lessons %}
-    <div class="row">
+    <div class="row lesson-row" data-lesson-id="{{ lesson.id }}" draggable="true">
+      <button class="topic-drag-handle" type="button" title="Bilgi kartını sürükleyerek sırala" aria-label="{{ lesson.title }} kartını sürükleyerek sırala">⠿</button>
       <div class="name">
         <a href="{% url 'panel_lesson_edit' topic.id lesson.id %}">{{ lesson.title }}</a>
-        <div class="hint">Sıra {{ lesson.sort_order }} · {{ lesson.body|truncatechars:80 }}</div>
+        <div class="hint"><span data-lesson-position>Sıra {{ lesson.sort_order }}</span> · {{ lesson.body|truncatechars:80 }}</div>
       </div>
       {% if lesson.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
       <a class="btn btn-ghost" href="{% url 'panel_lesson_edit' topic.id lesson.id %}">Düzenle</a>
@@ -54,12 +55,71 @@
     <div class="empty">Henüz bilgi kartı yok. Öğrencinin “Konuyu öğren” ekranı buradan beslenir.</div>
     {% endfor %}
   </div>
+  {% if lessons %}
+  <script>
+    (() => {
+      const list = document.getElementById("lesson-sort-list");
+      if (!list || !list.querySelector("[data-lesson-id]")) return;
+
+      let dragged = null;
+      const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value;
+
+      list.addEventListener("dragstart", (event) => {
+        const row = event.target.closest("[data-lesson-id]");
+        if (!row) return;
+        dragged = row;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", row.dataset.lessonId);
+        requestAnimationFrame(() => row.classList.add("is-dragging"));
+      });
+
+      list.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        const row = event.target.closest("[data-lesson-id]");
+        if (!row || row === dragged) return;
+        const after = event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+        list.insertBefore(dragged, after ? row.nextSibling : row);
+      });
+
+      list.addEventListener("dragend", async () => {
+        if (!dragged) return;
+        dragged.classList.remove("is-dragging");
+        dragged = null;
+
+        const body = new URLSearchParams();
+        list.querySelectorAll("[data-lesson-id]").forEach((row) => {
+          body.append("lesson_ids", row.dataset.lessonId);
+        });
+
+        try {
+          const response = await fetch(list.dataset.reorderUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "X-CSRFToken": csrfToken || "",
+            },
+            body: body.toString(),
+          });
+          if (!response.ok) throw new Error("Bilgi kartı sırası kaydedilemedi.");
+          list.querySelectorAll("[data-lesson-position]").forEach((item, index) => {
+            item.textContent = `Sıra ${index + 1}`;
+          });
+        } catch (error) {
+          window.location.reload();
+        }
+      });
+    })();
+  </script>
+  {% endif %}
 
 {% elif tab == 'questions' %}
   <div class="toolbar">
     <strong>Soru bankası</strong>
     <span class="hint topic-q-stats">
       {{ questions_published_count }} yayında / {{ questions|length }} toplam
+      {% if questions_filter_label and questions_filter_label != "Tümü" %}
+        · <span class="warn-inline">Filtre: {{ questions_filter_label }}</span>
+      {% endif %}
       {% if questions_published_count < questions|length %}
         · <span class="warn-inline">Taslak sorular uygulamada görünmez</span>
       {% endif %}
@@ -67,6 +127,21 @@
     <a class="btn btn-primary" href="{% url 'panel_question_new' topic.id %}">Manuel ekle</a>
     <a class="btn btn-ghost" href="{% url 'panel_quick_question' %}?subject_id={{ subject.id }}&amp;topic_id={{ topic.id }}">Görselden ekle</a>
   </div>
+  <form class="toolbar question-test-filter" method="get" action="{% url 'panel_topic' topic.id 'questions' %}">
+    <label class="hint" for="q-test-filter">Teste göre</label>
+    <select id="q-test-filter" name="test_id" onchange="this.form.submit()">
+      <option value="" {% if not selected_test_id %}selected{% endif %}>Tüm sorular</option>
+      <option value="none" {% if selected_test_id == "none" %}selected{% endif %}>Teste atanmamış</option>
+      {% for t in tests %}
+      <option value="{{ t.id }}" {% if selected_test_id == t.id|stringformat:"s" %}selected{% endif %}>
+        {{ t.title }} ({{ t.questions.all|length }})
+      </option>
+      {% endfor %}
+    </select>
+    {% if selected_test_id %}
+    <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'questions' %}">Filtreyi temizle</a>
+    {% endif %}
+  </form>
   {% if questions %}
   <form
     id="q-bulk-form"
@@ -83,40 +158,37 @@
       <span class="bulk-count" id="q-bulk-count">0 seçili</span>
       <button class="btn btn-danger" type="submit" id="q-bulk-delete" disabled>Seçilenleri sil</button>
     </div>
-    <div class="list">
-      {% for q in questions %}
-      <div class="row">
-        <label class="row-check">
-          <input type="checkbox" name="ids" value="{{ q.id }}" class="js-q-check">
-        </label>
-        <div class="name">
-          <a href="{% url 'panel_question_edit' topic.id q.id %}">{{ q.public_id }}</a>
-          <div class="hint">{{ q.stem|truncatechars:90 }}</div>
-          {% if q.scenario %}
-          <div class="hint">Grup: {{ q.scenario.title }} · sıra {{ q.scenario_order }}</div>
-          {% endif %}
-          <div class="hint question-meta">
-            Eklendi {{ q.created_at|date:"d.m.Y H:i" }} · Güncellendi {{ q.updated_at|date:"d.m.Y H:i" }}
+    <div class="list question-list">
+      {% for block in question_blocks %}
+        {% if block.type == "scenario" %}
+        <section class="scenario-group" aria-label="Olay grubu: {{ block.scenario.title }}">
+          <header class="scenario-group-head">
+            <div class="scenario-group-linkbar" aria-hidden="true">
+              <span class="scenario-group-dot"></span>
+              <span class="scenario-group-line"></span>
+            </div>
+            <div class="scenario-group-meta">
+              <div class="scenario-group-title-row">
+                <span class="badge scenario-group-badge">Olay grubu</span>
+                <a class="scenario-group-title" href="{% url 'panel_scenario_edit' topic.id block.scenario.id %}">{{ block.scenario.title }}</a>
+                <span class="scenario-group-count">{{ block.shown_count }}{% if block.shown_count != block.total_count %} / {{ block.total_count }}{% endif %} soru</span>
+              </div>
+              <p class="hint scenario-group-stem">{{ block.scenario.stem|truncatechars:140 }}</p>
+              {% if block.shown_count != block.total_count %}
+              <p class="hint scenario-group-filter-note">Filtrede {{ block.shown_count }} soru görünüyor; grupta toplam {{ block.total_count }} soru var.</p>
+              {% endif %}
+            </div>
+            <a class="btn btn-ghost scenario-group-edit" href="{% url 'panel_scenario_edit' topic.id block.scenario.id %}">Grubu düzenle</a>
+          </header>
+          <div class="scenario-group-body">
+            {% for q in block.questions %}
+              {% include "panel/partials/question_list_row.html" with q=q topic=topic in_scenario_group=True scenario_slot=q.scenario_order|add:1 %}
+            {% endfor %}
           </div>
-        </div>
-        {% if q.image %}<span class="pill-img">Görsel</span>{% endif %}
-        {% if q.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
-        <span class="badge difficulty-{{ q.difficulty }}">{{ q.get_difficulty_display }}</span>
-        <span class="hint">{{ q.attempt_count }} aday · {% if q.correct_percentage is not None %}%{{ q.correct_percentage|floatformat:1 }} doğru{% else %}veri yok{% endif %}</span>
-        <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic.id q.id %}">Düzenle</a>
-        <button
-          class="btn btn-ghost"
-          type="submit"
-          form="q-copy-{{ q.id }}"
-          title="Bu sorunun bağımsız bir kopyasını oluşturur"
-        >Kopyala</button>
-        <button
-          class="btn btn-danger"
-          type="submit"
-          form="q-del-{{ q.id }}"
-          onclick="return confirm('Silinsin mi?');"
-        >Sil</button>
-      </div>
+        </section>
+        {% else %}
+          {% include "panel/partials/question_list_row.html" with q=block.question topic=topic in_scenario_group=False %}
+        {% endif %}
       {% endfor %}
     </div>
   </form>
@@ -167,7 +239,14 @@
   </script>
   {% else %}
   <div class="list">
-    <div class="empty">Bu konuda soru yok.</div>
+    <div class="empty">
+      {% if selected_test_id %}
+        Bu filtrede soru yok.
+        <a href="{% url 'panel_topic' topic.id 'questions' %}">Tüm soruları göster</a>
+      {% else %}
+        Bu konuda soru yok.
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 
@@ -208,6 +287,7 @@
         <div class="hint">{{ t.question_count }} soru · {{ t.time_limit_minutes }} dk</div>
       </div>
       {% if t.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+      <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'questions' %}?test_id={{ t.id }}">Soruları gör</a>
       <a class="btn btn-ghost" href="{% url 'panel_test_edit' topic.id t.id %}">Düzenle</a>
       <form method="post" action="{% url 'panel_test_delete' t.id %}" onsubmit="return confirm('Silinsin mi?');">
         {% csrf_token %}

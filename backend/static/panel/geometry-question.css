@@ -1,0 +1,148 @@
+/* Geometri şekil editörü (panel — harita editöründen ayrı geo-* namespace) */
+
+.geo-editor-box {
+  padding: 16px;
+  border-radius: var(--radius, 12px);
+  border: 1px solid rgba(232, 200, 122, 0.32);
+  background: rgba(232, 200, 122, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+
+.geo-editor-box .media-title {
+  margin: 0;
+}
+
+.geo-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.geo-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.geo-mode-toggle .geo-mode-btn[aria-pressed="true"] {
+  border-color: rgba(94, 234, 212, 0.55);
+  color: #b6fff3;
+  background: rgba(94, 234, 212, 0.12);
+}
+
+.geo-editor-box[data-geo-mode="solution"] .geo-canvas-wrap {
+  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.22);
+}
+
+.geo-editor-actions #geo-insert-status {
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.geo-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.geo-editor-toolbar .geo-tool[aria-pressed="true"] {
+  border-color: rgba(232, 200, 122, 0.65);
+  color: #f5e6b8;
+  background: rgba(232, 200, 122, 0.14);
+}
+
+.geo-color-wrap,
+.geo-stroke-wrap,
+.geo-angle-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(243, 245, 248, 0.78);
+}
+
+.geo-color-wrap input[type="color"] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.geo-stroke-wrap input[type="range"] {
+  width: 88px;
+  vertical-align: middle;
+}
+
+.geo-angle-label-wrap input[type="text"] {
+  width: 88px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(12, 20, 36, 0.65);
+  color: #f3f5f8;
+}
+
+.geo-canvas-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #0c1424;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.geo-canvas-wrap #geo-canvas,
+.geo-canvas-wrap #geo-sol-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.geo-editor-box[data-tool="select"] #geo-canvas,
+.geo-editor-box[data-tool="select"] #geo-sol-canvas {
+  cursor: default;
+}
+
+#geo-sol-underlay,
+#geo-sol-underlay * {
+  pointer-events: none !important;
+}
+
+.geo-draw-surface {
+  fill: transparent;
+  pointer-events: all;
+  cursor: inherit;
+}
+
+.geo-editor-box #geo-status,
+.geo-editor-box #geo-sol-status {
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.geo-editor-box #geo-help,
+.geo-editor-box #geo-sol-help {
+  margin: 0;
+}
+
+.geo-shape-selected {
+  filter: drop-shadow(0 0 2px #5eead4);
+}

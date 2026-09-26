@@ -10,14 +10,26 @@ class QuestionAttemptService {
   QuestionAttemptService._();
   static final QuestionAttemptService instance = QuestionAttemptService._();
 
+  /// Katalog `public_id_lisans` klonlar; API ham `public_id` ister.
+  static String serverTestId(String testId) {
+    const suffixes = ['_lisans', '_onLisans', '_onlisans', '_ortaogretim'];
+    for (final suffix in suffixes) {
+      if (testId.endsWith(suffix) && testId.length > suffix.length) {
+        return testId.substring(0, testId.length - suffix.length);
+      }
+    }
+    return testId;
+  }
+
   Future<QuestionAttemptSummary?> submitQuestion({
     required String testId,
     required String questionId,
     required String selectedOption,
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession ||
-        testId.isEmpty ||
+    final apiTestId = serverTestId(testId);
+    if (!auth.hasPermanentAccount ||
+        apiTestId.isEmpty ||
         questionId.isEmpty ||
         !RegExp(r'^[A-E]$').hasMatch(selectedOption)) {
       return null;
@@ -31,7 +43,7 @@ class QuestionAttemptService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
-              'testId': testId,
+              'testId': apiTestId,
               'selectedOption': selectedOption,
             }),
           )
@@ -46,57 +58,90 @@ class QuestionAttemptService {
     }
   }
 
-  Future<void> submit({
+  /// Tamamlanan testi sunucuya yazar; [TopicTestCompletion] hata bildirimi kotası için gerekir.
+  Future<bool> submit({
     required String testId,
     required List<String> questionIds,
     required List<String?> selectedAnswers,
+    Set<String> excludeQuestionIds = const {},
+    bool completionOnly = false,
   }) async {
     final auth = AuthService.instance;
-    if (!auth.hasBackendSession ||
-        testId.isEmpty ||
+    final apiTestId = serverTestId(testId);
+    if (!auth.hasPermanentAccount || apiTestId.isEmpty) return false;
+    if (!completionOnly &&
         questionIds.length != selectedAnswers.length) {
-      return;
+      return false;
     }
 
     final answers = <String, String>{};
-    for (var index = 0; index < questionIds.length; index++) {
-      final selected = selectedAnswers[index]?.trim().toUpperCase() ?? '';
-      if (selected.isNotEmpty) answers[questionIds[index]] = selected;
+    if (!completionOnly) {
+      for (var index = 0; index < questionIds.length; index++) {
+        final questionId = questionIds[index];
+        if (excludeQuestionIds.contains(questionId)) continue;
+        final selected = selectedAnswers[index]?.trim().toUpperCase() ?? '';
+        if (selected.isNotEmpty) answers[questionId] = selected;
+      }
+      // Boş cevapta bile completed:true gönder — TopicTestCompletion hata
+      // bildirimi kotası için gerekir (tüm boş / kilitli soru senaryoları).
     }
 
-    try {
-      await http
-          .post(
-            ApiConfig.testAttemptUri(testId),
-            headers: {
-              ...auth.authHeaders,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'answers': answers}),
-          )
-          .timeout(const Duration(seconds: 10));
-    } catch (_) {
-      // İstatistik gönderimi, tamamlanan testi kullanıcı için başarısız yapmaz.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await http
+            .post(
+              ApiConfig.testAttemptUri(apiTestId),
+              headers: {
+                ...auth.authHeaders,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'answers': answers,
+                'completed': true,
+              }),
+            )
+            .timeout(const Duration(seconds: 12));
+        if (response.statusCode == 200) return true;
+      } catch (_) {
+        if (attempt == 1) return false;
+      }
     }
+    return false;
+  }
+
+  /// Yerelde bitmiş testlerin tamamlanma kaydını sunucuya yansıtır (cevaplar olmadan).
+  Future<bool> markTestCompleted(String testId) {
+    return submit(
+      testId: testId,
+      questionIds: const [],
+      selectedAnswers: const [],
+      completionOnly: true,
+    );
   }
 }
 
 class QuestionAttemptSummary {
+  final bool accepted;
   final int attemptCount;
   final int solvedCount;
+  final double? correctRate;
   final Map<String, double>? optionPercentages;
 
   const QuestionAttemptSummary({
+    required this.accepted,
     required this.attemptCount,
     required this.solvedCount,
+    this.correctRate,
     required this.optionPercentages,
   });
 
   factory QuestionAttemptSummary.fromJson(Map<String, dynamic> json) {
     final raw = json['optionPercentages'];
     return QuestionAttemptSummary(
+      accepted: json['accepted'] == true,
       attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
       solvedCount: (json['solvedCount'] as num?)?.toInt() ?? 0,
+      correctRate: (json['correctRate'] as num?)?.toDouble(),
       optionPercentages: raw is Map
           ? raw.map(
               (key, value) => MapEntry(

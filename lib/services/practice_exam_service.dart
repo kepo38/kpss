@@ -14,21 +14,32 @@ class PracticeExamService {
 
   bool get isInitialized => _initialized;
 
+  static const Set<String> _legacyDemoExamIds = {'e1', 'e2', 'e3', 'e4'};
+
   Future<void> initialize() async {
     if (_initialized) return;
 
+    await LocalDatabase.instance.initialize();
     _exams.clear();
     _exams.addAll(await LocalDatabase.instance.getAllExams());
 
-    if (await LocalDatabase.instance.isExamTableEmpty()) {
-      for (final exam in _demoExams()) {
-        await LocalDatabase.instance.insertExam(exam);
-        _exams.add(exam);
-      }
-    }
+    // Eski örnek seed'ler (e1–e4) gerçek deneme gibi görünüp Haftalık Özet'i
+    // dolduruyordu — bir kez temizle, bir daha ekleme.
+    await _pruneLegacyDemoExams();
 
     _exams.sort((a, b) => b.tarih.compareTo(a.tarih));
     _initialized = true;
+  }
+
+  Future<void> _pruneLegacyDemoExams() async {
+    final stale = _exams
+        .where((e) => _legacyDemoExamIds.contains(e.id))
+        .map((e) => e.id)
+        .toList();
+    for (final id in stale) {
+      await LocalDatabase.instance.deleteExam(id);
+      _exams.removeWhere((e) => e.id == id);
+    }
   }
 
   List<PracticeExamModel> get exams {
@@ -42,9 +53,10 @@ class PracticeExamService {
 
   void setPublisherFilter(String? publisher) => _publisherFilter = publisher;
 
-  void addExam(PracticeExamModel exam) {
+  Future<void> addExam(PracticeExamModel exam) async {
+    await initialize();
     _exams.insert(0, exam);
-    LocalDatabase.instance.insertExam(exam);
+    await LocalDatabase.instance.insertExam(exam);
     unawaited(
       GamificationService.instance.onPracticeExamAdded(
         totalExams: _exams.length,
@@ -52,9 +64,10 @@ class PracticeExamService {
     );
   }
 
-  void deleteExam(String id) {
+  Future<void> deleteExam(String id) async {
+    await initialize();
     _exams.removeWhere((e) => e.id == id);
-    LocalDatabase.instance.deleteExam(id);
+    await LocalDatabase.instance.deleteExam(id);
   }
 
   List<double> get netTrend {
@@ -81,23 +94,32 @@ class PracticeExamService {
     return sorted.map((e) => e.denemeAdi).toList();
   }
 
+  /// Ders bazli ortalama D/Y/B (ve net) — toplam degil.
+  /// Yalnizca o derste kaydi olan denemeler ortalamaya dahil edilir.
+  /// avgD/Y/B = sum / examCount (yuvarlanmis); net = avgD - avgY/4.
   Map<String, DersSonuc> get aggregateBySubject {
-    final map = <String, DersSonuc>{};
+    final sumDogru = <String, int>{};
+    final sumYanlis = <String, int>{};
+    final sumBos = <String, int>{};
+    final counts = <String, int>{};
+
     for (final exam in exams) {
       exam.dersSonuclari.forEach((ders, sonuc) {
-        final existing = map[ders];
-        if (existing == null) {
-          map[ders] = sonuc;
-        } else {
-          map[ders] = DersSonuc(
-            dogru: existing.dogru + sonuc.dogru,
-            yanlis: existing.yanlis + sonuc.yanlis,
-            bos: existing.bos + sonuc.bos,
-          );
-        }
+        sumDogru[ders] = (sumDogru[ders] ?? 0) + sonuc.dogru;
+        sumYanlis[ders] = (sumYanlis[ders] ?? 0) + sonuc.yanlis;
+        sumBos[ders] = (sumBos[ders] ?? 0) + sonuc.bos;
+        counts[ders] = (counts[ders] ?? 0) + 1;
       });
     }
-    return map;
+
+    return {
+      for (final ders in counts.keys)
+        ders: DersSonuc(
+          dogru: (sumDogru[ders]! / counts[ders]!).round(),
+          yanlis: (sumYanlis[ders]! / counts[ders]!).round(),
+          bos: (sumBos[ders]! / counts[ders]!).round(),
+        ),
+    };
   }
 
   List<PublisherStats> get publisherStats {
@@ -141,9 +163,12 @@ class PracticeExamService {
         : thisWeek.map((e) => e.toplamNet).reduce((a, b) => a + b) /
             thisWeek.length;
     final lastAvg = lastWeek.isEmpty
-        ? thisAvg
+        ? 0.0
         : lastWeek.map((e) => e.toplamNet).reduce((a, b) => a + b) /
             lastWeek.length;
+
+    final double? netDegisim =
+        thisWeek.isNotEmpty && lastWeek.isNotEmpty ? thisAvg - lastAvg : null;
 
     final bySubject = aggregateBySubject;
     String strongest = '-';
@@ -158,69 +183,10 @@ class PracticeExamService {
     return WeeklyPerformanceSummary(
       denemeSayisi: thisWeek.length,
       ortalamaNet: thisAvg,
-      netDegisim: thisAvg - lastAvg,
+      netDegisim: netDegisim,
       tekrarBekleyenSoru: 0,
       enGucluDers: strongest,
       gelistirilmesiGerekenDers: weakest,
     );
-  }
-
-  /// İlk kurulumda gösterilecek örnek denemeler (yalnızca DB boşken).
-  static List<PracticeExamModel> _demoExams() {
-    final now = DateTime.now();
-    return [
-      PracticeExamModel(
-        id: 'e1',
-        denemeAdi: 'Genel Deneme 1',
-        yayinEvi: 'Palme',
-        tarih: now.subtract(const Duration(days: 21)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 22, yanlis: 6, bos: 2),
-          'Matematik': DersSonuc(dogru: 12, yanlis: 8, bos: 10),
-          'Tarih': DersSonuc(dogru: 18, yanlis: 4, bos: 5),
-          'Coğrafya': DersSonuc(dogru: 10, yanlis: 3, bos: 5),
-          'Vatandaşlık': DersSonuc(dogru: 10, yanlis: 2, bos: 3),
-        },
-      ),
-      PracticeExamModel(
-        id: 'e2',
-        denemeAdi: 'Genel Deneme 2',
-        yayinEvi: 'Pegem',
-        tarih: now.subtract(const Duration(days: 14)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 25, yanlis: 4, bos: 1),
-          'Matematik': DersSonuc(dogru: 15, yanlis: 7, bos: 8),
-          'Tarih': DersSonuc(dogru: 20, yanlis: 3, bos: 4),
-          'Coğrafya': DersSonuc(dogru: 12, yanlis: 2, bos: 4),
-          'Vatandaşlık': DersSonuc(dogru: 11, yanlis: 1, bos: 3),
-        },
-      ),
-      PracticeExamModel(
-        id: 'e3',
-        denemeAdi: 'Genel Deneme 3',
-        yayinEvi: 'Palme',
-        tarih: now.subtract(const Duration(days: 7)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 27, yanlis: 2, bos: 1),
-          'Matematik': DersSonuc(dogru: 18, yanlis: 5, bos: 7),
-          'Tarih': DersSonuc(dogru: 22, yanlis: 2, bos: 3),
-          'Coğrafya': DersSonuc(dogru: 13, yanlis: 1, bos: 4),
-          'Vatandaşlık': DersSonuc(dogru: 12, yanlis: 1, bos: 2),
-        },
-      ),
-      PracticeExamModel(
-        id: 'e4',
-        denemeAdi: 'İndeks Branş Denemesi',
-        yayinEvi: 'İndeks Akademi',
-        tarih: now.subtract(const Duration(days: 3)),
-        dersSonuclari: const {
-          'Türkçe': DersSonuc(dogru: 26, yanlis: 3, bos: 1),
-          'Matematik': DersSonuc(dogru: 16, yanlis: 6, bos: 8),
-          'Tarih': DersSonuc(dogru: 19, yanlis: 4, bos: 4),
-          'Coğrafya': DersSonuc(dogru: 11, yanlis: 3, bos: 4),
-          'Vatandaşlık': DersSonuc(dogru: 10, yanlis: 2, bos: 3),
-        },
-      ),
-    ];
   }
 }

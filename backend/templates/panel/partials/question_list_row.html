@@ -1,0 +1,48 @@
+<div class="row{% if in_scenario_group %} scenario-group-row{% endif %}">
+  <label class="row-check">
+    <input type="checkbox" name="ids" value="{{ q.id }}" class="js-q-check">
+  </label>
+  {% if scenario_slot %}
+  <span class="scenario-slot-badge" title="Grup içi sıra">{{ scenario_slot }}</span>
+  {% endif %}
+  <div class="name">
+    <a href="{% url 'panel_question_edit' topic.id q.id %}">{{ q.public_id }}</a>
+    {% if q.osym_sordu and q.osym_cikmis_adi %}
+    <span class="badge osym-cikmis-badge" title="Panel etiketi — uygulamada yalnızca ÖSYM rozeti görünür">{{ q.osym_cikmis_adi }}</span>
+    {% elif q.osym_sordu %}
+    <span class="badge osym-cikmis-badge osym-cikmis-badge-muted">ÖSYM</span>
+    {% endif %}
+    <div class="hint">{{ q.stem|truncatechars:90 }}</div>
+    <div class="hint question-tests">
+      {% with qtests=q.tests.all %}
+        {% if qtests %}
+          {% for t in qtests %}
+          <a class="badge test-link-badge" href="{% url 'panel_topic' topic.id 'questions' %}?test_id={{ t.id }}" title="Bu testteki soruları göster">{{ t.title }}</a>
+          {% endfor %}
+        {% else %}
+          <span class="hint">Teste atanmamış</span>
+        {% endif %}
+      {% endwith %}
+    </div>
+    <div class="hint question-meta">
+      Eklendi {{ q.created_at|date:"d.m.Y H:i" }} · Güncellendi {{ q.updated_at|date:"d.m.Y H:i" }}
+    </div>
+  </div>
+  {% if q.image %}<span class="pill-img">Görsel</span>{% endif %}
+  {% if q.is_published %}<span class="badge on">Yayında</span>{% else %}<span class="badge off">Taslak</span>{% endif %}
+  <span class="badge difficulty-{{ q.difficulty }}">{{ q.get_difficulty_display }}</span>
+  <span class="hint">{{ q.attempt_count }} aday · {% if q.correct_percentage is not None %}%{{ q.correct_percentage|floatformat:1 }} doğru{% else %}veri yok{% endif %}</span>
+  <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic.id q.id %}">Düzenle</a>
+  <button
+    class="btn btn-ghost"
+    type="submit"
+    form="q-copy-{{ q.id }}"
+    title="Bu sorunun bağımsız bir kopyasını oluşturur"
+  >Kopyala</button>
+  <button
+    class="btn btn-danger"
+    type="submit"
+    form="q-del-{{ q.id }}"
+    onclick="return confirm('Silinsin mi?');"
+  >Sil</button>
+</div>

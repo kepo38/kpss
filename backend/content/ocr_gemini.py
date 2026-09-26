@@ -5,11 +5,39 @@ from __future__ import annotations
 import base64
 import json
 import re
+import socket
 import urllib.error
 import urllib.request
+import time
+from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
+
+
+# Bu makinede IPv6 → Google zaman aşımına düşüyor; urllib önce AAAA deniyor
+# ve OCR "Fotoğraf alındı…" sonrası dakikalarca asılı kalıyordu.
+_ORIG_GETADDRINFO = socket.getaddrinfo
+
+
+def _getaddrinfo_ipv4_first(
+    host: str | bytes | None,
+    port: str | int | None,
+    family: int = 0,
+    type: int = 0,
+    proto: int = 0,
+    flags: int = 0,
+):
+    infos = _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+    if family != 0:
+        return infos
+    v4 = [i for i in infos if i[0] == socket.AF_INET]
+    v6 = [i for i in infos if i[0] == socket.AF_INET6]
+    other = [i for i in infos if i[0] not in (socket.AF_INET, socket.AF_INET6)]
+    return v4 + v6 + other
+
+
+socket.getaddrinfo = _getaddrinfo_ipv4_first  # type: ignore[assignment]
 
 from .ocr import (
     OPTION_KEYS,
@@ -19,20 +47,33 @@ from .ocr import (
     _strip_watermarks,
     normalize_turkish_text,
     parse_question_text,
+    sanitize_ocr_emphasis,
     strip_option_emphasis,
 )
-from .svg_sanitize import extract_svg, is_safe_svg
+from .ocr_diagnostics import attach_gemini_failure, attach_gemini_success, new_diagnostics
+from .svg_equality import repair_equality_ticks
+from .svg_sanitize import sanitize_figure_svg
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
-# Kota / 404 durumunda sırayla dene (ücretsiz katman)
+# Kota / 503 durumunda sırayla dene. Ölü (404) modeller _DEAD_GEMINI_MODELS ile
+# süreç boyunca atlanır — aksi halde her OCR 6×404 ile free-tier kotayı yakar.
 _GEMINI_MODEL_FALLBACKS = (
+    "gemini-3.6-flash",
     "gemini-flash-latest",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
 )
+
+# 503 / UNAVAILABLE / 429: ayni modelde kisa backoff ile tekrar dene.
+_GEMINI_TRANSIENT_TOKENS = ("503", "UNAVAILABLE", "429")
+_GEMINI_SAME_MODEL_ATTEMPTS = 3
+_GEMINI_TRANSIENT_BACKOFFS = (1.5, 3.0)
+
+# Süreç içi: "no longer available" / "is not found" → bir daha deneme.
+_DEAD_GEMINI_MODELS: set[str] = set()
 
 _PROMPT = """Bu görselde bir KPSS çoktan seçmeli soru var.
 Görev: aşağıdaki JSON şablonunun tüm alanlarını doldur.
@@ -40,20 +81,50 @@ Görev: aşağıdaki JSON şablonunun tüm alanlarını doldur.
 
 Kurallar:
 - Türkçe karakterleri doğru yaz (ğüşıöç).
+- soru_metni düz metin yaz; görselde açıkça kalın/italik/altı çizili olmayan kelimelere **, * veya __ ekleme.
+- Özel ad ve kurum adları (Divan-ı Hümayun, Kubbealtı vb.) her zaman düz metin olsun.
 - Matematik ifadeleri LaTeX ile $...$ içinde yaz.
   Örnek üs: $\\frac{4^x-2^x}{2^x-2^{-x}} = 2^x - \\frac{1}{5}$
   Örnek kök: $\\sqrt{x} - \\sqrt{y} = 2\\sqrt{2}$, $\\sqrt{4xy}$
   Örnek oran: $\\frac{x}{y}$
 - Üslü / kök / kesirleri LaTeX ile yaz; düz metinde Vx, 2V2 gibi OCR hatası üretme.
-- Her denklemi ayrı satırda tek $...$ içine yaz ($$ kullanma). Eşitlik işaretini LaTeX içinde tut; tire veya uzun çizgi (—) kullanma.
+- Basit denklemleri ayrı satırda tek $...$ içine yaz. Eşitlik yerine uzun çizgi (—) yazma.
   Örnek bileşim: $g(x) = 2x + a$
   $(f \\circ g)(x) = 3x - a$
   $f(1) = 9$ olduğuna göre $f(9)$ değeri kaçtır?
+- Dikey / sütun işlemi (alt alta toplama, çıkarma, çarpma):
+  İşlem işaretini görselden birebir oku. Solda veya sayının önünde eksi varsa ASLA artıya çevirme.
+  Düz satıra yığma (`AB8 + 16C = CA3` YANLIŞ). LaTeX array kullan:
+  $$\\begin{array}{r} AB8 \\\\ -16C \\\\ \\hline CA3 \\end{array}$$
+  Soru cümlesi array'in altında kalsın:
+  "A, B ve C rakamları için
+  $$\\begin{array}{r} AB8 \\\\ -16C \\\\ \\hline CA3 \\end{array}$$
+  olduğuna göre $A + B + C$ toplamı kaçtır?"
+  Çözümü de aynı işleme göre yaz (çıkarma ise çıkarma; 738 − 165 = 573 gibi).
 - Şıklarda kalın/italik/altı çizili yok. Beş şık da dolu olsun. Sayı ve formül düz metin veya $...$ olsun.
   Örnek: {"A": "1", "B": "8", "C": "15", "D": "18", "E": "21"}
+- Terim–açıklama eşleştirme / tablo sorularında her şık tek satır yaz: "Terim : Açıklama" veya "Terim - Açıklama".
+  Örnek: {"A": "Reaya : Halk", "B": "Ulema : Din adamları", "C": "Tımar : Dirlik", "D": "Ocak : Yeniçeri ocağı", "E": "Millet : Halk"}
 - Romen rakamlı şıklar (I ve II, III ve V vb.) olduğu gibi ayrı ayrı yazılsın; şık harfi (A–E) ile Romen rakamı karıştırılmasın.
   Örnek: {"A": "I ve II", "B": "I ve IV", "C": "II ve III", "D": "III ve V", "E": "IV ve V"}
 - Watermark (ÖSYM vb.) metne dahil etme.
+
+görsel_siklar (optionsVisual):
+- Şık gövdeleri metin değil grafik/şekil/mum/diyagram ise true yaz.
+- Metin şıklarda false yaz.
+- true ise siklar alanına kısa etiket koy: {"A":"Görsel şık","B":"Görsel şık",...}
+  Grafik açıklaması uydurma.
+
+sik_kutulari (optionBoxes):
+- görsel_siklar true ise her A–E için normalize bbox ver: [x, y, w, h] (0–1, tüm sayfa görseline göre).
+- x,y sol-üst; w,h genişlik/yükseklik. Harf etiketini (A)/B)…) ve grafik bloğunu kapsasın.
+- Kutular çakışmasın; her şık kendi dikdörtgeninde olsun.
+- Okuma sırası: üst satır soldan sağa, sonra alt satır (ör. A B C / D E). Harf anahtarı ile konum eşleşmeli.
+- Metin şıklarda boş obje {} yaz.
+
+ders_slug ve konu_slug:
+- Yalnızca panelde kayıtlı ders/konu listesinden seç (aşağıda verilir).
+- Listede olmayan slug uydurma; emin değilsen konu_slug boş bırak.
 
 dogru_cevap:
 - Yalnızca A, B, C, D veya E yaz.
@@ -64,8 +135,15 @@ detayli_cozum:
 - Görselde çözüm metni varsa onu aktar.
 - Yoksa Türkçe, adım adım, öğretici bir çözüm yaz.
 - Matematikte LaTeX ($...$) kullan.
+- Çözümü mobil uygulama MarkdownBody ile gösterecek; HTML kullanma.
+- Her paragraf/aşama arasında boş satır bırak.
+- Ana adım başlıklarını **kalın** yaz (ör. **1. Aşama: Kenar İncelemesi**); # / ## / ### kullanma.
+- Kritik kavram/şık/sonuç için **kalın** kullan; tüm paragrafı kalın yapma.
+- Romen rakamlı öncülleri düz metin yaz (I. … II. …); otomatik liste üretme.
+- Yön okları yalnızca → sembolü; sağında solunda boşluk bırak.
 
 Geometri sorusu ise:
+- detayli_cozum: BOŞ string yaz (""). Geometri çözüm metnini uydurma; panelde yazar çizer.
 - soru_metni: Şeklin yanındaki/altındaki verilen bilgiler + en sondaki soru cümlesi.
   Köşe harflerini (A, B, C…) soru_metnine serpiştirme; verilenler düzgün satırlar olsun.
   Örnek soru_metni:
@@ -78,14 +156,19 @@ Geometri sorusu ise:
   Yukarıdaki verilere göre x kaç birimdir?"
 - siklar: Yalnızca cevap seçenekleri (tek sayı veya kısa ifade).
   Soru cümlesini, verilenleri veya şekil etiketlerini şıklara koyma.
-  Örnek: {"A": "10", "B": "12", "C": "14", "D": "16", "E": "18"}
+  Kesir/üs varsa $...$ içinde LaTeX yaz: "$-\\frac{1}{2}$"
+  Örnek: {"A": "$-1$", "B": "$-2$", "C": "$-\\frac{1}{2}$", "D": "$-\\frac{3}{2}$", "E": "$-\\frac{1}{4}$"}
 
 Çıktı formatı kesinlikle şu JSON şablonunda olmalıdır (başka metin yok):
 {
   "soru_metni": "...",
   "siklar": {"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."},
   "dogru_cevap": "...",
-  "detayli_cozum": "..."
+  "detayli_cozum": "...",
+  "ders_slug": "tarih",
+  "konu_slug": "tarih_padisah_antlasma",
+  "gorisel_siklar": false,
+  "sik_kutulari": {}
 }
 """
 
@@ -96,11 +179,78 @@ Kurallar:
 - Yalnızca geçerli <svg>...</svg> bloğu yaz (viewBox ve xmlns ekle).
 - JSON, markdown, açıklama yok.
 - Köşe harflerini (A, B, C, …) <text> ile doğru koordinatlara yerleştir.
-- Diklik sembollerini (sağ açı işareti) ilgili köşeye çiz.
-- Açı değerlerini (ör. 40°, 90°) ilgili yay/köşe üzerine yaz.
-- Kenar uzunluklarını ilgili kenarın yanına yerleştir.
-- Oranları ve ölçüleri görseldekiyle aynı tut.
+- Diklik / sağ açı karesi: YALNIZCA kaynak görselde açıkça çizilmişse kopyala.
+  Kare/dikdörtgen olduğu için dik açı uydurma. Görselde yoksa çizme.
+- Açı yayları ve açı değerleri (ör. 40°): yalnızca görselde varsa çiz/yaz.
+- Kenar uzunluklarını görselde yazılmışsa ilgili kenarın yanına yerleştir.
+- Oranları ve ölçüleri görseldekiyle aynı tut (ölçek uydurma).
+- Şekli path/line/polygon/circle/rect/ellipse ile vektör olarak çiz.
+- Fotoğrafı <image>, data:image veya harici href ile gömme (yasak).
+- ÖSYM / watermark / logo / filigran çizme veya yazma (yasak).
 - script, foreignObject, harici href kullanma.
+- Eşitlik (congruence) tick / hatch işaretlerini HİÇ çizme.
+  (|XY|=|ZW| tick'leri sunucu stem'den ekler. Oranlı uzunluklar
+  4|KB|=2|MC|=|MB| eşitlik DEĞİLDİR — tick uydurma.)
+"""
+
+_MARKDOWN_SOLUTION_RULES = """
+Mobil uygulama çözüm formatı (TAVİZSİZ):
+- Yalnızca standart Markdown; HTML etiketi kullanma.
+- Her paragraf/aşama arasında bir boş satır bırak.
+- Ana adım başlıklarını **kalın** yaz (ör. **1. Aşama: Kenar İncelemesi**); # / ## / ### kullanma.
+- Kritik kavram/şık/sonuç için **kalın**; tüm paragrafı kalın yapma.
+- Romen rakamlı öncülleri düz metin yaz (I. … II. …); otomatik liste üretme.
+- Matematik ifadeleri $...$ içinde veya düz metinde bozulmadan yaz.
+- Yön okları yalnızca → ; sağında ve solunda birer boşluk bırak.
+"""
+
+_GEOMETRY_OVERLAY_PROMPT = """Bu görselde bir geometri sorusu var.
+Görev: soruyu çöz, mobil uygulama için Markdown çözüm yaz ve şekil üzerine
+yazılması gereken sayı/değerleri koordinatlarıyla birlikte JSON olarak döndür.
+
+""" + _MARKDOWN_SOLUTION_RULES + """
+Geometri annotasyon kuralları:
+- Resimdeki harf, kenar ve açı konumlarını incele.
+- Eklenecek sayısal değerleri belirle (ör. 4/3, x=10, R=4, |AB|=10).
+- Her değer için normalize bbox ver: [ymin, xmin, ymax, xmax] (0–1000, sol-üst köşe 0,0).
+- renk alanı:
+  - Bilinen/verilen değerler → "mavi"
+  - Bulunan/hesaplanan sonuçlar → "kirmizi"
+- Metin zaten görselde okunaklıysa tekrar ekleme; yalnızca çözümde eklenmesi gerekenleri yaz.
+
+Çıktı yalnızca şu JSON (başka metin yok):
+{
+  "detayli_cozum": "...",
+  "geometri_annotasyonlari": [
+    {"metin": "10", "bbox": [420, 510, 460, 570], "renk": "mavi"},
+    {"metin": "x = 4/3", "bbox": [300, 680, 340, 760], "renk": "kirmizi"}
+  ]
+}
+"""
+
+_SUPPLEMENT_PROMPT = """Bu görselde bir KPSS çoktan seçmeli soru var.
+Tesseract OCR ile okunan soru metni ve şıklar aşağıda verilmiştir; görseli de incele.
+
+Görev: YALNIZCA doğru şık ve detaylı çözüm üret. Soru metnini veya şıkları yeniden yazma.
+
+Kurallar:
+- dogru_cevap: yalnızca A, B, C, D veya E
+- Görselde işaretli/daireli şık varsa onu kullan; yoksa soruyu çözerek belirle
+- detayli_cozum: Türkçe, adım adım, öğretici
+- Matematikte LaTeX ($...$) kullan
+- Mobil uygulama Markdown formatı: paragraflar arası boş satır, **kalın** adım başlıkları (# kullanma), **kalın** vurgu
+
+Çıktı yalnızca şu JSON (başka metin yok):
+{"dogru_cevap": "C", "detayli_cozum": "..."}
+"""
+
+_SUPPLEMENT_OPTIONS_APPEND = """
+- Tesseract şıkları okuyamadı veya boş; görselden A–E şıklarını da oku.
+- Terim–açıklama eşleştirmede her şık "Terim : Açıklama" biçiminde tek satır olsun.
+- siklar alanına beş dolu şık yaz: {"A":"...","B":"...","C":"...","D":"...","E":"..."}
+
+Çıktı yalnızca şu JSON (başka metin yok):
+{"dogru_cevap": "C", "detayli_cozum": "...", "siklar": {"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."}}
 """
 
 _PLACEHOLDER_OPTION = re.compile(r"(?i)^(?:şık\s*)?[a-e]\s*$")
@@ -253,6 +403,29 @@ def _post_process_gemini_payload(
     return stem, options
 
 
+def _is_geometry_ocr(
+    stem: str,
+    options: dict[str, str] | None,
+    figure_svg: str = "",
+) -> bool:
+    """Şekil SVG veya geometri ipuçları varsa çözüm metni otomatik üretilmez."""
+    if (figure_svg or "").strip():
+        return True
+    return _likely_geometry_question(stem, options or {}, stem)
+
+
+def strip_geometry_auto_solution(
+    stem: str,
+    options: dict[str, str] | None,
+    figure_svg: str,
+    solution: str,
+) -> str:
+    """Geometri OCR: panel yazarın çizmesi için çözüm metnini boş bırak."""
+    if _is_geometry_ocr(stem, options, figure_svg):
+        return ""
+    return solution or ""
+
+
 def gemini_configured() -> bool:
     return bool(getattr(settings, "GEMINI_API_KEY", ""))
 
@@ -269,8 +442,9 @@ def _payload_figure(data: dict[str, Any]) -> str:
     for key in ("sekil_kodu", "sekilKodu", "figure_svg", "figure_tikz", "svg"):
         val = data.get(key)
         if val:
-            code = extract_svg(str(val))
-            if is_safe_svg(code):
+            # Gömülü tarama fotoğrafı / ÖSYM yazısı varsa temizle; vektör kalsın.
+            code = sanitize_figure_svg(str(val))
+            if code:
                 return code
     return ""
 
@@ -307,12 +481,206 @@ def _payload_answer(data: dict[str, Any]) -> str:
     return ""
 
 
+def _payload_options_visual(data: dict[str, Any]) -> bool:
+    for key in ("gorisel_siklar", "optionsVisual", "options_visual", "goruntulu_siklar"):
+        val = data.get(key)
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str) and val.strip().lower() in {"true", "1", "evet", "yes"}:
+            return True
+        if isinstance(val, (int, float)) and int(val) == 1:
+            return True
+    return False
+
+
+def _payload_option_boxes(data: dict[str, Any]) -> dict[str, list[float]]:
+    raw = data.get("sik_kutulari") or data.get("optionBoxes") or data.get("option_boxes") or {}
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[float]] = {}
+    for key in OPTION_KEYS:
+        val = raw.get(key) or raw.get(key.lower())
+        if not isinstance(val, (list, tuple)) or len(val) < 4:
+            continue
+        try:
+            box = [float(val[0]), float(val[1]), float(val[2]), float(val[3])]
+        except (TypeError, ValueError):
+            continue
+        out[key] = box
+    return out
+
+
 def _payload_solution(data: dict[str, Any]) -> str:
     for key in ("detayli_cozum", "detayliCozum", "solution", "cozum"):
         val = data.get(key)
         if val:
             return normalize_turkish_text(str(val).strip())
     return ""
+
+
+def _payload_subject_slug(data: dict[str, Any]) -> str:
+    for key in ("ders_slug", "dersSlug", "subject_slug", "subjectSlug"):
+        val = data.get(key)
+        if val:
+            return str(val).strip().lower()
+    return ""
+
+
+def _payload_topic_slug(data: dict[str, Any]) -> str:
+    for key in ("konu_slug", "konuSlug", "topic_slug", "topicSlug"):
+        val = data.get(key)
+        if val:
+            return str(val).strip().lower()
+    return ""
+
+
+def _payload_geometry_annotations(data: dict[str, Any]) -> list[dict[str, Any]]:
+    from .geometry_overlay_renderer import normalize_geometry_annotations
+
+    raw = (
+        data.get("geometri_annotasyonlari")
+        or data.get("geometryAnnotations")
+        or data.get("geometry_annotations")
+        or data.get("annotasyonlar")
+    )
+    return normalize_geometry_annotations(raw)
+
+
+def _fetch_geometry_solution_overlay(
+    image_bytes: bytes,
+    mime: str,
+    *,
+    stem: str,
+    options: dict[str, str],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Geometri: çözüm + şekil üstü sayı koordinatları (ikinci Gemini çağrısı)."""
+    context = stem.strip()
+    if options:
+        opts = ", ".join(
+            f"{k}) {options[k]}" for k in OPTION_KEYS if (options.get(k) or "").strip()
+        )
+        if opts:
+            context = f"{context}\n\nŞıklar: {opts}" if context else f"Şıklar: {opts}"
+    prompt = _GEOMETRY_OVERLAY_PROMPT
+    if context:
+        prompt = f"{prompt}\n\nOkunan soru metni:\n{context}"
+
+    last_err: Exception | None = None
+    for model in _model_candidates():
+        try:
+            raw = _post_gemini_model_with_retries(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=90,
+                json_mode=True,
+            )
+            data = _extract_json(raw)
+            if not data:
+                raise RuntimeError("Geometri overlay JSON ayrıştırılamadı.")
+            solution = _payload_solution(data)
+            annotations = _payload_geometry_annotations(data)
+            return solution, annotations
+        except RuntimeError as exc:
+            last_err = exc
+            if _retryable(exc):
+                continue
+            return "", []
+        except Exception:  # noqa: BLE001
+            return "", []
+    if last_err:
+        return "", []
+    return "", []
+
+
+# JSON \f \b \t \n \r kaçışları LaTeX komutlarından ters eğik çizgiyi yer.
+_LATEX_JSON_CMDS = (
+    "frac",
+    "dfrac",
+    "tfrac",
+    "sqrt",
+    "cdot",
+    "times",
+    "circ",
+    "left",
+    "right",
+    "text",
+    "beta",
+    "alpha",
+    "gamma",
+    "theta",
+    "leq",
+    "geq",
+    "neq",
+    "begin",
+    "end",
+    "array",
+    "hline",
+    "rho",
+    "nu",
+    "nabla",
+    "tau",
+    "tan",
+    "tilde",
+    "pm",
+    "mp",
+    "infty",
+    "sum",
+    "int",
+    "log",
+    "sin",
+    "cos",
+    "overline",
+    "underline",
+)
+_LATEX_JSON_CMD_PATTERN = "|".join(_LATEX_JSON_CMDS)
+_LATEX_JSON_CONTROL_REPAIRS: tuple[tuple[str, str], ...] = (
+    ("\x0crac", "\\frac"),
+    ("\x08eta", "\\beta"),
+    ("\x08egin", "\\begin"),
+    ("\x09ext{", "\\text{"),
+    ("\x09ext ", "\\text "),
+    ("\x09imes", "\\times"),
+    ("\x09heta", "\\theta"),
+    ("\x09au", "\\tau"),
+    ("\x09an", "\\tan"),
+    ("\x09ilde", "\\tilde"),
+    ("\x0dight", "\\right"),
+    ("\x0dho", "\\rho"),
+    ("\x0aeq", "\\neq"),
+    ("\x0anu", "\\nu"),
+    ("\x0aabla", "\\nabla"),
+)
+
+
+def repair_json_latex_escapes(text: str) -> str:
+    """Gemini JSON'unda \\frac → form-feed+rac gibi bozulmaları düzelt."""
+    if not text:
+        return text
+    for bad, good in _LATEX_JSON_CONTROL_REPAIRS:
+        text = text.replace(bad, good)
+    text = re.sub(r"\$rac\{", r"$\\frac{", text)
+    text = re.sub(r"\$sqrt\{", r"$\\sqrt{", text)
+    return text
+
+
+def _double_latex_escapes_before_json(raw: str) -> str:
+    """json.loads öncesi tek \\ ile yazılmış LaTeX komutlarını çiftle."""
+    if not raw:
+        return raw
+    pat = re.compile(rf"(?<!\\)\\({_LATEX_JSON_CMD_PATTERN})\b")
+    return pat.sub(lambda m: "\\\\" + m.group(1), raw)
+
+
+def _repair_payload_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return repair_json_latex_escapes(value)
+    if isinstance(value, dict):
+        return {k: _repair_payload_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_repair_payload_strings(v) for v in value]
+    return value
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -328,23 +696,84 @@ def _extract_json(text: str) -> dict[str, Any]:
         end = text.rfind("}")
         if start >= 0 and end > start:
             text = text[start : end + 1]
+    text = _double_latex_escapes_before_json(text)
     try:
         data = json.loads(text)
-        return data if isinstance(data, dict) else {}
+        if isinstance(data, dict):
+            return _repair_payload_strings(data)
+        return {}
     except json.JSONDecodeError:
         return {}
 
 
 def _model_candidates() -> list[str]:
     configured = (
-        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-flash-latest"
+        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.6-flash"
     ).strip()
     out: list[str] = []
     for model in (configured, *_GEMINI_MODEL_FALLBACKS):
-        if model and model not in out:
+        if model and model not in out and model not in _DEAD_GEMINI_MODELS:
             out.append(model)
     return out
 
+
+def _mark_dead_gemini_model(model: str, exc: BaseException) -> None:
+    """Kalıcı 404 modellerini süreç boyunca atla (kota yakmayı önler)."""
+    msg = str(exc)
+    if any(
+        token in msg
+        for token in (
+            "no longer available",
+            "is not found",
+            "NOT_FOUND",
+            '"code": 404',
+            "HTTP 404",
+        )
+    ):
+        _DEAD_GEMINI_MODELS.add(model)
+
+
+
+
+def _is_transient_gemini_error(exc: BaseException) -> bool:
+    msg = str(exc)
+    return any(token in msg for token in _GEMINI_TRANSIENT_TOKENS)
+
+
+def _post_gemini_model_with_retries(
+    image_bytes: bytes,
+    mime: str,
+    model: str,
+    prompt: str = _PROMPT,
+    *,
+    timeout: int = 45,
+    json_mode: bool = True,
+) -> str:
+    """Ayni modelde 503/429 icin backoff; 404'te uyumadan bir sonraki modele birak."""
+    last_err: Exception | None = None
+    for attempt in range(_GEMINI_SAME_MODEL_ATTEMPTS):
+        try:
+            return _post_gemini_model(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=timeout,
+                json_mode=json_mode,
+            )
+        except RuntimeError as exc:
+            last_err = exc
+            # 404 / dead: hemen cik (uyuma)
+            if model in _DEAD_GEMINI_MODELS or not _is_transient_gemini_error(exc):
+                raise
+            if attempt >= _GEMINI_SAME_MODEL_ATTEMPTS - 1:
+                raise
+            delay = _GEMINI_TRANSIENT_BACKOFFS[
+                min(attempt, len(_GEMINI_TRANSIENT_BACKOFFS) - 1)
+            ]
+            time.sleep(delay)
+    assert last_err is not None
+    raise last_err
 
 def _post_gemini_model(
     image_bytes: bytes,
@@ -388,7 +817,9 @@ def _post_gemini_model(
             payload = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini HTTP {exc.code}: {detail[:400]}") from exc
+        err = RuntimeError(f"Gemini HTTP {exc.code}: {detail[:400]}")
+        _mark_dead_gemini_model(model, err)
+        raise err from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Gemini bağlantı hatası: {exc.reason}") from exc
 
@@ -407,36 +838,165 @@ def _retryable(exc: RuntimeError) -> bool:
     msg = str(exc)
     return any(
         token in msg
-        for token in ("429", "404", "403", "JSON ayrıştırılamadı", "boş yanıt")
+        for token in ("429", "404", "403", "503", "UNAVAILABLE", "JSON ayrıştırılamadı", "boş yanıt")
     )
 
 
-def _post_gemini(image_bytes: bytes, mime: str) -> tuple[dict[str, Any], str]:
+def _ocr_prompt_with_panel_catalog() -> str:
+    try:
+        from .topic_classifier import panel_topic_catalog_text
+
+        catalog = panel_topic_catalog_text()
+    except Exception:
+        catalog = ""
+    if not catalog:
+        return _PROMPT
+    return (
+        f"{_PROMPT}\n\n"
+        "Panelde kayıtlı ders/konu listesi (ders_slug ve konu_slug YALNIZCA buradan):\n"
+        f"{catalog}\n"
+    )
+
+
+class GeminiPostError(RuntimeError):
+    """Gemini OCR denemeleriyle birlikte yükseltilen hata."""
+
+    def __init__(self, message: str, attempts: list[dict[str, Any]] | None = None):
+        super().__init__(message)
+        self.attempts = attempts or []
+
+
+def _post_gemini(
+    image_bytes: bytes, mime: str
+) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
     last_err: Exception | None = None
+    attempts: list[dict[str, Any]] = []
+    prompt = _ocr_prompt_with_panel_catalog()
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
-                image_bytes, mime, model, _PROMPT, timeout=45, json_mode=True
+            raw = _post_gemini_model_with_retries(
+                image_bytes, mime, model, prompt, timeout=45, json_mode=True
             )
             data = _extract_json(raw)
             if not data:
                 raise RuntimeError("Gemini JSON ayrıştırılamadı.")
-            return data, model
+            attempts.append({"model": model, "ok": True, "error": ""})
+            return data, model, attempts
         except RuntimeError as exc:
             last_err = exc
+            attempts.append(
+                {"model": model, "ok": False, "error": str(exc)[:500]}
+            )
             if _retryable(exc):
                 continue
-            raise
+            raise GeminiPostError(str(exc), attempts) from exc
     if last_err:
-        raise last_err
-    raise RuntimeError("Gemini modelleri kullanılamıyor.")
+        raise GeminiPostError(str(last_err), attempts) from last_err
+    raise GeminiPostError("Gemini modelleri kullanılamıyor.", attempts)
+
+
+def _format_ocr_context(stem: str, options: dict[str, str]) -> str:
+    lines: list[str] = []
+    if (stem or "").strip():
+        lines.append(stem.strip())
+    for key in OPTION_KEYS:
+        val = (options.get(key) or "").strip()
+        if val:
+            lines.append(f"{key}) {val}")
+    return "\n".join(lines) if lines else "(OCR metni boş)"
+
+
+@dataclass
+class GeminiSupplementResult:
+    correct_option: str
+    solution: str
+    model: str
+    attempts: list[dict[str, Any]]
+    ok: bool
+    error: str = ""
+    options: dict[str, str] | None = None
+
+
+def gemini_supplement_answer_solution(
+    image_bytes: bytes,
+    mime: str,
+    *,
+    stem: str,
+    options: dict[str, str],
+    need_options: bool = False,
+) -> GeminiSupplementResult:
+    """Tesseract fallback sonrası — doğru şık + çözüm (+ gerekirse şıklar)."""
+    if not gemini_configured():
+        return GeminiSupplementResult(
+            "", "", "", [], ok=False, error="GEMINI_API_KEY tanımlı değil."
+        )
+
+    base_prompt = _SUPPLEMENT_PROMPT
+    if need_options:
+        base_prompt = f"{_SUPPLEMENT_PROMPT.rstrip()}\n{_SUPPLEMENT_OPTIONS_APPEND}"
+    prompt = (
+        f"{base_prompt}\n\nTesseract OCR metni:\n"
+        f"{_format_ocr_context(stem, options)}"
+    )
+    attempts: list[dict[str, Any]] = []
+    last_err: Exception | None = None
+    for model in _model_candidates():
+        try:
+            raw = _post_gemini_model_with_retries(
+                image_bytes,
+                mime,
+                model,
+                prompt,
+                timeout=35,
+                json_mode=True,
+            )
+            data = _extract_json(raw)
+            if not data:
+                raise RuntimeError("Gemini supplement JSON ayrıştırılamadı.")
+            letter = _payload_answer(data)
+            solution = _payload_solution(data)
+            extra_opts = _payload_options(data) if need_options else None
+            got_opts = bool(
+                extra_opts
+                and sum(1 for v in extra_opts.values() if (v or "").strip()) >= 3
+            )
+            if not letter and not solution and not got_opts:
+                raise RuntimeError("Gemini supplement boş döndü.")
+            attempts.append({"model": model, "ok": True, "error": ""})
+            return GeminiSupplementResult(
+                correct_option=letter,
+                solution=solution,
+                model=model,
+                attempts=attempts,
+                ok=True,
+                options=extra_opts if got_opts else None,
+            )
+        except RuntimeError as exc:
+            last_err = exc
+            attempts.append(
+                {"model": model, "ok": False, "error": str(exc)[:500]}
+            )
+            if _retryable(exc):
+                continue
+            return GeminiSupplementResult(
+                "", "", "", attempts, ok=False, error=str(exc)
+            )
+    err = (
+        str(last_err)
+        if last_err
+        else "Gemini supplement modelleri kullanılamıyor."
+    )
+    return GeminiSupplementResult("", "", "", attempts, ok=False, error=err)
 
 
 def _svg_from_raw(raw: str) -> str:
-    code = extract_svg(raw)
-    if is_safe_svg(code):
+    code = sanitize_figure_svg(raw)
+    if code:
         return code
-    return _payload_figure(_extract_json(raw))
+    try:
+        return _payload_figure(_extract_json(raw))
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _fetch_geometry_svg(image_bytes: bytes, mime: str) -> str:
@@ -444,7 +1004,7 @@ def _fetch_geometry_svg(image_bytes: bytes, mime: str) -> str:
     last_err: Exception | None = None
     for model in _model_candidates():
         try:
-            raw = _post_gemini_model(
+            raw = _post_gemini_model_with_retries(
                 image_bytes,
                 mime,
                 model,
@@ -472,17 +1032,32 @@ def ocr_question_image_gemini(
     mime: str = "image/png",
 ) -> OcrQuestionResult:
     """Görsel → Gemini Vision → stem + A–E."""
+    diagnostics = new_diagnostics(pipeline="gemini")
+    diagnostics["gemini"]["configured"] = gemini_configured()
     if not gemini_configured():
+        attach_gemini_failure(
+            diagnostics,
+            error="GEMINI_API_KEY tanımlı değil.",
+            attempts=[],
+        )
         return OcrQuestionResult(
             stem="",
             options={k: "" for k in OPTION_KEYS},
             raw_text="",
             ok=False,
             error="GEMINI_API_KEY tanımlı değil.",
+            diagnostics=diagnostics,
         )
     try:
-        data, model_used = _post_gemini(image_bytes, mime)
+        data, model_used, attempts = _post_gemini(image_bytes, mime)
+        attach_gemini_success(diagnostics, model=model_used, attempts=attempts)
     except Exception as exc:  # noqa: BLE001
+        attempts = getattr(exc, "attempts", None) or []
+        attach_gemini_failure(
+            diagnostics,
+            error=str(exc),
+            attempts=attempts if isinstance(attempts, list) else [],
+        )
         return OcrQuestionResult(
             stem="",
             options={k: "" for k in OPTION_KEYS},
@@ -490,13 +1065,16 @@ def ocr_question_image_gemini(
             ok=False,
             error=str(exc),
             engine="gemini",
+            diagnostics=diagnostics,
         )
 
-    stem = normalize_turkish_text(_payload_stem(data))
+    stem = sanitize_ocr_emphasis(normalize_turkish_text(_payload_stem(data)))
     options = _peel_embedded_options(_payload_options(data))
     figure_svg = _payload_figure(data)
     correct_option = _payload_answer(data)
     solution = _payload_solution(data)
+    subject_slug = _payload_subject_slug(data)
+    topic_slug = _payload_topic_slug(data)
     stem, options = _post_process_gemini_payload(stem, options, figure_svg)
 
     # JSON şıkları eksikse ham metinden ayrıştır
@@ -515,6 +1093,32 @@ def ocr_question_image_gemini(
     if not figure_svg and _likely_geometry_question(stem, options, stem):
         figure_svg = _fetch_geometry_svg(image_bytes, mime)
 
+    if figure_svg and stem:
+        figure_svg = repair_equality_ticks(figure_svg, stem)
+
+    # Geometri: çözüm metni / overlay annotasyon PNG üretme (yazar panelde çizer).
+    geometry_annotations: list[dict[str, Any]] = []
+    annotated_image_bytes: bytes | None = None
+    solution = strip_geometry_auto_solution(stem, options, figure_svg, solution)
+
+    options_visual = _payload_options_visual(data)
+    from .option_image_crop import (
+        VISUAL_OPTION_PLACEHOLDER,
+        crop_option_images,
+        normalize_option_boxes,
+    )
+
+    option_boxes = normalize_option_boxes(_payload_option_boxes(data))
+    option_image_bytes: dict[str, bytes] = {}
+    if options_visual:
+        option_image_bytes = crop_option_images(image_bytes, option_boxes)
+        if option_image_bytes:
+            for key in OPTION_KEYS:
+                if not (options.get(key) or "").strip():
+                    options[key] = VISUAL_OPTION_PLACEHOLDER
+        else:
+            options_visual = False
+
     filled = sum(1 for v in options.values() if v)
     ok = bool(stem and filled >= 2)
     raw_text = json.dumps(
@@ -524,9 +1128,17 @@ def ocr_question_image_gemini(
             "dogru_cevap": correct_option,
             "detayli_cozum": solution,
             "sekil_kodu": figure_svg,
+            "gorisel_siklar": options_visual,
+            "sik_kutulari": {
+                k: list(v) for k, v in (option_boxes or {}).items()
+            },
+            "geometri_annotasyonlari": geometry_annotations,
         },
         ensure_ascii=False,
     )
+    if not ok:
+        diagnostics["gemini"]["ok"] = False
+        diagnostics["gemini"]["error"] = "Gemini soruyu okuyamadı."
     return OcrQuestionResult(
         stem=stem,
         options=options,
@@ -537,4 +1149,12 @@ def ocr_question_image_gemini(
         figure_svg=figure_svg,
         correct_option=correct_option,
         solution=solution,
+        topic_slug=topic_slug,
+        subject_slug=subject_slug,
+        options_visual=options_visual,
+        option_boxes=option_boxes or None,
+        option_image_bytes=option_image_bytes or None,
+        geometry_annotations=geometry_annotations or None,
+        annotated_image_bytes=annotated_image_bytes,
+        diagnostics=diagnostics,
     )

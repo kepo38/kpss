@@ -1,31 +1,37 @@
 class DailyMiniLeaderRow {
   final int rank;
   final String userId;
+  final String displayName;
   final String emailPrefix;
   final String emailRest;
   final int correct;
   final int wrong;
   final int blank;
+  final int durationSeconds;
 
   const DailyMiniLeaderRow({
     required this.rank,
     required this.userId,
+    this.displayName = '',
     required this.emailPrefix,
     required this.emailRest,
     required this.correct,
     this.wrong = 0,
     this.blank = 0,
+    this.durationSeconds = 0,
   });
 
   factory DailyMiniLeaderRow.fromJson(Map<String, dynamic> json) {
     return DailyMiniLeaderRow(
       rank: (json['rank'] as num?)?.toInt() ?? 0,
       userId: '${json['userId'] ?? ''}',
+      displayName: '${json['displayName'] ?? ''}'.trim(),
       emailPrefix: '${json['emailPrefix'] ?? ''}',
       emailRest: '${json['emailRest'] ?? ''}',
       correct: (json['correct'] as num?)?.toInt() ?? 0,
       wrong: (json['wrong'] as num?)?.toInt() ?? 0,
       blank: (json['blank'] as num?)?.toInt() ?? 0,
+      durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -49,6 +55,9 @@ class DailyMiniAttempt {
     this.rank,
   });
 
+  /// Boş gönderimler sıralamaya girmez.
+  bool get countsTowardRanking => correct > 0 || wrong > 0;
+
   factory DailyMiniAttempt.fromJson(Map<String, dynamic> json) {
     return DailyMiniAttempt(
       correct: (json['correct'] as num?)?.toInt() ?? 0,
@@ -71,9 +80,13 @@ class DailyMiniExamSnapshot {
   final bool isOpen;
   final List<String> questionIds;
   final int participantCount;
+  final String? leaderboardDate;
+  final int leaderboardParticipantCount;
   final DailyMiniAttempt? myAttempt;
   final List<DailyMiniLeaderRow> leaderboard;
   final int secondsRemaining;
+  final bool guestLoginRequired;
+  final bool? rewardsVisible;
 
   const DailyMiniExamSnapshot({
     required this.examDate,
@@ -81,9 +94,13 @@ class DailyMiniExamSnapshot {
     required this.isOpen,
     required this.questionIds,
     required this.participantCount,
+    this.leaderboardDate,
+    this.leaderboardParticipantCount = 0,
     this.myAttempt,
     this.leaderboard = const [],
     this.secondsRemaining = 0,
+    this.guestLoginRequired = false,
+    this.rewardsVisible,
   });
 
   factory DailyMiniExamSnapshot.fromJson(Map<String, dynamic> json) {
@@ -96,6 +113,9 @@ class DailyMiniExamSnapshot {
               .toList() ??
           const [],
       participantCount: (json['participantCount'] as num?)?.toInt() ?? 0,
+      leaderboardDate: json['leaderboardDate']?.toString(),
+      leaderboardParticipantCount:
+          (json['leaderboardParticipantCount'] as num?)?.toInt() ?? 0,
       myAttempt: json['myAttempt'] is Map
           ? DailyMiniAttempt.fromJson(
               Map<String, dynamic>.from(json['myAttempt'] as Map),
@@ -111,6 +131,10 @@ class DailyMiniExamSnapshot {
               .toList() ??
           const [],
       secondsRemaining: (json['secondsRemaining'] as num?)?.toInt() ?? 0,
+      guestLoginRequired: json['guestLoginRequired'] == true,
+      rewardsVisible: json.containsKey('rewardsVisible')
+          ? json['rewardsVisible'] == true
+          : null,
     );
   }
 }

@@ -1,0 +1,168 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<header class="page-header">
+  <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / ÖSYM Çıkmış Sorular</div>
+  <h1>ÖSYM Çıkmış Sorular</h1>
+  <p class="lead">
+    Resmi sınav oturumlarına göre yüklenen çıkmış soruları yıl ve sınav bazında takip edin.
+    Etiket biçimi: <code>{{ label_format_hint }}</code>
+  </p>
+</header>
+
+<div class="osym-archive-stats">
+  <div class="osym-stat-card">
+    <span class="osym-stat-value">{{ summary.active_osym }}</span>
+    <span class="osym-stat-label">Aktif ÖSYM soru</span>
+  </div>
+  <div class="osym-stat-card osym-stat-ok">
+    <span class="osym-stat-value">{{ summary.complete_slots }}</span>
+    <span class="osym-stat-label">Tam oturum</span>
+  </div>
+  <div class="osym-stat-card osym-stat-warn">
+    <span class="osym-stat-value">{{ summary.partial_slots }}</span>
+    <span class="osym-stat-label">Eksik (kısmi)</span>
+  </div>
+  <div class="osym-stat-card osym-stat-miss">
+    <span class="osym-stat-value">{{ summary.missing_slots }}</span>
+    <span class="osym-stat-label">Henüz yüklenmedi</span>
+  </div>
+  <div class="osym-stat-card">
+    <span class="osym-stat-value">{{ summary.untagged_osym }}</span>
+    <span class="osym-stat-label">Etiketsiz ÖSYM</span>
+  </div>
+</div>
+
+<div class="panel-card osym-archive-card">
+  <form method="get" class="osym-archive-filters">
+    <label>Sınav ailesi
+      <select name="family">
+        <option value="">Tümü</option>
+        {% for f in families %}
+        <option value="{{ f }}" {% if selected_family == f %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Yıl
+      <select name="year">
+        <option value="">Tüm yıllar</option>
+        {% for y in years %}
+        <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="check osym-filter-check">
+      <input type="checkbox" name="missing" value="1" {% if show_missing_only %}checked{% endif %}>
+      Yalnızca eksik oturumlar
+    </label>
+    <button class="btn btn-primary" type="submit">Filtrele</button>
+    {% if selected_family or selected_year or show_missing_only %}
+    <a class="btn btn-ghost" href="{% url 'panel_osym_archive' %}">Sıfırla</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="osym-archive-tree">
+  {% for year_group in tree %}
+  <section class="panel-card osym-year-block">
+    <div class="osym-year-head">
+      <h2>{{ year_group.year }}</h2>
+      <span class="pill pill-gold">{{ year_group.exams|length }} sınav türü</span>
+    </div>
+
+    {% for exam in year_group.exams %}
+    <div class="osym-exam-group">
+      <div class="osym-exam-head">
+        <span class="osym-family-badge">{{ exam.family }}</span>
+        <strong>{{ exam.exam_name }}</strong>
+      </div>
+      <div class="osym-session-grid">
+        {% for session in exam.sessions %}
+        <a
+          class="osym-session-card osym-status-{{ session.status }}"
+          href="{% url 'panel_osym_archive_detail' label=session.canonical_label %}"
+          title="{{ session.canonical_label }}"
+        >
+          <div class="osym-session-top">
+            <span class="osym-session-name">{{ session.slot.session_name }}</span>
+            {% if session.status == "complete" %}
+              <span class="osym-status-icon" aria-label="Tam">✓</span>
+            {% elif session.status == "partial" %}
+              <span class="osym-status-icon" aria-label="Kısmi">◐</span>
+            {% else %}
+              <span class="osym-status-icon" aria-label="Eksik">○</span>
+            {% endif %}
+          </div>
+          <div class="osym-session-count">
+            <strong>{{ session.active_count }}</strong>
+            <span>/ {{ session.expected_count }} soru</span>
+          </div>
+          <div class="osym-progress-bar" aria-hidden="true">
+            <span style="width: {{ session.progress_pct }}%;"></span>
+          </div>
+          {% if session.unpublished_count %}
+          <div class="osym-session-meta">{{ session.unpublished_count }} taslak</div>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% empty %}
+    <p class="hint">Bu yıl için filtre kriterine uyan oturum yok.</p>
+    {% endfor %}
+  </section>
+  {% empty %}
+  <div class="panel-card">
+    <p class="empty">Filtreye uyan oturum bulunamadı.</p>
+  </div>
+  {% endfor %}
+</div>
+
+{% if extras %}
+<div class="panel-card osym-archive-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Katalog dışı etiketler</h2>
+      <p class="media-hint">Standart biçimle eşleşmeyen veya henüz katalogda tanımlı olmayan gruplar.</p>
+    </div>
+    <span class="pill">{{ extras|length }} grup</span>
+  </div>
+  <div class="list">
+    {% for group in extras %}
+    <a class="row osym-extra-row" href="{% url 'panel_osym_archive_detail' label=group.archive_key %}">
+      <div class="name">
+        <strong>{{ group.archive_key }}</strong>
+        {% if group.year %}<div class="hint">{{ group.year }}</div>{% endif %}
+      </div>
+      <span class="badge on">{{ group.active_count }} aktif</span>
+      {% if group.total_count != group.active_count %}
+      <span class="badge off">{{ group.total_count }} toplam</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if untagged_questions %}
+<div class="panel-card osym-archive-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Etiketsiz ÖSYM soruları</h2>
+      <p class="media-hint">ÖSYM rozeti işaretli ama «Hangi çıkmış soru?» alanı boş — arşivde gruplanamaz.</p>
+    </div>
+    <span class="pill pill-warn">{{ summary.untagged_osym }}</span>
+  </div>
+  <div class="list">
+    {% for q in untagged_questions %}
+    <div class="row">
+      <div class="name">
+        <strong>{{ q.topic.subject.name }} · {{ q.topic.name }}</strong>
+        <div class="hint">{{ q.public_id }} · {{ q.stem|truncatechars:80 }}</div>
+      </div>
+      <a class="btn btn-ghost" href="{% url 'panel_question_edit' topic_id=q.topic_id question_id=q.id %}">Düzenle</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

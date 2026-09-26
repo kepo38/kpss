@@ -94,6 +94,8 @@ class TopicTestModel {
     this.published = true,
   });
 
+  bool get hasQuestions => questionCount > 0 || questionIds.isNotEmpty;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'topicId': topicId,
@@ -275,6 +277,77 @@ class TopicLessonModel {
     return TopicLessonModel(
       id: json['id'] as String,
       topicId: json['topicId'] as String,
+      title: json['title'] as String,
+      body: json['body'] as String,
+      imageUrl: json['imageUrl'] as String?,
+      sortOrder: json['sortOrder'] as int? ?? 0,
+    );
+  }
+}
+
+/// Konu detayında kaydırılan kısa özet / formül kartı.
+enum SummaryCardKind { formula, tip, osym }
+
+class TopicSummaryCardModel {
+  final String id;
+  final String topicId;
+  final String subjectId;
+  final String subjectName;
+  final String topicName;
+  final SummaryCardKind kind;
+  final String title;
+  final String body;
+  final String? imageUrl;
+  final int sortOrder;
+
+  const TopicSummaryCardModel({
+    required this.id,
+    required this.topicId,
+    required this.subjectId,
+    required this.subjectName,
+    required this.topicName,
+    required this.kind,
+    required this.title,
+    required this.body,
+    this.imageUrl,
+    this.sortOrder = 0,
+  });
+
+  String get kindLabel => switch (kind) {
+        SummaryCardKind.formula => 'Formül',
+        SummaryCardKind.tip => 'Püf nokta',
+        SummaryCardKind.osym => 'ÖSYM buradan sorar',
+      };
+
+  bool get hasContent =>
+      body.trim().isNotEmpty || (imageUrl?.trim().isNotEmpty ?? false);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'topicId': topicId,
+        'subjectId': subjectId,
+        'subjectName': subjectName,
+        'topicName': topicName,
+        'kind': kind.name,
+        'title': title,
+        'body': body,
+        if (imageUrl != null) 'imageUrl': imageUrl,
+        'sortOrder': sortOrder,
+      };
+
+  factory TopicSummaryCardModel.fromJson(Map<String, dynamic> json) {
+    final kindRaw = (json['kind'] as String? ?? 'tip').toLowerCase();
+    final kind = SummaryCardKind.values.firstWhere(
+      (k) => k.name == kindRaw,
+      orElse: () => SummaryCardKind.tip,
+    );
+    return TopicSummaryCardModel(
+      id: json['id'] as String,
+      topicId: json['topicId'] as String,
+      subjectId: json['subjectId'] as String? ?? '',
+      subjectName: json['subjectName'] as String? ?? '',
+      topicName: json['topicName'] as String? ?? '',
+      kind: kind,
       title: json['title'] as String,
       body: json['body'] as String,
       imageUrl: json['imageUrl'] as String?,

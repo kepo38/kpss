@@ -73,7 +73,7 @@ class _AdFreeCampaignCardState extends State<AdFreeCampaignCard> {
         SnackBar(
           content: Text(
             _service.isAdFreeActive
-                ? '12 saat reklamsız mod başladı!'
+                ? '12 saat banner reklamları kapandı. Çözüm kilidi ve kota Premium’da kalır.'
                 : 'İlerleme kaydedildi (${_service.adsWatchedToday}/${AdFreeCampaignService.requiredAds})',
           ),
         ),

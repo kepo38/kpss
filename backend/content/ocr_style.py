@@ -156,8 +156,21 @@ def detect_word_styles(img: Image.Image, words: list[OcrWord]) -> None:
         w.italic = (
             (not w.bold)
             and w.width >= 36
-            and slant >= 0.28
+            and slant >= 0.34
         )
+
+    _clear_isolated_italic_flags(words)
+
+
+def _clear_isolated_italic_flags(words: list[OcrWord]) -> None:
+    """Satırda yalnızca tek kelime italikse bayrağı kaldır (serif OCR false positive)."""
+    by_line: dict[tuple[int, int, int], list[OcrWord]] = {}
+    for w in words:
+        by_line.setdefault(w.line_key, []).append(w)
+    for line_words in by_line.values():
+        italic_words = [w for w in line_words if w.italic]
+        if len(italic_words) == 1:
+            italic_words[0].italic = False
 
 
 def _wrap_markdown(text: str, bold: bool, italic: bool, underline: bool) -> str:

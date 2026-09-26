@@ -1,0 +1,176 @@
+"""Panel çözüm metni normalizasyonu — rich-format.js ile uyumlu.
+
+Panelde js-rich textarea yapıştırma kurallarının sunucu tarafı karşılığı.
+Telegram için `rich_text_telegram` modülünü kullanın.
+"""
+
+from __future__ import annotations
+
+from .ocr import normalize_turkish_text
+from .rich_text_common import (
+    _HTML_TAG_RE,
+    choose_paste_text,
+    collapse_bullet_prefixes,
+    collapse_italic_quote_marker_spaces,
+    collapse_nested_marks,
+    html_clipboard_to_text,
+    html_to_markdown,
+    is_structured_solution_outline,
+    looks_storage_normalized_solution,
+    _format_named_solution_sections,
+    _touchup_storage_solution,
+    _ensure_markdown_exterior_spaces,
+    normalize_latex,
+    normalize_paste_text,
+    normalize_roman_solution_sections,
+    repair_latex_escapes,
+    repair_solution_storage_defects,
+    restore_collapsed_breaks,
+    repair_inline_glued_bold,
+    solution_has_storage_defects,
+    structure_solution_outline,
+    tighten_markdown_markers,
+)
+
+
+def _repair_solution_if_defective(text: str) -> str:
+    """Yalnızca kusurlu kayıtlarda storage onarımı — bilinçli düzenlemeyi koru."""
+    src = text or ""
+    if solution_has_storage_defects(src):
+        return repair_solution_storage_defects(src)
+    return src
+
+
+def _finalize_storage_solution(text: str) -> str:
+    """Kayıt/önizleme öncesi son geçiş — yapıştırma yolundan bağımsız tek çıkış."""
+    from .rich_text_common import (
+        _repair_glued_italic_open_quotes,
+        _repair_underline_phrase_analysis,
+    )
+
+    src = (text or "").strip()
+    if not src:
+        return ""
+    if looks_storage_normalized_solution(src):
+        return normalize_turkish_text(_touchup_storage_solution(src)).strip()
+    src = _repair_glued_italic_open_quotes(src)
+    src = _repair_underline_phrase_analysis(src)
+    for _ in range(4):
+        if not solution_has_storage_defects(src):
+            break
+        repaired = repair_solution_storage_defects(src)
+        if repaired == src:
+            break
+        src = repaired
+    src = _touchup_storage_solution(src)
+    return normalize_turkish_text(src).strip()
+
+
+def normalize_pasted_stem(
+    text: str,
+    *,
+    html: str = "",
+) -> str:
+    """Panel soru kökü — yapıştırma normalizasyonu (çözüm outline yok)."""
+    raw = (text or "").strip()
+    html_src = (html or "").strip()
+    if not raw and not html_src:
+        return ""
+    if _HTML_TAG_RE.search(raw):
+        chosen = choose_paste_text(raw, raw)
+    elif html_src:
+        chosen = choose_paste_text(raw, html_src)
+    else:
+        chosen = choose_paste_text(raw, "")
+    chosen = restore_collapsed_breaks(chosen)
+    return normalize_turkish_text(normalize_paste_text(chosen)).strip()
+
+
+def normalize_pasted_option(
+    text: str,
+    *,
+    html: str = "",
+) -> str:
+    """Panel şık metni — hafif yapıştırma normalizasyonu."""
+    raw = (text or "").strip()
+    html_src = (html or "").strip()
+    if not raw and not html_src:
+        return ""
+    if _HTML_TAG_RE.search(raw):
+        chosen = choose_paste_text(raw, raw)
+    elif html_src:
+        chosen = choose_paste_text(raw, html_src)
+    else:
+        chosen = choose_paste_text(raw, "")
+    return normalize_turkish_text(normalize_paste_text(chosen)).strip()
+
+
+def normalize_pasted_solution(
+    text: str,
+    *,
+    html: str = "",
+) -> str:
+    """Panel js-rich yapıştırma → kaydedilecek çözüm metni."""
+    raw = (text or "").strip()
+    html_src = (html or "").strip()
+    if not raw and not html_src:
+        return ""
+    if not html_src and not _HTML_TAG_RE.search(raw):
+        prestructured = _format_named_solution_sections(raw)
+        if looks_storage_normalized_solution(prestructured):
+            return _finalize_storage_solution(prestructured)
+    if _HTML_TAG_RE.search(raw):
+        chosen = choose_paste_text(raw, raw)
+    elif html_src:
+        chosen = choose_paste_text(raw, html_src)
+    else:
+        chosen = choose_paste_text(raw, "")
+    chosen = _format_named_solution_sections(chosen)
+    if looks_storage_normalized_solution(chosen):
+        return _finalize_storage_solution(chosen)
+    chosen = restore_collapsed_breaks(chosen)
+    chosen = _format_named_solution_sections(chosen)
+    if solution_has_storage_defects(chosen):
+        chosen = repair_solution_storage_defects(chosen)
+    chosen = normalize_roman_solution_sections(chosen)
+    chosen = structure_solution_outline(chosen)
+    chosen = repair_inline_glued_bold(chosen)
+    chosen = tighten_markdown_markers(chosen)
+    chosen = _ensure_markdown_exterior_spaces(chosen)
+    chosen = collapse_italic_quote_marker_spaces(chosen)
+    return _finalize_storage_solution(chosen)
+
+
+def normalize_panel_paste_field(
+    field: str,
+    text: str,
+    *,
+    html: str = "",
+) -> str:
+    """Tek giriş — panel yapıştırma alanı (solution/stem/option)."""
+    key = (field or "solution").strip().lower()
+    if key == "solution":
+        return normalize_pasted_solution(text, html=html)
+    if key == "stem":
+        return normalize_pasted_stem(text, html=html)
+    if key == "option" or key.startswith("option_"):
+        return normalize_pasted_option(text, html=html)
+    return normalize_pasted_option(text, html=html)
+
+
+__all__ = [
+    "choose_paste_text",
+    "collapse_bullet_prefixes",
+    "collapse_nested_marks",
+    "html_clipboard_to_text",
+    "html_to_markdown",
+    "normalize_latex",
+    "normalize_panel_paste_field",
+    "normalize_paste_text",
+    "normalize_pasted_option",
+    "normalize_pasted_solution",
+    "normalize_pasted_stem",
+    "repair_latex_escapes",
+    "restore_collapsed_breaks",
+    "structure_solution_outline",
+]

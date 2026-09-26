@@ -1,0 +1,332 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kpss_akademi/theme/exam_typography.dart';
+import 'package:kpss_akademi/widgets/exam_text/exam_scenario_passage_view.dart';
+import 'package:kpss_akademi/widgets/exam_text/exam_option_view.dart';
+import 'package:kpss_akademi/widgets/exam_text/exam_solution_view.dart';
+import 'package:kpss_akademi/widgets/exam_text/exam_stem_view.dart';
+import 'package:kpss_akademi/widgets/exam_text/option_column_layout.dart';
+import 'package:kpss_akademi/widgets/formatted_text.dart';
+
+String _plain(String s) => s.replaceAll('\u00AD', '');
+
+Finder textContainingPlain(String needle) {
+  return find.byWidgetPredicate((w) {
+    if (w is Text && w.data != null) {
+      return _plain(w.data!).contains(needle);
+    }
+    if (w is RichText) {
+      return _plain(w.text.toPlainText()).contains(needle);
+    }
+    return false;
+  });
+}
+
+void main() {
+  testWidgets('exam stem keeps uniform 18pt with bold question line', (tester) async {
+    const stem =
+        'Nizamülmülk, Siyasetname adlı eserinde bir kimsenin mahkemeye '
+        'gelmek istememesi hâlinde ne kadar yüksek makam sahibi olursa '
+        'olsun onun zorla mahkemeye getirilmesi gerektiğini ifade etmiştir.\n\n'
+        '**Buna göre Nizamülmülk’ün aşağıdakilerden hangisini '
+        'gerçekleştirmeyi hedeflediği söylenemez?**';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: ExamStemView(text: stem),
+          ),
+        ),
+      ),
+    );
+
+    expect(textContainingPlain('Nizamülmülk'), findsWidgets);
+    expect(textContainingPlain('Buna göre'), findsOneWidget);
+    expect(find.byType(FittedBox), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('exam solution wraps long lines without horizontal clip', (tester) async {
+    const solution =
+        '• **Açıklama:** Nizamülmülk’ün metindeki ifadesi tamamen '
+        'adalet sistemine güven duyulması gerektiğini vurgular.\n'
+        '-A Şıkkı (Toplumun adalet sistemine güvenini artırmayı): '
+        'Metindeki ifade ile uyumludur.';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: ExamSolutionView(text: solution),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('Açıklama'), findsOneWidget);
+    expect(find.byType(FittedBox), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('exam option wraps long single line at 14pt without FittedBox',
+      (tester) async {
+    const option =
+        'Toplumun, ülkedeki adalet sistemine olan güvenini artırmayı';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 280,
+            child: ExamOptionView(text: option),
+          ),
+        ),
+      ),
+    );
+
+    expect(textContainingPlain('Toplumun'), findsOneWidget);
+    expect(find.byType(FittedBox), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('parseSpans is public', () {
+    final spans = FormattedText.parseSpans(
+      '**kalın** metin',
+      ExamTypography.body(color: Colors.black),
+    );
+    expect(spans, isNotEmpty);
+  });
+
+  test('all plain options stay start-aligned; only LaTeX is compact size', () {
+    expect(
+      ExamOptionView.isCompactOption('kibirli — içselleştiriyor'),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isCompactOption('şüpheci — eleştiriyor'),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isCompactOption('bilgiç — irdeliyor'),
+      isFalse,
+    );
+    // Tire yok + kısa — eski bug: ortalanıyordu.
+    expect(ExamOptionView.isCompactOption('ukala kanıksıyor'), isFalse);
+    expect(ExamOptionView.isCompactOption('42'), isFalse);
+    expect(ExamOptionView.isCompactOption(r'$x+1$'), isTrue);
+    expect(ExamOptionView.isCompactOption(r'$12$'), isTrue);
+    expect(ExamOptionView.isMathStyleOption('42'), isTrue);
+    expect(ExamOptionView.isMathStyleOption(r'$12$'), isTrue);
+    expect(ExamOptionView.isMathStyleOption('0,1'), isTrue);
+    expect(ExamOptionView.isMathStyleOption('0,3'), isTrue);
+    expect(ExamOptionView.isMathStyleOption('-1/2'), isTrue);
+    expect(ExamOptionView.isMathStyleOption('ukala kanıksıyor'), isFalse);
+    // Regresyon: cümle içindeki sıcaklık formülü bütün şıkkı büyütüp
+    // ortalamamalı.
+    expect(
+      ExamOptionView.isCompactOption(
+        r'Ortalama indirgenmiş sıcaklık farkı $7^\circ C$ den fazladır.',
+      ),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isMathStyleOption(
+        r'Ortalama indirgenmiş sıcaklık farkı $7^\circ C$ den fazladır.',
+      ),
+      isFalse,
+    );
+    expect(
+      ExamOptionView.isMathStyleOption(
+        r'Sıcaklık farkı 7^\circ C den fazladır.',
+      ),
+      isFalse,
+    );
+    // 56 karakter sınırından kısa: özellikle `$` içeren düz-cümle korumasını
+    // çalıştırır.
+    expect(
+      ExamOptionView.isMathStyleOption(r'Sıcaklık $7^\circ C$ olur.'),
+      isFalse,
+    );
+    expect(ExamOptionView.isCompactOption(r'$$x + y = 12$$'), isTrue);
+  });
+
+  testWidgets('mixed prose and inline math stays 15pt and start aligned',
+      (tester) async {
+    const option = r'Sıcaklık $7^\circ C$ olur.';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 280,
+            child: ExamOptionView(text: option),
+          ),
+        ),
+      ),
+    );
+
+    final formatted = tester.widget<FormattedText>(
+      find.byType(FormattedText),
+    );
+    expect(formatted.style?.fontSize, 15);
+    expect(formatted.textAlign, TextAlign.start);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('dash-separated options become two or three columns', () {
+    expect(
+      OptionColumnLayout.cellsOf(
+        'İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar',
+      ),
+      ['Şanlıurfa', 'Antalya', 'Afyonkarahisar'],
+    );
+    expect(
+      OptionColumnLayout.headersFromOptions([
+        'İnanç: Şanlıurfa, Mağara: Antalya, Termal: Afyonkarahisar',
+        'İnanç: Trabzon, Mağara: Konya, Termal: İzmir',
+      ], 3),
+      ['İnanç', 'Mağara', 'Termal'],
+    );
+    expect(
+      OptionColumnLayout.cellsOf('Şanlıurfa — Antalya — Afyonkarahisar'),
+      ['Şanlıurfa', 'Antalya', 'Afyonkarahisar'],
+    );
+    expect(
+      OptionColumnLayout.cellsOf('Şanlıurfa --- Antalya --- Afyonkarahisar'),
+      ['Şanlıurfa', 'Antalya', 'Afyonkarahisar'],
+    );
+    expect(
+      OptionColumnLayout.alignedCount([
+        'Şanlıurfa - Antalya - Afyonkarahisar',
+        'Konya - Mersin - Denizli',
+      ]),
+      3,
+    );
+    expect(
+      OptionColumnLayout.alignedCount([
+        'Şanlıurfa — Antalya — Afyonkarahisar',
+        'Trabzon — Konya — İzmir',
+        'Hatay — Edirne — Rize',
+        'Düz cümle şıkkı burada',
+      ]),
+      3,
+    );
+    expect(
+      OptionColumnLayout.headersFromStem(
+        'I. İnanç II. Mağara III. Termal turizmi',
+        3,
+      ),
+      ['İnanç', 'Mağara', 'Termal'],
+    );
+    expect(
+      OptionColumnLayout.headersFromStem(
+        'Soru metni\n<!--optcols:İnanç|Mağara|Termal-->',
+        3,
+      ),
+      ['İnanç', 'Mağara', 'Termal'],
+    );
+    expect(
+      OptionColumnLayout.visibleStem(
+        'Soru metni\n<!--optcols:İnanç|Mağara|Termal-->',
+      ),
+      'Soru metni',
+    );
+
+    // 2-column Olay/Sonuç (n >= 2 consensus)
+    const olaySonuc = [
+      "Belgrad'ın Fethi — Avrupa seferlerinde üs kazanıldı",
+      'Mohaç Meydan Muharebesi — Macaristan hâkimiyeti',
+      'Preveze Deniz Savaşı — Akdeniz’de üstünlük',
+      'İstanbul’un Fethi — Ortaçağ kapandı',
+      'Kanuni dönemi — İmparatorluk zirvesi',
+    ];
+    expect(
+      OptionColumnLayout.cellsOf(olaySonuc.first),
+      ["Belgrad'ın Fethi", 'Avrupa seferlerinde üs kazanıldı'],
+    );
+    expect(OptionColumnLayout.alignedCount(olaySonuc), 2);
+    expect(
+      OptionColumnLayout.headersFor('Soru kökü metni', olaySonuc, 2),
+      ['Olay', 'Sonuç'],
+    );
+    expect(
+      OptionColumnLayout.headersFor(
+        'Olay | Sonuç\nHangisi doğrudur?',
+        olaySonuc,
+        2,
+      ),
+      ['Olay', 'Sonuç'],
+    );
+    expect(
+      OptionColumnLayout.headersFor(
+        'Soru\n<!--optcols:Olay|Sonuç-->',
+        olaySonuc,
+        2,
+      ),
+      ['Olay', 'Sonuç'],
+    );
+    expect(
+      OptionColumnLayout.alignedCount([
+        'A - B - C',
+        'D - E - F',
+        'G - H - I',
+      ]),
+      3,
+    );
+  });
+
+  testWidgets('exam stem renders array display math via ExamStemView', (tester) async {
+    const stem =
+        'Verilen işlem:\n'
+        r'$$\displaystyle \begin{array}{r} AB8 \\ -16C \\ \hline CA3 \end{array}$$'
+        '\n'
+        r'$A + B + C$ kaçtır?';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: ExamStemView(text: stem),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.textContaining(r'$$\displaystyle'), findsNothing);
+    expect(find.textContaining(r'\hline'), findsNothing);
+    expect(find.textContaining(r'$A + B + C$'), findsNothing);
+    expect(textContainingPlain('kaçtır'), findsOneWidget);
+  });
+
+  testWidgets('exam scenario passage wraps long text without FittedBox shrink',
+      (tester) async {
+    const passage =
+        'Bir oyun parkında Fidan, Gamze, Işıl, Kerem ve Levent adlı '
+        'beş çocuk farklı oyuncaklarda oynamaktadır.\n'
+        '- Her çocuk yalnız bir oyuncakta oynamıştır.\n'
+        '- Fidan tahterevallide oynamamıştır.\n'
+        '- Gamze ile Kerem aynı oyuncakta oynamamıştır.';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: ExamScenarioPassageView(text: passage),
+          ),
+        ),
+      ),
+    );
+
+    expect(textContainingPlain('Fidan'), findsWidgets);
+    expect(textContainingPlain('Her çocuk'), findsOneWidget);
+    expect(find.byType(FittedBox), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}

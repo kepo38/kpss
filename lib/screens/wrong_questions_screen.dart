@@ -4,21 +4,45 @@ import 'package:flutter/material.dart';
 
 import '../models/question_model.dart';
 import '../models/quiz_result.dart';
+import '../models/wrong_notebook_session_filter.dart';
 import '../services/ad_manager.dart';
+import '../services/ad_service.dart';
+import '../services/auth_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/favorites_service.dart';
 import '../services/question_fetch_service.dart';
+import '../services/play_billing_service.dart';
+import '../services/premium_service.dart';
+import '../services/kpss_preference_service.dart';
+import '../services/manual_question_service.dart';
+import '../services/wrong_notebook_share_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/wrong_notebook_capacity_upsell.dart';
+import '../widgets/account_link_card.dart';
 import '../widgets/app_back_button.dart';
-import '../widgets/countdown_widget.dart';
+import '../constants/wrong_notebook_constants.dart';
+import '../widgets/pro_feature_lock.dart';
+import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/question_stem_content.dart';
-import '../widgets/study_empty_cta.dart';
+import '../widgets/wrong_notebook/wrong_notebook_capacity_banner.dart';
+import '../widgets/wrong_notebook/wrong_notebook_empty_state.dart';
+import '../widgets/wrong_notebook/wrong_notebook_header.dart';
+import '../widgets/wrong_notebook/wrong_notebook_practice_bar.dart';
+import '../widgets/wrong_notebook/wrong_notebook_question_card.dart';
+import '../widgets/wrong_notebook/wrong_notebook_remove_toast.dart';
+import '../widgets/wrong_notebook/wrong_notebook_session_banner.dart';
+import '../widgets/wrong_notebook/wrong_notebook_stats_row.dart';
+import '../widgets/wrong_notebook/wrong_notebook_subject_filter.dart';
 import 'quiz_screen.dart';
 import 'smart_review_screen.dart';
+import 'wrong_notebook_manual_screen.dart';
 
-/// Konu testlerinde yanlış yapılan sorular (doğru çözünce listeden düşmez).
+/// Konu testlerinde yanlış yapılan sorular; kullanıcı istediğini kaldırabilir.
 class WrongQuestionsScreen extends StatefulWidget {
-  const WrongQuestionsScreen({super.key});
+  /// Az önce biten testten gelindiyse yalnızca o oturumdaki yanlışlar.
+  final WrongNotebookSessionFilter? sessionFilter;
+
+  const WrongQuestionsScreen({super.key, this.sessionFilter});
 
   @override
   State<WrongQuestionsScreen> createState() => _WrongQuestionsScreenState();
@@ -27,21 +51,44 @@ class WrongQuestionsScreen extends StatefulWidget {
 class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
   String? _subjectFilter;
   bool _hydrating = false;
+  String? _similarLoadingId;
+  WrongNotebookSessionFilter? _activeSessionFilter;
 
   @override
   void initState() {
     super.initState();
+    _activeSessionFilter = widget.sessionFilter;
     FavoritesService.instance.initialize();
+    unawaited(ManualQuestionService.instance.initialize());
     unawaited(_hydrateMissingBodies());
   }
 
+  @override
+  void dispose() {
+    WrongNotebookRemoveToast.hide();
+    super.dispose();
+  }
+
   Future<void> _hydrateMissingBodies() async {
-    final missing = ContentBankService.instance.unresolvedWrongQuestionIds;
-    if (missing.isEmpty || _hydrating) return;
+    final session = _activeSessionFilter;
+    final ids = <String>{
+      ...ContentBankService.instance.unresolvedWrongQuestionIds,
+      if (session != null) ...session.questionIds,
+    };
+    if (ids.isEmpty || _hydrating) return;
     setState(() => _hydrating = true);
     try {
-      await QuestionFetchService.instance.fetchByIds(missing);
+      await QuestionFetchService.instance.fetchByIds(ids.toList());
       await ContentBankService.instance.persistWrongQuestionBodiesNow();
+    } catch (e, st) {
+      debugPrint('Wrong notebook hydrate error: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bazı yanlış sorular yüklenemedi. Tekrar dene.'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _hydrating = false);
     }
@@ -49,10 +96,15 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
   Future<void> _afterQuiz(QuizResult? result) async {
     if (result == null || !result.completed) return;
-    await ContentBankService.instance.updateAnswerOutcomes(
+    final capacity = await ContentBankService.instance.updateAnswerOutcomes(
       wrongQuestionIds: result.wrongQuestionIds,
       correctQuestionIds: result.correctQuestionIds,
+      questionIds: result.questionIds,
+      selectedAnswers: result.selectedAnswers,
     );
+    if (mounted) {
+      await WrongNotebookCapacityUpsell.maybeShowAfterAdd(context, capacity);
+    }
   }
 
   Future<void> _toggleFavorite(String questionId) async {
@@ -60,36 +112,138 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _openQuestion(BuildContext context, String questionId) async {
+  Future<void> _confirmRemoveQuestion(QuestionModel question) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surfaceCard(context),
+          title: const Text(
+            'Soruyu kaldır?',
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: Text(
+            'Bu soru yanlış defterinden silinir. İstersen testlerde '
+            'tekrar yanlış yapınca yeniden eklenir.',
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              color: AppTheme.mutedOnPage(context),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.champagne,
+                foregroundColor: AppTheme.ink,
+              ),
+              child: const Text(
+                'Kaldır',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    await ContentBankService.instance.removeWrongQuestion(question.id);
+    if (!mounted) return;
+    WrongNotebookRemoveToast.show(
+      context,
+      preview: QuestionStemContent.previewText(question.soruMetni),
+    );
+  }
+
+  Future<void> _unlockGuestQuestion(
+    BuildContext context,
+    QuestionModel question,
+  ) async {
+    final previousUserId = AuthService.instance.user?.id;
+    final ok = await AccountLinkCard.prompt(
+      context,
+      title: 'Giriş yap',
+      subtitle: 'Soru metnini görmek için Google hesabını bağla.',
+    );
+    if (!ok || !mounted) return;
+    await AuthService.instance.relayUserScopedServices(
+      previousUserId: previousUserId,
+    );
+    if (!mounted) return;
+    await _openQuestion(this.context, question: question);
+  }
+
+  QuestionModel? _resolveWrongQuestion(
+    String questionId, {
+    QuestionModel? preferred,
+  }) {
+    if (preferred != null && preferred.id == questionId) return preferred;
     final bank = ContentBankService.instance;
-    final question = bank.questionById(questionId);
-    if (question == null) return;
+    final fromBank = bank.questionById(questionId);
+    if (fromBank != null) return fromBank;
+    final session = _activeSessionFilter;
+    if (session == null) return null;
+    for (final q in session.prefetchedQuestions) {
+      if (q.id == questionId) return q;
+    }
+    return null;
+  }
 
-    final test = bank.testContainingQuestion(questionId);
-    late final List<QuestionModel> questions;
-    late final String title;
-    var initialIndex = 0;
-    var timeLimit = 0;
+  Future<void> _openQuestion(
+    BuildContext context, {
+    String? questionId,
+    QuestionModel? question,
+  }) async {
+    final id = question?.id ?? questionId;
+    if (id == null || id.isEmpty) return;
 
-    if (test != null) {
-      questions = bank.questionsForTest(test);
-      title = test.title;
-      timeLimit = test.timeLimitMinutes;
-      initialIndex = questions.indexWhere((q) => q.id == questionId);
-      if (initialIndex < 0) initialIndex = 0;
-    } else {
-      questions = [question];
-      title = 'Yanlış soru';
+    final bank = ContentBankService.instance;
+    await bank.initialize();
+    var resolved = _resolveWrongQuestion(id, preferred: question);
+    if (resolved == null) {
+      try {
+        await QuestionFetchService.instance.fetchByIds([id]);
+        resolved = bank.questionById(id);
+      } catch (e, st) {
+        debugPrint('Wrong notebook open fetch error: $e\n$st');
+      }
+    }
+    if (!mounted) return;
+    if (resolved == null) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        const SnackBar(
+          content: Text('Soru açılamadı. Bağlantını kontrol edip tekrar dene.'),
+        ),
+      );
+      return;
     }
 
+    // Oturum prefetch'inden gelen gövdeyi bankaya al — sonraki açılışlar için.
+    bank.mergeSessionQuestions([resolved]);
+    final openQuestion = resolved;
+
     AdManager.instance.skipNextPageTransition();
-    final result = await Navigator.of(context).push<QuizResult>(
+    final storedAnswer = bank.wrongSelectionFor(openQuestion.id);
+    final nav = Navigator.of(this.context);
+    final result = await nav.push<QuizResult>(
       MaterialPageRoute<QuizResult>(
         builder: (_) => QuizScreen(
-          title: title,
-          questions: questions,
-          timeLimitMinutes: timeLimit,
-          initialIndex: initialIndex,
+          title: openQuestion.konuAdi.isNotEmpty
+              ? openQuestion.konuAdi
+              : 'Yanlış soru',
+          questions: [openQuestion],
+          fromWrongNotebook: true,
+          skipResultDialog: true,
+          initialAnswers: storedAnswer != null ? [storedAnswer] : null,
         ),
       ),
     );
@@ -101,6 +255,11 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     BuildContext context,
     QuestionModel question,
   ) async {
+    if (!PremiumService.instance.isPremium) {
+      await ProUpsellSheet.show(context);
+      return;
+    }
+    if (_similarLoadingId != null) return;
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -150,17 +309,6 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Bu yanlış sorunun metnine en yakın yayınlanmış '
-                      'sorular vektör benzerliği ile sıralanır. Yanlış '
-                      'sorusunun kendisi açılmaz; pratik için ayrı bir set gelir.',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        height: 1.4,
-                        color: Colors.white.withValues(alpha: 0.62),
-                      ),
-                    ),
                     const SizedBox(height: 18),
                     Row(
                       children: [
@@ -173,8 +321,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                               side: BorderSide(
                                 color: Colors.white.withValues(alpha: 0.2),
                               ),
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                             child: const Text('Vazgeç'),
                           ),
@@ -187,8 +334,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                             style: FilledButton.styleFrom(
                               backgroundColor: AppTheme.champagne,
                               foregroundColor: AppTheme.ink,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                             child: const Text(
                               'Getir',
@@ -210,18 +356,16 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
     final navigator = Navigator.of(this.context);
     final messenger = ScaffoldMessenger.of(this.context);
-    showDialog<void>(
-      context: this.context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.champagne),
-      ),
-    );
-    final similar = await QuestionFetchService.instance.fetchSimilar(
-      question.id,
-    );
+    setState(() => _similarLoadingId = question.id);
+    List<QuestionModel> similar = const [];
+    try {
+      similar = await QuestionFetchService.instance.fetchSimilar(
+        question.id,
+      );
+    } finally {
+      if (mounted) setState(() => _similarLoadingId = null);
+    }
     if (!mounted) return;
-    navigator.pop();
     if (similar.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Benzer soru bulunamadı.')),
@@ -235,6 +379,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
         builder: (_) => QuizScreen(
           title: 'Benzer sorular',
           questions: similar,
+          hideQuestionCounter: true,
         ),
       ),
     );
@@ -244,12 +389,41 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
 
   Future<void> _practiceAll(List<QuestionModel> questions) async {
     if (questions.isEmpty) return;
+    if (!AuthService.instance.hasPermanentAccount) {
+      final previousUserId = AuthService.instance.user?.id;
+      final ok = await AccountLinkCard.prompt(
+        context,
+        title: 'Giriş yap',
+        subtitle: 'Eksiklerini kapatmak için Google hesabını bağla.',
+      );
+      if (!ok || !mounted) return;
+      await AuthService.instance.relayUserScopedServices(
+        previousUserId: previousUserId,
+      );
+      if (!mounted) return;
+    }
+    final earned = await AdService.showRewardedAd(
+      kind: AdRewardKind.wrongNotebookBatchPractice,
+    );
+    if (!mounted) return;
+    if (!earned) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Reklam yüklenemedi veya izlenmedi. Eksiklerini kapatmak için '
+            'kısa bir reklam izlemen gerekiyor.',
+          ),
+        ),
+      );
+      return;
+    }
     AdManager.instance.skipNextPageTransition();
     final result = await Navigator.of(context).push<QuizResult>(
       MaterialPageRoute<QuizResult>(
         builder: (_) => QuizScreen(
-          title: 'Yanlış Pratik',
+          title: '',
           questions: questions,
+          suppressWrongNotebookHint: true,
         ),
       ),
     );
@@ -265,7 +439,8 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     return all.where((q) => q.dersAdi == _subjectFilter).toList();
   }
 
-  Map<String, List<QuestionModel>> _groupBySubject(List<QuestionModel> questions) {
+  Map<String, List<QuestionModel>> _groupBySubject(
+      List<QuestionModel> questions) {
     final grouped = <String, List<QuestionModel>>{};
     for (final q in questions) {
       grouped.putIfAbsent(q.dersAdi, () => []).add(q);
@@ -284,17 +459,45 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
     return sorted.map((e) => (e.key, e.value)).toList();
   }
 
+  List<QuestionModel> _sourceQuestions(ContentBankService bank) {
+    final session = _activeSessionFilter;
+    if (session != null) {
+      final byId = <String, QuestionModel>{
+        for (final q in session.prefetchedQuestions) q.id: q,
+      };
+      for (final q in bank.questionsByIds(session.questionIds)) {
+        byId.putIfAbsent(q.id, () => q);
+      }
+      return session.questionIds
+          .map((id) => byId[id])
+          .whereType<QuestionModel>()
+          .toList();
+    }
+    return bank.questionsByIds(bank.wrongQuestionIds.toList());
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([
         ContentBankService.instance,
+        ManualQuestionService.instance,
         FavoritesService.instance,
+        PlayBillingService.instance.premiumNotifier,
+        AuthService.instance,
       ]),
       builder: (context, _) {
         final bank = ContentBankService.instance;
         final favs = FavoritesService.instance;
-        final allQuestions = bank.questionsByIds(bank.wrongQuestionIds.toList());
+        final manual = ManualQuestionService.instance.items;
+        final kpssType = KpssPreferenceService.instance.kpssType;
+        final guestLocked = !AuthService.instance.hasPermanentAccount;
+        final isPremium = PremiumService.instance.isPremium;
+        final archiveAtLimit = bank.isWrongNotebookAtFreeLimit;
+        final archivedCount = bank.wrongNotebookArchivedCount;
+        final archiveLimit = bank.wrongNotebookFreeLimit;
+        final allQuestions = _sourceQuestions(bank);
+        final testWrongCount = allQuestions.length;
         final subjects = _subjectSummary(allQuestions);
         final questions = _filteredQuestions(bank, allQuestions);
         final grouped = _groupBySubject(questions);
@@ -311,45 +514,32 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
           appBar: AppBar(
             backgroundColor: AppTheme.page(context),
             foregroundColor: AppTheme.onPage(context),
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            centerTitle: false,
+            titleSpacing: 0,
             leading: const AppBackButton(),
-            title: const Text(
-              'Yanlış Defteri',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            title: const WrongNotebookHeaderTitleBlock(),
             actions: [
               if (allQuestions.isNotEmpty)
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const SmartReviewScreen(
-                          kpssType: KpssType.lisans,
-                        ),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Akıllı',
-                    style: TextStyle(
-                      color: AppTheme.neonEdge,
-                      fontWeight: FontWeight.w600,
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Center(
+                    child: WrongNotebookHeaderPill(
+                      label: 'Akıllı Tekrar',
+                      icon: Icons.psychology_alt_outlined,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                SmartReviewScreen(kpssType: kpssType),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
-              if (questions.isNotEmpty)
-                TextButton(
-                  onPressed: () => _practiceAll(questions),
-                  child: const Text(
-                    'Çöz',
-                    style: TextStyle(
-                      color: AppTheme.champagne,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+              const SizedBox(width: 8),
             ],
           ),
           body: DecoratedBox(
@@ -364,7 +554,7 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                 ],
               ),
             ),
-            child: allQuestions.isEmpty
+            child: allQuestions.isEmpty && manual.isEmpty
                 ? (_hydrating
                     ? const Center(
                         child: Padding(
@@ -374,268 +564,213 @@ class _WrongQuestionsScreenState extends State<WrongQuestionsScreen> {
                           ),
                         ),
                       )
-                    : const StudyEmptyCta(
-                        icon: Icons.note_alt_outlined,
-                        title: 'Henüz yanlış soru yok',
-                        message:
-                            'Konu testlerini bitirdiğinizde yanlış yaptığınız '
-                            'sorular burada toplanır. Testten erken çıkarsanız '
-                            'kaydedilmez.',
-                        kpssType: KpssType.lisans,
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          WrongNotebookBookMistakesButton(
+                            count: 0,
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const WrongNotebookManualScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          Expanded(
+                            child: WrongNotebookEmptyState(kpssType: kpssType),
+                          ),
+                        ],
                       ))
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                        child: Text(
-                          '${allQuestions.length} soru · '
-                          '${subjects.length} ders',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppTheme.slate.withValues(alpha: 0.75),
-                          ),
+                      if (_activeSessionFilter != null)
+                        WrongNotebookSessionBanner(
+                          title: _activeSessionFilter!.sessionTitle,
                         ),
+                      if (_activeSessionFilter == null && archiveAtLimit)
+                        WrongNotebookCapacityBanner(
+                          currentCount: archivedCount,
+                          limit: archiveLimit,
+                        ),
+                      if (_activeSessionFilter == null)
+                        WrongNotebookStatsRow(
+                        questionCount: testWrongCount,
+                        subjectCount: subjects.length,
+                        topSubject:
+                            subjects.isNotEmpty ? subjects.first.$1 : null,
+                        topSubjectCount:
+                            subjects.isNotEmpty ? subjects.first.$2 : null,
+                        archiveLimit: isPremium ? null : archiveLimit,
+                        archivedCount: isPremium ? null : archivedCount,
+                        ),
+                      if (_activeSessionFilter == null)
+                        WrongNotebookBookMistakesButton(
+                        count: manual.length,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  const WrongNotebookManualScreen(),
+                            ),
+                          );
+                        },
                       ),
-                      if (subjects.length > 1) ...[
-                        const SizedBox(height: 10),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              FilterChip(
-                                label: Text('Tümü (${allQuestions.length})'),
-                                selected: _subjectFilter == null,
-                                onSelected: (_) =>
-                                    setState(() => _subjectFilter = null),
-                                selectedColor:
-                                    AppTheme.champagne.withValues(alpha: 0.35),
-                                checkmarkColor: AppTheme.ink,
-                              ),
-                              const SizedBox(width: 8),
-                              ...subjects.map(
-                                (s) => Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: FilterChip(
-                                    label: Text('${s.$1} (${s.$2})'),
-                                    selected: _subjectFilter == s.$1,
-                                    onSelected: (_) => setState(
-                                      () => _subjectFilter =
-                                          _subjectFilter == s.$1 ? null : s.$1,
-                                    ),
-                                    selectedColor: AppTheme.champagne
-                                        .withValues(alpha: 0.35),
-                                    checkmarkColor: AppTheme.ink,
-                                  ),
-                                ),
-                              ),
-                            ],
+                      if (allQuestions.isNotEmpty)
+                        ProFeatureLock(
+                          locked: !isPremium && archiveAtLimit,
+                          upsellTitle: 'YANLIŞ DEFTERİ',
+                          upsellSubtitle: WrongNotebookConstants.proUpsellSubtitle,
+                          child: WrongNotebookSubjectFilter(
+                            subjects: subjects,
+                            totalCount: allQuestions.length,
+                            selectedSubject: _subjectFilter,
+                            onChanged: (value) =>
+                                setState(() => _subjectFilter = value),
                           ),
                         ),
-                      ],
                       Expanded(
-                        child: questions.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'Bu derste yanlış soru yok.',
-                                  style: TextStyle(
-                                    color: AppTheme.slate.withValues(alpha: 0.6),
-                                  ),
-                                ),
-                              )
-                            : ListView(
+                        child: Builder(
+                          builder: (context) {
+                            if (allQuestions.isEmpty) {
+                              return ListView(
                                 padding:
-                                    const EdgeInsets.fromLTRB(20, 12, 20, 40),
+                                    const EdgeInsets.fromLTRB(16, 4, 16, 16),
                                 children: [
-                                  for (final entry in grouped.entries) ...[
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        top: 4,
-                                        bottom: 6,
-                                      ),
-                                      child: Text(
-                                        '${entry.key} (${entry.value.length})',
-                                        style: TextStyle(
-                                          fontFamily: 'serif',
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppTheme.onPage(context),
-                                        ),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      4,
+                                      12,
+                                      4,
+                                      18,
+                                    ),
+                                    child: Text(
+                                      _activeSessionFilter != null
+                                          ? 'Bu testte yanlış soru bulunamadı.'
+                                          : 'Test yanlışın yok. Kitap soruların için '
+                                              'yukarıdaki pembe alana dokun.',
+                                      style: TextStyle(
+                                        color: AppTheme.slate
+                                            .withValues(alpha: 0.68),
                                       ),
                                     ),
-                                    for (var i = 0; i < entry.value.length; i++) ...[
-                                      if (i > 0)
-                                        Divider(
-                                          color: AppTheme.ink
-                                              .withValues(alpha: 0.08),
-                                        ),
-                                      _WrongQuestionTile(
-                                        question: entry.value[i],
-                                        isFavorite: favs.isFavorite(
-                                          entry.value[i].id,
-                                        ),
-                                        onToggleFavorite: () =>
-                                            _toggleFavorite(entry.value[i].id),
-                                        onSimilar: () => _openSimilar(
-                                          context,
-                                          entry.value[i],
-                                        ),
-                                        onTap: () => _openQuestion(
-                                          context,
-                                          entry.value[i].id,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 8),
-                                  ],
+                                  ),
                                 ],
-                              ),
+                              );
+                            }
+                            if (questions.isEmpty) {
+                              return ListView(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      4,
+                                      12,
+                                      4,
+                                      18,
+                                    ),
+                                    child: Text(
+                                      'Bu derste yanlış soru yok.',
+                                      style: TextStyle(
+                                        color: AppTheme.slate
+                                            .withValues(alpha: 0.68),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+
+                            // Header + kart satırlarını düzleştir — lazy build.
+                            final rows =
+                                <({bool isHeader, String? subject, int? count, QuestionModel? question})>[];
+                            for (final entry in grouped.entries) {
+                              rows.add((
+                                isHeader: true,
+                                subject: entry.key,
+                                count: entry.value.length,
+                                question: null,
+                              ));
+                              for (final q in entry.value) {
+                                rows.add((
+                                  isHeader: false,
+                                  subject: null,
+                                  count: null,
+                                  question: q,
+                                ));
+                              }
+                            }
+
+                            return ListView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                              itemCount: rows.length,
+                              itemBuilder: (context, index) {
+                                final row = rows[index];
+                                if (row.isHeader) {
+                                  return WrongNotebookSubjectHeader(
+                                    subject: row.subject!,
+                                    count: row.count!,
+                                  );
+                                }
+                                final q = row.question!;
+                                final bank = ContentBankService.instance;
+                                return WrongNotebookQuestionCard(
+                                  question: q,
+                                  isFavorite: favs.isFavorite(q.id),
+                                  similarLoading:
+                                      _similarLoadingId == q.id,
+                                  showProBadge:
+                                      !PremiumService.instance.isPremium,
+                                  frostStem: guestLocked,
+                                  status: bank.wrongQuestionStatusFor(q.id),
+                                  onStatusChanged: (status) {
+                                    unawaited(
+                                      bank.setWrongQuestionStatus(
+                                        q.id,
+                                        status,
+                                      ),
+                                    );
+                                    if (mounted) setState(() {});
+                                  },
+                                  onSignIn: () {
+                                    unawaited(
+                                      _unlockGuestQuestion(context, q),
+                                    );
+                                  },
+                                  onToggleFavorite: () =>
+                                      _toggleFavorite(q.id),
+                                  onSimilar: () =>
+                                      _openSimilar(context, q),
+                                  onTap: () =>
+                                      _openQuestion(context, question: q),
+                                  onShare: () {
+                                    unawaited(
+                                      WrongNotebookShareService.instance
+                                          .shareBankQuestion(context, q),
+                                    );
+                                  },
+                                  onRemove: () =>
+                                      _confirmRemoveQuestion(q),
+                                );
+                              },
+                            );
+                          },
+                        ),
                       ),
+                      if (questions.isNotEmpty)
+                        WrongNotebookPracticeBar(
+                          questionCount: questions.length,
+                          onPracticeAll: () => _practiceAll(questions),
+                        ),
                     ],
                   ),
           ),
         );
       },
-    );
-  }
-}
-
-class _WrongQuestionTile extends StatelessWidget {
-  final QuestionModel question;
-  final bool isFavorite;
-  final VoidCallback onToggleFavorite;
-  final VoidCallback onSimilar;
-  final VoidCallback onTap;
-
-  const _WrongQuestionTile({
-    required this.question,
-    required this.isFavorite,
-    required this.onToggleFavorite,
-    required this.onSimilar,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final on = AppTheme.onPage(context);
-    final muted = AppTheme.mutedOnPage(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 4, 8, 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        QuestionStemContent.previewText(question.soruMetni),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: on,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                          fontSize: 14.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        question.konuAdi,
-                        style: TextStyle(
-                          color: muted,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Dokun → bu soruyu çöz',
-                        style: TextStyle(
-                          color: muted.withValues(alpha: 0.75),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _SimilarInfoChip(onTap: onSimilar),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: onToggleFavorite,
-                child: Icon(
-                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: isFavorite
-                      ? AppTheme.champagne
-                      : muted.withValues(alpha: 0.45),
-                  size: 18,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Yanlış satırından ayrı; yanlış çözümü açmaz, bilgilendirici BENZER kutusu.
-class _SimilarInfoChip extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _SimilarInfoChip({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: const Color(0xFF1A2740),
-          border: Border.all(
-            color: AppTheme.champagne.withValues(alpha: 0.35),
-            width: 0.5,
-          ),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 11,
-              color: AppTheme.champagneLight,
-            ),
-            SizedBox(width: 4),
-            Text(
-              'BENZER',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                color: AppTheme.champagneLight,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

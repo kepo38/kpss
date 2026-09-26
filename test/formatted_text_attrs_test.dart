@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kpss_akademi/widgets/formatted_text.dart';
 
@@ -29,6 +29,28 @@ bool _hasUnderline(InlineSpan root) {
   return found;
 }
 
+String _plainText(InlineSpan root) {
+  if (root is TextSpan) {
+    final self = root.text ?? '';
+    final kids = root.children?.map(_plainText).join() ?? '';
+    return self + kids;
+  }
+  return '';
+}
+
+bool _hasGreenText(InlineSpan root) {
+  var found = false;
+  void walk(InlineSpan span) {
+    if (span is TextSpan) {
+      if (span.style?.color == const Color(0xFF4ADE80)) found = true;
+      span.children?.forEach(walk);
+    }
+  }
+
+  walk(root);
+  return found;
+}
+
 void main() {
   test('normalize html tags with attributes', () {
     expect(
@@ -49,7 +71,7 @@ void main() {
       FormattedText.normalizeMarkup(
         '<span style="color:red;font-weight:700">y</span>',
       ),
-      '**y**',
+      '{red}**y**{/red}',
     );
   });
 
@@ -71,5 +93,30 @@ void main() {
     expect(_hasWeight(root, min: 700), isTrue);
     expect(_hasUnderline(root), isTrue);
     expect(find.textContaining('<strong'), findsNothing);
+  });
+
+  testWidgets('renders underline and green inside bold (q_dd640972fd)', (
+    tester,
+  ) async {
+    const src =
+        '**(Metinde __YOKTUR__ -{green} Doğru Cevap{/green}):**';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: FormattedText(
+            src,
+            style: TextStyle(fontSize: 16, color: Colors.black),
+          ),
+        ),
+      ),
+    );
+
+    final rich = tester.widget<RichText>(find.byType(RichText));
+    final root = rich.text as TextSpan;
+    final plain = _plainText(root);
+    expect(plain, contains('Doğru Cevap'));
+    expect(plain, isNot(contains('YOKTUR -YOKTUR')));
+    expect(_hasUnderline(root), isTrue);
+    expect(_hasGreenText(root), isTrue);
   });
 }

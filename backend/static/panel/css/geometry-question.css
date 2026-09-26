@@ -1,0 +1,220 @@
+/* Geometri şekil editörü (panel — harita editöründen ayrı geo-* namespace) */
+
+.geo-editor-box {
+  padding: 16px;
+  border-radius: var(--radius, 12px);
+  border: 1px solid rgba(232, 200, 122, 0.32);
+  background: rgba(232, 200, 122, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+
+.geo-editor-box .media-title {
+  margin: 0;
+}
+
+.geo-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.geo-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.geo-mode-toggle .geo-mode-btn[aria-pressed="true"] {
+  border-color: rgba(94, 234, 212, 0.55);
+  color: #b6fff3;
+  background: rgba(94, 234, 212, 0.12);
+}
+
+.geo-editor-box[data-geo-mode="solution"] .geo-canvas-wrap {
+  outline: 1px solid rgba(248, 113, 113, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.22);
+}
+
+.geo-solution-editor-box {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(248, 113, 113, 0.04);
+}
+
+.geo-editor-actions #geo-insert-status {
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.geo-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.geo-editor-toolbar .geo-tool[aria-pressed="true"] {
+  border-color: rgba(232, 200, 122, 0.65);
+  color: #f5e6b8;
+  background: rgba(232, 200, 122, 0.14);
+}
+
+.geo-color-wrap,
+.geo-stroke-wrap,
+.geo-angle-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(243, 245, 248, 0.78);
+}
+
+.geo-color-wrap input[type="color"] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.geo-stroke-wrap input[type="range"] {
+  width: 88px;
+  vertical-align: middle;
+}
+
+.geo-angle-label-wrap input[type="text"] {
+  width: 88px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(12, 20, 36, 0.65);
+  color: #f3f5f8;
+}
+
+.geo-canvas-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #0c1424;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.geo-canvas-wrap #geo-canvas,
+.geo-canvas-wrap #geo-sol-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.geo-editor-box[data-tool="select"] #geo-canvas,
+.geo-editor-box[data-tool="select"] #geo-sol-canvas {
+  cursor: default;
+}
+
+/* Stem figure underlay must never steal pointer events from solution draw tools */
+#geo-sol-underlay,
+#geo-sol-underlay * {
+  pointer-events: none !important;
+}
+
+.geo-draw-surface {
+  fill: transparent;
+  pointer-events: all;
+  cursor: inherit;
+}
+
+.geo-editor-box #geo-status,
+.geo-editor-box #geo-sol-status {
+  margin: 0;
+  min-height: 1.2em;
+}
+
+.geo-editor-box #geo-help,
+.geo-editor-box #geo-sol-help {
+  margin: 0;
+}
+
+.geo-shape-selected {
+  filter: drop-shadow(0 0 2px #5eead4);
+}
+
+/* Select-tool transform handles (not exported) — stem + solution layers */
+#geo-handles,
+#geo-sol-handles {
+  pointer-events: none;
+}
+
+#geo-handles .geo-handle-bbox,
+#geo-sol-handles .geo-handle-bbox {
+  fill: none;
+  stroke: rgba(94, 234, 212, 0.7);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+#geo-handles .geo-handle-move,
+#geo-sol-handles .geo-handle-move {
+  fill: rgba(0, 0, 0, 0);
+  stroke: none;
+  pointer-events: all;
+  cursor: move;
+}
+
+#geo-handles .geo-handle-corner,
+#geo-sol-handles .geo-handle-corner {
+  fill: #e8c87a;
+  stroke: #5eead4;
+  stroke-width: 1;
+  pointer-events: all;
+  cursor: nwse-resize;
+}
+
+#geo-handles .geo-handle-corner[data-corner="ne"],
+#geo-handles .geo-handle-corner[data-corner="sw"],
+#geo-sol-handles .geo-handle-corner[data-corner="ne"],
+#geo-sol-handles .geo-handle-corner[data-corner="sw"] {
+  cursor: nesw-resize;
+}
+
+#geo-handles .geo-handle-rotate-stalk,
+#geo-sol-handles .geo-handle-rotate-stalk {
+  fill: none;
+  stroke: rgba(94, 234, 212, 0.75);
+  stroke-width: 1.25;
+  pointer-events: none;
+}
+
+#geo-handles .geo-handle-rotate,
+#geo-sol-handles .geo-handle-rotate {
+  fill: #5eead4;
+  stroke: #e8c87a;
+  stroke-width: 1.25;
+  pointer-events: all;
+  cursor: grab;
+}
+
+#geo-handles .geo-handle-rotate:active,
+#geo-sol-handles .geo-handle-rotate:active {
+  cursor: grabbing;
+}
+
+.geo-hit {
+  /* pointer-events set inline (stroke for lines, all for filled hit plates) */
+}

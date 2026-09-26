@@ -1,0 +1,53 @@
+{% load static %}
+<section class="geo-editor-box geo-solution-editor-box" id="geometry-solution-editor" data-geo-mode="solution" data-tool="line">
+  <div class="media-title">Çözüm çizimi (geometri)</div>
+  <p class="media-hint">
+    Soru şekli altında kilitli görünür; üzerine açı, ölçü ve işaret çizin.
+    Birleşik SVG <code>solution_figure_svg</code> alanına yazılır. Çözüm metninde <code>[ŞEKİL]</code> kullanın
+    (yoksa otomatik eklenir). Overlay yokken uygulama soru şeklini gösterir.
+  </p>
+  <div class="geo-editor-actions">
+    <button type="button" class="btn btn-ghost" id="geo-sol-insert-placeholder">Metne [ŞEKİL] ekle</button>
+    <span class="media-hint" id="geo-sol-insert-status"></span>
+  </div>
+  <div class="geo-editor-toolbar" id="geo-sol-toolbar">
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="select" aria-pressed="false">Seç</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="line" aria-pressed="true">Çizgi</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="circle">Çember</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="square">Kare</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="triangle">Üçgen</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="semicircle">Yarım daire</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="angle">Açı</button>
+    <button type="button" class="btn btn-ghost geo-tool" data-tool="radius">Yarıçap</button>
+    <label class="geo-color-wrap">
+      Renk
+      <input type="color" id="geo-sol-color" value="#F87171">
+    </label>
+    <label class="geo-stroke-wrap">
+      Kalınlık
+      <input type="range" id="geo-sol-stroke" min="1" max="6" step="0.5" value="2">
+      <span id="geo-sol-stroke-val">2</span>
+    </label>
+    <label class="geo-angle-label-wrap">
+      Açı sayısı
+      <input type="text" id="geo-sol-angle-label" value="" maxlength="8" placeholder="boş=eşit nokta">
+    </label>
+    <button type="button" class="btn btn-ghost" id="geo-sol-undo">Geri al</button>
+    <button type="button" class="btn btn-ghost" id="geo-sol-clear">Temizle</button>
+    <span class="media-hint" id="geo-sol-status"></span>
+  </div>
+  <div class="geo-canvas-wrap" id="geo-sol-canvas-wrap">
+    <svg id="geo-sol-canvas" viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg" aria-label="Çözüm geometri çizim alanı">
+      <rect class="geo-bg" x="0" y="0" width="400" height="320" fill="#0C1424"/>
+      <g id="geo-sol-grid" opacity="0.18" stroke="#5EEAD4" stroke-width="0.5"></g>
+      <g id="geo-sol-underlay" opacity="0.85" pointer-events="none"></g>
+      <rect id="geo-sol-draw-surface" class="geo-draw-surface" x="0" y="0" width="400" height="320"/>
+      <g id="geo-sol-shapes"></g>
+      <g id="geo-sol-preview"></g>
+      <g id="geo-sol-handles"></g>
+    </svg>
+  </div>
+  <p class="media-hint" id="geo-sol-help">
+    Çözüm çizimi: alttaki soru şekli kilitli. Üzerine açı/işaret ekleyin. Seç: sürükle taşı · köşeden boyut · üst tutamaktan döndür · Delete sil.
+  </p>
+</section>

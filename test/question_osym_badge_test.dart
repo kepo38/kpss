@@ -69,4 +69,59 @@ void main() {
     ]);
     expect(ordered.map((e) => e.id).toList(), ['lone', 'a', 'b', 'c']);
   });
+
+  test('interleaveOsymSordu places one ÖSYM after every four unlabeled', () {
+    QuestionModel q(String id, {bool osym = false}) {
+      return QuestionModel(
+        id: id,
+        dersAdi: 'Tarih',
+        konuAdi: 'Osmanlı',
+        altKonuAdi: '',
+        soruMetni: id,
+        siklar: const {'A': 'a', 'B': 'b', 'C': 'c', 'D': 'd', 'E': 'e'},
+        dogruCevap: 'A',
+        cozumMetni: '',
+        guncellenmeTarihi: DateTime.utc(2026, 1, 1),
+        osymSordu: osym,
+      );
+    }
+
+    final mixed = [
+      for (var i = 1; i <= 16; i++) q('p$i'),
+      for (var i = 1; i <= 4; i++) q('o$i', osym: true),
+    ];
+    final laid = QuestionModel.interleaveOsymSordu(mixed);
+    expect(laid.length, 20);
+    expect(
+      [for (var i = 0; i < laid.length; i++) if (laid[i].osymSordu) i],
+      [4, 9, 14, 19],
+    );
+    expect(laid.where((e) => e.osymSordu).length, 4);
+  });
+
+  test('interleaveOsymSordu continues normally when unlabeled are scarce', () {
+    QuestionModel q(String id, {bool osym = false}) {
+      return QuestionModel(
+        id: id,
+        dersAdi: 'Tarih',
+        konuAdi: 'Osmanlı',
+        altKonuAdi: '',
+        soruMetni: id,
+        siklar: const {'A': 'a', 'B': 'b', 'C': 'c', 'D': 'd', 'E': 'e'},
+        dogruCevap: 'A',
+        cozumMetni: '',
+        guncellenmeTarihi: DateTime.utc(2026, 1, 1),
+        osymSordu: osym,
+      );
+    }
+
+    final laid = QuestionModel.interleaveOsymSordu([
+      q('p1'),
+      q('p2'),
+      q('o1', osym: true),
+      q('o2', osym: true),
+      q('o3', osym: true),
+    ]);
+    expect(laid.map((e) => e.id).toList(), ['p1', 'p2', 'o1', 'o2', 'o3']);
+  });
 }

@@ -1,8 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-/// E-postanın ilk 4–5 harfini buzlu (bulanık) gösterir.
+/// E-posta: @ öncesinde ilk 3 harf açık, geri kalanı gizli.
 class FrostedEmail extends StatelessWidget {
   final String prefix;
   final String rest;
@@ -14,14 +12,6 @@ class FrostedEmail extends StatelessWidget {
     required this.rest,
     this.style,
   });
-
-  factory FrostedEmail.fromParts({
-    required String prefix,
-    required String rest,
-    TextStyle? style,
-  }) {
-    return FrostedEmail(prefix: prefix, rest: rest, style: style);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,14 +25,14 @@ class FrostedEmail extends StatelessWidget {
     return Text.rich(
       TextSpan(
         children: [
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 4.2, sigmaY: 4.2),
-              child: Text(prefix, style: base),
+          TextSpan(text: prefix, style: base),
+          TextSpan(
+            text: rest,
+            style: base.copyWith(
+              color: base.color?.withValues(alpha: 0.55),
+              letterSpacing: 0.5,
             ),
           ),
-          TextSpan(text: rest, style: base),
         ],
       ),
       maxLines: 1,

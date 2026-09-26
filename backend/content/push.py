@@ -97,8 +97,10 @@ def notify_content_updated(version: int) -> bool:
 def send_announcement_push(announcement) -> PushResult:
     """
     Duyuruyu FCM ile gönder.
-    1) Konu (topic): tüm abone cihazlar
-    2) Kayıtlı DeviceToken listesi (multicast)
+
+    Tek yol: önce konu (topic). Topic başarısızsa kayıtlı DeviceToken
+    multicast. App hem topic abonesi hem token kaydettiği için ikisini
+    birden göndermek aynı cihaza çift bildirim düşürür.
     """
     ready, err = firebase_ready()
     if not ready:
@@ -135,6 +137,7 @@ def send_announcement_push(announcement) -> PushResult:
         "sound": "default",
     }
     if image_url:
+        # Genişletilmiş big-picture stili (Hepsiburada benzeri)
         android_notification_kwargs["image"] = image_url
 
     android = messaging.AndroidConfig(
@@ -166,48 +169,49 @@ def send_announcement_push(announcement) -> PushResult:
         logger.warning("FCM topic send failed: %s", exc)
         failure += 1
 
-    tokens = list(
-        DeviceToken.objects.filter(is_active=True).values_list("token", flat=True)
-    )
-    # Multicast max 500
-    for i in range(0, len(tokens), 500):
-        chunk = tokens[i : i + 500]
-        if not chunk:
-            continue
-        try:
-            resp = messaging.send_each_for_multicast(
-                messaging.MulticastMessage(
-                    tokens=chunk,
-                    notification=note,
-                    data=data,
-                    android=android,
+    # Topic OK ise multicast atla — aksi halde abone cihazlar çift bildirim alır.
+    if not topic_ok:
+        tokens = list(
+            DeviceToken.objects.filter(is_active=True).values_list("token", flat=True)
+        )
+        # Multicast max 500
+        for i in range(0, len(tokens), 500):
+            chunk = tokens[i : i + 500]
+            if not chunk:
+                continue
+            try:
+                resp = messaging.send_each_for_multicast(
+                    messaging.MulticastMessage(
+                        tokens=chunk,
+                        notification=note,
+                        data=data,
+                        android=android,
+                    )
                 )
-            )
-            success += resp.success_count
-            failure += resp.failure_count
-            # Geçersiz jetonları pasifleştir
-            for idx, send_resp in enumerate(resp.responses):
-                if send_resp.success:
-                    continue
-                err_code = ""
-                if send_resp.exception is not None:
-                    err_code = getattr(send_resp.exception, "code", "") or str(
-                        send_resp.exception
-                    )
-                if any(
-                    x in err_code
-                    for x in (
-                        "registration-token-not-registered",
-                        "invalid-registration-token",
-                        "NOT_FOUND",
-                        "UNREGISTERED",
-                    )
-                ):
-                    DeviceToken.objects.filter(token=chunk[idx]).update(is_active=False)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("FCM multicast failed")
-            failure += len(chunk)
-            if not topic_ok:
+                success += resp.success_count
+                failure += resp.failure_count
+                # Geçersiz jetonları pasifleştir
+                for idx, send_resp in enumerate(resp.responses):
+                    if send_resp.success:
+                        continue
+                    err_code = ""
+                    if send_resp.exception is not None:
+                        err_code = getattr(send_resp.exception, "code", "") or str(
+                            send_resp.exception
+                        )
+                    if any(
+                        x in err_code
+                        for x in (
+                            "registration-token-not-registered",
+                            "invalid-registration-token",
+                            "NOT_FOUND",
+                            "UNREGISTERED",
+                        )
+                    ):
+                        DeviceToken.objects.filter(token=chunk[idx]).update(is_active=False)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("FCM multicast failed")
+                failure += len(chunk)
                 return PushResult(
                     ok=False,
                     success=success,
@@ -360,3 +364,231 @@ def send_user_message_push(message) -> PushResult:
             error="Bildirim hiçbir cihaza ulaşmadı.",
         )
     return PushResult(ok=True, success=success, failure=failure)
+
+
+def _tg_exam_push_banner_url() -> str | None:
+    """FCM big-picture / genişletilmiş bildirim görseli."""
+    base = (getattr(settings, "PUBLIC_BASE_URL", "") or "").rstrip("/")
+    if not base:
+        return None
+    return f"{base}/static/content/tg_exam_push_banner.jpg"
+
+
+def _tg_exam_push_data(
+    *,
+    push_type: str,
+    exam,
+    payload: dict[str, str],
+) -> dict[str, str]:
+    data = {
+        "type": push_type,
+        "exam_id": str(exam.pk),
+        "title": payload["title"],
+        "body": payload["body"][:500],
+        "headline": payload.get("headline", ""),
+        "exam_title": payload.get("exam_title", ""),
+        "starts_at_label": payload.get("starts_at_label", ""),
+        "metrics_label": payload.get("metrics_label", ""),
+        "cta_hint": payload.get("cta_hint", ""),
+        "style": "tg_exam_premium",
+    }
+    image_url = _tg_exam_push_banner_url()
+    if image_url:
+        data["image_url"] = image_url
+    return data
+
+
+def _tg_exam_android_config(*, title: str, body: str) -> "messaging.AndroidConfig":
+    from firebase_admin import messaging
+
+    from content.tg_exam.announcements import TG_EXAM_PUSH_CHANNEL, TG_EXAM_PUSH_COLOR
+
+    image_url = _tg_exam_push_banner_url()
+    notification_kwargs: dict = {
+        "title": title,
+        "body": body,
+        "channel_id": TG_EXAM_PUSH_CHANNEL,
+        "sound": "default",
+        "color": TG_EXAM_PUSH_COLOR,
+        "tag": "tg_exam",
+    }
+    if image_url:
+        notification_kwargs["image"] = image_url
+    return messaging.AndroidConfig(
+        priority="high",
+        notification=messaging.AndroidNotification(**notification_kwargs),
+    )
+
+
+def send_tg_exam_results_push(exam) -> PushResult:
+    """TG denemesine katılmış kullanıcılara sonuç bildirimi gönder."""
+    ready, err = firebase_ready()
+    if not ready:
+        return PushResult(ok=False, error=err)
+
+    from firebase_admin import messaging
+
+    from .models import DeviceToken, TgExamAttempt
+    from content.tg_exam.announcements import build_results_push_payload
+
+    try:
+        _ensure_firebase_app()
+    except Exception as exc:  # noqa: BLE001
+        return PushResult(ok=False, error=f"Firebase başlatılamadı: {exc}")
+
+    payload = build_results_push_payload(exam)
+    title = payload["title"]
+    body = payload["body"]
+    data = _tg_exam_push_data(
+        push_type="tg_exam_results",
+        exam=exam,
+        payload=payload,
+    )
+    android = _tg_exam_android_config(title=title, body=body)
+    note = messaging.Notification(title=title, body=body)
+
+    user_ids = list(
+        TgExamAttempt.objects.filter(
+            exam_id=exam.pk,
+            is_submitted=True,
+        )
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    if not user_ids:
+        return PushResult(ok=True, success=0, failure=0)
+
+    tokens = list(
+        DeviceToken.objects.filter(
+            user_id__in=user_ids,
+            is_active=True,
+        ).values_list("token", flat=True)
+    )
+    if not tokens:
+        return PushResult(
+            ok=False,
+            error="Katılımcıların kayıtlı cihaz jetonu yok.",
+        )
+
+    success = 0
+    failure = 0
+    for i in range(0, len(tokens), 500):
+        chunk = tokens[i : i + 500]
+        try:
+            resp = messaging.send_each_for_multicast(
+                messaging.MulticastMessage(
+                    tokens=chunk,
+                    notification=note,
+                    data=data,
+                    android=android,
+                )
+            )
+            success += resp.success_count
+            failure += resp.failure_count
+            _deactivate_bad_tokens(chunk, resp.responses)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("FCM tg_exam_results failed")
+            return PushResult(
+                ok=False,
+                success=success,
+                failure=failure + len(chunk),
+                error=str(exc),
+            )
+
+    if success == 0:
+        return PushResult(
+            ok=False,
+            success=success,
+            failure=failure,
+            error="Sonuç bildirimi hiçbir cihaza ulaşmadı.",
+        )
+    return PushResult(ok=True, success=success, failure=failure)
+
+
+def send_tg_exam_announcement_push(
+    exam,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+) -> PushResult:
+    """TG denemesi duyurusu — tüm kullanıcılara (FCM topic / cihaz jetonları)."""
+    ready, err = firebase_ready()
+    if not ready:
+        return PushResult(ok=False, error=err)
+
+    from firebase_admin import messaging
+
+    from .models import DeviceToken
+
+    try:
+        _ensure_firebase_app()
+    except Exception as exc:  # noqa: BLE001
+        return PushResult(ok=False, error=f"Firebase başlatılamadı: {exc}")
+
+    if title is None or body is None:
+        from content.tg_exam.announcements import build_announcement_push_payload
+
+        payload = build_announcement_push_payload(exam)
+        title = title or payload["title"]
+        body = body or payload["body"]
+    else:
+        from content.tg_exam.announcements import build_announcement_push_payload
+
+        payload = build_announcement_push_payload(exam)
+        payload["title"] = title
+        payload["body"] = body
+
+    data = _tg_exam_push_data(
+        push_type="tg_exam",
+        exam=exam,
+        payload=payload,
+    )
+    android = _tg_exam_android_config(title=title, body=body)
+    note = messaging.Notification(title=title, body=body)
+
+    topic = getattr(settings, "FCM_ANNOUNCEMENT_TOPIC", "kpss_duyuru") or "kpss_duyuru"
+    success = 0
+    failure = 0
+    topic_ok = False
+    try:
+        messaging.send(
+            messaging.Message(
+                topic=topic,
+                notification=note,
+                data=data,
+                android=android,
+            )
+        )
+        topic_ok = True
+        success += 1
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("FCM tg_exam topic send failed: %s", exc)
+        failure += 1
+
+    if not topic_ok:
+        tokens = list(
+            DeviceToken.objects.filter(is_active=True).values_list("token", flat=True)
+        )
+        for i in range(0, len(tokens), 500):
+            chunk = tokens[i : i + 500]
+            if not chunk:
+                continue
+            try:
+                resp = messaging.send_each_for_multicast(
+                    messaging.MulticastMessage(
+                        tokens=chunk,
+                        notification=note,
+                        data=data,
+                        android=android,
+                    )
+                )
+                success += resp.success_count
+                failure += resp.failure_count
+                _deactivate_bad_tokens(chunk, resp.responses)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("FCM tg_exam announcement multicast failed")
+                return PushResult(ok=False, success=success, failure=failure, error=str(exc))
+
+    if success == 0:
+        return PushResult(ok=False, success=success, failure=failure, topic_ok=topic_ok)
+    return PushResult(ok=True, success=success, failure=failure, topic_ok=topic_ok)
