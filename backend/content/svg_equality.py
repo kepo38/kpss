@@ -11,9 +11,11 @@ from .svg_sanitize import sanitize_figure_svg
 _LETTER = r"A-Za-zÇĞİÖŞÜçğıöşü"
 _SEG_TOKEN = rf"[{_LETTER}]{{2,}}"
 _SEG_PIPE = rf"\|({_SEG_TOKEN})\|"
+# 2|MC| / 4|KB| oran yazımı — eşitlik DEĞİL (negatif lookbehind: rakam yok)
+_SEG_PIPE_BARE = rf"(?<![0-9])\|({_SEG_TOKEN})\|"
 _SEG_FINDALL = re.compile(_SEG_PIPE, re.UNICODE)
 _EQUALITY_CHAIN = re.compile(
-    rf"{_SEG_PIPE}(?:\s*=\s*{_SEG_PIPE})+",
+    rf"{_SEG_PIPE_BARE}(?:\s*=\s*{_SEG_PIPE_BARE})+",
     re.UNICODE,
 )
 
@@ -48,13 +50,22 @@ _EQUALITY_BLOCK = re.compile(
     r"<!--\s*equality-ticks\s*-->.*?<!--\s*/equality-ticks\s*-->",
     re.IGNORECASE | re.DOTALL,
 )
+_PATH_TAG = re.compile(r"<\s*path\b[^>]*?/?>", re.IGNORECASE)
+_PATH_D = re.compile(
+    r"""\bd\s*=\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_RIGHT_ANGLE_AUTH = re.compile(
+    r"(?:\\\\perp|\\perp|⊥|90\s*\\?circ|90\s*°|dik\s*aç[ıi]|diklik)",
+    re.IGNORECASE,
+)
 
 _TICK_LEN = 9.0
 _TICK_SPACING = 3.5
 # Etiket <text> köşeden dışarı ofsetli; tick için geometrik köşeye snap.
 _SNAP_MAX_DIST = 48.0
 _MIN_EDGE_LEN = 24.0  # kısa hatch / marker kenarlarını anchor sayma
-
+_RIGHT_ANGLE_MAX_LEG = 28.0  # OCR'ın uydurduğu küçük dik açı karesi
 
 def _norm_letter(ch: str) -> str:
     """Köşe harfini karşılaştırma için normalize et (Türkçe İ/ı → I)."""
@@ -316,6 +327,74 @@ def strip_short_hatch_lines(svg: str, max_len: float = 18.0) -> str:
     return _LINE_TAG.sub(_repl, svg)
 
 
+def stem_authorizes_right_angle_marks(stem: str) -> bool:
+    """Stem'de ⊥ / 90° / dik açı yoksa OCR dik açı karesi uydurma."""
+    return bool(_RIGHT_ANGLE_AUTH.search(stem or ""))
+
+
+def _parse_simple_right_angle_path(d: str) -> bool:
+    """İki kısa dik bacaklı M-L-L path → OCR dik açı işareti mi?"""
+    if not d:
+        return False
+    tokens = re.findall(
+        r"[MmLl]|[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?",
+        d.replace(",", " "),
+    )
+    if len(tokens) < 7:
+        return False
+    pts: list[tuple[float, float]] = []
+    i = 0
+    cmd = "M"
+    while i < len(tokens):
+        t = tokens[i]
+        if t in "MmLl":
+            cmd = t.upper()
+            i += 1
+            continue
+        if i + 1 >= len(tokens):
+            break
+        try:
+            x = float(t)
+            y = float(tokens[i + 1])
+        except ValueError:
+            break
+        pts.append((x, y))
+        i += 2
+        if cmd == "M" and len(pts) == 1:
+            cmd = "L"
+    if len(pts) != 3:
+        return False
+    p0, p1, p2 = pts
+    v1 = (p1[0] - p0[0], p1[1] - p0[1])
+    v2 = (p2[0] - p1[0], p2[1] - p1[1])
+    len1 = math.hypot(*v1)
+    len2 = math.hypot(*v2)
+    if len1 < 4 or len2 < 4:
+        return False
+    if len1 > _RIGHT_ANGLE_MAX_LEG or len2 > _RIGHT_ANGLE_MAX_LEG:
+        return False
+    if abs(v1[0] * v2[0] + v1[1] * v2[1]) > 0.15 * len1 * len2:
+        return False
+    return True
+
+
+def strip_unauthorized_right_angle_marks(svg: str, stem: str) -> str:
+    """Stem diklik söylemiyorsa küçük sağ-açı path'lerini sil (kare uydurması)."""
+    if not svg or stem_authorizes_right_angle_marks(stem):
+        return svg or ""
+
+    def _repl(m: re.Match[str]) -> str:
+        tag = m.group(0)
+        dm = _PATH_D.search(tag)
+        if not dm:
+            return tag
+        if _parse_simple_right_angle_path(dm.group(1)):
+            return ""
+        return tag
+
+    return _PATH_TAG.sub(_repl, svg)
+
+
 def _segment_endpoints(
     seg: str, points: dict[str, tuple[float, float]]
 ) -> tuple[tuple[float, float], tuple[float, float]] | None:
@@ -453,6 +532,73 @@ def filter_tick_groups_for_nesting(
     return kept if kept else [segs for segs, _ in resolved]
 
 
+def _segment_has_intermediate_vertex(
+    ends: tuple[tuple[float, float], tuple[float, float]],
+    points: dict[str, tuple[float, float]],
+    *,
+    end_labels: frozenset[str],
+    tol: float = 3.0,
+) -> bool:
+    """Kenar uçları arasında başka bir etiketli köşe var mı?
+
+    Örnek: |KL| ve A-K-B-L doğrusal → B, K ile L arasında.
+    Ortaya tick konursa görsel olarak AK=BL gibi durur (yanlış).
+    """
+    a, b = ends
+    ab_len = math.hypot(b[0] - a[0], b[1] - a[1])
+    if ab_len < 1e-6:
+        return False
+    for lab, p in points.items():
+        if lab in end_labels:
+            continue
+        if not _point_on_segment(p, a, b, tol=tol):
+            continue
+        # Uçlara yapışık etiket sayma (ofset/snap gürültüsü)
+        if math.hypot(p[0] - a[0], p[1] - a[1]) <= tol * 2:
+            continue
+        if math.hypot(p[0] - b[0], p[1] - b[1]) <= tol * 2:
+            continue
+        # Strictly between: t in (ε, 1-ε)
+        ax, ay = a
+        bx, by = b
+        t = ((p[0] - ax) * (bx - ax) + (p[1] - ay) * (by - ay)) / (ab_len * ab_len)
+        if 0.08 < t < 0.92:
+            return True
+    return False
+
+
+def filter_tick_groups_skip_composite(
+    groups: list[list[str]],
+    points: dict[str, tuple[float, float]],
+) -> list[list[str]]:
+    """Bileşik kenarlı eşitlik gruplarını tick'ten çıkar.
+
+    |AK|=|KL| (B ∈ KL) → KL ortasına tick, AK ile birlikte AK=BL illüzyonu yaratır.
+    Bu gruplar metinde kalsın; kenar tick'i basılmasın.
+    """
+    kept: list[list[str]] = []
+    for group in groups:
+        composite = False
+        atomic_segs: list[str] = []
+        for seg in group:
+            ends = _segment_endpoints(seg, points)
+            if not ends:
+                continue
+            s = _norm_seg(seg)
+            ends_lab = frozenset((s[0], s[-1]))
+            if _segment_has_intermediate_vertex(ends, points, end_labels=ends_lab):
+                composite = True
+                break
+            atomic_segs.append(seg)
+        if composite:
+            continue
+        # Eksik uçlu kenarlar atılır; en az bir çizilebilir kenar kalsın
+        # (eski davranış: CD yoksa yalnızca AB tick).
+        if atomic_segs:
+            kept.append(atomic_segs)
+    return kept
+
+
 def build_equality_tick_markup(
     groups: list[list[str]],
     points: dict[str, tuple[float, float]],
@@ -461,8 +607,11 @@ def build_equality_tick_markup(
 
     Segment 'AB' needs points A and B. Skip missing points.
     Nested collinear groups are filtered first (see filter_tick_groups_for_nesting).
+    Composite segments (intermediate vertex) drop the whole group — avoids
+    |AK|=|KL| looking like |AK|=|BL| when B lies on KL.
     """
     groups = filter_tick_groups_for_nesting(groups, points)
+    groups = filter_tick_groups_skip_composite(groups, points)
     lines: list[str] = []
     for gi, group in enumerate(groups):
         n_ticks = gi + 1
@@ -478,28 +627,31 @@ def build_equality_tick_markup(
 
 
 def repair_equality_ticks(svg: str, stem: str) -> str:
-    """If no groups or <2 labels, return svg unchanged.
+    """Stem'e göre tick'leri yenile; OCR'ın uydurduğu tick/dik açıları temizle.
 
-    Else: strip short hatches, inject build_equality_tick_markup before </svg>.
-    Noktalar text etiketinden okunur ama polygon/circle/line uçlarına snap edilir
-    (etiket ofseti yüzünden AB altına 'I/II' düşmesini engeller).
-    Re-sanitize via sanitize_figure_svg at end.
+    - Kısa hatch <line> her zaman silinir (yanlış AK=BL, CM=MB vb.).
+    - Stem'de ⊥/90° yoksa küçük dik açı path'leri silinir (kare uydurması).
+    - Yalnızca |XY|=|ZW| gruplarından tick enjekte edilir.
+    - 4|KB|=2|MC|=|MB| gibi oranlar eşitlik grubu DEĞİLDİR.
     """
     code = (svg or "").strip()
     if not code:
         return svg or ""
-    groups = extract_equal_segment_groups(stem or "")
+    stem_text = stem or ""
+    groups = extract_equal_segment_groups(stem_text)
     points = parse_svg_vertex_points(code)
-    if not groups or len(points) < 2:
-        return code
 
     cleaned = _EQUALITY_BLOCK.sub("", code)
     cleaned = strip_short_hatch_lines(cleaned)
-    markup = build_equality_tick_markup(groups, points)
-    if markup:
-        lower = cleaned.lower()
-        idx = lower.rfind("</svg>")
-        if idx >= 0:
-            cleaned = cleaned[:idx] + markup + cleaned[idx:]
+    cleaned = strip_unauthorized_right_angle_marks(cleaned, stem_text)
+
+    if groups and len(points) >= 2:
+        markup = build_equality_tick_markup(groups, points)
+        if markup:
+            lower = cleaned.lower()
+            idx = lower.rfind("</svg>")
+            if idx >= 0:
+                cleaned = cleaned[:idx] + markup + cleaned[idx:]
+
     sanitized = sanitize_figure_svg(cleaned)
     return sanitized if sanitized else cleaned

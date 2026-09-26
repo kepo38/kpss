@@ -238,6 +238,72 @@ class RepairEqualityTicksQ62Tests(SimpleTestCase):
         self.assertEqual(markup.count("<line"), 1)
 
 
+class ProportionalNotEqualityTests(SimpleTestCase):
+    def test_ratio_chain_is_not_equality_group(self):
+        stem = "ABCD kare\n4|KB| = 2|MC| = |MB|\n|AK| = |KL|"
+        groups = extract_equal_segment_groups(stem)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(set(groups[0]), {"AK", "KL"})
+
+    def test_strips_wrong_ocr_ticks_and_right_angle(self):
+        from content.svg_equality import (
+            repair_equality_ticks,
+            stem_authorizes_right_angle_marks,
+        )
+
+        self.assertFalse(stem_authorizes_right_angle_marks("ABCD kare\n|AK|=|KL|"))
+        self.assertTrue(stem_authorizes_right_angle_marks(r"$CD \perp AB$"))
+
+        buggy = """<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <line x1="20" y1="180" x2="120" y2="180" stroke="black" stroke-width="2"/>
+  <line x1="120" y1="180" x2="120" y2="40" stroke="black" stroke-width="2"/>
+  <line x1="120" y1="180" x2="170" y2="180" stroke="black" stroke-width="2"/>
+  <circle cx="70" cy="180" r="2" fill="black"/>
+  <circle cx="120" cy="110" r="2" fill="black"/>
+  <text x="18" y="195">A</text>
+  <text x="68" y="195">K</text>
+  <text x="122" y="195">B</text>
+  <text x="168" y="195">L</text>
+  <text x="128" y="112">M</text>
+  <text x="125" y="35">C</text>
+  <!-- wrong OCR: AK=BL double, CM=MB single, invented right angle -->
+  <line x1="44" y1="175" x2="44" y2="185" stroke="black" stroke-width="1"/>
+  <line x1="48" y1="175" x2="48" y2="185" stroke="black" stroke-width="1"/>
+  <line x1="145" y1="175" x2="145" y2="185" stroke="black" stroke-width="1"/>
+  <line x1="149" y1="175" x2="149" y2="185" stroke="black" stroke-width="1"/>
+  <line x1="115" y1="70" x2="125" y2="70" stroke="black" stroke-width="1"/>
+  <line x1="115" y1="140" x2="125" y2="140" stroke="black" stroke-width="1"/>
+  <path d="M 120 180 L 120 164 L 136 164" fill="none" stroke="black" stroke-width="1.5"/>
+</svg>"""
+        stem = "ABCD kare\nA,K,B,L doğrusal\n|AK|=|KL|\n4|KB|=2|MC|=|MB|"
+        repaired = repair_equality_ticks(buggy, stem)
+        self.assertNotIn("L 120 164 L 136 164", repaired)
+        # |AK|=|KL| ama B∈KL → bileşik kenar; tick YOK (AK=BL illüzyonu olmasın)
+        mid_ak = (45.0, 180.0)
+        mid_kl = (120.0, 180.0)
+        mid_bl = (145.0, 180.0)
+        self.assertEqual(_short_lines_near(repaired, mid_ak), 0)
+        self.assertEqual(_short_lines_near(repaired, mid_kl), 0)
+        self.assertEqual(_short_lines_near(repaired, mid_bl, radius=12), 0)
+
+    def test_composite_kl_skips_ticks(self):
+        from content.svg_equality import (
+            build_equality_tick_markup,
+            filter_tick_groups_skip_composite,
+        )
+
+        pts = {
+            "A": (20.0, 180.0),
+            "K": (70.0, 180.0),
+            "B": (120.0, 180.0),
+            "L": (170.0, 180.0),
+        }
+        groups = [["AK", "KL"]]
+        filtered = filter_tick_groups_skip_composite(groups, pts)
+        self.assertEqual(filtered, [])
+        self.assertEqual(build_equality_tick_markup(groups, pts), "")
+
+
 class NestedEqualityTickFilterTests(SimpleTestCase):
     """|AB|=|BC|=|BE| + |BD|=|BF| (D∈AB) → yalnızca BD/BF tek tick (ÖSYM)."""
 

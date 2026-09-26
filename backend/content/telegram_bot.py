@@ -267,6 +267,8 @@ def _pid_alive_windows(pid: int) -> bool:
     """Windows'ta os.kill(pid, 0) TerminateProcess çağırır — süreci öldürür.
 
     Bu yüzden yalnızca OpenProcess + WaitForSingleObject ile sorgula.
+    OpenProcess başarısız olunca GetLastError sıfırlanmalı; aksi halde
+    eski ACCESS_DENIED ölü PID'yi canlı gösterebilir (stale lock döngüsü).
     """
     import ctypes
     from ctypes import wintypes
@@ -281,11 +283,14 @@ def _pid_alive_windows(pid: int) -> bool:
     kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
     kernel32.WaitForSingleObject.restype = wintypes.DWORD
     kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.SetLastError.argtypes = (wintypes.DWORD,)
 
+    kernel32.SetLastError(0)
     handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
     if not handle:
+        err = ctypes.get_last_error()
         # Erişim reddi = süreç var ama başka kullanıcının; canlı say.
-        return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+        return err == ERROR_ACCESS_DENIED
     try:
         return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
     finally:

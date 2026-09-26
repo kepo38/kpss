@@ -179,18 +179,18 @@ Kurallar:
 - Yalnızca geçerli <svg>...</svg> bloğu yaz (viewBox ve xmlns ekle).
 - JSON, markdown, açıklama yok.
 - Köşe harflerini (A, B, C, …) <text> ile doğru koordinatlara yerleştir.
-- Diklik sembollerini (sağ açı işareti) ilgili köşeye çiz.
-- Açı değerlerini (ör. 40°, 90°) ilgili yay/köşe üzerine yaz.
-- Kenar uzunluklarını ilgili kenarın yanına yerleştir.
-- Oranları ve ölçüleri görseldekiyle aynı tut.
+- Diklik / sağ açı karesi: YALNIZCA kaynak görselde açıkça çizilmişse kopyala.
+  Kare/dikdörtgen olduğu için dik açı uydurma. Görselde yoksa çizme.
+- Açı yayları ve açı değerleri (ör. 40°): yalnızca görselde varsa çiz/yaz.
+- Kenar uzunluklarını görselde yazılmışsa ilgili kenarın yanına yerleştir.
+- Oranları ve ölçüleri görseldekiyle aynı tut (ölçek uydurma).
 - Şekli path/line/polygon/circle/rect/ellipse ile vektör olarak çiz.
 - Fotoğrafı <image>, data:image veya harici href ile gömme (yasak).
 - ÖSYM / watermark / logo / filigran çizme veya yazma (yasak).
 - script, foreignObject, harici href kullanma.
-- Eşitlik (congruence) tick'leri: soru metnindeki |XY|=|ZW| çiftleriyle
-  birebir aynı sayıda tick kullan. Aynı eşitlik grubundaki kenarlarda tick
-  sayısı aynı olmalı; farklı gruplarda farklı tick sayısı kullan.
-  Emin değilsen freehand tick çizme (sonradan stem'den eklenecek).
+- Eşitlik (congruence) tick / hatch işaretlerini HİÇ çizme.
+  (|XY|=|ZW| tick'leri sunucu stem'den ekler. Oranlı uzunluklar
+  4|KB|=2|MC|=|MB| eşitlik DEĞİLDİR — tick uydurma.)
 """
 
 _MARKDOWN_SOLUTION_RULES = """
