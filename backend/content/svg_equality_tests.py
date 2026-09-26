@@ -11,6 +11,7 @@ from content.svg_equality import (
     build_equality_tick_markup,
     collect_svg_geometry_anchors,
     extract_equal_segment_groups,
+    filter_tick_groups_for_nesting,
     parse_svg_point_labels,
     parse_svg_vertex_points,
     repair_equality_ticks,
@@ -235,3 +236,61 @@ class RepairEqualityTicksQ62Tests(SimpleTestCase):
         markup = build_equality_tick_markup([["AB", "CD"]], {"A": (0, 0), "B": (10, 0)})
         # CD missing → only AB ticks
         self.assertEqual(markup.count("<line"), 1)
+
+
+class NestedEqualityTickFilterTests(SimpleTestCase):
+    """|AB|=|BC|=|BE| + |BD|=|BF| (D∈AB) → yalnızca BD/BF tek tick (ÖSYM)."""
+
+    PTS = {
+        "A": (28.0, 206.4),
+        "D": (88.0, 206.4),
+        "B": (268.0, 206.4),
+        "C": (88.0, 47.6),
+        "E": (428.6, 28.0),
+        "F": (133.0, 87.3),
+    }
+    STEM = (
+        "D∈[AB], F∈[BC]\n"
+        "|AB|=|BC|=|BE|\n"
+        "|BD|=|BF|\n"
+        "|AD|=2\n"
+        "|EF|=2√5"
+    )
+
+    def test_filter_suppresses_parent_group(self):
+        groups = extract_equal_segment_groups(self.STEM)
+        self.assertEqual(len(groups), 2)
+        filtered = filter_tick_groups_for_nesting(groups, self.PTS)
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(set(filtered[0]), {"BD", "BF"})
+
+    def test_repair_single_ticks_on_bd_bf_only(self):
+        base = """<svg viewBox="0 0 464.6 242.4" xmlns="http://www.w3.org/2000/svg">
+  <line x1="28.0" y1="206.4" x2="268.0" y2="206.4" stroke="black" stroke-width="2"/>
+  <line x1="28.0" y1="206.4" x2="88.0" y2="47.6" stroke="black" stroke-width="2"/>
+  <line x1="88.0" y1="47.6" x2="268.0" y2="206.4" stroke="black" stroke-width="2"/>
+  <line x1="88.0" y1="47.6" x2="88.0" y2="206.4" stroke="black" stroke-width="2"/>
+  <line x1="268.0" y1="206.4" x2="428.6" y2="28.0" stroke="black" stroke-width="2"/>
+  <line x1="428.6" y1="28.0" x2="133.0" y2="87.3" stroke="black" stroke-width="2"/>
+  <text x="16.0" y="226.4" font-size="16">A</text>
+  <text x="83.0" y="226.4" font-size="16">D</text>
+  <text x="276.0" y="226.4" font-size="16">B</text>
+  <text x="72.0" y="51.6" font-size="16">C</text>
+  <text x="434.6" y="32.0" font-size="16">E</text>
+  <text x="119.0" y="81.3" font-size="16">F</text>
+</svg>"""
+        repaired = repair_equality_ticks(base, self.STEM)
+        mid_bd = _midpoint(self.PTS["B"], self.PTS["D"])
+        mid_bf = _midpoint(self.PTS["B"], self.PTS["F"])
+        mid_ab = _midpoint(self.PTS["A"], self.PTS["B"])
+        mid_bc = _midpoint(self.PTS["B"], self.PTS["C"])
+        mid_be = _midpoint(self.PTS["B"], self.PTS["E"])
+        self.assertEqual(_short_lines_near(repaired, mid_bd), 1)
+        self.assertEqual(_short_lines_near(repaired, mid_bf), 1)
+        # AB ortası BD tick'ine yakın olabilir; AB'nin sol yarısında tick olmamalı
+        mid_ad_side = _midpoint(self.PTS["A"], self.PTS["D"])
+        self.assertEqual(_short_lines_near(repaired, mid_ad_side, radius=20), 0)
+        self.assertEqual(_short_lines_near(repaired, mid_bc, radius=20), 0)
+        self.assertEqual(_short_lines_near(repaired, mid_be, radius=20), 0)
+        # AB orta noktası BD midpoint'inden uzak (x≈148 vs x≈178)
+        self.assertEqual(_short_lines_near(repaired, mid_ab, radius=14), 0)

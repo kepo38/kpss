@@ -374,16 +374,16 @@
 {{ map_templates_json|json_script:"map-templates-data" }}
       <script src="{% static 'panel/map-smart-brush.js' %}?v=2"></script>
       <script src="{% static 'panel/map-question-editor.js' %}?v=20"></script>
-<script src="{% static 'panel/js/geometry-editor-core.js' %}?v=2"></script>
+<script src="{% static 'panel/js/geometry-editor-core.js' %}?v=6"></script>
 <script src="{% static 'panel/js/geometry-question-editor.js' %}?v=5"></script>
-<script src="{% static 'panel/js/geometry-solution-editor.js' %}?v=2"></script>
+<script src="{% static 'panel/js/geometry-solution-editor.js' %}?v=3"></script>
 <script src="{% static 'panel/question-options.js' %}?v=7"></script>
 <script src="{% static 'panel/option-table.js' %}?v=8"></script>
 {{ form_bootstrap|json_script:"question-form-bootstrap" }}
 {{ preview_seed|json_script:"question-preview-seed" }}
 {{ scenarios_json|json_script:"question-scenarios-data" }}
 <script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
-<script src="{% static 'panel/question-preview.js' %}?v=31"></script>
+<script src="{% static 'panel/question-preview.js' %}?v=32"></script>
 {{ topic_subtopics_json|json_script:"topic-subtopics-data" }}
 <script>
 (function () {

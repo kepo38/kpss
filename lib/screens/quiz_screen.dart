@@ -1179,20 +1179,12 @@ class _QuizScreenState extends State<QuizScreen>
           QuestionStemPanel(
             child: Builder(
               builder: (context) {
-                final stem = _currentQuestion.soruMetni;
-                final sol = _currentQuestion.cozumMetni;
-                final svg = _currentQuestion.sekilKodu;
-                final stemSvg = (svg != null &&
-                        svg.isNotEmpty &&
-                        sol.contains('[ŞEKİL]') &&
-                        !stem.contains('[ŞEKİL]'))
-                    ? null
-                    : svg;
                 return QuestionStemContent(
-                  stem: stem,
+                  stem: _currentQuestion.soruMetni,
                   imageUrl: _currentQuestion.imageUrl,
                   stemImagePosition: _currentQuestion.stemImagePosition,
-                  sekilKodu: stemSvg,
+                  // Geometri SVG her zaman soru metninde (çözümde [ŞEKİL] olsa bile).
+                  sekilKodu: _currentQuestion.sekilKodu,
                 );
               },
             ),

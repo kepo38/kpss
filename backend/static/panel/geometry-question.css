@@ -106,7 +106,8 @@
   -webkit-user-select: none;
 }
 
-.geo-canvas-wrap #geo-canvas {
+.geo-canvas-wrap #geo-canvas,
+.geo-canvas-wrap #geo-sol-canvas {
   display: block;
   width: 100%;
   height: auto;
@@ -115,16 +116,30 @@
   touch-action: none;
 }
 
-.geo-editor-box[data-tool="select"] #geo-canvas {
+.geo-editor-box[data-tool="select"] #geo-canvas,
+.geo-editor-box[data-tool="select"] #geo-sol-canvas {
   cursor: default;
 }
 
-.geo-editor-box #geo-status {
+#geo-sol-underlay,
+#geo-sol-underlay * {
+  pointer-events: none !important;
+}
+
+.geo-draw-surface {
+  fill: transparent;
+  pointer-events: all;
+  cursor: inherit;
+}
+
+.geo-editor-box #geo-status,
+.geo-editor-box #geo-sol-status {
   margin: 0;
   min-height: 1.2em;
 }
 
-.geo-editor-box #geo-help {
+.geo-editor-box #geo-help,
+.geo-editor-box #geo-sol-help {
   margin: 0;
 }
 

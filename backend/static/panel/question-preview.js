@@ -635,7 +635,9 @@
     var solutionSvgText = currentSolutionFigureSvg();
     syncFigureSvg(
       svgEl,
-      figureInlineInStem || figureInlineInSol ? "" : svgText
+      // Sadece soru metninde [ŞEKİL] varsa blok SVG'yi gizle (çift göstermemek için).
+      // Çözümde [ŞEKİL] olması soru şeklini gizlememeli.
+      figureInlineInStem ? "" : svgText
     );
 
     var correct = val("correct_option");

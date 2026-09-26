@@ -362,6 +362,97 @@ def _tick_lines_for_segment(
     return out
 
 
+def _point_on_segment(
+    p: tuple[float, float],
+    a: tuple[float, float],
+    b: tuple[float, float],
+    *,
+    tol: float = 3.0,
+) -> bool:
+    """p, ab doğru parçası üzerinde mi (kolinear + uçlar arasında)?"""
+    ax, ay = a
+    bx, by = b
+    px, py = p
+    abx, aby = bx - ax, by - ay
+    apx, apy = px - ax, py - ay
+    ab_len = math.hypot(abx, aby)
+    if ab_len < 1e-6:
+        return math.hypot(apx, apy) <= tol
+    # dik mesafe
+    cross = abs(abx * apy - aby * apx) / ab_len
+    if cross > tol:
+        return False
+    # izdüşüm parametresi
+    t = (apx * abx + apy * aby) / (ab_len * ab_len)
+    return -0.02 <= t <= 1.02
+
+
+def _segment_properly_contains(
+    outer: tuple[tuple[float, float], tuple[float, float]],
+    inner: tuple[tuple[float, float], tuple[float, float]],
+    *,
+    tol: float = 3.0,
+) -> bool:
+    """inner'ın her iki ucu outer üzerinde ve inner, outer'dan belirgin şekilde kısa mı?"""
+    o1, o2 = outer
+    i1, i2 = inner
+    if not (_point_on_segment(i1, o1, o2, tol=tol) and _point_on_segment(i2, o1, o2, tol=tol)):
+        return False
+    outer_len = math.hypot(o2[0] - o1[0], o2[1] - o1[1])
+    inner_len = math.hypot(i2[0] - i1[0], i2[1] - i1[1])
+    # Aynı kenar (ters yazım) veya neredeyse eşit uzunluk → içerme sayma
+    if inner_len >= outer_len - tol:
+        return False
+    return inner_len < outer_len * 0.92
+
+
+def filter_tick_groups_for_nesting(
+    groups: list[list[str]],
+    points: dict[str, tuple[float, float]],
+) -> list[list[str]]:
+    """İç içe kenarlarda çift tick yığınını önle.
+
+    Örnek: |AB|=|BC|=|BE| ve |BD|=|BF| (D∈AB) → AB üzerinde hem AB hem BD
+    tick'i biner. Bu durumda içerme yapan *üst grubun tamamı* bastırılır;
+    görsel olarak ÖSYM gibi yalnızca iç eşitlik (BD=BF) işaretlenir.
+    """
+    if len(groups) < 2:
+        return groups
+
+    resolved: list[tuple[list[str], list[tuple[tuple[float, float], tuple[float, float]]]]] = []
+    for group in groups:
+        segs: list[str] = []
+        ends_list: list[tuple[tuple[float, float], tuple[float, float]]] = []
+        for seg in group:
+            ends = _segment_endpoints(seg, points)
+            if not ends:
+                continue
+            segs.append(seg)
+            ends_list.append(ends)
+        if len(segs) >= 2:
+            resolved.append((segs, ends_list))
+
+    if len(resolved) < 2:
+        return [segs for segs, _ in resolved] if resolved else groups
+
+    suppress: set[int] = set()
+    for i, (_segs_i, ends_i) in enumerate(resolved):
+        for j, (_segs_j, ends_j) in enumerate(resolved):
+            if i == j:
+                continue
+            # i grubundaki bir kenar, j grubundaki bir kenarı içeriyorsa i'yi bastır
+            for outer in ends_i:
+                for inner in ends_j:
+                    if _segment_properly_contains(outer, inner):
+                        suppress.add(i)
+                        break
+                if i in suppress:
+                    break
+
+    kept = [segs for idx, (segs, _) in enumerate(resolved) if idx not in suppress]
+    return kept if kept else [segs for segs, _ in resolved]
+
+
 def build_equality_tick_markup(
     groups: list[list[str]],
     points: dict[str, tuple[float, float]],
@@ -369,7 +460,9 @@ def build_equality_tick_markup(
     """For group i, draw (i+1) perpendicular tick marks at each segment midpoint.
 
     Segment 'AB' needs points A and B. Skip missing points.
+    Nested collinear groups are filtered first (see filter_tick_groups_for_nesting).
     """
+    groups = filter_tick_groups_for_nesting(groups, points)
     lines: list[str] = []
     for gi, group in enumerate(groups):
         n_ticks = gi + 1

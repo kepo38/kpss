@@ -30,6 +30,33 @@
     return true;
   }
 
+  function ensureStemSekilPlaceholder() {
+    var el =
+      document.getElementById("question-stem") ||
+      document.querySelector('textarea[name="stem"]');
+    if (!el) return false;
+    var next = ensureSekilInText(el.value || "");
+    if (next === (el.value || "")) return false;
+    el.value = next;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    if (global.KpssQuestionPreview && typeof global.KpssQuestionPreview.sync === "function") {
+      global.KpssQuestionPreview.sync();
+    }
+    return true;
+  }
+
+  /** figure_svg varken soru + çözüm metnine [ŞEKİL] koy. */
+  function ensureFigurePlaceholders() {
+    var fig =
+      document.getElementById("figure-svg") ||
+      document.querySelector('[name="figure_svg"]');
+    if (!fig || !(fig.value || "").trim()) return false;
+    var a = ensureStemSekilPlaceholder();
+    var b = ensureSolutionSekilPlaceholder();
+    return a || b;
+  }
+
   function create(config) {
     config = config || {};
     var kind = config.kind === "solution" ? "solution" : "stem";
@@ -718,62 +745,32 @@
         );
       }
     } else if (shape.type === "angle") {
+      // ÖSYM tarzı açı işareti: kenarları yeniden çizme — yalnızca yay (+ etiket veya nokta)
+      var arc = angleArcPath(shape.a, shape.b, shape.c);
       if (interactive) {
         g.appendChild(
-          el("line", {
+          el("circle", {
             class: "geo-hit",
-            x1: round2(shape.a.x),
-            y1: round2(shape.a.y),
-            x2: round2(shape.b.x),
-            y2: round2(shape.b.y),
-            fill: "none",
-            stroke: "rgba(0,0,0,0)",
-            "stroke-width": hitSw,
-            "stroke-linecap": "round",
-            "pointer-events": "stroke",
-          })
-        );
-        g.appendChild(
-          el("line", {
-            class: "geo-hit",
-            x1: round2(shape.c.x),
-            y1: round2(shape.c.y),
-            x2: round2(shape.b.x),
-            y2: round2(shape.b.y),
-            fill: "none",
-            stroke: "rgba(0,0,0,0)",
-            "stroke-width": hitSw,
-            "stroke-linecap": "round",
-            "pointer-events": "stroke",
+            cx: round2(shape.b.x),
+            cy: round2(shape.b.y),
+            r: 20,
+            fill: "rgba(0,0,0,0)",
+            stroke: "none",
+            "pointer-events": "all",
           })
         );
       }
-      g.appendChild(
-        el("line", Object.assign({}, common, {
-          x1: round2(shape.a.x),
-          y1: round2(shape.a.y),
-          x2: round2(shape.b.x),
-          y2: round2(shape.b.y),
-        }))
-      );
-      g.appendChild(
-        el("line", Object.assign({}, common, {
-          x1: round2(shape.c.x),
-          y1: round2(shape.c.y),
-          x2: round2(shape.b.x),
-          y2: round2(shape.b.y),
-        }))
-      );
-      var arc = angleArcPath(shape.a, shape.b, shape.c);
       g.appendChild(
         el("path", {
           d: arc.d,
           fill: "none",
           stroke: color,
-          "stroke-width": Math.max(1, sw * 0.85),
+          "stroke-width": Math.max(1.2, sw * 0.9),
+          "stroke-linecap": "round",
         })
       );
-      if (shape.label) {
+      var lbl = (shape.label || "").trim();
+      if (lbl) {
         g.appendChild(
           el("text", {
             x: round2(arc.labelX),
@@ -784,7 +781,27 @@
             "text-anchor": "middle",
             "dominant-baseline": "middle",
           })
-        ).textContent = shape.label;
+        ).textContent = lbl;
+      } else {
+        var ang1d = Math.atan2(shape.a.y - shape.b.y, shape.a.x - shape.b.x);
+        var ang2d = Math.atan2(shape.c.y - shape.b.y, shape.c.x - shape.b.x);
+        var del = ang2d - ang1d;
+        while (del <= -Math.PI) del += Math.PI * 2;
+        while (del > Math.PI) del -= Math.PI * 2;
+        var rMk = Math.min(28, dist(shape.a, shape.b) * 0.35, dist(shape.c, shape.b) * 0.35);
+        if (rMk < 6) rMk = 6;
+        var midA = ang1d + del / 2;
+        // Dot inside the sector (ÖSYM), not on the arc stroke
+        var rDot = rMk * 0.55;
+        g.appendChild(
+          el("circle", {
+            cx: round2(shape.b.x + Math.cos(midA) * rDot),
+            cy: round2(shape.b.y + Math.sin(midA) * rDot),
+            r: 2.2,
+            fill: color,
+            stroke: "none",
+          })
+        );
       }
     }
     return g;
@@ -795,13 +812,11 @@
   }
 
   function renderShapes() {
-    if (kind === "solution") renderUnderlay();
     clearLayer(shapesLayer);
     shapes.forEach(function (s) {
       if (!isUsable(s)) return;
       shapesLayer.appendChild(renderShapeNode(s, true));
     });
-    renderUnderlay();
     renderHandles();
   }
 
@@ -985,7 +1000,10 @@
     if (window.KpssQuestionPreview && typeof window.KpssQuestionPreview.sync === "function") {
       window.KpssQuestionPreview.sync();
     }
-    document.dispatchEvent(new CustomEvent("geometry-question-change"));
+    // Only stem figure changes should refresh solution underlay.
+    if (figureField && field === figureField) {
+      document.dispatchEvent(new CustomEvent("geometry-question-change"));
+    }
   }
 
 
@@ -1016,14 +1034,18 @@
     clickPts = [];
     drag = null;
     renderPreview(null);
-    if (root) root.setAttribute("data-tool", tool);
+    if (!root) return;
+    root.setAttribute("data-tool", tool);
     root.querySelectorAll(".geo-tool").forEach(function (btn) {
       btn.setAttribute("aria-pressed", btn.getAttribute("data-tool") === tool ? "true" : "false");
     });
     if (tool === "triangle") setStatus("Üçgen: 3 noktaya tıklayın (0/3)");
-    else if (tool === "angle") setStatus("Açı: 3 nokta — ışın, tepe, ışın (0/3)");
+    else if (tool === "angle") setStatus("Açı: 3 nokta — ışın, tepe, ışın (0/3). Etiket boşsa eşit-açı noktası.");
     else if (tool === "radius") setStatus("Yarıçap: merkezden kenara sürükleyin");
     else if (tool === "semicircle") setStatus("Yarım daire: çapı sürükleyin");
+    else if (tool === "line") setStatus("Çizgi: sürükleyerek çizin");
+    else if (tool === "circle") setStatus("Çember: merkezden kenara sürükleyin");
+    else if (tool === "square") setStatus("Kare: sürükleyerek çizin");
     else if (tool === "select") {
       setStatus(
         selectedId
@@ -1309,7 +1331,7 @@
             a: { x: pts[0].x, y: pts[0].y },
             b: { x: pts[1].x, y: pts[1].y },
             c: { x: pts[2].x, y: pts[2].y },
-            label: angleLabelText() || "1",
+            label: angleLabelText(),
             color: strokeColor(),
             stroke: strokeWidth(),
           });
@@ -1574,7 +1596,10 @@
         if (doc.querySelector("parsererror")) return false;
         var src = doc.documentElement;
         if (!src || String(src.tagName || "").toLowerCase() !== "svg") return false;
-        var wrap = el("g", { "data-geo-underlay-src": "figure-svg" });
+        var wrap = el("g", {
+          "data-geo-underlay-src": "figure-svg",
+          "pointer-events": "none",
+        });
         // Preserve viewBox scaling via nested svg when dimensions differ
         var nested = el("svg", {
           xmlns: "http://www.w3.org/2000/svg",
@@ -1583,6 +1608,7 @@
           height: String(VB_H),
           x: "0",
           y: "0",
+          "pointer-events": "none",
         });
         Array.prototype.slice.call(src.childNodes).forEach(function (child) {
           if (child.nodeType === 1) {
@@ -1591,10 +1617,44 @@
         });
         wrap.appendChild(nested);
         underlayLayer.appendChild(wrap);
+        lockUnderlayPointerEvents();
         return true;
       } catch (err) {
         return false;
       }
+    }
+
+    function lockUnderlayPointerEvents() {
+      if (!underlayLayer) return;
+      underlayLayer.setAttribute("pointer-events", "none");
+      var nodes = underlayLayer.querySelectorAll("*");
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].setAttribute("pointer-events", "none");
+        if (nodes[i].style) nodes[i].style.pointerEvents = "none";
+      }
+    }
+
+    function ensureDrawSurface() {
+      if (kind !== "solution" || !canvas) return;
+      var existing =
+        document.getElementById(idOf("drawSurface", "geo-sol-draw-surface")) ||
+        canvas.querySelector(".geo-draw-surface");
+      if (existing) {
+        existing.setAttribute("pointer-events", "all");
+        return;
+      }
+      if (!underlayLayer || !shapesLayer) return;
+      var surface = el("rect", {
+        id: idOf("drawSurface", "geo-sol-draw-surface"),
+        class: "geo-draw-surface",
+        x: "0",
+        y: "0",
+        width: String(VB_W),
+        height: String(VB_H),
+        fill: "transparent",
+        "pointer-events": "all",
+      });
+      canvas.insertBefore(surface, shapesLayer);
     }
 
     function renderUnderlay() {
@@ -1606,9 +1666,12 @@
         parsed.forEach(function (s) {
           underlayLayer.appendChild(renderShapeNode(s, false));
         });
+        lockUnderlayPointerEvents();
+        ensureDrawSurface();
         return;
       }
       appendRawSvgUnderlay(stemSvgRaw());
+      ensureDrawSurface();
     }
 
     function baseLayerMarkup() {
@@ -1670,13 +1733,13 @@
     function syncFigureField(forceClear) {
       if (!figureField) return;
       writeField(figureField, forceClear ? "" : exportSvg());
-      if (!forceClear && exportSvg()) ensureSolutionSekilPlaceholder();
+      if (!forceClear && exportSvg()) ensureFigurePlaceholders();
     }
 
     function syncSolutionField(forceClear) {
       if (!solutionField) return;
       writeField(solutionField, forceClear ? "" : exportSolutionSvg());
-      if (!forceClear && exportSolutionSvg()) ensureSolutionSekilPlaceholder();
+      if (!forceClear && exportSolutionSvg()) ensureFigurePlaceholders();
     }
 
     function syncActiveField(forceClear) {
@@ -1983,25 +2046,33 @@
       bindToolbar();
       bindCanvas();
       bindKeyboard();
-      setTool("select");
+      // Solution overlay: start on a draw tool so clicks immediately create marks.
+      setTool(kind === "solution" ? "line" : "select");
       tryImportExisting();
       root.setAttribute("data-geo-mode", kind);
+      if (figureField && (figureField.value || "").trim()) {
+        ensureFigurePlaceholders();
+      }
 
       if (kind === "solution") {
+        ensureDrawSurface();
         renderUnderlay();
         var help = document.getElementById(idOf("help", "geo-sol-help"));
         if (help) {
           help.textContent =
-            "Çözüm çizimi: alttaki soru şekli kilitli. Üzerine açı/işaret ekleyin. Seç: sürükle taşı · köşeden boyut · üst tutamaktan döndür · Delete sil. Temizle yalnızca çözüm işaretlerini siler.";
+            "Çözüm çizimi: alttaki soru şekli kilitli. Varsayılan araç Çizgi — sürükleyerek işaret ekleyin. Seç: taşı/boyut/döndür. Temizle yalnızca çözüm işaretlerini siler.";
         }
         if (figureField) {
           figureField.addEventListener("input", renderUnderlay);
           figureField.addEventListener("change", renderUnderlay);
         }
         document.addEventListener("geometry-question-change", renderUnderlay);
-        if (figureField && (figureField.value || "").trim()) {
-          ensureSolutionSekilPlaceholder();
-        }
+        refreshModeStatus(
+          modeStatusPrefix() +
+            (shapes.filter(isUsable).length
+              ? shapes.filter(isUsable).length + " şekil"
+              : "boş — sürükleyerek çizin")
+        );
       }
 
       return {
@@ -2011,7 +2082,10 @@
           return shapes.slice();
         },
         clear: clearAll,
+        setTool: setTool,
         ensureSolutionSekilPlaceholder: ensureSolutionSekilPlaceholder,
+        ensureStemSekilPlaceholder: ensureStemSekilPlaceholder,
+        ensureFigurePlaceholders: ensureFigurePlaceholders,
         kind: kind,
       };
     }
@@ -2024,5 +2098,7 @@
     FIGURE_PLACEHOLDER: FIGURE_PLACEHOLDER,
     ensureSekilInText: ensureSekilInText,
     ensureSolutionSekilPlaceholder: ensureSolutionSekilPlaceholder,
+    ensureStemSekilPlaceholder: ensureStemSekilPlaceholder,
+    ensureFigurePlaceholders: ensureFigurePlaceholders,
   };
 })(window);
