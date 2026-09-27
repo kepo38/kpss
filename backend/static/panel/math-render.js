@@ -46,13 +46,14 @@
 
   function normalizeLatex(text) {
     var src = mergeSplitInlineDollarMath(repairLatexEscapes(String(text || "")));
-    return src
+    src = src
       .replace(/\\\[([\s\S]+?)\\\]/g, function (_, body) {
         return "$$" + body.trim() + "$$";
       })
       .replace(/\\\(([\s\S]+?)\\\)/g, function (_, body) {
         return inlineLatexBodyToDollars(body);
       });
+    return rewriteSymbolicShapeOperators(src);
   }
 
   /** JSON/OCR: \\frac → form-feed+rac; önizlemede geri yamala. */
@@ -73,10 +74,12 @@
       .replace(/\x0crac/g, "\\frac")
       .replace(/\x08eta/g, "\\beta")
       .replace(/\x08egin/g, "\\begin")
+      .replace(/\x08lacksquare/g, "\\blacksquare")
       .replace(/\x09ext\{/g, "\\text{")
       .replace(/\x09imes/g, "\\times")
       .replace(/\x09heta/g, "\\theta")
       .replace(/\x09an/g, "\\tan")
+      .replace(/\x09riangle/g, "\\triangle")
       .replace(/\x0dight/g, "\\right")
       .replace(/\x0aeq/g, "\\neq")
       .replace(/\$rac\{/g, "$\\frac{")
@@ -88,12 +91,105 @@
     return src;
   }
 
+
+  /** $\square AB$ / □73 → \shapebox{square}{AB} (içerik şeklin içinde). */
+  function rewriteSymbolicShapeOperators(text) {
+    var src = String(text || "");
+    if (!src) return src;
+    src = src.replace(
+      /(?<![A-Za-z])\\(square|triangle)(?![A-Za-z])\s*([A-Za-z0-9]+)/g,
+      function (_, kind, content) {
+        return "\\shapebox{" + kind + "}{" + content + "}";
+      }
+    );
+    src = src.replace(/([□△])\s*([A-Za-z0-9]+)/g, function (_, mark, content) {
+      var kind = mark === "△" ? "triangle" : "square";
+      return "\\shapebox{" + kind + "}{" + content + "}";
+    });
+    return src;
+  }
+
+  function shapeHtml(kind, content) {
+    var safe = escapeHtml(String(content || "").trim());
+    var k = kind === "triangle" ? "triangle" : "square";
+    // Triangle: intrinsic SVG width/height attrs (no CSS → still ~1.75em, never 300×150).
+    // Label is drawn inside the SVG so content cannot fall outside the outline.
+    // font-size≈19 in viewBox 40 → ~0.83em of parent at 1.75em width (ÖSYM-balanced).
+    if (k === "triangle") {
+      return (
+        '<span class="math-shape math-shape--triangle" title="' +
+        safe +
+        '">' +
+        '<svg class="math-shape__outline" xmlns="http://www.w3.org/2000/svg" ' +
+        'width="32" height="28" viewBox="0 0 40 36" aria-hidden="true" focusable="false" ' +
+        'style="width:1.75em;height:1.52em;max-width:2.2em;max-height:1.95em;display:block;overflow:visible">' +
+        '<polygon points="20,2.8 37.5,33.5 2.5,33.5" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.8" stroke-linejoin="round"/>' +
+        '<text x="20" y="28.2" text-anchor="middle" fill="currentColor" stroke="none" ' +
+        'font-size="19" font-weight="600" font-family="Tinos, Times New Roman, serif">' +
+        safe +
+        "</text></svg></span>"
+      );
+    }
+    return (
+      '<span class="math-shape math-shape--square" title="' +
+      safe +
+      '">' +
+      '<span class="math-shape__label">' +
+      safe +
+      "</span></span>"
+    );
+  }
+
+  /** Math gövdesinde \shapebox → HTML şekil; kalan parçalar KaTeX. */
+  function renderMathWithShapes(tex, displayMode) {
+    var src = rewriteSymbolicShapeOperators(String(tex || ""));
+    if (src.indexOf("\\shapebox{") === -1) {
+      return renderMath(src, displayMode);
+    }
+    var re = /\\shapebox\{(square|triangle)\}\{([^}]*)\}/g;
+    var out = "";
+    var last = 0;
+    var m;
+    while ((m = re.exec(src)) !== null) {
+      if (m.index > last) {
+        var chunk = src.slice(last, m.index);
+        var trimmed = chunk.trim();
+        if (trimmed) {
+          if (looksLikeMath(trimmed) || /[\\^_{}]/.test(trimmed)) {
+            out += renderMath(trimmed, displayMode);
+          } else {
+            out += escapeHtml(chunk);
+          }
+        } else if (chunk) {
+          out += escapeHtml(chunk);
+        }
+      }
+      out += shapeHtml(m[1], m[2]);
+      last = m.index + m[0].length;
+    }
+    if (last < src.length) {
+      var tail = src.slice(last);
+      var t2 = tail.trim();
+      if (t2) {
+        if (looksLikeMath(t2) || /[\\^_{}]/.test(t2)) {
+          out += renderMath(t2, displayMode);
+        } else {
+          out += escapeHtml(tail);
+        }
+      } else if (tail) {
+        out += escapeHtml(tail);
+      }
+    }
+    return out;
+  }
+
   function looksLikeMath(text) {
     var t = String(text || "").trim();
     if (!t) return false;
     // Güçlü sinyal: LaTeX komutları.
     if (
-      /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq|displaystyle|hline|vert|lvert|rvert|implies)\b/.test(
+      /\\(?:frac|dfrac|tfrac|sqrt|cdot|times|left|right|text|overline|underline|begin|infty|pm|neq|leq|geq|displaystyle|hline|vert|lvert|rvert|implies|square|triangle|blacksquare)\b/.test(
         t
       ) ||
       /(^|[^\\A-Za-z])frac\{/.test(t)
@@ -1352,7 +1448,9 @@
     var ownHolders = !holders;
     if (!holders) holders = [];
     var src = normalizeMarkup(String(text));
-    src = normalizeExamArrows(normalizeLatex(src));
+    src = rewriteSymbolicShapeOperators(
+      normalizeExamArrows(normalizeLatex(src))
+    );
     function pushHolder(html) {
       var idx = holders.length;
       holders.push({ html: html });
@@ -1393,9 +1491,11 @@
       var display = !!(m[1] || m[3]) || needsDisplayMathBlock(tex);
       if (display && !(m[1] || m[3])) {
         out +=
-          '<span class="math-block">' + renderMath(tex, true) + "</span>";
+          '<span class="math-block">' +
+          renderMathWithShapes(tex, true) +
+          "</span>";
       } else {
-        out += renderMath(tex, display);
+        out += renderMathWithShapes(tex, display);
       }
       last = m.index + m[0].length;
     }
@@ -1422,7 +1522,7 @@
     while ((m = re.exec(src)) !== null) {
       out += escapeHtml(src.slice(last, m.index));
       var tex = m[1] || m[2] || m[3] || m[4] || "";
-      out += renderMath(tex, false);
+      out += renderMathWithShapes(tex, false);
       last = m.index + m[0].length;
     }
     out += escapeHtml(src.slice(last));
@@ -1704,6 +1804,8 @@
     collapseItalicQuoteMarkerSpaces: collapseItalicQuoteMarkerSpaces,
     wrapBareLatex: wrapBareLatex,
     forceDisplaySizeAll: forceDisplaySizeAll,
+    rewriteSymbolicShapeOperators: rewriteSymbolicShapeOperators,
+    renderMathWithShapes: renderMathWithShapes,
     richInline: richInline,
     optionInline: optionInline,
     plainInline: plainInline,

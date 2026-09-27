@@ -303,6 +303,16 @@ class Question(models.Model):
         verbose_name="Çıkmış soru adı",
         help_text="Panel içi etiket — uygulama testlerinde gösterilmez; yalnızca ÖSYM rozeti görünür.",
     )
+
+    @property
+    def osym_cikmis_badge_label(self) -> str:
+        """Panel rozeti: gereksiz «· DGS» sonekini düşürülmüş arşiv anahtarı."""
+        raw = (self.osym_cikmis_adi or "").strip()
+        if not raw:
+            return ""
+        from .osym_archive import archive_key_from_label
+
+        return archive_key_from_label(raw) or raw
     tag_kronoloji = models.BooleanField(
         default=False,
         db_index=True,

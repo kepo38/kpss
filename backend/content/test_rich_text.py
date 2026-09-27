@@ -26,6 +26,13 @@ from content.rich_text_common import (
     repair_latex_escapes,
     restore_collapsed_breaks,
     scrub_google_math_speech_debris,
+    scrub_glued_duplicate_math,
+    scrub_hphantom_math_debris,
+    scrub_xpm_html_attribute_debris,
+    scrub_word_mso_paste_debris,
+    solution_has_storage_defects,
+    _GOOGLE_SPEECH_SIGNAL_RE,
+    _strip_glued_digits_after_inline_math,
 )
 from content.telegram_conversation import (
     ai_solution_status_note,
@@ -1228,6 +1235,152 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIsNone(
             re.search(r"[a-zçğıöşüâîû]\)?-[ \t]*(?:\*\*)?[A-ZÇĞİÖŞÜ]", ok)
         )
+
+    def test_multi_inline_vars_not_false_math_prose_glue(self):
+        """``$ABC$ … $A$`` scrub/repair tarafından parçalanmamalı."""
+        src = (
+            "**Adım Adım Çözüm:**\n\n"
+            "Sonuç $ABC$ olduğundan $A$ ancak $8+1=9$ olabilir.\n"
+            "- Birler: $9 + 4 = 13$ → elde $1$, $C = 3$\n"
+            "$A = 9$, $B = 9$, $C = 3$\n"
+        )
+        self.assertFalse(solution_has_storage_defects(src))
+        scrubbed = scrub_google_math_speech_debris(src)
+        self.assertEqual(scrubbed, src)
+        self.assertIn("$ABC$", scrubbed)
+        self.assertIn("$C = 3$", scrubbed)
+        # Yapışık gerçek kusur hâlâ yakalanır
+        self.assertTrue(solution_has_storage_defects(r"$x=\frac{4}{3}$Yaşındadır"))
+
+    def test_implies_latex_does_not_strip_neighbor_math_bases(self):
+        """``\\implies`` konuşma sinyali değil; ``$27 =``, ``$x$0`` hâlâ temizlenir."""
+        clean = (
+            r"$54 = 2 \cdot 3^3$, $27 = 3^3$, $81 = 3^4$, $4 = 2^2$."
+            "\n"
+            r"$$3^{-x+10} = 1 \implies x = 10$$"
+        )
+        self.assertIsNone(_GOOGLE_SPEECH_SIGNAL_RE.search(r"\implies x = 10"))
+        self.assertIsNotNone(_GOOGLE_SPEECH_SIGNAL_RE.search("foo implies bar"))
+        scrubbed = scrub_google_math_speech_debris(clean)
+        self.assertEqual(scrubbed, clean.strip())
+        self.assertIn("$27 = 3^3$", scrubbed)
+        self.assertIn("$81 = 3^4$", scrubbed)
+        self.assertIn("$4 = 2^2$", scrubbed)
+        # Gerçek yapışık rakam artığı hâlâ düşer (span-aware)
+        self.assertEqual(_strip_glued_digits_after_inline_math("$x=3$0"), "$x=3$")
+        self.assertEqual(
+            _strip_glued_digits_after_inline_math(
+                r"$54 = 2 \cdot 3^3$, $27 = 3^3$"
+            ),
+            r"$54 = 2 \cdot 3^3$, $27 = 3^3$",
+        )
+        # equals sinyali varken de komşu tabanlar korunur, yapışık 0 düşer
+        out = scrub_google_math_speech_debris(
+            r"$54 = 2 \cdot 3^3$, $27 = 3^3$ equals done $x$0"
+        )
+        self.assertIn("$27 = 3^3$", out)
+        self.assertIn("$x$", out)
+        self.assertNotIn("$x$0", out)
+        self.assertNotIn("equals", out)
+
+    def test_scrub_hphantom_strips_and_keeps_equation(self):
+        src = (
+            r"$K^2 = (a\sqrt{b})^2 = a^2 \cdot b$" "\n"
+            r"$K^2$" "\n"
+            r"$\hphantom{}= \hphantom{}$" "\n"
+            r"$a$" "\n"
+            r"$K^2 = (a\sqrt{b})^2 = a^2 \cdot b$ $K^2$ $\hphantom{}= a^2$"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = scrub_hphantom_math_debris(src)
+        self.assertNotIn("hphantom", out)
+        self.assertIn(r"$K^2 = (a\sqrt{b})^2 = a^2 \cdot b$", out)
+
+    def test_normalize_latex_strips_hphantom(self):
+        from content.rich_text_common import normalize_latex
+
+        self.assertEqual(normalize_latex(r"$x\hphantom{}=3$"), "$x=3$")
+
+    def test_scrub_glued_duplicate_math_vars_and_eq(self):
+        src = (
+            "K sayısına **$xx$** diyelim.\n"
+            r"Toplam = $x + 80x+ 80x + 80x\+ 80$" "\n"
+            r"Sonuç $x = 30x= 30x = 30x\= 30$" "\n"
+            r"$\frac{x}{x+80}=\frac{30}{x+100}\frac{x}{x+80}=\frac{30}{x+100}$"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = scrub_glued_duplicate_math(src)
+        self.assertIn("$x$", out)
+        self.assertNotIn("$xx$", out)
+        self.assertIn("$x + 80$", out)
+        self.assertIn("$x = 30$", out)
+        self.assertIn(r"\frac{x}{x+80}", out)
+        self.assertNotIn(r"\=", out)
+
+    def test_scrub_assignment_letter_debris_and_displaystyle(self):
+        """``$D$ $=1$`` / ``$,\"`` / ``\\displaystyle ,"`` yapışık atama enkazı."""
+        src = (
+            r"DCB $= 125$ → $D=1,\ C=2,\ B=5$ "
+            r"$D$ $=1$ $,\" $ $C$ $=2$ $\displaystyle ,\" $"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = scrub_glued_duplicate_math(src)
+        self.assertIn(r"$D=1,\ C=2,\ B=5$", out)
+        self.assertNotIn("$D$ $=", out)
+        self.assertNotIn(r'$,\"', out)
+        self.assertNotIn("displaystyle", out)
+        # Tek harf + eşittir birleşimi
+        merged = scrub_glued_duplicate_math(r"$D$ $=1,\ C=2,\ B=5$")
+        self.assertEqual(merged, r"$D=1,\ C=2,\ B=5$")
+        self.assertFalse(solution_has_storage_defects(merged))
+
+    def test_scrub_xpm_draggable_html_debris(self):
+        src = (
+            r"A'dan C'ye: $120 + 180 =$ $120$ $+ 180$ $=\" draggable=$ **300 km**" "\n"
+            r"$120$" "\n"
+            r"$+ 180$" "\n"
+            r"$=$" "\n"
+            r"Toplam $120 + 300 = 420$"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = scrub_xpm_html_attribute_debris(src)
+        self.assertNotIn("draggable", out)
+        self.assertNotIn('$="', out)
+        self.assertIn("300 km", out)
+
+    def test_scrub_word_mso_paste_debris(self):
+        src = (
+            "<!--[if gte mso 9]>\n"
+            "Normal\n0\nfalse\nTR\nX-NONE\n"
+            "<![endif]>\n"
+            "<!--\n"
+            " / *Font Definitions* /\n"
+            " @font-face\n"
+            "\t{font-family:Wingdings;\n"
+            "\tmso-font-charset:2;}\n"
+            " p.MsoNormal\n"
+            "\t{margin-top:0cm;\n"
+            "\tfont-family:\"Aptos\",sans-serif;}\n"
+            "@page WordSection1\n"
+            "\t{size:612.0pt 792.0pt;}\n"
+            "\n"
+            "Osmanlı Devleti'nin son döneminde iki kez **Saltanat Şûrası** toplanmıştır.\n"
+            "\n"
+            "- **I.Öncül DOĞRUDUR:** Sevr Antlaşması görüşülmüştür.\n"
+            "- **II.Öncül YANLIŞTIR:** Londra Konferansı için toplanmamıştır.\n"
+            "- **III.Öncül DOĞRUDUR:** İzmir işgali sonrası Birinci Saltanat Şûrası toplanmıştır.\n"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = scrub_word_mso_paste_debris(src)
+        self.assertNotIn("mso-", out)
+        self.assertNotIn("@font-face", out)
+        self.assertNotIn("WordSection", out)
+        self.assertNotIn("<!--[if", out)
+        self.assertNotIn("Wingdings", out)
+        self.assertFalse(out.lstrip().startswith(">"))
+        self.assertIn("Saltanat Şûrası", out)
+        self.assertIn("I.Öncül DOĞRUDUR", out)
+        self.assertFalse(solution_has_storage_defects(out))
 
 class TelegramSolutionNormalizationIntegrationTests(TestCase):
     def setUp(self):

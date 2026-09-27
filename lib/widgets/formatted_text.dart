@@ -1014,10 +1014,12 @@ class FormattedText extends StatelessWidget {
         .replaceAll('\x0crac', r'\frac')
         .replaceAll('\x08eta', r'\beta')
         .replaceAll('\x08egin', r'\begin')
+        .replaceAll('\x08lacksquare', r'\blacksquare')
         .replaceAll('\x09ext{', r'\text{')
         .replaceAll('\x09imes', r'\times')
         .replaceAll('\x09heta', r'\theta')
         .replaceAll('\x09an', r'\tan')
+        .replaceAll('\x09riangle', r'\triangle')
         .replaceAll('\x0dight', r'\right')
         .replaceAll('\x0aeq', r'\neq')
         .replaceAll(r'$rac{', r'$\frac{')
@@ -1271,13 +1273,81 @@ class FormattedText extends StatelessWidget {
     var t = _repairLatexEscapes(tex.replaceAll('\u00AD', '').trim());
     t = t.replaceAllMapped(
       RegExp(
-        r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan|begin|end|array|hline|matrix|displaystyle|rule)',
+        r'\\+(sqrt|frac|dfrac|tfrac|cdot|times|left|right|text|overline|underline|pi|alpha|beta|gamma|theta|leq|geq|neq|pm|mp|infty|sum|int|log|sin|cos|tan|begin|end|array|hline|matrix|displaystyle|rule|square|triangle|blacksquare)',
       ),
       (m) => '\\${m.group(1)}',
     );
     t = replaceHlineWithColoredRule(t);
     t = normalizeStackedArithmetic(t);
     return forceDisplaySizeAll(t, forceDisplayStyle: forceDisplayStyle);
+  }
+
+  /// `$\square AB$` / `□73` → `$\shapebox{square}{AB}$` (ÖSYM: içerik şeklin içinde).
+  static final RegExp _symbolicShapeCmdRe = RegExp(
+    r'(?<![A-Za-z])\\(square|triangle)(?![A-Za-z])\s*([A-Za-z0-9]+)',
+  );
+  static final RegExp _unicodeShapePrefixRe = RegExp(r'([□△])\s*([A-Za-z0-9]+)');
+  static final RegExp _shapeboxRe = RegExp(
+    r'\\shapebox\{(square|triangle)\}\{([^}]*)\}',
+  );
+
+  static String rewriteSymbolicShapeOperators(String input) {
+    if (input.isEmpty) return input;
+    var src = input.replaceAllMapped(_symbolicShapeCmdRe, (m) {
+      return '\\shapebox{${m.group(1)}}{${m.group(2)}}';
+    });
+    src = src.replaceAllMapped(_unicodeShapePrefixRe, (m) {
+      final kind = m.group(1) == '△' ? 'triangle' : 'square';
+      return '\\shapebox{$kind}{${m.group(2)}}';
+    });
+    return src;
+  }
+
+  static Widget buildShapeBox(
+    String kind,
+    String label, {
+    required TextStyle base,
+  }) {
+    final fs = base.fontSize ?? 16;
+    final style = base.copyWith(
+      fontSize: fs * 0.92,
+      height: 1.0,
+      fontStyle: FontStyle.normal,
+      fontWeight: FontWeight.w600,
+    );
+    final child = Text(
+      label,
+      style: style,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      softWrap: false,
+    );
+    if (kind == 'triangle') {
+      // ~1.75em × 1.52em — satır yüksekliğine bağlı, asla parent genişliğine yayılma.
+      final w = fs * 1.75;
+      final h = fs * 1.52;
+      return _TriangleShapeBox(
+        label: child,
+        color: base.color ?? const Color(0xFFE0E0E0),
+        width: w,
+        height: h,
+      );
+    }
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: fs * 0.2, vertical: fs * 0.08),
+      constraints: BoxConstraints(
+        minWidth: fs * 1.3,
+        minHeight: fs * 1.2,
+      ),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: base.color ?? const Color(0xFFE0E0E0),
+          width: 1.4,
+        ),
+      ),
+      child: child,
+    );
   }
 
   static String normalizeLatex(String input) {
@@ -1304,7 +1374,7 @@ class FormattedText extends StatelessWidget {
           RegExp(r'\\\(([\s\S]+?)\\\)'),
           (m) => inlineBodyToDollars(m.group(1)!),
         );
-    return text;
+    return rewriteSymbolicShapeOperators(text);
   }
 
   static String restoreCollapsedBreaks(String input) {
@@ -2183,7 +2253,12 @@ class FormattedText extends StatelessWidget {
 
     // Renk etiketleri _parseMarkdown içinde işlenir; burada önce bölmek
     // ``**… __YOKTUR__ -{green}…{/green}):**`` gibi kalın/altı çizili sarmalayıcıları kırar.
-    return _parseMath(input, base, forceDisplayMath: forceDisplayMath);
+    // ÖSYM kutu/üçgen: preNormalized yolda da $\square AB$ → shapebox.
+    return _parseMath(
+      rewriteSymbolicShapeOperators(input),
+      base,
+      forceDisplayMath: forceDisplayMath,
+    );
   }
 
   static List<InlineSpan> _parseMath(
@@ -2200,7 +2275,7 @@ class FormattedText extends StatelessWidget {
       if (m.start > i) {
         spans.addAll(_parseMarkdown(input.substring(i, m.start), base));
       }
-      final raw = (m.group(1) ?? m.group(2) ?? '').trim();
+      final raw = rewriteSymbolicShapeOperators((m.group(1) ?? m.group(2) ?? '').trim());
       if (raw.isNotEmpty) {
         // Yanlış ``$düz metin$`` → markdown olarak göster (strut taşması olmasın).
         if (isProseMistakenForMath(raw)) {
@@ -2208,6 +2283,10 @@ class FormattedText extends StatelessWidget {
         } else if (m.group(1) == null && isPlainMathLetter(raw)) {
           // Tek harf: gövde fontu / punto (Math WidgetSpan şişirmesin).
           spans.add(TextSpan(text: raw, style: base));
+        } else if (_shapeboxRe.hasMatch(raw)) {
+          final isBlock = m.group(1) != null;
+          final display = forceDisplayMath || isBlock || usesDisplayMath(raw);
+          spans.addAll(_parseMathBodyWithShapes(raw, base, display: display));
         } else {
           final isBlock = m.group(1) != null;
           // Kesir/kök cümle ortasında da gövde puntosunda (surrounded olsa bile).
@@ -2233,6 +2312,81 @@ class FormattedText extends StatelessWidget {
     }
     if (i < input.length) {
       spans.addAll(_parseMarkdown(input.substring(i), base));
+    }
+    return spans;
+  }
+
+  /// Math gövdesinde `\shapebox{…}{…}` → şekil WidgetSpan; kalan parçalar Math.
+  static List<InlineSpan> _parseMathBodyWithShapes(
+    String raw,
+    TextStyle base, {
+    required bool display,
+  }) {
+    final spans = <InlineSpan>[];
+    var last = 0;
+    for (final m in _shapeboxRe.allMatches(raw)) {
+      if (m.start > last) {
+        final chunk = raw.substring(last, m.start);
+        final trimmed = chunk.trim();
+        if (trimmed.isNotEmpty) {
+          if (usesDisplayMath(trimmed) ||
+              RegExp(r'[\\^_{}]').hasMatch(trimmed) ||
+              RegExp(r'[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(trimmed)) {
+            spans.add(
+              WidgetSpan(
+                alignment: display
+                    ? PlaceholderAlignment.middle
+                    : PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: display ? 2 : 0),
+                  child: buildMathWidget(trimmed, base: base, display: display),
+                ),
+              ),
+            );
+          } else {
+            spans.add(TextSpan(text: chunk, style: base));
+          }
+        } else if (chunk.isNotEmpty) {
+          spans.add(TextSpan(text: chunk, style: base));
+        }
+      }
+      final kind = m.group(1)!;
+      final label = (m.group(2) ?? '').trim();
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          baseline: TextBaseline.alphabetic,
+          child: buildShapeBox(kind, label, base: base),
+        ),
+      );
+      last = m.end;
+    }
+    if (last < raw.length) {
+      final chunk = raw.substring(last);
+      final trimmed = chunk.trim();
+      if (trimmed.isNotEmpty) {
+        if (usesDisplayMath(trimmed) ||
+            RegExp(r'[\\^_{}]').hasMatch(trimmed) ||
+            RegExp(r'[A-Za-z0-9]\s*[+=≠≤≥<>×·]\s*[A-Za-z0-9]').hasMatch(trimmed)) {
+          spans.add(
+            WidgetSpan(
+              alignment: display
+                  ? PlaceholderAlignment.middle
+                  : PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: display ? 2 : 0),
+                child: buildMathWidget(trimmed, base: base, display: display),
+              ),
+            ),
+          );
+        } else {
+          spans.add(TextSpan(text: chunk, style: base));
+        }
+      } else if (chunk.isNotEmpty) {
+        spans.add(TextSpan(text: chunk, style: base));
+      }
     }
     return spans;
   }
@@ -2956,4 +3110,70 @@ class _DocumentText extends StatelessWidget {
     flush();
     return out;
   }
+}
+
+
+/// ÖSYM üçgen konturu — etiket alt-orta bölgede; sabit em boyutu (parent'a yayılmaz).
+class _TriangleShapeBox extends StatelessWidget {
+  final Widget label;
+  final Color color;
+  final double width;
+  final double height;
+
+  const _TriangleShapeBox({
+    required this.label,
+    required this.color,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Dış SizedBox + UnconstrainedBox: WidgetSpan/satır tight width verse bile
+    // üçgen satır boyuna (~1.75em) kalır; CustomPaint parent'ı doldurmaz.
+    return UnconstrainedBox(
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: CustomPaint(
+          size: Size(width, height),
+          painter: _TriangleOutlinePainter(color: color),
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: height * 0.38,
+              bottom: height * 0.06,
+              left: width * 0.12,
+              right: width * 0.12,
+            ),
+            child: Center(child: label),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TriangleOutlinePainter extends CustomPainter {
+  final Color color;
+
+  _TriangleOutlinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(size.width / 2, 1.5)
+      ..lineTo(size.width - 1.5, size.height - 1.5)
+      ..lineTo(1.5, size.height - 1.5)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TriangleOutlinePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

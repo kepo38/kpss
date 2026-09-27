@@ -12,15 +12,36 @@ from django.db.models import Count
 from .models import Question
 from .osym_cikmis import normalize_osym_cikmis_label
 
-# Etiket biçimi: «2025 KPSS Lisans · Genel Yetenek - Genel Kültür»
+# Etiket biçimi: «2025 KPSS Lisans», «2026-HMGS/1»
 # İsteğe bağlı soru numarası: «… · Soru 12»
 LABEL_SEPARATOR = " · "
 SORU_SUFFIX_RE = re.compile(r"\s·\s*soru\s+\d+\s*$", re.IGNORECASE)
-YEAR_PREFIX_RE = re.compile(r"^(\d{4})\s+(.+)$")
+YEAR_PREFIX_RE = re.compile(r"^(\d{4})(?:\s+|-)(.+)$")
 # Eski panel etiketleri: «2026 AYT Eşit Ağırlık · Alan Yeterlilik Testi» → «2026 AYT»
 _AYT_LEGACY_EXAM_RE = re.compile(
     r"^(\d{4})\s+AYT\s+(?:Sayısal|Sözel|Eşit\s+Ağırlık|Dil)"
     r"(?:\s·\s*(?:Alan Yeterlilik Testi|Yabancı Dil Testi|ayt(?:_(?:say|soz|ea|dil))?))?$",
+    re.IGNORECASE,
+)
+# Eski adli/idari etiketleri → «2026-HMGS/1»
+_HMGS_LEGACY_EXAM_RE = re.compile(
+    r"^(\d{4})\s+(?:Adli|İdari|Idari)\s+Yarg[ıi]\s+Hakimli[gğ]i"
+    r"(?:\s·\s*Yaz[ıi]l[ıi]\s+S[ıi]nav)?$",
+    re.IGNORECASE,
+)
+_HMGS_LOOSE_RE = re.compile(
+    r"^(\d{4})[\s\-]+HMGS(?:[\s·/]+(\d+))?$",
+    re.IGNORECASE,
+)
+# Eski / kısa İYÖS etiketleri → «2024-İYÖS/1»
+_IYOS_LOOSE_RE = re.compile(
+    r"^(\d{4})[\s\-]+(?:İ|I|i)Y[ÖOöo]S(?:[\s·/]+(\d+))?$",
+    re.IGNORECASE,
+)
+# Eski KPSS oturum soneki: «2026 KPSS Lisans · Genel Yetenek - Genel Kültür»
+_KPSS_GYGK_LEGACY_RE = re.compile(
+    r"^(\d{4}\s+KPSS\s+(?:Lisans|Önlisans|On\s*Lisans|Ortaöğretim|Ortaogretim))"
+    r"(?:\s·\s*(?:Genel Yetenek\s*-\s*Genel Kültür|GYGK))$",
     re.IGNORECASE,
 )
 
@@ -34,12 +55,22 @@ class OsymArchiveSlot:
     session_key: str
     session_name: str
     expected_count: int
+    label_template: str = ""
 
     def canonical_label(self, year: int) -> str:
+        tpl = (self.label_template or "").strip()
+        if tpl:
+            return tpl.format(
+                year=year,
+                exam_name=self.exam_name,
+                session_key=self.session_key,
+                session_name=self.session_name or "",
+            )
+        primary = f"{year} {self.exam_name}"
         session = (self.session_name or "").strip()
-        if not session:
-            return f"{year} {self.exam_name}"
-        return f"{year} {self.exam_name}{LABEL_SEPARATOR}{session}"
+        if not session or _session_suffix_redundant(self.exam_name, session):
+            return primary
+        return f"{primary}{LABEL_SEPARATOR}{session}"
 
 
 @dataclass
@@ -97,17 +128,28 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
     {
         "family": "KPSS",
         "exam_name": "KPSS Lisans",
-        "sessions": (("gygk", "Genel Yetenek - Genel Kültür", 120),),
+        "sessions": (("gygk", "", 120),),
     },
     {
         "family": "KPSS",
         "exam_name": "KPSS Önlisans",
-        "sessions": (("gygk", "Genel Yetenek - Genel Kültür", 120),),
+        "sessions": (("gygk", "", 120),),
     },
     {
         "family": "KPSS",
         "exam_name": "KPSS Ortaöğretim",
-        "sessions": (("gygk", "Genel Yetenek - Genel Kültür", 120),),
+        "sessions": (("gygk", "", 120),),
+    },
+    {
+        "family": "KPSS",
+        "exam_name": "KPSS A Grubu",
+        "sessions": (("a", "", 80),),
+        "short_aliases": (
+            "kpss a",
+            "a grubu",
+            "kpss a grubu",
+            "a",
+        ),
     },
     {
         "family": "AGS",
@@ -151,29 +193,43 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
     },
     {
         "family": "Hakimlik",
-        "exam_name": "Adli Yargı Hakimliği",
-        "sessions": (("adli", "Yazılı Sınav", 100),),
+        "exam_name": "HMGS",
+        "sessions": (("1", "", 100),),
+        "label_template": "{year}-HMGS/{session_key}",
         "short_aliases": (
+            "hmgs",
+            "hmgs/1",
+            "hakimlik",
             "adli",
             "adli yargı",
             "adli yargi",
             "adli hakimlik",
             "adli yargı hakimliği",
-        ),
-    },
-    {
-        "family": "Hakimlik",
-        "exam_name": "İdari Yargı Hakimliği",
-        "sessions": (("idari", "Yazılı Sınav", 100),),
-        "short_aliases": (
+            "adli yargi hakimligi",
             "idari",
             "idari yargı",
             "idari yargi",
             "idari hakimlik",
             "idari yargı hakimliği",
+            "idari yargi hakimligi",
+        ),
+    },
+    {
+        "family": "Hakimlik",
+        "exam_name": "İYÖS",
+        "sessions": (("1", "", 100),),
+        "label_template": "{year}-İYÖS/{session_key}",
+        "short_aliases": (
+            "iyös",
+            "iyos",
+            "iyös/1",
+            "iyos/1",
         ),
     },
 )
+
+# Ön lisans / ortaöğretim yalnızca çift yıllarda (uygulama ExamType.even_years_only ile aynı).
+_KPSS_EVEN_YEARS_ONLY_EXAMS = frozenset({"KPSS Önlisans", "KPSS Ortaöğretim"})
 
 DEFAULT_YEARS = range(2019, 2027)
 
@@ -189,11 +245,25 @@ def archive_key_from_label(raw: str) -> str:
 
 
 def _collapse_legacy_exam_labels(key: str) -> str:
-    """Eski YKS alt tür etiketlerini güncel katalog biçimine indirger."""
+    """Eski YKS / HMGS / İYÖS / KPSS etiketlerini güncel katalog biçimine indirger."""
     match = _AYT_LEGACY_EXAM_RE.match(key)
     if match:
         return f"{match.group(1)} AYT"
-    return key
+    match = _HMGS_LEGACY_EXAM_RE.match(key)
+    if match:
+        return f"{match.group(1)}-HMGS/1"
+    match = _HMGS_LOOSE_RE.match(key)
+    if match:
+        session = match.group(2) or "1"
+        return f"{match.group(1)}-HMGS/{session}"
+    match = _IYOS_LOOSE_RE.match(key)
+    if match:
+        session = match.group(2) or "1"
+        return f"{match.group(1)}-İYÖS/{session}"
+    match = _KPSS_GYGK_LEGACY_RE.match(key)
+    if match:
+        return match.group(1).strip()
+    return _collapse_redundant_session_suffix(key)
 
 
 def _alias_fold(text: str) -> str:
@@ -201,15 +271,46 @@ def _alias_fold(text: str) -> str:
     return (text or "").casefold().replace("ı", "i").replace("â", "a")
 
 
+def _session_suffix_redundant(exam_name: str, session: str) -> bool:
+    """Oturum adı sınav adıyla aynıysa «· oturum» soneki gereksizdir (ör. DGS · DGS)."""
+    exam_f = _alias_fold((exam_name or "").strip())
+    sess_f = _alias_fold((session or "").strip())
+    if not sess_f or not exam_f:
+        return False
+    return sess_f == exam_f
+
+
+def _collapse_redundant_session_suffix(key: str) -> str:
+    """«2026 DGS · DGS» / «2026 ALES · ALES» → «2026 DGS» / «2026 ALES»."""
+    if LABEL_SEPARATOR not in key:
+        return key
+    left, _, right = key.partition(LABEL_SEPARATOR)
+    left = left.strip()
+    right = right.strip()
+    if not left or not right:
+        return key
+    match = YEAR_PREFIX_RE.match(left)
+    if not match:
+        return key
+    exam_part = match.group(2).strip()
+    if _session_suffix_redundant(exam_part, right):
+        return left
+    return key
+
+
 def resolve_to_catalog_key(raw: str) -> str:
     """Kısa etiketleri katalog kanoniğine bağlar.
 
     Örnekler:
     - «2026 AGS» → «2026 AGS · MEB Akademi Giriş Sınavı»
-    - «2025 KPSS Lisans» → «2025 KPSS Lisans · Genel Yetenek - Genel Kültür»
+    - «2025 KPSS Lisans» → «2025 KPSS Lisans»
+    - «2025 KPSS Lisans · GYGK» → «2025 KPSS Lisans»
+    - «2026 KPSS A» → «2026 KPSS A Grubu»
+    - «2026 DGS» / «2026 DGS · DGS» → «2026 DGS»
     - «2025 Kaymakamlık» → «2025 Kaymakamlık» (GYGK / alan ayrılmaz)
-    - «2025 adli» → «2025 Adli Yargı Hakimliği · Yazılı Sınav»
-    - «2025 idari» → «2025 İdari Yargı Hakimliği · Yazılı Sınav»
+    - «2025 adli» / «2025 Hakimlik» → «2025-HMGS/1»
+    - «2026-HMGS/1» → «2026-HMGS/1»
+    - «2024 İYÖS» / «2024 iyos» → «2024-İYÖS/1»
     """
     key = archive_key_from_label(raw)
     if not key:
@@ -239,6 +340,7 @@ def resolve_to_catalog_key(raw: str) -> str:
         ] = canon
 
     for template in _EXAM_TEMPLATES:
+        label_template = str(template.get("label_template") or "")
         for session_key, session_name, expected in template["sessions"]:
             for y in years:
                 slot = OsymArchiveSlot(
@@ -247,6 +349,7 @@ def resolve_to_catalog_key(raw: str) -> str:
                     session_key=session_key,
                     session_name=session_name,
                     expected_count=expected,
+                    label_template=label_template,
                 )
                 canon = slot.canonical_label(y)
                 for short in template.get("short_aliases") or ():
@@ -254,6 +357,7 @@ def resolve_to_catalog_key(raw: str) -> str:
                     aliases[
                         _alias_fold(f"{y} {short}{LABEL_SEPARATOR}{session_key}")
                     ] = canon
+                    aliases[_alias_fold(f"{y}-{short}")] = canon
 
     for family_key, canons in family_slots.items():
         unique = list(dict.fromkeys(canons))
@@ -264,6 +368,11 @@ def resolve_to_catalog_key(raw: str) -> str:
         unique = list(dict.fromkeys(canons))
         if len(unique) == 1:
             aliases[exam_key] = unique[0]
+
+    # Tek yılda A Grubu da var; çıplak «YYYY KPSS» yine Lisans demektir.
+    for y in years:
+        if y % 2 == 1:
+            aliases[_alias_fold(f"{y} KPSS")] = f"{y} KPSS Lisans"
 
     return aliases.get(_alias_fold(key), key)
 
@@ -283,13 +392,18 @@ def iter_catalog_slots(*, years: Iterable[int] | None = None) -> Iterator[tuple[
     year_list = list(years or DEFAULT_YEARS)
     for year in sorted(year_list, reverse=True):
         for template in _EXAM_TEMPLATES:
+            exam_name = template["exam_name"]
+            if year % 2 == 1 and exam_name in _KPSS_EVEN_YEARS_ONLY_EXAMS:
+                continue
+            label_template = str(template.get("label_template") or "")
             for session_key, session_name, expected in template["sessions"]:
                 yield year, OsymArchiveSlot(
                     family=template["family"],
-                    exam_name=template["exam_name"],
+                    exam_name=exam_name,
                     session_key=session_key,
                     session_name=session_name,
                     expected_count=expected,
+                    label_template=label_template,
                 )
 
 

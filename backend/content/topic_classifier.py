@@ -9,6 +9,17 @@ from functools import lru_cache
 
 from .models import Subject, Topic
 
+# □/△ operatörü (kare/küp sayma) — mat_geometri'ye yanlış yönlendirmeyi kes
+_SYMBOLIC_OPERATOR_MATH = re.compile(
+    r"(?is)("
+    r"[□△]|\\square|\\triangle"
+    r"|(?:kare|üçgen|ucgen)\s+ifade"
+    r"|karesi\s+.{0,100}?(?:eşit|küçük|büyük)"
+    r"|küpü\s+.{0,100}?(?:eşit|küçük|büyük)"
+    r"|(?:□|△|\\square|\\triangle)\s*\d+"
+    r")"
+)
+
 # Ders slug → içerik ipuçları (yalnızca panelde o ders varsa puanlanır)
 _SUBJECT_HINTS: dict[str, list[tuple[str, int]]] = {
     "matematik": [
@@ -135,7 +146,11 @@ def _topic_slug_bonus(blob: str, topic: Topic) -> int:
 def _score_topic(blob: str, topic: Topic, *, subject_bonus: int = 0) -> int:
     score = _topic_name_bonus(blob, topic)
     score += _topic_slug_bonus(blob, topic)
-    score += _score_rules(blob, _TOPIC_HINTS.get(topic.slug, []))
+    hints = _TOPIC_HINTS.get(topic.slug, [])
+    # □/△ kare-küp operatörü → mat_geometri ipuçlarını uygulama
+    if topic.slug == "mat_geometri" and _SYMBOLIC_OPERATOR_MATH.search(blob):
+        hints = []
+    score += _score_rules(blob, hints)
     score += subject_bonus
     for sub in topic.subtopics or []:
         sub_norm = _normalize(str(sub))

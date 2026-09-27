@@ -48,6 +48,19 @@ class GeminiJsonExtractTests(SimpleTestCase):
         self.assertIn("\\frac", fixed)
         self.assertNotIn("$rac{", fixed)
 
+    def test_json_square_triangle_not_eaten(self):
+        # Gemini tek \\square / \\triangle yazarsa JSON \\t = TAB yer
+        raw = '{"stem": "$' + chr(92) + 'square 73 + ' + chr(92) + 'triangle 37$"}'
+        data = _extract_json(raw)
+        self.assertIn("stem", data)
+        self.assertIn("\\square", data["stem"])
+        self.assertIn("\\triangle", data["stem"])
+        self.assertNotIn("\x09", data["stem"])
+        broken = "$" + "\x09" + "riangle 37$"
+        fixed = repair_json_latex_escapes(broken)
+        self.assertIn("\\triangle", fixed)
+        self.assertNotIn("\x09", fixed)
+
     def test_json_begin_array_not_eaten_as_backspace(self):
         # Gemini tek \begin / \end yazarsa JSON \b kaçışı bozar
         raw = '{"soru_metni": "$$\\begin{array}{r}AB8\\\\-16C\\\\ \\hline CA3\\end{array}$$"}'
@@ -381,6 +394,44 @@ class OcrScoreTests(SimpleTestCase):
         self.assertTrue(_likely_geometry_question(stem, opts, stem))
         self.assertTrue(_likely_math_question(stem, opts, stem))
         self.assertTrue(_needs_gemini_fallback(stem, opts, stem))
+
+    def test_square_triangle_operators_not_geometry(self):
+        """□/△ kare-küp sayma operatörü geometri sayılmamalı; çözüm silinmemeli."""
+        from content.ocr_gemini import strip_geometry_auto_solution
+
+        stem = (
+            r"AB iki basamaklı bir doğal sayı olmak üzere "
+            r"$\square AB$ ve $\triangle AB$ ifadeleri "
+            r"$\square AB$: Karesi AB'ye eşit ya da AB'den küçük olan "
+            r"pozitif tam sayıların sayısı "
+            r"$\triangle AB$: Küpü AB'ye eşit ya da AB'den küçük olan "
+            r"pozitif tam sayıların sayısı "
+            r"biçiminde tanımlanmaktadır. "
+            r"$\square 73 + \triangle 37$ ifadesinin değeri kaçtır?"
+        )
+        opts = {"A": "9", "B": "10", "C": "11", "D": "12", "E": "13"}
+        solution = r"$\square 73=8$, $\triangle 37=3$ → $8+3=11$"
+        self.assertFalse(_likely_geometry_question(stem, opts, stem))
+        # OCR «üçgen ifade» / karesi-küpü metni de geometri değil
+        ocr_stem = (
+            "AB iki basamaklı bir doğal sayı olmak üzere AB ve AB üçgen ifadeleri "
+            "Karesi AB'ye eşit ya da AB'den küçük olan pozitif tam sayıların sayısı "
+            "Küpü AB'ye eşit ya da AB'den küçük olan pozitif tam sayıların sayısı "
+            "73 + 37 üçgen ifadesinin değeri kaçtır?"
+        )
+        self.assertFalse(_likely_geometry_question(ocr_stem, opts, ocr_stem))
+        # Sahte figure_svg olsa bile operatör sorusunda çözüm korunur
+        self.assertEqual(
+            strip_geometry_auto_solution(
+                stem, opts, "<svg></svg>", solution
+            ),
+            solution,
+        )
+        from content.ocr_gemini import _post_process_gemini_payload
+
+        stem2, opts2 = _post_process_gemini_payload(stem, dict(opts), "<svg></svg>")
+        self.assertEqual(stem2, stem)
+        self.assertEqual(opts2, opts)
 
     def test_verbal_history_not_geometry_strip(self):
         """Tarih / Yalnız I-II-III sorusu geometri sayılmamalı; çözüm silinmemeli."""

@@ -83,7 +83,7 @@
           title="{{ session.canonical_label }}"
         >
           <div class="osym-session-top">
-            <span class="osym-session-name">{{ session.slot.session_name }}</span>
+            <span class="osym-session-name">{% firstof session.slot.session_name session.canonical_label %}</span>
             {% if session.status == "complete" %}
               <span class="osym-status-icon" aria-label="Tam">✓</span>
             {% elif session.status == "partial" %}

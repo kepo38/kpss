@@ -43,6 +43,7 @@ from .ocr import (
     OPTION_KEYS,
     OcrQuestionResult,
     _likely_geometry_question,
+    _looks_like_symbolic_operator_math,
     _peel_embedded_options,
     _strip_watermarks,
     normalize_turkish_text,
@@ -96,6 +97,7 @@ Kurallar:
   İşlem işaretini görselden birebir oku. Solda veya sayının önünde eksi varsa ASLA artıya çevirme.
   Düz satıra yığma (`AB8 + 16C = CA3` YANLIŞ). LaTeX array kullan:
   $$\\begin{array}{r} AB8 \\\\ -16C \\\\ \\hline CA3 \\end{array}$$
+  ASLA \\hphantom, \\phantom veya boş hizalama komutu kullanma; hizayı array ile yap.
   Soru cümlesi array'in altında kalsın:
   "A, B ve C rakamları için
   $$\\begin{array}{r} AB8 \\\\ -16C \\\\ \\hline CA3 \\end{array}$$
@@ -135,6 +137,7 @@ detayli_cozum:
 - Görselde çözüm metni varsa onu aktar.
 - Yoksa Türkçe, adım adım, öğretici bir çözüm yaz.
 - Matematikte LaTeX ($...$) kullan.
+- \\hphantom / \\phantom kullanma; dikey işlemi array ile yaz.
 - Çözümü mobil uygulama MarkdownBody ile gösterecek; HTML kullanma.
 - Her paragraf/aşama arasında boş satır bırak.
 - Ana adım başlıklarını **kalın** yaz (ör. **1. Aşama: Kenar İncelemesi**); # / ## / ### kullanma.
@@ -239,6 +242,7 @@ Kurallar:
 - detayli_cozum: Türkçe, adım adım, öğretici
 - Matematikte LaTeX ($...$) kullan
 - Mobil uygulama Markdown formatı: paragraflar arası boş satır, **kalın** adım başlıkları (# kullanma), **kalın** vurgu
+- \\hphantom / \\phantom kullanma; dikey işlemi $$\\begin{array}{r}...\\end{array}$$ ile yaz
 
 Çıktı yalnızca şu JSON (başka metin yok):
 {"dogru_cevap": "C", "detayli_cozum": "..."}
@@ -398,6 +402,9 @@ def _post_process_gemini_payload(
     figure_svg: str,
 ) -> tuple[str, dict[str, str]]:
     stem = _strip_watermarks(stem)
+    # Sahte figure_svg, □/△ operatör sorularında geometri onarımını tetiklemesin.
+    if _looks_like_symbolic_operator_math(stem, options, stem):
+        return stem, options
     if figure_svg or _likely_geometry_question(stem, options, stem):
         return _repair_geometry_payload(stem, options)
     return stem, options
@@ -409,6 +416,9 @@ def _is_geometry_ocr(
     figure_svg: str = "",
 ) -> bool:
     """Şekil SVG veya geometri ipuçları varsa çözüm metni otomatik üretilmez."""
+    # □/△ kare-küp operatörü: Gemini bazen sahte SVG üretir; geometri sayma.
+    if _looks_like_symbolic_operator_math(stem, options or {}, stem):
+        return False
     if (figure_svg or "").strip():
         return True
     return _likely_geometry_question(stem, options or {}, stem)
@@ -633,12 +643,17 @@ _LATEX_JSON_CMDS = (
     "cos",
     "overline",
     "underline",
+    # □/△ kare-küp operatörü — \t JSON'da TAB yer; \s geçersiz kaçış
+    "square",
+    "triangle",
+    "blacksquare",
 )
 _LATEX_JSON_CMD_PATTERN = "|".join(_LATEX_JSON_CMDS)
 _LATEX_JSON_CONTROL_REPAIRS: tuple[tuple[str, str], ...] = (
     ("\x0crac", "\\frac"),
     ("\x08eta", "\\beta"),
     ("\x08egin", "\\begin"),
+    ("\x08lacksquare", "\\blacksquare"),
     ("\x09ext{", "\\text{"),
     ("\x09ext ", "\\text "),
     ("\x09imes", "\\times"),
@@ -646,6 +661,7 @@ _LATEX_JSON_CONTROL_REPAIRS: tuple[tuple[str, str], ...] = (
     ("\x09au", "\\tau"),
     ("\x09an", "\\tan"),
     ("\x09ilde", "\\tilde"),
+    ("\x09riangle", "\\triangle"),
     ("\x0dight", "\\right"),
     ("\x0dho", "\\rho"),
     ("\x0aeq", "\\neq"),
@@ -1092,6 +1108,10 @@ def ocr_question_image_gemini(
 
     if not figure_svg and _likely_geometry_question(stem, options, stem):
         figure_svg = _fetch_geometry_svg(image_bytes, mime)
+
+    # □/△ operatör sorusu: Gemini'nin ürettiği sahte şekil SVG'sini at
+    if figure_svg and _looks_like_symbolic_operator_math(stem, options, stem):
+        figure_svg = ""
 
     if figure_svg and stem:
         figure_svg = repair_equality_ticks(figure_svg, stem)

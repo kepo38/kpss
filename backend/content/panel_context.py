@@ -7,10 +7,20 @@ from django.utils import timezone
 
 from .models import Question, QuestionErrorReport, TelegramBotSession
 
+# seed_tg_exam_demo — demo sorular public_id ile işaretlenir (ayrı alan yok).
+DEMO_QUESTION_PUBLIC_ID_PREFIX = "q_tg_demo_"
+
 
 def pending_error_report_count() -> int:
     """Yalnızca incelenmeyi bekleyen (açık) bildirimler."""
     return QuestionErrorReport.objects.filter(status="open").count()
+
+
+def non_demo_question_count() -> int:
+    """Sistemdeki toplam soru (q_tg_demo_* hariç) — tek COUNT."""
+    return Question.objects.exclude(
+        public_id__startswith=DEMO_QUESTION_PUBLIC_ID_PREFIX
+    ).count()
 
 
 def telegram_solution_hold_question_ids(*, max_age_hours: int = 24) -> set[int]:
@@ -50,9 +60,10 @@ def mark_question_error_reports_reviewed(question: Question) -> int:
 
 
 def panel_nav_context(request):
-    """Panel yan menüsü — incelenecek soru sayacı."""
+    """Panel yan menüsü — incelenecek / toplam soru sayaçları."""
     count = 0
     pending_questions = 0
+    question_total = 0
     user = getattr(request, "user", None)
     path = getattr(request, "path", "") or ""
     if (
@@ -63,7 +74,9 @@ def panel_nav_context(request):
     ):
         count = pending_error_report_count()
         pending_questions = pending_telegram_question_count()
+        question_total = non_demo_question_count()
     return {
         "pending_error_report_count": count,
         "pending_telegram_question_count": pending_questions,
+        "panel_question_count": question_total,
     }

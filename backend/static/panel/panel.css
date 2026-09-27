@@ -144,12 +144,28 @@ a:hover { color: #fff; }
   background: rgba(255, 255, 255, 0.025);
 }
 .nav-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 10px 4px;
   padding: 2px 2px;
   font-size: 13px;
   font-weight: 600;
   color: rgba(243, 245, 248, 0.72);
   letter-spacing: -0.01em;
+}
+.nav-question-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(243, 245, 248, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 .nav-link-sub {
   margin-left: 8px;
@@ -1097,7 +1113,7 @@ h2 {
 .quiz-mock-svg.is-on {
   display: block;
 }
-.quiz-mock-svg svg {
+.quiz-mock-svg svg:not(.math-shape__outline) {
   display: block;
   width: 100%;
   height: auto;
@@ -1125,7 +1141,7 @@ h2 {
   border: 1px solid rgba(255,255,255,0.12);
   overflow: hidden;
 }
-.quiz-mock-svg-inline svg {
+.quiz-mock-svg-inline svg:not(.math-shape__outline) {
   display: block;
   width: 100%;
   height: auto;
@@ -1306,6 +1322,58 @@ h2 {
 .preview-bold {
   color: #E0E0E0;
   font-weight: 700;
+}
+/* ÖSYM: rakam/harf kare veya üçgen konturu İÇİNDE (inline, ~1.7–1.85em) */
+.math-shape {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  vertical-align: -0.18em;
+  line-height: 1;
+  color: inherit;
+  font-style: normal;
+  font-weight: inherit;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 2.4em;
+}
+.math-shape--square {
+  border: 1.5px solid currentColor;
+  padding: 0.08em 0.22em;
+  min-width: 1.5em;
+  min-height: 1.35em;
+  box-sizing: border-box;
+}
+.math-shape--triangle {
+  width: 1.75em;
+  height: 1.52em;
+  padding: 0;
+  box-sizing: content-box;
+  overflow: visible;
+}
+/* Asla figure_svg kurallarıyla width:100% alma — yalnız shapebox outline */
+.math-shape--triangle .math-shape__outline,
+.quiz-mock-stem .math-shape__outline,
+.quiz-mock-opt-text .math-shape__outline,
+.cozum-metni-alani .math-shape__outline,
+.quiz-mock-solution .math-shape__outline {
+  display: block !important;
+  width: 1.75em !important;
+  height: 1.52em !important;
+  max-width: 2.2em !important;
+  max-height: 1.95em !important;
+  position: static !important;
+  inset: auto !important;
+  pointer-events: none;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+.math-shape__label {
+  position: relative;
+  z-index: 1;
+  font-size: 0.94em;
+  letter-spacing: 0.01em;
 }
 .text-danger-vurgu {
   color: #FF6B6B;

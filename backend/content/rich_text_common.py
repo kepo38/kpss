@@ -331,10 +331,12 @@ def repair_latex_escapes(text: str) -> str:
         text.replace("\x0crac", r"\frac")
         .replace("\x08eta", r"\beta")
         .replace("\x08egin", r"\begin")
+        .replace("\x08lacksquare", r"\blacksquare")
         .replace("\x09ext{", r"\text{")
         .replace("\x09imes", r"\times")
         .replace("\x09heta", r"\theta")
         .replace("\x09an", r"\tan")
+        .replace("\x09riangle", r"\triangle")
         .replace("\x0dight", r"\right")
         .replace("\x0aeq", r"\neq")
         .replace("$rac{", r"$\frac{")
@@ -393,8 +395,43 @@ _COLLAPSED_WORD_BOUNDARY_RE = re.compile(
 )
 
 
+# ÖSYM kutu/üçgen operatörü: □AB / $\square AB$ → içerik şeklin içinde.
+# `\shapebox{square}{AB}` / `\shapebox{triangle}{AB}` — panel + Flutter ortak.
+_SYMBOLIC_SHAPE_CMD_RE = re.compile(
+    r"(?<![A-Za-z])\\(square|triangle)(?![A-Za-z])\s*([A-Za-z0-9]+)"
+)
+_UNICODE_SHAPE_PREFIX_RE = re.compile(r"([□△])\s*([A-Za-z0-9]+)")
+_SHAPEBOX_KIND = {"square": "square", "triangle": "triangle", "□": "square", "△": "triangle"}
+
+
+def rewrite_symbolic_shape_operators(text: str) -> str:
+    """`$\\square AB$` / `□73` → `$\\shapebox{square}{AB}$` (içerik şeklin içinde).
+
+    Yalnızca operatör+içerik örüntüsünü çevirir; çıplak `\\square` / `\\triangle`
+    sembolleri ve `\\triangleq` / `\\triangledown` gibi komutlar dokunulmaz.
+    """
+    src = text or ""
+    if not src:
+        return src
+
+    def _cmd(match: re.Match[str]) -> str:
+        kind = _SHAPEBOX_KIND.get(match.group(1), match.group(1))
+        return rf"\shapebox{{{kind}}}{{{match.group(2)}}}"
+
+    def _uni(match: re.Match[str]) -> str:
+        kind = _SHAPEBOX_KIND.get(match.group(1), "square")
+        return rf"\shapebox{{{kind}}}{{{match.group(2)}}}"
+
+    src = _SYMBOLIC_SHAPE_CMD_RE.sub(_cmd, src)
+    src = _UNICODE_SHAPE_PREFIX_RE.sub(_uni, src)
+    return src
+
+
 def normalize_latex(text: str) -> str:
     src = merge_split_inline_dollar_math(repair_latex_escapes(text or ""))
+    # Uygulama hizası için gereksiz; OCR/Gemini artığı → sil
+    src = re.sub(r"\\hphantom\s*\{[^{}]*\}", "", src)
+    src = re.sub(r"\\phantom\s*\{[^{}]*\}", "", src)
     src = re.sub(
         r"\\\[([\s\S]+?)\\\]",
         lambda m: _display_latex_body_to_dollars(m.group(1)),
@@ -405,7 +442,7 @@ def normalize_latex(text: str) -> str:
         lambda m: _inline_latex_body_to_dollars(m.group(1)),
         src,
     )
-    return src
+    return rewrite_symbolic_shape_operators(src)
 
 
 def normalize_exam_arrows(text: str) -> str:
@@ -572,9 +609,46 @@ _PASTE_FRAGMENT_MARKER_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r"<!--\s*(?:Start|End)[^>]*?-->", re.IGNORECASE | re.DOTALL),
 )
 
+# Word/Outlook yapıştırması: MSO conditional comment + @font-face stil dökümü
+_WORD_MSO_SIGNAL_RE = re.compile(
+    r"(?ix)"
+    r"<!--\s*\[if\s+(?:gte\s+)?mso"
+    r"|/\s*\*\s*Font Definitions"
+    r"|/\s*\*\s*Style Definitions"
+    r"|@font-face\b"
+    r"|\bWordSection\d+\b"
+    r"|\bp\.MsoNormal\b"
+    r"|\bmso-[a-z0-9-]+\s*:"
+)
+_MSO_IF_BLOCK_RE = re.compile(
+    r"<!--\s*\[if[^\]]*\]\s*>.*?<!\s*\[endif\]\s*(?:-->|>)?",
+    re.IGNORECASE | re.DOTALL,
+)
+_MSO_IF_OPEN_RE = re.compile(r"<!--\s*\[if[^\]]*\]\s*>", re.IGNORECASE)
+_MSO_ENDIF_RE = re.compile(r"<!\[endif\]\s*(?:-->|>)?", re.IGNORECASE)
+# Kapanmamış ``<!-- … Font/Style Definitions …`` CSS gövdesi
+_WORD_CSS_DEBRIS_RE = re.compile(
+    r"<!--(?!\s*\[if)"
+    r"(?:(?!-->)[\s\S])*?"
+    r"(?:Font Definitions|Style Definitions|@font-face|mso-|WordSection|MsoNormal)"
+    r"(?:(?!-->)[\s\S])*?"
+    r"(?:-->|(?=\n\s*\n(?=[A-Za-zÇĞİÖŞÜçğıöşü])))",
+    re.IGNORECASE,
+)
+
 _GOOGLE_XPM_SIGNAL_RE = re.compile(
     r"TgQPHd|data-xpm-latex|<!--\s*qkimaf|<!--\s*cqw1tb",
     re.IGNORECASE,
+)
+# Yarım kalmış XPM HTML (TgQPHd yok ama draggable/role sızmış)
+_XPM_HTML_ATTR_DEBRIS_RE = re.compile(
+    r"""(?ix)
+    \bdraggable\s*=|
+    \brole\s*=\s*["']?presentation|
+    \baria-hidden\s*=|
+    \bdata-xpm-[a-z0-9-]+\s*=|
+    \$\s*=\s*\\?"
+    """,
 )
 # Google Docs XPM: kapanmayan ``<!--TgQPHd|||[[[…]]`` (--> yok).
 _TGQPHD_BLOB_RE = re.compile(
@@ -606,7 +680,8 @@ _XPM_SPEECH_GLUE_RE = re.compile(
 )
 _GOOGLE_SPEECH_SIGNAL_RE = re.compile(
     r"\bequals\b|\bfour-thirds\b|\bend-fraction\b|\bcap\s+[A-Za-z]\b|"
-    r"\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]|"
+    # ``\implies`` LaTeX komutu konuşma sinyali değil
+    r"(?<!\\)\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]|"
     r"\bplus\b|\bminus\b|\bspace\b",
     re.IGNORECASE,
 )
@@ -714,6 +789,410 @@ def _leading_inline_math(line: str) -> str:
     return match.group(1) if match else ""
 
 
+def _iter_inline_dollar_spans(text: str) -> list[re.Match[str]]:
+    """Soldan sağa gerçek ``$…$`` aralıkları (prose üzerinden yanlış eşleşme yok)."""
+    return list(re.finditer(r"\$[^$\n]+\$", text or ""))
+
+
+def _inline_math_followed_by(text: str, pred) -> bool:
+    """Kapanış ``$`` sonrası karakter ``pred`` ise True."""
+    src = text or ""
+    for match in _iter_inline_dollar_spans(src):
+        end = match.end()
+        if end < len(src) and pred(src[end]):
+            return True
+    return False
+
+
+def _has_digit_glued_after_inline_math(text: str) -> bool:
+    """``$x$0`` gibi yapışık rakam (``$8AA$ … $94$`` yanlış pozitif değil)."""
+    return _inline_math_followed_by(text, str.isdigit)
+
+
+def _strip_glued_digits_after_inline_math(text: str) -> str:
+    """``$x$0`` yapışık rakamı sil; ``$a$, $27 =`` komşu matematiğe dokunma.
+
+    Naif ``(\\$[^$]+\\$)\\d+`` deseni ``$54=…$, $27 =`` satırında ikinci
+    ``$`` açılışını kapanış sanıp ``27``'yi yer; span iterasyonu kullan.
+    """
+    src = text or ""
+    spans = _iter_inline_dollar_spans(src)
+    if not spans:
+        return src
+    out: list[str] = []
+    pos = 0
+    for match in spans:
+        out.append(src[pos : match.end()])
+        rest = src[match.end() :]
+        glued = re.match(r"(\d+)(?=\s|$)", rest)
+        if glued:
+            pos = match.end() + glued.end()
+        else:
+            pos = match.end()
+    out.append(src[pos:])
+    return "".join(out)
+
+
+def _has_capital_glued_after_inline_math(text: str) -> bool:
+    """``$x$Yaş`` gibi yapışık büyük harf (``$ABC$ olduğundan $A$`` değil)."""
+    return _inline_math_followed_by(
+        text, lambda ch: bool(re.match(r"[A-ZÇĞİÖŞÜ]", ch))
+    )
+
+
+def _split_math_glued_prose_on_line(line: str) -> str:
+    """``$…$Yaş`` / ``$…$yaş`` → satır kır veya boşluk; aralıklı ``$A$ $B$`` dokunma."""
+    src = line or ""
+    if not src:
+        return src
+    out: list[str] = []
+    pos = 0
+    for match in _iter_inline_dollar_spans(src):
+        out.append(src[pos : match.end()])
+        end = match.end()
+        if end < len(src):
+            ch = src[end]
+            if ch.isalpha() or ch in "ÇĞİÖŞÜçğıöşüâîû":
+                if ch.upper() == ch and ch.lower() != ch:
+                    out.append("\n\n")
+                else:
+                    out.append(" ")
+        pos = match.end()
+    out.append(src[pos:])
+    return "".join(out)
+
+
+_HPHANTOM_CMD_RE = re.compile(r"\\(?:hphantom|phantom)\s*\{[^{}]*\}")
+_SHORT_MATH_ONLY_RE = re.compile(r"^\$[^$\n]{0,24}\$\s*$")
+_COMPLETE_EQ_MATH_RE = re.compile(r"\$([^$\n]*=[^$\n]+)\$")
+
+
+def _math_body_compact(body: str) -> str:
+    return re.sub(r"\s+", "", (body or "").replace("\\", ""))
+
+
+def _collapse_hphantom_glued_duplicate_line(line: str) -> str:
+    """``$tam$ $parça$ $\\hphantom…$`` → ilk tam eşitlik."""
+    spans = _iter_inline_dollar_spans(line)
+    if len(spans) < 2:
+        return line
+    first = spans[0].group(0)
+    if "=" not in first or len(first) < 12:
+        return line
+    body0 = _math_body_compact(first[1:-1])
+    if len(body0) < 8:
+        return line
+    for span in spans[1:]:
+        frag = _math_body_compact(span.group(0)[1:-1])
+        if not frag or frag in {"=", "+", "-", "(", ")", "cdot", "times"}:
+            continue
+        if frag not in body0 and body0 not in frag:
+            return line
+    prose_before = line[: spans[0].start()]
+    prose_after = line[spans[-1].end() :]
+    if prose_after.strip().startswith("$"):
+        prose_after = ""
+    return (prose_before + first + prose_after).rstrip()
+
+
+def _drop_short_math_fragments_after_equation(text: str) -> str:
+    """Tam eşitlik satırından sonra gelen kısa ``$a$`` / ``$)$`` enkazını at."""
+    lines = (text or "").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        eq_bodies = [
+            _math_body_compact(m.group(1))
+            for m in _COMPLETE_EQ_MATH_RE.finditer(line)
+            if len(m.group(1)) >= 8
+        ]
+        if not eq_bodies:
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines):
+            nxt = lines[j].strip()
+            if not nxt:
+                j += 1
+                continue
+            if not _SHORT_MATH_ONLY_RE.match(nxt):
+                break
+            frag = _math_body_compact(nxt[1:-1])
+            if not frag or any(frag in body or body in frag for body in eq_bodies):
+                j += 1
+                continue
+            break
+        i = j
+    return "\n".join(out)
+
+
+def scrub_hphantom_math_debris(text: str) -> str:
+    """``\\hphantom`` / parçalanmış dikey-math enkazını temizle.
+
+    Ağır OCR/Gemini artığında tam anlamı yeniden yazmak mümkün olmayabilir;
+    en azından phantom komutları, yapışık kopyalar ve kısa fragment koşuları iner.
+    """
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip():
+        return src
+    has_phantom = "hphantom" in src or "\\phantom" in src
+    if not has_phantom and not _looks_like_fragmented_math_debris(src):
+        return src
+
+    src = _HPHANTOM_CMD_RE.sub("", src)
+    src = re.sub(r"[ \t]{2,}", " ", src)
+
+    cleaned_lines: list[str] = []
+    for line in src.split("\n"):
+        line = _collapse_hphantom_glued_duplicate_line(
+            line.strip() if has_phantom else line
+        )
+        s = line.strip()
+        if not s:
+            cleaned_lines.append("")
+            continue
+        # Phantom-only satır artığı: `$=$` / `$ $` / `$+$`
+        if re.fullmatch(r"\$\s*[=+\-().,\\cdot\s]*\$", s):
+            continue
+        # Yalnızca boş / operatör math artığı
+        if _SHORT_MATH_ONLY_RE.match(s):
+            body = s[1:-1].strip()
+            if not body or body in {"=", "+", "-", "(", ")", ",", ".", "\\cdot", "\\times"}:
+                continue
+        cleaned_lines.append(line.rstrip() if has_phantom else line)
+
+    src = "\n".join(cleaned_lines)
+    src = _drop_short_math_fragments_after_equation(src)
+    # Ardışık aynı satır tekrarı (tam eşitlik iki kez)
+    deduped: list[str] = []
+    for line in src.split("\n"):
+        if deduped and line.strip() and line.strip() == deduped[-1].strip():
+            continue
+        deduped.append(line)
+    src = "\n".join(deduped)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
+def _looks_like_fragmented_math_debris(text: str) -> bool:
+    """Ardışık kısa ``$…$`` / ``$+$`` / ``$=$`` satırları (XPM bölünmüş toplam)."""
+    streak = 0
+    for line in (text or "").split("\n"):
+        s = line.strip()
+        if (
+            _SHORT_MATH_ONLY_RE.match(s)
+            or re.fullmatch(r"\$[=+\-0-9.\\{}\\\s]{0,28}\$", s)
+        ) and len(s) <= 30:
+            streak += 1
+            if streak >= 3:
+                return True
+        elif s:
+            streak = 0
+    # Tek satırda denklem + birden fazla kısa fragment
+    for line in (text or "").split("\n"):
+        spans = _iter_inline_dollar_spans(line)
+        if len(spans) >= 3 and "=" in spans[0].group(0):
+            short = sum(1 for sp in spans[1:] if len(sp.group(0)) <= 12)
+            if short >= 2:
+                return True
+    return False
+
+
+def looks_like_glued_duplicate_math(text: str) -> bool:
+    """``$x + 80x+ 80$`` / ``$x = 30x=$`` / ``$xx$`` / ``$D$ $=1$`` yapışması."""
+    src = text or ""
+    if re.search(r"\\[=+]", src):
+        return True
+    if re.search(r"\$([a-zA-Z])\1\$", src):
+        return True
+    # ``x = 30x=`` (zincir ``= 8k =`` değil)
+    if re.search(r"([a-zA-Z])\s*=\s*-?\d+\1\s*=", src):
+        return True
+    # ``x + 80x+ 80x`` — en az iki yapışık tekrar (``k + 2k`` tek başına değil)
+    if re.search(
+        r"(?<![0-9])([a-zA-Z])\s*\+\s*\d+\1\s*\+\s*\d+\1",
+        src,
+    ):
+        return True
+    if re.search(
+        r"(\\frac\{[^{}]+\}\{[^{}]+\}\s*=\s*\\frac\{[^{}]+\}\{[^{}]+\})\1",
+        src,
+    ):
+        return True
+    if re.search(r"(\\frac\{[^{}]+\}\{[^{}]+\})\1", src):
+        return True
+    # ``$D$ $=1$`` / ``$,\" $`` XPM harf–eşitlik parçalanması
+    if re.search(r"\$[A-Za-z]\$\s*\$=", src):
+        return True
+    if re.search(r"\$,\\?\"\s*\$", src):
+        return True
+    return False
+
+
+def _repair_one_glued_math_body(body: str) -> str | None:
+    """Tek ``$…$`` gövdesini sadeleştir; bakılamazsa None."""
+    raw = (body or "").strip()
+    if not raw:
+        return None
+
+    # $xx$ → $x$
+    m_xx = re.fullmatch(r"([a-zA-Z])\1", raw)
+    if m_xx:
+        return m_xx.group(1)
+
+    cleaned = re.sub(r"\\(=|\+)", r"\1", raw)
+
+    # x + 80x+ 80x + 80 → x + 80
+    m_sum = re.match(
+        r"^([a-zA-Z]\s*\+\s*\d+)(?:\s*(?:\1|[a-zA-Z]\s*\+\s*\d+))+$",
+        cleaned,
+    )
+    if m_sum:
+        return m_sum.group(1)
+
+    # x = 30x= 30…
+    m_eq = re.match(
+        r"^([a-zA-Z]\s*=\s*-?\d+)(?:\s*(?:\1|[a-zA-Z]\s*=\s*-?\d+))+$",
+        cleaned,
+    )
+    if m_eq:
+        return m_eq.group(1)
+
+    # (x + 80) - 30 = x + 50(x+80)-…
+    m_paren = re.match(
+        r"^(\([^)]+\)\s*[+\-]\s*\d+\s*=\s*[a-zA-Z]\s*[+\-]\s*\d+)",
+        cleaned,
+    )
+    if m_paren and len(cleaned) > len(m_paren.group(1)) + 4:
+        return m_paren.group(1)
+
+    # (x + 80) + 20 = x + 100…
+    m_paren2 = re.match(
+        r"^(\([^)]+\)\s*\+\s*\d+\s*=\s*[a-zA-Z]\s*\+\s*\d+)",
+        cleaned,
+    )
+    if m_paren2 and len(cleaned) > len(m_paren2.group(1)) + 4:
+        return m_paren2.group(1)
+
+    # Aynı frac=frac tekrarı
+    m_fr = re.match(
+        r"^(\\frac\{[^{}]+\}\{[^{}]+\}\s*=\s*\\frac\{[^{}]+\}\{[^{}]+\})(?:\1)+$",
+        cleaned,
+    )
+    if m_fr:
+        return m_fr.group(1)
+
+    # Birden fazla \\frac yapışığı: son/basit denklemi tut
+    if cleaned.count("\\frac") >= 3:
+        eqs = re.findall(
+            r"\\frac\{[^{}]+\}\{[^{}]+\}\s*=\s*\\frac\{[^{}]+\}\{[^{}]+\}",
+            cleaned,
+        )
+        if eqs:
+            # En kısa / en sade (metin \text içermeyen) tercihi
+            plain = [e for e in eqs if r"\text" not in e]
+            return (plain or eqs)[0]
+
+    if cleaned != raw:
+        return cleaned
+    return None
+
+
+def scrub_glued_duplicate_math(text: str) -> str:
+    """Yapışık tekrarlı inline/display math enkazını sadeleştir."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip() or not looks_like_glued_duplicate_math(src):
+        return src
+
+    def fix_inline(match: re.Match[str]) -> str:
+        repaired = _repair_one_glued_math_body(match.group(1))
+        if repaired is None:
+            return match.group(0)
+        return f"${repaired}$"
+
+    def fix_display(match: re.Match[str]) -> str:
+        repaired = _repair_one_glued_math_body(match.group(1).strip())
+        if repaired is None:
+            return match.group(0)
+        return f"$${repaired}$$"
+
+    src = re.sub(r"\$\$([\s\S]+?)\$\$", fix_display, src)
+    src = re.sub(r"(?<!\$)\$([^$\n]+)\$", fix_inline, src)
+    # ``$D$ $=1$`` / ``$C$ $=2$`` → ``$D=1$`` / ``$C=2$``
+    src = re.sub(r"\$([A-Za-z])\$\s*\$=\s*", r"$\1=", src)
+    # ``$,\" $`` / ``$\displaystyle ," $`` XPM tırnak/displaystyle enkazı
+    # (yalnızca tırnak/virgül sinyali — boş `$ $` sınırını yutma)
+    src = re.sub(r"\$\\displaystyle\s*,\\?\"\s*\$", "", src)
+    src = re.sub(r"\$,\\?\"\s*\$", "", src)
+    src = re.sub(r"\$,\"\s*\$", "", src)
+    src = re.sub(r"[ \t]{2,}", " ", src)
+    # Satır: ``$D=1, C=2, B=5$ $D$ $=1$ $,\" $ …``
+    fixed_lines: list[str] = []
+    for line in src.split("\n"):
+        fixed_lines.append(_collapse_assignment_letter_debris_line(line))
+    src = "\n".join(fixed_lines)
+    # ``$C$\n$=2$`` → ``$C=2$``
+    src = merge_split_inline_dollar_math(src)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
+def _collapse_assignment_letter_debris_line(line: str) -> str:
+    """``$D=1, C=2, B=5$ $D$ $=1$ $,\" $ $C$ $=2$`` → ilk atama listesi."""
+    spans = _iter_inline_dollar_spans(line)
+    if len(spans) < 2:
+        return line
+
+    def _is_letter_eq_frag(body: str, first_body: str, first_compact: str) -> bool:
+        b = (body or "").strip()
+        if re.fullmatch(r"[A-Za-z]", b):
+            return True
+        if re.fullmatch(r"=?\\?\s*-?\d+", b):
+            return True
+        if re.fullmatch(r"(?:\\displaystyle\s*)?[,\"'\\=\s]+", b):
+            return True
+        if re.fullmatch(r"[A-Za-z]\s*=\s*-?\d+", b):
+            # Liste sonrası tek atama (değer yanlış olsa bile) XPM tekrarıdır
+            if "," in first_body or first_body.count("=") >= 2:
+                return True
+            return _math_body_compact(b) in first_compact
+        return False
+
+    # Atama listesi ilk ``$…$`` olmak zorunda değil (önünde ``$= 125$`` olabilir)
+    for i, sp in enumerate(spans[:-1]):
+        first = sp.group(0)
+        first_body = first[1:-1].strip()
+        if not re.search(r"[A-Za-z]\s*=\s*-?\d+", first_body):
+            continue
+        # Liste (virgül / birden fazla =) veya tek atama + salt enkaz
+        rest = spans[i + 1 :]
+        first_compact = _math_body_compact(first_body)
+        is_list = "," in first_body or first_body.count("=") >= 2
+        if not all(
+            _is_letter_eq_frag(s.group(0)[1:-1], first_body, first_compact)
+            for s in rest
+        ):
+            # Kısmi: yalnızca ardışık enkaz önekini kes
+            j = 0
+            while j < len(rest) and _is_letter_eq_frag(
+                rest[j].group(0)[1:-1], first_body, first_compact
+            ):
+                j += 1
+            if j == 0:
+                continue
+            if not is_list and j < len(rest):
+                continue
+            return (
+                line[: sp.start()] + first + line[rest[j - 1].end() :]
+            ).rstrip()
+        return (
+            line[: sp.start()] + first + line[rest[-1].end() :]
+        ).rstrip()
+    return line
+
+
 def _next_nonempty(lines: list[str], start: int) -> tuple[int, str]:
     j = start
     while j < len(lines) and not lines[j].strip():
@@ -737,7 +1216,7 @@ def _strip_speech_preserving_math(line: str) -> str:
     ):
         # Konuşma ağırlıklı ve matematik yoksa satırı düş
         if not holders and (
-            re.search(r"\bequals\b|\bimplies\b|\bfour-thirds\b", protected, re.I)
+            re.search(r"\bequals\b|(?<!\\)\bimplies\b|\bfour-thirds\b", protected, re.I)
             or (
                 re.search(r"\b(?:cap|cross|plus|minus|space)\b", protected, re.I)
                 and len(re.findall(r"[A-Za-z]{3,}", protected)) >= 2
@@ -746,7 +1225,7 @@ def _strip_speech_preserving_math(line: str) -> str:
             return ""
         protected = _XPM_SPEECH_GLUE_RE.sub("", protected)
         protected = re.sub(
-            r"\b(?:equals|implies|cross|four-thirds|end-fraction|"
+            r"\b(?:equals|(?<!\\)implies|cross|four-thirds|end-fraction|"
             r"open paren|close paren|cap|plus|minus|space)\b",
             "",
             protected,
@@ -794,7 +1273,7 @@ def scrub_google_math_speech_debris(text: str) -> str:
         or re.search(r"[𝑥𝑋]", src)
         or re.search(r"(?<=\d)\n\d+\$", src)
         or re.search(r"(?i)\bMcap\b|\bover\b.*\bend-fraction\b", src)
-        or re.search(r"\$[^$\n]+\$\d", src)
+        or _has_digit_glued_after_inline_math(src)
         or re.search(r"yaşındadır", src, re.I)
         or re.search(r"kmx\s*\d", src, re.I)
     ):
@@ -816,8 +1295,8 @@ def scrub_google_math_speech_debris(text: str) -> str:
     src = re.sub(r"(?<!\d)(\d+)\n\1\$", "$", src)
     # ``x$x$`` / ``M$M$`` → ``$x$``
     src = re.sub(r"(?<![A-Za-z\\$])([A-Za-z])\s*\$\1\$", r"$\1$", src)
-    # ``$…$0`` / ``$…$,`` artığı
-    src = re.sub(r"(\$[^$\n]+\$)[0-9]+(?=\s|$)", r"\1", src)
+    # ``$…$0`` yapışık rakam artığı (``$a$, $27 =`` komşu math korunur)
+    src = _strip_glued_digits_after_inline_math(src)
     # Düz satır + hemen ardından aynı içeriğin $…$ hali: düz satırı düş
     lines = src.split("\n")
     out: list[str] = []
@@ -884,18 +1363,7 @@ def scrub_google_math_speech_debris(text: str) -> str:
             line,
         )
         line = re.sub(r"(\$[^$\n]+\$)\*\*(?=\S)", r"\1 ", line)
-
-        def _math_prose_split(match: re.Match[str]) -> str:
-            math_s, ch = match.group(1), match.group(2)
-            if ch.upper() == ch and ch.lower() != ch:
-                return f"{math_s}\n\n{ch}"
-            return f"{math_s} {ch}"
-
-        line = re.sub(
-            r"(\$[^$\n]+\$)([A-Za-zÇĞİÖŞÜçğıöşüâîû])",
-            _math_prose_split,
-            line,
-        )
+        line = _split_math_glued_prose_on_line(line)
         # ``$x$ yaşındadır)`` / ``$x$ yaşındadır-`` — annotation artığı
         line = re.sub(
             r"(\$[^$\n]+\$)\s*yaşındadır\.?\)?-?",
@@ -1063,13 +1531,133 @@ def strip_google_docs_xpm_paste(text: str) -> str:
 def strip_paste_fragment_markers(text: str) -> str:
     """Google/panel yapıştırmasında kalan ``<!--TgQPHd...`` / Fragment artıklarını temizler."""
     src = text or ""
+    if looks_like_word_mso_paste_debris(src):
+        src = scrub_word_mso_paste_debris(src)
     if _GOOGLE_XPM_SIGNAL_RE.search(src):
         src = strip_google_docs_xpm_paste(src)
+    if looks_like_xpm_html_attribute_debris(src):
+        src = scrub_xpm_html_attribute_debris(src)
     if "<!--" not in src and "- →" not in src:
         return src
     for pattern in _PASTE_FRAGMENT_MARKER_RES:
         src = pattern.sub("", src)
     return src.replace("- →", "")
+
+
+def looks_like_word_mso_paste_debris(text: str) -> bool:
+    """Word ``<!--[if gte mso`` / ``@font-face`` / ``mso-`` stil enkazı."""
+    return bool(_WORD_MSO_SIGNAL_RE.search(text or ""))
+
+
+def scrub_word_mso_paste_debris(text: str) -> str:
+    """Word MSO conditional comment + font/style definition dökümünü sil."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not looks_like_word_mso_paste_debris(src):
+        return src
+    out = src
+    for _ in range(8):
+        nxt = _MSO_IF_BLOCK_RE.sub("", out)
+        if nxt == out:
+            break
+        out = nxt
+    out = _MSO_IF_OPEN_RE.sub("", out)
+    out = _MSO_ENDIF_RE.sub("", out)
+    out = _WORD_CSS_DEBRIS_RE.sub("", out)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+def looks_like_xpm_html_attribute_debris(text: str) -> bool:
+    """``$=\" draggable=$`` gibi yarım XPM/HTML sızıntısı."""
+    return bool(_XPM_HTML_ATTR_DEBRIS_RE.search(text or ""))
+
+
+def scrub_xpm_html_attribute_debris(text: str) -> str:
+    """Yarım kalmış ``draggable=`` / ``$=\"`` HTML artığını sil."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not looks_like_xpm_html_attribute_debris(src):
+        return src
+    src = re.sub(
+        r'\$\s*=\s*\\?"?\s*draggable\s*=\s*(?:\\?"?(?:false|true)\\?"?\s*)?\$?',
+        "",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r'\bdraggable\s*=\s*\\?"?(?:false|true)?\\?"?',
+        "",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r'\brole\s*=\s*\\?"?presentation\\?"?',
+        "",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r'\baria-hidden\s*=\s*\\?"?(?:true|false)?\\?"?',
+        "",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(
+        r'\bdata-xpm-[a-z0-9-]+\s*=\s*\\?"[^"]*\\?"',
+        "",
+        src,
+        flags=re.I,
+    )
+    src = re.sub(r'\$\s*=\s*\\?"\s*', "", src)
+    # ``$120 + 180 =$ $120$ $+ 180$`` → ilk eşitliği koru, kısa fragmentleri at
+    src = _collapse_split_sum_fragments(src)
+    src = re.sub(r"[ \t]{2,}", " ", src)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
+def _collapse_split_sum_fragments(text: str) -> str:
+    """``$120 + 180 =$`` sonrası ``$120$`` / ``$+ 180$`` / ``$=$`` enkazını düş."""
+    lines = (text or "").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Satır içi: tam denklem + kısa parçalar
+        spans = _iter_inline_dollar_spans(line)
+        if len(spans) >= 2:
+            first = spans[0].group(0)
+            if "=" in first and len(first) >= 8:
+                bodies = [_math_body_compact(s.group(0)[1:-1]) for s in spans[1:]]
+                first_body = _math_body_compact(first[1:-1])
+                if all(
+                    (not b)
+                    or b in {"=", "+", "-"}
+                    or b in first_body
+                    or first_body.startswith(b.rstrip("="))
+                    for b in bodies
+                ):
+                    prose_before = line[: spans[0].start()]
+                    prose_after = line[spans[-1].end() :]
+                    # draggable artığı sonrası kalın sonuç: **300 km**
+                    line = (prose_before + first + prose_after).rstrip()
+        out.append(line)
+        # Sonraki kısa math-only satırları at (bölünmüş toplam)
+        if re.search(r"\$[^$\n]*[=+][^$\n]*\$", line) or line.strip().endswith("=$"):
+            j = i + 1
+            while j < len(lines):
+                nxt = lines[j].strip()
+                if not nxt:
+                    j += 1
+                    continue
+                if _SHORT_MATH_ONLY_RE.match(nxt) or re.fullmatch(
+                    r"\$[=+\-0-9.\\{}\\\s]{0,24}\$", nxt
+                ):
+                    j += 1
+                    continue
+                break
+            i = j
+            continue
+        i += 1
+    return "\n".join(out)
 
 
 def normalize_markup(text: str) -> str:
@@ -1489,7 +2077,8 @@ def restore_collapsed_breaks(text: str) -> str:
         src,
     )
     src = re.sub(r"([a-zçğıöşüâîû]:)(?!\n)(?=\$)", r"\1\n", src, flags=re.I)
-    src = re.sub(r"(\$)(?!\n)(?=[A-ZÇĞİÖŞÜ])", r"\1\n", src)
+    # Matematik korumalı; kalan çıplak ``$A)`` şık yapışması
+    src = re.sub(r"(\$)(?=[A-E]\))", r"\1\n", src)
     # Cümle sonu + rakam (şeklindedir.2 - 3 …)
     src = re.sub(r"([.!?])(?!\n)(?=\d+\s)", r"\1\n", src)
     # camelCase birleşmeleri: GösterimKitabın, sayfaİlk (birim/kısaltma değil)
@@ -2410,8 +2999,16 @@ def _solution_needs_pipeline_repair(text: str) -> bool:
         return True
     if _GOOGLE_SPEECH_SIGNAL_RE.search(src):
         return True
+    if "hphantom" in src or "\\phantom" in src:
+        return True
+    if looks_like_xpm_html_attribute_debris(src):
+        return True
+    if looks_like_glued_duplicate_math(src):
+        return True
+    if _looks_like_fragmented_math_debris(src):
+        return True
     # XPM sonrası glue: math+prose / kırık bold / emoji sonuç
-    if re.search(r"\$[^$\n]+\$[A-ZÇĞİÖŞÜ]", src):
+    if _has_capital_glued_after_inline_math(src):
         return True
     if re.search(r"\$[^$\n]+\$\*\*\d+\.", src):
         return True
@@ -2520,10 +3117,16 @@ def _solution_needs_pipeline_repair(text: str) -> bool:
 
 
 def solution_has_storage_defects(text: str) -> bool:
-    """Kayıtlı çözüm onarım gerektiriyor mu? (yalnızca repair metni değiştirecekse True)."""
+    """Kayıtlı çözüm onarım gerektiriyor mu?"""
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not src:
         return False
+    # Yapışık atama enkazı (`$D$ $=1$` / `$,\"`) — scrub no-op olsa bile defect
+    if looks_like_glued_duplicate_math(src):
+        return True
+    # Word MSO conditional / @font-face stil dökümü
+    if looks_like_word_mso_paste_debris(src):
+        return True
     return repair_solution_storage_defects(src) != src
 
 
@@ -2753,6 +3356,8 @@ def repair_solution_storage_defects(text: str) -> str:
 
     src = convert_atx_headings_to_bold(src)
     src = strip_paste_fragment_markers(src)
+    src = scrub_hphantom_math_debris(src)
+    src = scrub_glued_duplicate_math(src)
     src = scrub_google_math_speech_debris(src)
     src = _repair_underline_phrase_analysis(src)
     # Yapışık madde: ``…**- **Başlık`` / ``…yayımladı.- **Sonraki madde``

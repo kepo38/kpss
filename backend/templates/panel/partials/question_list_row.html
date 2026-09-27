@@ -8,7 +8,7 @@
   <div class="name">
     <a href="{% url 'panel_question_edit' topic.id q.id %}">{{ q.public_id }}</a>
     {% if q.osym_sordu and q.osym_cikmis_adi %}
-    <span class="badge osym-cikmis-badge" title="Panel etiketi — uygulamada yalnızca ÖSYM rozeti görünür">{{ q.osym_cikmis_adi }}</span>
+    <span class="badge osym-cikmis-badge" title="Panel etiketi — uygulamada yalnızca ÖSYM rozeti görünür">{{ q.osym_cikmis_badge_label }}</span>
     {% elif q.osym_sordu %}
     <span class="badge osym-cikmis-badge osym-cikmis-badge-muted">ÖSYM</span>
     {% endif %}

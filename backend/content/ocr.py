@@ -1309,6 +1309,22 @@ _GEOMETRY_HINT = re.compile(
     r"dikdörtgen|\bkare\b|yamuk|deltoid|hipotenüs|kenarortay|açıortay|"
     r"\baçı\b|paralelkenar|çokgen)"
 )
+# □/△ / \square/\triangle / \shapebox — şekil değil; kare/küp sayma operatörü
+_SYMBOLIC_OPERATOR_MATH = re.compile(
+    r"(?is)("
+    r"[□△]|\\square|\\triangle|\\shapebox\{(?:square|triangle)\}"
+    r"|(?:kare|üçgen|ucgen)\s+ifade"
+    r"|karesi\s+.{0,100}?(?:eşit|küçük|büyük)"
+    r"|küpü\s+.{0,100}?(?:eşit|küçük|büyük)"
+    r"|(?:□|△|\\square|\\triangle)\s*\d+"
+    r"|\\shapebox\{(?:square|triangle)\}\{\d+\}"
+    r")"
+)
+_STRONG_GEOMETRY_HINT = re.compile(
+    r"(?i)(eşkenar|dörtgen|çember|doğrusal|kaç birim|birimdir|"
+    r"dikdörtgen|yamuk|deltoid|hipotenüs|kenarortay|açıortay|"
+    r"paralelkenar|çokgen|\baçı\b)"
+)
 
 
 def _options_look_suspicious(options: dict[str, str]) -> bool:
@@ -1325,10 +1341,23 @@ def _options_look_suspicious(options: dict[str, str]) -> bool:
     return False
 
 
+def _looks_like_symbolic_operator_math(
+    stem: str, options: dict[str, str] | None = None, raw: str = ""
+) -> bool:
+    """□AB / △AB kare-küp sayma operatörü — geometri şekli değil."""
+    blob = f"{raw}\n{stem}\n" + "\n".join((options or {}).values())
+    return bool(_SYMBOLIC_OPERATOR_MATH.search(blob))
+
+
 def _likely_geometry_question(
     stem: str, options: dict[str, str], raw: str = ""
 ) -> bool:
     blob = f"{raw}\n{stem}\n" + "\n".join((options or {}).values())
+    # Operatör □/△ (veya OCR'da «üçgen ifade» / karesi-küpü sayma) → geometri değil
+    if _SYMBOLIC_OPERATOR_MATH.search(blob) and not _STRONG_GEOMETRY_HINT.search(
+        blob
+    ):
+        return False
     return bool(_GEOMETRY_HINT.search(blob))
 
 
