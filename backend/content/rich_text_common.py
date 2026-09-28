@@ -627,12 +627,13 @@ _MSO_IF_BLOCK_RE = re.compile(
 _MSO_IF_OPEN_RE = re.compile(r"<!--\s*\[if[^\]]*\]\s*>", re.IGNORECASE)
 _MSO_ENDIF_RE = re.compile(r"<!\[endif\]\s*(?:-->|>)?", re.IGNORECASE)
 # Kapanmamış ``<!-- … Font/Style Definitions …`` CSS gövdesi
+# Bitiş: ``-->`` veya boş satır + gövde (harf / markdown liste-başlık)
 _WORD_CSS_DEBRIS_RE = re.compile(
     r"<!--(?!\s*\[if)"
     r"(?:(?!-->)[\s\S])*?"
     r"(?:Font Definitions|Style Definitions|@font-face|mso-|WordSection|MsoNormal)"
     r"(?:(?!-->)[\s\S])*?"
-    r"(?:-->|(?=\n\s*\n(?=[A-Za-zÇĞİÖŞÜçğıöşü])))",
+    r"(?:-->|(?=\n\s*\n(?=(?:[A-Za-zÇĞİÖŞÜçğıöşü]|[-*#]))))",
     re.IGNORECASE,
 )
 
@@ -649,6 +650,18 @@ _XPM_HTML_ATTR_DEBRIS_RE = re.compile(
     \bdata-xpm-[a-z0-9-]+\s*=|
     \$\s*=\s*\\?"
     """,
+)
+# Google Docs öneri/annotation JSON artığı (TgQPHd yokken de sızabilir)
+# örn. ,"66":0}],0,0,null,null,0,0,[],"",0,0],"Rle…qQ0_0"]
+_DOCS_ANNOTATION_TOKEN_DEBRIS_RE = re.compile(
+    # ,"66":0}],0,0,null,…,[],"",0,0],"Rle…qQ0_0"]
+    r""",?"\d{1,4}":\d+\}]"""
+    r"""(?:,(?:null|\d+|\[\]|""|"[^"]*"))*"""
+    r"""(?:\](?:,?"[^"]*")?)?\]?"""
+)
+# TgQPHd sonrası yalnız kalan kimlik kuyruğu: ,"Rle…qQ0_0"]
+_DOCS_ANNOTATION_ID_TAIL_RE = re.compile(
+    r""","[A-Za-z0-9_-]{8,}(?:qQ\d+_\d+)?"\]"""
 )
 # Google Docs XPM: kapanmayan ``<!--TgQPHd|||[[[…]]`` (--> yok).
 _TGQPHD_BLOB_RE = re.compile(
@@ -882,11 +895,19 @@ def _collapse_hphantom_glued_duplicate_line(line: str) -> str:
     body0 = _math_body_compact(first[1:-1])
     if len(body0) < 8:
         return line
+    host_body = first[1:-1]
+    prev_end = spans[0].end()
     for span in spans[1:]:
-        frag = _math_body_compact(span.group(0)[1:-1])
+        between = line[prev_end : span.start()]
+        prev_end = span.end()
+        frag_body = span.group(0)[1:-1]
+        frag = _math_body_compact(frag_body)
         if not frag or frag in {"=", "+", "-", "(", ")", "cdot", "times"}:
             continue
-        if frag not in body0 and body0 not in frag:
+        # Prose ara (``. Rakamlar``) varsa echo değil — dokunma
+        if between.strip() not in {"", ","}:
+            return line
+        if not _fragment_tokens_covered_by_host(frag_body, host_body):
             return line
     prose_before = line[: spans[0].start()]
     prose_after = line[spans[-1].end() :]
@@ -903,12 +924,12 @@ def _drop_short_math_fragments_after_equation(text: str) -> str:
     while i < len(lines):
         line = lines[i]
         out.append(line)
-        eq_bodies = [
-            _math_body_compact(m.group(1))
+        eq_hosts = [
+            m.group(1)
             for m in _COMPLETE_EQ_MATH_RE.finditer(line)
             if len(m.group(1)) >= 8
         ]
-        if not eq_bodies:
+        if not eq_hosts:
             i += 1
             continue
         j = i + 1
@@ -919,8 +940,11 @@ def _drop_short_math_fragments_after_equation(text: str) -> str:
                 continue
             if not _SHORT_MATH_ONLY_RE.match(nxt):
                 break
-            frag = _math_body_compact(nxt[1:-1])
-            if not frag or any(frag in body or body in frag for body in eq_bodies):
+            frag_body = nxt[1:-1]
+            frag = _math_body_compact(frag_body)
+            if not frag or any(
+                _fragment_tokens_covered_by_host(frag_body, host) for host in eq_hosts
+            ):
                 j += 1
                 continue
             break
@@ -990,14 +1014,248 @@ def _looks_like_fragmented_math_debris(text: str) -> bool:
                 return True
         elif s:
             streak = 0
-    # Tek satırda denklem + birden fazla kısa fragment
+    # Tek satırda denklem + yalnızca boşlukla ayrılmış kısa echo fragmentler
     for line in (text or "").split("\n"):
         spans = _iter_inline_dollar_spans(line)
-        if len(spans) >= 3 and "=" in spans[0].group(0):
-            short = sum(1 for sp in spans[1:] if len(sp.group(0)) <= 12)
-            if short >= 2:
-                return True
+        if len(spans) < 3 or "=" not in spans[0].group(0):
+            continue
+        host_body = spans[0].group(0)[1:-1]
+        short = 0
+        ok = True
+        for k, sp in enumerate(spans[1:], start=1):
+            between = line[spans[k - 1].end() : sp.start()]
+            if between.strip() not in {"", ","}:
+                ok = False
+                break
+            if len(sp.group(0)) <= 12 and _fragment_tokens_covered_by_host(
+                sp.group(0)[1:-1], host_body
+            ):
+                short += 1
+        if ok and short >= 2:
+            return True
     return False
+
+
+
+def _fragment_tokens_covered_by_host(frag_body: str, host_body: str) -> bool:
+    """Kısa math fragment host ifadenin token'larıyla örtünüyor mu?
+
+    ``3`` ⊂ ``12`` yanlış pozitifini engellemek için rakam/harf bütün token
+    eşleşmesi kullanır (``1`` ⊂ ``1,3,5`` kabul; ``3`` ⊂ ``12`` red).
+    """
+    frag_c = _math_body_compact(frag_body)
+    host_c = _math_body_compact(host_body)
+    if not frag_c:
+        return True
+    if frag_c == host_c:
+        return True
+    host_nums = set(re.findall(r"\d+", host_c))
+    host_letters = set(re.findall(r"[A-Za-z]+", host_c))
+    frag_nums = re.findall(r"\d+", frag_c)
+    frag_letters = re.findall(r"[A-Za-z]+", frag_c)
+    if frag_nums or frag_letters:
+        if any(n not in host_nums for n in frag_nums):
+            return False
+        if any(let not in host_letters for let in frag_letters):
+            return False
+        return True
+    # Salt operatör / noktalama
+    return all(ch in host_c for ch in frag_c if ch not in "\\")
+
+
+def _collapse_math_token_echo_line(line: str) -> str:
+    """``$2+4=6$ $2$ $+4$ $=6$`` / ``$Y=7$$Y=7$ $Y$`` → host ifadeleri koru.
+
+    Aynı satırda birden fazla host+echo kümesi olabilir
+    (``$2+4+1=7$ ... **$Y=7$$Y=7$**``); her kümeyi ayrı sıkıştırır.
+    """
+    spans = _iter_inline_dollar_spans(line)
+    if len(spans) < 2:
+        return line
+
+    parts: list[str] = []
+    pos = 0
+    i = 0
+    while i < len(spans):
+        host = spans[i]
+        parts.append(line[pos : host.start()])
+        host_body = host.group(0)[1:-1]
+        j = i + 1
+        while j < len(spans):
+            between = line[spans[j - 1].end() : spans[j].start()]
+            if between.strip() not in {"",}:
+                break
+            if not _fragment_tokens_covered_by_host(
+                spans[j].group(0)[1:-1], host_body
+            ):
+                break
+            j += 1
+        if j > i + 1:
+            kept_body = re.sub(r"\\(=|\+)", r"\1", host_body)
+            parts.append(f"${kept_body}$")
+            pos = spans[j - 1].end()
+            i = j
+        else:
+            parts.append(host.group(0))
+            pos = host.end()
+            i += 1
+    parts.append(line[pos:])
+    return "".join(parts).rstrip()
+
+
+def _drop_math_token_echo_lines(text: str) -> str:
+    """Tam ifadeden sonra gelen salt ``$1$`` / kopya satırlarını at.
+
+    Prose taşıyan echo satırındaki ek metni korur (``$2+4=6$ 'dır.``).
+    """
+    lines = (text or "").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = _collapse_math_token_echo_line(lines[i])
+        spans = _iter_inline_dollar_spans(line)
+        host_bodies = [s.group(0)[1:-1] for s in spans]
+        out.append(line)
+        if not host_bodies:
+            i += 1
+            continue
+
+        j = i + 1
+        while j < len(lines):
+            nxt_raw = lines[j]
+            if not nxt_raw.strip():
+                j += 1
+                continue
+            collapsed = _collapse_math_token_echo_line(nxt_raw)
+            nxt = collapsed.strip()
+            nxt_spans = _iter_inline_dollar_spans(nxt)
+            if not nxt_spans:
+                break
+
+            nxt_first = nxt_spans[0].group(0)[1:-1]
+            matched_host = next(
+                (
+                    hb
+                    for hb in host_bodies
+                    if _math_body_compact(nxt_first) == _math_body_compact(hb)
+                    or _fragment_tokens_covered_by_host(nxt_first, hb)
+                ),
+                None,
+            )
+            if matched_host is None:
+                break
+
+            rest_ok = all(
+                _fragment_tokens_covered_by_host(s.group(0)[1:-1], nxt_first)
+                for s in nxt_spans[1:]
+            )
+            if not rest_ok and len(nxt_spans) > 1:
+                break
+
+            nxt_pure = bool(re.fullmatch(r"\$[^$\n]+\$", nxt))
+            # Salt math kopya / kısa fragment → at
+            if nxt_pure:
+                j += 1
+                continue
+
+            # Prose'lu echo: önceki satırdaki aynı math'ten sonra gelen ek metni birleştir
+            prev = out[-1]
+            prev_spans = _iter_inline_dollar_spans(prev)
+            if not prev_spans:
+                break
+            # Son host span ile eşleşen
+            host_span = None
+            for sp in reversed(prev_spans):
+                if _math_body_compact(sp.group(0)[1:-1]) == _math_body_compact(
+                    matched_host
+                ) or _math_body_compact(sp.group(0)[1:-1]) == _math_body_compact(
+                    nxt_first
+                ):
+                    host_span = sp
+                    break
+            if host_span is None:
+                host_span = prev_spans[-1]
+
+            trailing = nxt[nxt_spans[-1].end() :]
+            # Önceki satırda host'tan sonra zaten metin varsa yalnızca salt-tekrarı at
+            prev_after = prev[host_span.end() :]
+            if prev_after.strip():
+                # Echo satırındaki yeni prose'u ekle (yoksa at)
+                if trailing.strip() and trailing.strip() not in prev_after:
+                    out[-1] = prev.rstrip() + trailing
+                j += 1
+                continue
+            # Host'tan sonra boş → echo prose'unu taşı
+            prefix = nxt[: nxt_spans[0].start()]
+            # prefix yalnızca boşluk/parantez artığıysa yoksay
+            out[-1] = prev[: host_span.end()] + trailing
+            if prefix.strip() and prefix.strip() not in out[-1]:
+                # Açılış parantezi gibi prefix önceki satırda yoksa satır başına taşıma
+                # (genelde host zaten ``(`` ile başlar)
+                pass
+            j += 1
+            continue
+        i = j
+    return "\n".join(out)
+
+
+def looks_like_math_token_expansion_debris(text: str) -> bool:
+    """Denklem + token kopyası / bitişik ``$Y=7$$Y=7$`` yapıştırması."""
+    src = text or ""
+    if re.search(r"\$[^$\n]+\$\$[^$\n]+\$", src):
+        return True
+    for line in src.split("\n"):
+        spans = _iter_inline_dollar_spans(line)
+        if len(spans) < 3:
+            continue
+        host_body = spans[0].group(0)[1:-1]
+        first_c = _math_body_compact(host_body)
+        if len(first_c) < 2:
+            continue
+        short = 0
+        ok = True
+        for k, sp in enumerate(spans[1:], start=1):
+            between = line[spans[k - 1].end() : sp.start()]
+            if between.strip() not in {"", ","}:
+                ok = False
+                break
+            if _fragment_tokens_covered_by_host(sp.group(0)[1:-1], host_body):
+                short += 1
+        if ok and short >= 2:
+            return True
+    # Üst üste salt kısa math-only token satırları (liste expansion)
+    streak = 0
+    for line in src.split("\n"):
+        s = line.strip()
+        if _SHORT_MATH_ONLY_RE.match(s) and len(s) <= 30:
+            streak += 1
+            if streak >= 3:
+                return True
+        elif s:
+            streak = 0
+    return False
+
+
+def scrub_math_token_expansion_debris(text: str) -> str:
+    """Google Docs denklem token-expansion / bitişik kopya enkazını sadeleştir."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip() or not looks_like_math_token_expansion_debris(src):
+        return src
+
+    cleaned: list[str] = []
+    for line in src.split("\n"):
+        cleaned.append(_collapse_math_token_echo_line(line))
+    src = "\n".join(cleaned)
+    src = _drop_math_token_echo_lines(src)
+
+    deduped: list[str] = []
+    for line in src.split("\n"):
+        if deduped and line.strip() and line.strip() == deduped[-1].strip():
+            continue
+        deduped.append(line)
+    src = "\n".join(deduped)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
 
 
 def looks_like_glued_duplicate_math(text: str) -> bool:
@@ -1537,6 +1795,8 @@ def strip_paste_fragment_markers(text: str) -> str:
         src = strip_google_docs_xpm_paste(src)
     if looks_like_xpm_html_attribute_debris(src):
         src = scrub_xpm_html_attribute_debris(src)
+    if looks_like_docs_annotation_token_debris(src):
+        src = scrub_docs_annotation_token_debris(src)
     if "<!--" not in src and "- →" not in src:
         return src
     for pattern in _PASTE_FRAGMENT_MARKER_RES:
@@ -1610,6 +1870,29 @@ def scrub_xpm_html_attribute_debris(text: str) -> str:
     # ``$120 + 180 =$ $120$ $+ 180$`` → ilk eşitliği koru, kısa fragmentleri at
     src = _collapse_split_sum_fragments(src)
     src = re.sub(r"[ \t]{2,}", " ", src)
+    src = re.sub(r"\n{3,}", "\n\n", src)
+    return src.strip()
+
+
+def looks_like_docs_annotation_token_debris(text: str) -> bool:
+    """Google Docs öneri/annotation JSON dump'ı (``,"66":0}],0,0,null…``)."""
+    src = text or ""
+    return bool(
+        _DOCS_ANNOTATION_TOKEN_DEBRIS_RE.search(src)
+        or _DOCS_ANNOTATION_ID_TAIL_RE.search(src)
+    )
+
+
+def scrub_docs_annotation_token_debris(text: str) -> str:
+    """Yapışık Docs annotation / suggestion token dizisini sil."""
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not looks_like_docs_annotation_token_debris(src):
+        return src
+    src = _DOCS_ANNOTATION_TOKEN_DEBRIS_RE.sub("", src)
+    src = _DOCS_ANNOTATION_ID_TAIL_RE.sub("", src)
+    # ``kelime  :**`` boşluklarını sadeleştir
+    src = re.sub(r"[ \t]{2,}", " ", src)
+    src = re.sub(r" +(:\*\*)", r"\1", src)
     src = re.sub(r"\n{3,}", "\n\n", src)
     return src.strip()
 
@@ -2990,20 +3273,45 @@ def _repair_underline_phrase_analysis(text: str) -> str:
     return src.strip()
 
 
-def _solution_needs_pipeline_repair(text: str) -> bool:
-    """Ham sinyal — yapıştırma/outline pipeline'ı atlanmamalı mı?"""
-    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+def _solution_has_hard_paste_debris(text: str) -> bool:
+    """Yapıştırma enkazı (MSO / token-expansion / Docs / glue / XPM / hphantom).
+
+    Soft ``repair != src`` (bilinçli madde işareti kaldırma vb.) buraya girmez —
+    üç gate bu sinyalde anlaşır; soft delta yalnız ``solution_has_storage_defects``.
+    """
+    src = text or ""
     if not src.strip():
         return False
+    if looks_like_glued_duplicate_math(src):
+        return True
+    if looks_like_math_token_expansion_debris(src):
+        return True
+    if looks_like_docs_annotation_token_debris(src):
+        return True
+    if looks_like_word_mso_paste_debris(src):
+        return True
     if _GOOGLE_XPM_SIGNAL_RE.search(src):
         return True
     if _GOOGLE_SPEECH_SIGNAL_RE.search(src):
         return True
-    if "hphantom" in src or "\\phantom" in src:
-        return True
     if looks_like_xpm_html_attribute_debris(src):
         return True
-    if looks_like_glued_duplicate_math(src):
+    if "hphantom" in src or "\\phantom" in src:
+        return True
+    return False
+
+
+def _solution_needs_pipeline_repair(text: str) -> bool:
+    """Ham sinyal — yapıştırma/outline pipeline'ı atlanmamalı mı?
+
+    Hard paste debris ile ``solution_has_storage_defects`` aynı enkaz kümesini
+    paylaşır; soft repair-delta bilinçli biçimi bozmamak için burada yok.
+    """
+    src = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not src.strip():
+        return False
+    # Tek kaynak: hard paste debris (MSO / token-expansion / Docs / XPM …)
+    if _solution_has_hard_paste_debris(src):
         return True
     if _looks_like_fragmented_math_debris(src):
         return True
@@ -3121,11 +3429,8 @@ def solution_has_storage_defects(text: str) -> bool:
     src = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not src:
         return False
-    # Yapışık atama enkazı (`$D$ $=1$` / `$,\"`) — scrub no-op olsa bile defect
-    if looks_like_glued_duplicate_math(src):
-        return True
-    # Word MSO conditional / @font-face stil dökümü
-    if looks_like_word_mso_paste_debris(src):
+    # Hard paste debris — pipeline / looks_normalized ile aynı küme
+    if _solution_has_hard_paste_debris(src):
         return True
     return repair_solution_storage_defects(src) != src
 
@@ -3356,7 +3661,9 @@ def repair_solution_storage_defects(text: str) -> str:
 
     src = convert_atx_headings_to_bold(src)
     src = strip_paste_fragment_markers(src)
+    src = scrub_docs_annotation_token_debris(src)
     src = scrub_hphantom_math_debris(src)
+    src = scrub_math_token_expansion_debris(src)
     src = scrub_glued_duplicate_math(src)
     src = scrub_google_math_speech_debris(src)
     src = _repair_underline_phrase_analysis(src)
@@ -3448,9 +3755,18 @@ def _touchup_storage_solution(text: str) -> str:
 
 
 def looks_storage_normalized_solution(text: str) -> bool:
-    """DB'de kayıtlı, pipeline'dan geçmiş çözüm — yapıştırma adımını atla."""
+    """DB'de kayıtlı, pipeline'dan geçmiş çözüm — yapıştırma adımını atla.
+
+    Hard paste debris varken asla True dönmez (MSO + yapılandırılmış outline
+    early-exit bug'ı). Soft ``repair != src`` bilinçli biçimi korumak için
+    burada early-exit'i engellemez; ``_finalize_storage_solution`` kusur
+    döngüsü looks_normalized=False iken çalışır.
+    """
     src = (text or "").strip()
     if not src:
+        return False
+    # hard debris ⇒ ¬looks_normalized (has_defects hard kümesi ile aynı)
+    if _solution_has_hard_paste_debris(src):
         return False
     if _solution_needs_pipeline_repair(src):
         return False

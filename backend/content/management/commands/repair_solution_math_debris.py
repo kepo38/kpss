@@ -1,4 +1,8 @@
-"""Çözüm metnindeki ``\\hphantom`` / yapışık math enkazını toplu onar.
+"""Çözüm metnindeki storage enkazını toplu onar.
+
+``solution_has_storage_defects`` / ``repair_solution_storage_defects`` /
+``normalize_pasted_solution`` zincirini kullanır (MSO, XPM, hphantom,
+token-expansion, Docs annotation JSON, yapışık math, …).
 
 Kayıt sırasında da aynı scrub çalışır; bu komut mevcut DB kayıtlarını
 toplu tarar. Ağır enkazda metin kısmen düzelir — kalanları listeler.
@@ -6,42 +10,42 @@ toplu tarar. Ağır enkazda metin kısmen düzelir — kalanları listeler.
 
 from __future__ import annotations
 
+import re
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from content.models import Question
 from content.rich_text_common import (
-    looks_like_glued_duplicate_math,
-    looks_like_xpm_html_attribute_debris,
-    scrub_glued_duplicate_math,
-    scrub_hphantom_math_debris,
-    scrub_xpm_html_attribute_debris,
+    repair_solution_storage_defects,
+    solution_has_storage_defects,
 )
 from content.rich_text_panel import normalize_pasted_solution
 
-
 def _candidate(text: str) -> bool:
-    src = text or ""
-    if "hphantom" in src or "\\phantom" in src:
-        return True
-    if looks_like_xpm_html_attribute_debris(src):
-        return True
-    return looks_like_glued_duplicate_math(src)
+    return solution_has_storage_defects(text or "")
 
 
-def _still_dirty(text: str) -> bool:
-    src = text or ""
-    if "hphantom" in src or "\\phantom" in src:
+def _needs_human_rewrite(text: str) -> bool:
+    """Otomatik scrub sonrası hâlâ kusurlu / yalnızca placeholder."""
+    src = (text or "").strip()
+    if not src:
         return True
-    if looks_like_xpm_html_attribute_debris(src):
+    if solution_has_storage_defects(src):
         return True
-    return looks_like_glued_duplicate_math(src)
+    compact = re.sub(r"\s+", "", src)
+    # [ŞEKİL] / [SEKIL] / ... only
+    if re.fullmatch(r"(?:\[[^\]]*\]|\.+|…)+", compact, flags=re.IGNORECASE):
+        upper = compact.upper().replace("İ", "I").replace("Ş", "S")
+        if "SEKIL" in upper or compact in {"...", "…", "."}:
+            return True
+    return False
 
 
 class Command(BaseCommand):
     help = (
-        "Çözümlerdeki \\hphantom / yapışık tekrarlı LaTeX enkazını temizler "
-        "(--dry-run ile yalnız listeler)."
+        "Çözümlerdeki storage enkazını (MSO/XPM/hphantom/token/Docs JSON…) "
+        "normalize_pasted_solution ile temizler (--dry-run ile yalnız listeler)."
     )
 
     def add_arguments(self, parser) -> None:
@@ -67,27 +71,27 @@ class Command(BaseCommand):
             .order_by("id")
         )
         scanned = 0
+        candidates = 0
         changed = 0
         still_dirty: list[str] = []
+        human_rewrite: list[str] = []
 
         for question in qs.iterator(chunk_size=200):
             scanned += 1
             old = question.solution or ""
             if not _candidate(old):
                 continue
+            candidates += 1
 
-            scrubbed = scrub_xpm_html_attribute_debris(old)
-            scrubbed = scrub_hphantom_math_debris(scrubbed)
-            scrubbed = scrub_glued_duplicate_math(scrubbed)
-            new = normalize_pasted_solution(scrubbed)
-            if "hphantom" in new or "\\phantom" in new:
-                new = scrub_hphantom_math_debris(new)
-            if looks_like_xpm_html_attribute_debris(new):
-                new = scrub_xpm_html_attribute_debris(new)
-            if looks_like_glued_duplicate_math(new):
-                new = scrub_glued_duplicate_math(new)
+            repaired = repair_solution_storage_defects(old)
+            new = normalize_pasted_solution(repaired)
+            # normalize no-op / kısa yol kaçırırsa bir kez daha dokun
+            if solution_has_storage_defects(new):
+                new = normalize_pasted_solution(repair_solution_storage_defects(new))
+
             if new == old:
-                if _still_dirty(old):
+                if _needs_human_rewrite(old):
+                    human_rewrite.append(question.public_id)
                     still_dirty.append(question.public_id)
                 continue
 
@@ -96,7 +100,8 @@ class Command(BaseCommand):
                 f"{'[dry] ' if dry_run else ''}"
                 f"{question.public_id}: {len(old)} -> {len(new)} karakter"
             )
-            if _still_dirty(new):
+            if _needs_human_rewrite(new):
+                human_rewrite.append(question.public_id)
                 still_dirty.append(question.public_id)
             if not dry_run:
                 with transaction.atomic():
@@ -107,9 +112,12 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Tarama: {scanned} · değişen: {changed}"
+                f"Tarama: {scanned} · aday: {candidates} · değişen: {changed}"
                 + (" (dry-run)" if dry_run else "")
             )
+        )
+        self.stdout.write(
+            f"Hâlâ kusurlu / insan yeniden yazımı: {len(human_rewrite)}"
         )
         if still_dirty:
             self.stdout.write(

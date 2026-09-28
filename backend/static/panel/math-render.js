@@ -115,6 +115,9 @@
     // Triangle: intrinsic SVG width/height attrs (no CSS → still ~1.75em, never 300×150).
     // Label is drawn inside the SVG so content cannot fall outside the outline.
     // font-size≈19 in viewBox 40 → ~0.83em of parent at 1.75em width (ÖSYM-balanced).
+    // Vertical: bounding-box mid looks bottom-heavy in a △ (empty apex). Place glyph
+    // center near the visual/centroid band (~60% from apex). Apex y=2.8, base y=33.5 →
+    // 60% ≈ 21.2; dominant-baseline=central so y is ink center, not alphabetic baseline.
     if (k === "triangle") {
       return (
         '<span class="math-shape math-shape--triangle" title="' +
@@ -125,7 +128,8 @@
         'style="width:1.75em;height:1.52em;max-width:2.2em;max-height:1.95em;display:block;overflow:visible">' +
         '<polygon points="20,2.8 37.5,33.5 2.5,33.5" fill="none" stroke="currentColor" ' +
         'stroke-width="1.8" stroke-linejoin="round"/>' +
-        '<text x="20" y="28.2" text-anchor="middle" fill="currentColor" stroke="none" ' +
+        '<text x="20" y="21.2" text-anchor="middle" dominant-baseline="central" ' +
+        'fill="currentColor" stroke="none" ' +
         'font-size="19" font-weight="600" font-family="Tinos, Times New Roman, serif">' +
         safe +
         "</text></svg></span>"

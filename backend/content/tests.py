@@ -831,6 +831,124 @@ class QuestionFingerprintTests(TestCase):
         self.assertContains(edit, "Görselden soru")
         self.assertContains(edit, "Henüz kaydedilmedi")
 
+    def _stem_dup_payload(self, stem: str, **extra):
+        data = {
+            "topic_id": self.topic.id,
+            "subtopic": "",
+            "stem": stem,
+            "option_a": "A şıkkı",
+            "option_b": "B şıkkı",
+            "option_c": "C şıkkı",
+            "option_d": "D şıkkı",
+            "option_e": "E şıkkı",
+            "correct_option": "A",
+            "solution": "",
+            "test_assignment": "auto",
+            "is_published": "on",
+        }
+        data.update(extra)
+        return data
+
+    def test_edit_save_allowed_when_sibling_shares_stem(self):
+        """Aynı kök metinli kardeş varken mevcut soruyu (çözüm vb.) kaydetmek serbest."""
+        from content.question_fingerprint import stem_fingerprint
+
+        User = get_user_model()
+        staff = User.objects.create_user(
+            username="fp_stem_edit", password="x", is_staff=True
+        )
+        shared_stem = (
+            "Aşağıdaki cümlelerin hangisinde yazım yanlışı vardır? "
+            "Bu kök metin yeterince uzun olmalı."
+        )
+        sibling = Question.objects.create(
+            topic=self.topic,
+            public_id="q_1efdee2354",
+            stem=shared_stem,
+            option_a="Bir",
+            option_b="İki",
+            option_c="Üç",
+            option_d="Dört",
+            option_e="Beş",
+            correct_option="A",
+            is_published=True,
+        )
+        editing = Question.objects.create(
+            topic=self.topic,
+            public_id="q_027f476a50",
+            stem=shared_stem,
+            option_a="Alpha",
+            option_b="Beta",
+            option_c="Gamma",
+            option_d="Delta",
+            option_e="Epsilon",
+            correct_option="B",
+            solution="Eski çözüm",
+            is_published=True,
+        )
+        self.assertEqual(stem_fingerprint(shared_stem), sibling.stem_hash)
+        self.assertEqual(editing.stem_hash, sibling.stem_hash)
+
+        self.client.force_login(staff)
+        new_solution = "Güncellenmiş çözüm metni — kayıt engellenmemeli."
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{editing.id}/",
+            self._stem_dup_payload(
+                shared_stem,
+                option_a="Alpha",
+                option_b="Beta",
+                option_c="Gamma",
+                option_d="Delta",
+                option_e="Epsilon",
+                correct_option="B",
+                solution=new_solution,
+            ),
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertNotIn("/soru/yeni/", res.url)
+        editing.refresh_from_db()
+        self.assertEqual(editing.solution, new_solution)
+        self.assertEqual(editing.public_id, "q_027f476a50")
+
+    def test_create_blocked_when_stem_matches_existing(self):
+        """Yeni soru, mevcut bir sorunun kök metniyle aynıysa sert engellenir."""
+        User = get_user_model()
+        staff = User.objects.create_user(
+            username="fp_stem_new", password="x", is_staff=True
+        )
+        shared_stem = (
+            "Aşağıdaki cümlelerin hangisinde yazım yanlışı vardır? "
+            "Bu kök metin yeterince uzun olmalı."
+        )
+        Question.objects.create(
+            topic=self.topic,
+            public_id="q_1efdee2354",
+            stem=shared_stem,
+            option_a="Bir",
+            option_b="İki",
+            option_c="Üç",
+            option_d="Dört",
+            option_e="Beş",
+            correct_option="A",
+            is_published=True,
+        )
+        before = Question.objects.count()
+        self.client.force_login(staff)
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._stem_dup_payload(
+                shared_stem,
+                option_a="Farklı A",
+                option_b="Farklı B",
+                option_c="Farklı C",
+                option_d="Farklı D",
+                option_e="Farklı E",
+            ),
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("/soru/yeni/", res.url)
+        self.assertEqual(Question.objects.count(), before)
+
 
 class PanelTopicManageTests(TestCase):
     def setUp(self):

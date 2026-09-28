@@ -111,18 +111,26 @@ if exist "C:\flutter\flutter\bin\flutter.bat" (
 if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
   set "PATH=%LOCALAPPDATA%\Android\Sdk\platform-tools;%PATH%"
 )
-set "GRADLE_USER_HOME=D:\.gradle"
-if not exist "%GRADLE_USER_HOME%\" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
-if not exist "%GRADLE_USER_HOME%\" (
-  echo [HATA] Gradle onbellegi olusturulamadi: %GRADLE_USER_HOME%
-  goto :fail
+set "GRADLE_USER_HOME=D:\HEDEFKAMU\.gradle-user-home"
+if not exist "%GRADLE_USER_HOME%" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
+if not exist "%GRADLE_USER_HOME%" (
+  set "GRADLE_USER_HOME=%USERPROFILE%\.gradle"
+  if not exist "%GRADLE_USER_HOME%" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
+)
+if not exist "%GRADLE_USER_HOME%" (
+  echo [UYARI] Gradle onbellegi olusturulamadi - varsayilan kullanilacak
+  set "GRADLE_USER_HOME="
 )
 
 set "PUB_CACHE=D:\HEDEFKAMU\.pub-cache"
-if not exist "%PUB_CACHE%\" mkdir "%PUB_CACHE%" >nul 2>&1
-if not exist "%PUB_CACHE%\" (
-  echo [HATA] Pub onbellegi olusturulamadi: %PUB_CACHE%
-  goto :fail
+if not exist "%PUB_CACHE%" mkdir "%PUB_CACHE%" >nul 2>&1
+if not exist "%PUB_CACHE%" (
+  set "PUB_CACHE=%USERPROFILE%\.pub-cache"
+  if not exist "%PUB_CACHE%" mkdir "%PUB_CACHE%" >nul 2>&1
+)
+if not exist "%PUB_CACHE%" (
+  echo [UYARI] Pub onbellegi olusturulamadi - varsayilan kullanilacak
+  set "PUB_CACHE="
 )
 
 :: ozel / ozel kopyadan calisirsa ASCII canonical yola yonlendir (L8 desugar karisikligi onlenir)

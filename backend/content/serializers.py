@@ -295,6 +295,7 @@ class ContentCatalogSerializer(serializers.Serializer):
     tests = TopicTestSerializer(many=True)
     lessons = TopicLessonSerializer(many=True)
     summaryCards = TopicSummaryCardSerializer(many=True)
+    stats = serializers.DictField(required=False)
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):

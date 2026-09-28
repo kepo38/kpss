@@ -28,8 +28,11 @@ from content.rich_text_common import (
     scrub_google_math_speech_debris,
     scrub_glued_duplicate_math,
     scrub_hphantom_math_debris,
+    scrub_math_token_expansion_debris,
+    scrub_docs_annotation_token_debris,
     scrub_xpm_html_attribute_debris,
     scrub_word_mso_paste_debris,
+    repair_solution_storage_defects,
     solution_has_storage_defects,
     _GOOGLE_SPEECH_SIGNAL_RE,
     _strip_glued_digits_after_inline_math,
@@ -1381,6 +1384,158 @@ class RichTextNormalizationTests(SimpleTestCase):
         self.assertIn("Saltanat Şûrası", out)
         self.assertIn("I.Öncül DOĞRUDUR", out)
         self.assertFalse(solution_has_storage_defects(out))
+
+    def test_mso_plus_structured_outline_gates_agree_and_normalize_strips(self):
+        """MSO + ``- **1.`` outline: gates uyumlu; normalize early-exit etmez."""
+        from content.rich_text_common import _solution_needs_pipeline_repair
+
+        src = (
+            "<!--[if gte mso 9]>\n"
+            "Normal\n0\nfalse\nTR\nX-NONE\n"
+            "<![endif]>\n"
+            "<!--\n"
+            " @font-face\n"
+            "\t{font-family:Wingdings;\n"
+            "\tmso-font-charset:2;}\n"
+            "\n"
+            "**Adım Adım Çözüm**\n\n"
+            "- **1. Adım:** Saltanat Şûrası toplanmıştır.\n"
+            "- **2. Adım:** Sevr Antlaşması görüşülmüştür.\n"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        self.assertTrue(_solution_needs_pipeline_repair(src))
+        self.assertFalse(looks_storage_normalized_solution(src))
+
+        out = normalize_pasted_solution(src)
+        self.assertNotIn("mso-", out)
+        self.assertNotIn("@font-face", out)
+        self.assertNotIn("<!--[if", out)
+        self.assertNotIn("Wingdings", out)
+        self.assertIn("Saltanat Şûrası", out)
+        self.assertIn("- **1.", out)
+        self.assertFalse(solution_has_storage_defects(out))
+        self.assertEqual(out, normalize_pasted_solution(out))
+
+    def test_solution_debris_gates_agree_on_fixtures(self):
+        """Hard debris: has_defects ∧ needs_pipeline ∧ ¬looks_normalized; clean tersi."""
+        from content.rich_text_common import _solution_needs_pipeline_repair
+
+        mso = (
+            "<!--[if gte mso 9]><![endif]>\n"
+            "@font-face{mso-font-charset:2;}\n"
+            "- **1. Adım:** Temiz gövde.\n"
+        )
+        docs = (
+            '- **A) içli köfte,"66":0}],0,0,null,null,0,0,[],"",0,0],'
+            '"Rle6asDAEpO3i-gPwtu_qQ0_0"]:** ayrı yazılır.\n'
+        )
+        token_exp = (
+            "Onlar: $2 + 4 = 6$\n"
+            "$2 + 4 = 6$ $2$ $+ 4$ $= 6$ 'dır.\n"
+        )
+        clean = (
+            "**Adım Adım Çözüm**\n\n"
+            "- **1. Adım:** Bilinenleri yaz.\n"
+            "- **2. Adım:** Sonucu bul.\n"
+        )
+
+        dirty_fixtures = {
+            "mso": mso,
+            "docs_annotation": docs,
+            "token_expansion": token_exp,
+        }
+        for name, src in dirty_fixtures.items():
+            with self.subTest(fixture=name):
+                self.assertTrue(solution_has_storage_defects(src), name)
+                self.assertTrue(_solution_needs_pipeline_repair(src), name)
+                self.assertFalse(looks_storage_normalized_solution(src), name)
+
+        self.assertFalse(solution_has_storage_defects(clean))
+        self.assertFalse(_solution_needs_pipeline_repair(clean))
+        self.assertTrue(looks_storage_normalized_solution(clean))
+        self.assertEqual(
+            normalize_pasted_solution(clean),
+            normalize_pasted_solution(normalize_pasted_solution(clean)),
+        )
+
+    def test_scrub_math_token_expansion_debris_q783_pattern(self):
+        """Google Docs denklem token-expansion: bitişik kopya + satır fragmentleri."""
+        src = (
+            "Tek rakamlar ($1, 3, 5, 7, 9$\n"
+            "$1$\n"
+            "$3$\n"
+            "$5$\n"
+            "$7$\n"
+            "$9$\n"
+            "$1, 3, 5, 7, 9$ $1$ $3$ $5$ $7$ $9$ ) olmalıdır.\n"
+            "Onlar: $2 + 4 = 6$\n"
+            "$2 + 4 = 6$ $2$ $+ 4$ $= 6$ 'dır.\n"
+            "Böylece **$Y = 7$$Y=7$$Y = 7$ $Y$ $\\= 7$** bulunur.\n"
+            "$A = 8$$A=8$$A = 8$ $A=8$ için uygundur.\n"
+            "$528 + 443 = 971$. Rakamlar $9$, $7$, $1$ farklıdır.\n"
+        )
+        self.assertTrue(solution_has_storage_defects(src))
+        out = scrub_math_token_expansion_debris(src)
+        self.assertIn("$1, 3, 5, 7, 9$", out)
+        self.assertIn("olmalıdır", out)
+        self.assertIn("$2 + 4 = 6$", out)
+        self.assertIn("'dır", out)
+        self.assertIn("**$Y = 7$**", out)
+        self.assertNotIn("$Y=7$", out)
+        self.assertNotIn("\\=", out)
+        self.assertNotRegex(out, r"\$Y = 7\$\$")
+        self.assertIn("$A = 8$", out)
+        self.assertIn("için uygundur", out)
+        self.assertNotRegex(out, r"\$A = 8\$\$")
+        # Temiz metindeki bağımsız $9$, $7$, $1$ korunur
+        self.assertIn("Rakamlar $9$, $7$, $1$", out)
+        repaired = repair_solution_storage_defects(src)
+        self.assertFalse(solution_has_storage_defects(repaired))
+
+
+    def test_scrub_docs_annotation_token_debris_q_ef139369d3(self):
+        """Google Docs öneri/annotation JSON yapışığı — q_ef139369d3."""
+        from content.rich_text_common import (
+            looks_like_docs_annotation_token_debris,
+            looks_storage_normalized_solution,
+        )
+
+        src = (
+            "C seçeneğinde geçen \"**vişneçürüğü**\" bitişik yazılmalıdır.\n"
+            "**Diğer Seçenekler:**\n\n"
+            '- **A) içli köfte,"66":0}],0,0,null,null,0,0,[],"",0,0],'
+            '"Rle6asDAEpO3i-gPwtu_qQ0_0"]:** İkinci kelime olan "köfte" '
+            "anlamını koruduğu için ayrı yazılması doğrudur.\n\n"
+            "- **B) kuyruklu yıldız:** ikinci kelime anlamını korur.\n"
+            '  - D) çavuş üzümü,"66":0}],0,0,null,null,0,0,[],"",0,0],'
+            '"Rle6asDAEpO3i-gPwtu_qQ0_2"]  :** üzüm anlamını korur.\n'
+        )
+        self.assertTrue(looks_like_docs_annotation_token_debris(src))
+        self.assertTrue(solution_has_storage_defects(src))
+        self.assertFalse(looks_storage_normalized_solution(src))
+        scrubbed = scrub_docs_annotation_token_debris(src)
+        self.assertNotIn("null,null", scrubbed)
+        self.assertNotIn('"66":0', scrubbed)
+        self.assertNotIn("Rle6as", scrubbed)
+        self.assertIn("içli köfte", scrubbed)
+        self.assertIn("çavuş üzümü", scrubbed)
+        self.assertFalse(looks_like_docs_annotation_token_debris(scrubbed))
+        repaired = repair_solution_storage_defects(src)
+        self.assertFalse(solution_has_storage_defects(repaired))
+        self.assertNotIn("null,null", repaired)
+        self.assertNotIn("Rle6as", repaired)
+        out = normalize_pasted_solution(src)
+        self.assertFalse(solution_has_storage_defects(out))
+        self.assertEqual(out, normalize_pasted_solution(out))
+        # Temiz çözüm yanlış pozitif üretmesin
+        clean = (
+            "- **A) içli köfte:** İkinci kelime olan \"köfte\" anlamını korur.\n"
+            "- **B) kuyruklu yıldız:** ayrı yazılması doğrudur.\n"
+        )
+        self.assertFalse(looks_like_docs_annotation_token_debris(clean))
+        self.assertEqual(scrub_docs_annotation_token_debris(clean), clean)
+
+
 
 class TelegramSolutionNormalizationIntegrationTests(TestCase):
     def setUp(self):

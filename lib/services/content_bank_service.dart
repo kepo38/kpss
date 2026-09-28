@@ -49,6 +49,8 @@ class ContentBankService extends ChangeNotifier {
   static const _kPackVersion = 'content_pack_version';
   static const _kDailyAdBonuses = 'content_daily_ad_test_bonuses';
   static const _kCatalogSubjects = 'content_catalog_subjects';
+  /// Sunucunun son katalogda bildirdiği benzersiz soru adedi (stale tespit).
+  static const _kCatalogQuestionCount = 'content_catalog_question_count';
   /// Cihaz geneli: misafir→Google / çoklu hesap ile ücretsiz hakkın çift kullanımı.
   static const _kDeviceDailyFree = 'content_device_daily_free_consumed';
 
@@ -82,6 +84,7 @@ class ContentBankService extends ChangeNotifier {
   /// subjectId_yyyy-MM-dd → bu cihazda bugün yakılan ücretsiz hak (0/1).
   final Map<String, int> _deviceDailyFreeConsumed = {};
   int? _packVersion;
+  int? _catalogQuestionCount;
   bool _loaded = false;
   bool _fullQuestionBankPersisted = false;
   Future<void>? _initFuture;
@@ -97,6 +100,10 @@ class ContentBankService extends ChangeNotifier {
   static const _notifyDebounce = Duration(milliseconds: 80);
 
   int? get packVersion => _packVersion;
+
+  /// Son senkron katalogdaki benzersiz soru (sunucu stats veya yerel hesap).
+  int get syncedCatalogQuestionCount =>
+      _catalogQuestionCount ?? catalogQuestionIds.length;
 
   void _bumpCatalog() {
     catalogRevision.value++;
@@ -500,14 +507,17 @@ class ContentBankService extends ChangeNotifier {
   Future<void> _initializeBody() async {
     final prefs = await SharedPreferences.getInstance();
     _packVersion = prefs.getInt(_kPackVersion);
+    _catalogQuestionCount = prefs.getInt(_kCatalogQuestionCount);
 
     // Sorular: SQLite (tercih) → legacy SharedPreferences.
     String? questionsRaw;
+    String? catalogRaw;
     try {
       await LocalDatabase.instance.initialize();
       questionsRaw = await LocalDatabase.instance.loadContentQuestionsJson();
+      catalogRaw = await LocalDatabase.instance.loadContentCatalogJson();
     } catch (e, st) {
-      debugPrint('ContentBank SQLite question load: $e\n$st');
+      debugPrint('ContentBank SQLite load: $e\n$st');
     }
     final legacyQuestions = prefs.getString(_kQuestions);
     if (questionsRaw == null || questionsRaw.isEmpty) {
@@ -517,37 +527,56 @@ class ContentBankService extends ChangeNotifier {
       unawaited(prefs.remove(_kQuestions));
     }
 
+    // Katalog meta: SQLite ham paket → prefs (eski 3× çoğaltılmış tests).
+    var loadedCatalogFromSqlite = false;
+    if (catalogRaw != null && catalogRaw.isNotEmpty) {
+      try {
+        final pack = jsonDecode(catalogRaw) as Map<String, dynamic>;
+        await _applyPackMetadata(pack, persistCatalog: false);
+        loadedCatalogFromSqlite = true;
+        // Eski şişkin prefs tests anahtarını temizle.
+        if (prefs.containsKey(_kTests)) {
+          unawaited(prefs.remove(_kTests));
+        }
+      } catch (e, st) {
+        debugPrint('ContentBank SQLite catalog parse: $e\n$st');
+      }
+    }
+
     // Prefs string'leri main'de oku; decode+fromJson arka isolate'ta.
     // Deneme / çözülen / günlük bonus kullanıcıya özel — burada yüklenmez.
     final raw = ContentBankRawBundle(
-      configs: prefs.getString(_kConfigs),
-      tests: prefs.getString(_kTests),
+      configs: loadedCatalogFromSqlite ? null : prefs.getString(_kConfigs),
+      tests: loadedCatalogFromSqlite ? null : prefs.getString(_kTests),
       attempts: null,
       solved: null,
       questions: questionsRaw,
-      lessons: prefs.getString(_kLessons),
-      summaryCards: prefs.getString(_kSummaryCards),
+      lessons: loadedCatalogFromSqlite ? null : prefs.getString(_kLessons),
+      summaryCards:
+          loadedCatalogFromSqlite ? null : prefs.getString(_kSummaryCards),
     );
     // compute: top-level fn + sendable payload (no async-closure / this capture).
     final parsed = await compute(parseContentBankBundle, raw);
 
-    _configs
-      ..clear()
-      ..addAll(parsed.configs);
-    _tests
-      ..clear()
-      ..addAll(parsed.tests);
+    if (!loadedCatalogFromSqlite) {
+      _configs
+        ..clear()
+        ..addAll(parsed.configs);
+      _tests
+        ..clear()
+        ..addAll(parsed.tests);
+      _lessons
+        ..clear()
+        ..addAll(parsed.lessons);
+      _summaryCards
+        ..clear()
+        ..addAll(parsed.summaryCards);
+    }
     _attempts.clear();
     _solvedQuestionIds.clear();
     _questions
       ..clear()
       ..addAll(parsed.questions);
-    _lessons
-      ..clear()
-      ..addAll(parsed.lessons);
-    _summaryCards
-      ..clear()
-      ..addAll(parsed.summaryCards);
     if (_questions.isEmpty && kDebugMode) {
       _seedSampleQuestions();
       _fullQuestionBankPersisted = false;
@@ -580,9 +609,15 @@ class ContentBankService extends ChangeNotifier {
     final prunedSeed = _pruneSampleSeedProgress();
     final restoredBodies = _cachedWrongBodyIds.isNotEmpty;
 
-    KpssCurriculum.loadCatalogFromJsonString(
-      prefs.getString(_kCatalogSubjects),
-    );
+    if (!loadedCatalogFromSqlite) {
+      KpssCurriculum.loadCatalogFromJsonString(
+        prefs.getString(_kCatalogSubjects),
+      );
+    }
+
+    if (_catalogQuestionCount == null || _catalogQuestionCount == 0) {
+      _catalogQuestionCount = catalogQuestionIds.length;
+    }
 
     _loaded = true;
     _notifyCatalog(urgent: true);
@@ -664,7 +699,10 @@ class ContentBankService extends ChangeNotifier {
     }
   }
 
-  Future<void> _applyPackMetadata(Map<String, dynamic> pack) async {
+  Future<void> _applyPackMetadata(
+    Map<String, dynamic> pack, {
+    bool persistCatalog = true,
+  }) async {
     final packPayload = Map<String, dynamic>.from(pack);
     final parsed = await compute(parseContentPackMetadata, packPayload);
 
@@ -688,10 +726,51 @@ class ContentBankService extends ChangeNotifier {
       ..clear()
       ..addAll(parsed.summaryCards);
 
+    final stats = pack['stats'];
+    if (stats is Map) {
+      final qc = stats['questionCount'] ?? stats['question_count'];
+      if (qc is int) {
+        _catalogQuestionCount = qc;
+      } else if (qc is num) {
+        _catalogQuestionCount = qc.toInt();
+      }
+    } else {
+      _catalogQuestionCount = catalogQuestionIds.length;
+    }
+
     if (parsed.packVersion != null) {
       _packVersion = parsed.packVersion;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kPackVersion, _packVersion!);
+      if (_catalogQuestionCount != null) {
+        await prefs.setInt(_kCatalogQuestionCount, _catalogQuestionCount!);
+      }
+    }
+
+    if (persistCatalog) {
+      await _persistCatalogSqlite(pack);
+    }
+  }
+
+  /// Ham katalog (API tests/subjects) — SharedPreferences yerine SQLite.
+  Future<void> _persistCatalogSqlite(Map<String, dynamic> pack) async {
+    try {
+      await LocalDatabase.instance.initialize();
+      final compact = <String, dynamic>{
+        'version': pack['version'],
+        'generatedAt': pack['generatedAt'],
+        'subjects': pack['subjects'] ?? const [],
+        'tests': pack['tests'] ?? const [],
+        'lessons': pack['lessons'] ?? const [],
+        'summaryCards': pack['summaryCards'] ?? const [],
+        if (pack['stats'] != null) 'stats': pack['stats'],
+      };
+      await LocalDatabase.instance.saveContentCatalogJson(jsonEncode(compact));
+      // Eski şişkin 3× tests prefs kaydını kaldır.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kTests);
+    } catch (e, st) {
+      debugPrint('ContentBank catalog SQLite save: $e\n$st');
     }
   }
 
@@ -1664,10 +1743,12 @@ class ContentBankService extends ChangeNotifier {
   }
 
   Future<void> _persistTests() async {
+    // Katalog tests artık SQLite'ta (ham API). Prefs'e 3× çoğaltılmış
+    // liste yazmak senkronu bozabiliyordu — yazmayı bırak.
     final prefs = await SharedPreferences.getInstance();
-    final maps = _tests.map((e) => e.toJson()).toList();
-    final encoded = await compute(encodeJsonMaps, maps);
-    await prefs.setString(_kTests, encoded);
+    if (prefs.containsKey(_kTests)) {
+      await prefs.remove(_kTests);
+    }
   }
 
   Future<void> _persistAttempts() async {

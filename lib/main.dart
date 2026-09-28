@@ -355,7 +355,8 @@ class _KpssOdakAppState extends State<KpssOdakApp> with WidgetsBindingObserver {
       final ok = await ContentSyncService.instance.syncCatalog(force: true);
       if (ok) {
         debugPrint(
-          'Content sync on launch OK v${ContentBankService.instance.packVersion}',
+          'Content sync on launch OK v${ContentBankService.instance.packVersion} '
+          'q=${ContentBankService.instance.syncedCatalogQuestionCount}',
         );
         return;
       }

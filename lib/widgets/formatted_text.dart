@@ -3113,7 +3113,7 @@ class _DocumentText extends StatelessWidget {
 }
 
 
-/// ÖSYM üçgen konturu — etiket alt-orta bölgede; sabit em boyutu (parent'a yayılmaz).
+/// ÖSYM üçgen konturu — etiket görsel merkezde (~55–60% apex→taban); sabit em boyutu.
 class _TriangleShapeBox extends StatelessWidget {
   final Widget label;
   final Color color;
@@ -3131,6 +3131,8 @@ class _TriangleShapeBox extends StatelessWidget {
   Widget build(BuildContext context) {
     // Dış SizedBox + UnconstrainedBox: WidgetSpan/satır tight width verse bile
     // üçgen satır boyuna (~1.75em) kalır; CustomPaint parent'ı doldurmaz.
+    // Asymmetric padding: content band centered ~57% from apex (visual/centroid),
+    // not bounding-box mid with a tiny bottom pad (that pins labels to the base).
     return UnconstrainedBox(
       child: SizedBox(
         width: width,
@@ -3140,10 +3142,10 @@ class _TriangleShapeBox extends StatelessWidget {
           painter: _TriangleOutlinePainter(color: color),
           child: Padding(
             padding: EdgeInsets.only(
-              top: height * 0.38,
-              bottom: height * 0.06,
-              left: width * 0.12,
-              right: width * 0.12,
+              top: height * 0.30,
+              bottom: height * 0.20,
+              left: width * 0.14,
+              right: width * 0.14,
             ),
             child: Center(child: label),
           ),

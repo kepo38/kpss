@@ -2,7 +2,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from content.embeddings import cosine_similarity, local_embedding, refresh_question_embedding
-from content.models import Question, Subject, Topic
+from content.models import AppUser, Question, Subject, Topic
 
 
 class EmbeddingMathTests(TestCase):
@@ -42,6 +42,13 @@ class EmbeddingMathTests(TestCase):
 @override_settings(OPENAI_API_KEY="")
 class SimilarQuestionsApiTests(TestCase):
     def setUp(self):
+        self.user = AppUser.objects.create(
+            google_sub="emb-user-1",
+            email="emb@test.com",
+            display_name="Emb User",
+            api_token="emb-token-1",
+            is_premium=True,
+        )
         self.subject = Subject.objects.create(slug="tr_emb", name="Türkçe")
         self.topic = Topic.objects.create(
             subject=self.subject, slug="tr_emb_p", name="Paragraf"
@@ -72,6 +79,9 @@ class SimilarQuestionsApiTests(TestCase):
         self._set_vector(self.far, [0.2, 0.98, 0.0])
         self._set_vector(self.math, [0.0, 0.0, 1.0])
 
+    def _auth(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.user.api_token}"}
+
     def _make(self, public_id: str, stem: str) -> Question:
         return Question.objects.create(
             topic=self.topic,
@@ -96,7 +106,7 @@ class SimilarQuestionsApiTests(TestCase):
 
     def test_similar_endpoint_ranks_near_question_first(self):
         url = reverse("question-similar", kwargs={"public_id": self.source.public_id})
-        response = self.client.get(url)
+        response = self.client.get(url, **self._auth())
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["sourceId"], self.source.public_id)
@@ -104,6 +114,19 @@ class SimilarQuestionsApiTests(TestCase):
         self.assertEqual(ids[0], self.near.public_id)
         self.assertNotIn(self.source.public_id, ids)
         self.assertIn("similarity", body["questions"][0])
+
+    def test_similar_requires_auth(self):
+        url = reverse("question-similar", kwargs={"public_id": self.source.public_id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 401)
+
+    def test_similar_requires_premium(self):
+        self.user.is_premium = False
+        self.user.save(update_fields=["is_premium"])
+        url = reverse("question-similar", kwargs={"public_id": self.source.public_id})
+        response = self.client.get(url, **self._auth())
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get("code"), "premium_required")
 
     def test_near_duplicate_copy_is_excluded(self):
         dup = self._make(
@@ -122,5 +145,5 @@ class SimilarQuestionsApiTests(TestCase):
         self.source.is_published = False
         self.source.save(update_fields=["is_published"])
         url = reverse("question-similar", kwargs={"public_id": self.source.public_id})
-        response = self.client.get(url)
+        response = self.client.get(url, **self._auth())
         self.assertEqual(response.status_code, 404)

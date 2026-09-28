@@ -96,6 +96,7 @@ class LocalDatabase {
     await _createStudyNotesTable(db);
     await _createManualWrongQuestionsTable(db);
     await _createContentQuestionsTable(db);
+    await _createContentCatalogTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -113,6 +114,9 @@ class LocalDatabase {
     }
     if (oldVersion < 5) {
       await _createContentQuestionsTable(db);
+    }
+    if (oldVersion < 6) {
+      await _createContentCatalogTable(db);
     }
   }
 
@@ -145,6 +149,14 @@ class LocalDatabase {
 
   Future<void> _createContentQuestionsTable(Database db) => db.execute('''
     CREATE TABLE ${StorageConstants.tableContentQuestions} (
+      slot INTEGER PRIMARY KEY CHECK (slot = 0),
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  Future<void> _createContentCatalogTable(Database db) => db.execute('''
+    CREATE TABLE ${StorageConstants.tableContentCatalog} (
       slot INTEGER PRIMARY KEY CHECK (slot = 0),
       payload TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -196,6 +208,54 @@ class LocalDatabase {
       return;
     }
     await _db!.delete(StorageConstants.tableContentQuestions);
+  }
+
+  /// Hafif katalog meta (tests/subjects) — SharedPreferences yerine SQLite.
+  /// Üç KPSS tipine çoğaltılmış prefs yükü (~400KB+) senkronu bozabiliyordu.
+  Future<String?> loadContentCatalogJson() async {
+    await _ensureReady();
+    if (kIsWeb) {
+      final raw = _prefs!.getString(StorageConstants.webContentCatalogKey);
+      if (raw == null || raw.isEmpty) return null;
+      return raw;
+    }
+    final rows = await _db!.query(
+      StorageConstants.tableContentCatalog,
+      columns: ['payload'],
+      where: 'slot = ?',
+      whereArgs: const [0],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final payload = rows.first['payload'] as String?;
+    if (payload == null || payload.isEmpty) return null;
+    return payload;
+  }
+
+  Future<void> saveContentCatalogJson(String payload) async {
+    await _ensureReady();
+    if (kIsWeb) {
+      await _prefs!.setString(StorageConstants.webContentCatalogKey, payload);
+      return;
+    }
+    await _db!.insert(
+      StorageConstants.tableContentCatalog,
+      {
+        'slot': 0,
+        'payload': payload,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> clearContentCatalogJson() async {
+    await _ensureReady();
+    if (kIsWeb) {
+      await _prefs!.remove(StorageConstants.webContentCatalogKey);
+      return;
+    }
+    await _db!.delete(StorageConstants.tableContentCatalog);
   }
 
   DateTime get _retentionCutoff => DateTime.now().subtract(

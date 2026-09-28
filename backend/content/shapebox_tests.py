@@ -64,3 +64,11 @@ class SymbolicShapeOperatorTests(SimpleTestCase):
         # Compact inline scale (~1.7–1.85em), not full-bleed.
         self.assertIn("width:1.75em", src)
         self.assertIn("height:1.52em", src)
+
+    def test_panel_triangle_label_vertically_centered(self):
+        """Label ink center near △ visual/centroid band — not alphabetic baseline on the base."""
+        src = _MATH_RENDER.read_text(encoding="utf-8")
+        self.assertIn('dominant-baseline="central"', src)
+        self.assertIn('y="21.2"', src)
+        # Old base-pinned baseline must not return.
+        self.assertNotIn('y="28.2"', src)

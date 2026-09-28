@@ -197,12 +197,14 @@ class ContentSyncService {
       await ContentBankService.instance.applyCatalogPack(body);
       _lastSyncAt = DateTime.now();
       _lastCatalogError = null;
+      final bank = ContentBankService.instance;
       await ApiDiagLog.record(
         event: 'catalog',
         ok: true,
         statusCode: 200,
         elapsedMs: sw.elapsedMilliseconds,
-        detail: 'v${ContentBankService.instance.packVersion} '
+        detail: 'v${bank.packVersion} '
+            'q=${bank.syncedCatalogQuestionCount} '
             'bytes=${response.bodyBytes.length}',
       );
       completer.complete(true);

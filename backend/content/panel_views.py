@@ -2183,6 +2183,11 @@ def panel_question_edit(
             question.option_e,
         )
         s_hash = stem_fingerprint(question.stem)
+        # create vs update: unsaved Question has pk=None; existing row has pk.
+        # Duplicate hard-block is only for *new* uploads — editing an existing
+        # question (e.g. solution) must not be blocked by a sibling with the
+        # same stem. exclude_pk already skips self; sibling matches soft-warn.
+        is_update = question.pk is not None
         dup, match = find_duplicate_question(
             content_hash=c_hash,
             stem_hash=s_hash,
@@ -2198,19 +2203,13 @@ def panel_question_edit(
             option_d=question.option_d,
             option_e=question.option_e,
         )
-        if dup and not force_duplicate:
+        if dup and not force_duplicate and not is_update:
             info = duplicate_payload(dup, match)
             messages.error(
                 request,
                 duplicate_flash_html(info),
                 extra_tags="html",
             )
-            if question.pk:
-                return redirect(
-                    "panel_question_edit",
-                    topic_id=target_topic.id,
-                    question_id=question.id,
-                )
             return redirect("panel_question_new", topic_id=target_topic.id)
 
         if map_template:
@@ -2264,7 +2263,7 @@ def panel_question_edit(
         assignment = request.POST.get("test_assignment", "auto")
         test = assign_question_to_test(question, target_topic, assignment)
 
-        if dup and force_duplicate:
+        if dup and (force_duplicate or is_update):
             messages.warning(
                 request,
                 f"Uyarı: benzer soru varken kaydedildi (önceki: {dup.public_id}).",

@@ -46,20 +46,34 @@ if exist "%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe" (
   echo [OK] adb PATH eklendi
 ) else echo [UYARI] adb SDK yolunda yok - flutter kendi adb kullanabilir
 
-set "GRADLE_USER_HOME=D:\.gradle"
-if not exist "%GRADLE_USER_HOME%\" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
-if not exist "%GRADLE_USER_HOME%\" (
-  echo [HATA] Gradle onbellegi olusturulamadi: %GRADLE_USER_HOME%
-  goto :fail
+rem Prefer project-local Gradle home; fall back to user profile.
+rem NOTE: never test paths with a trailing backslash before a quote.
+rem That pattern breaks cmd parsing and turns "set"/"if" into "et"/"f".
+set "GRADLE_USER_HOME=%ROOT%\.gradle-user-home"
+if not exist "%GRADLE_USER_HOME%" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
+if not exist "%GRADLE_USER_HOME%" (
+  set "GRADLE_USER_HOME=%USERPROFILE%\.gradle"
+  if not exist "%GRADLE_USER_HOME%" mkdir "%GRADLE_USER_HOME%" >nul 2>&1
 )
+if not exist "%GRADLE_USER_HOME%" (
+  echo [UYARI] Gradle onbellegi olusturulamadi - varsayilan kullanilacak
+  set "GRADLE_USER_HOME="
+) else (
+  echo [OK] GRADLE_USER_HOME=!GRADLE_USER_HOME!
+)
+
 set "PUB_CACHE=%ROOT%\.pub-cache"
-if not exist "%PUB_CACHE%\" mkdir "%PUB_CACHE%" >nul 2>&1
-if not exist "%PUB_CACHE%\" (
-  echo [HATA] Pub onbellegi olusturulamadi: %PUB_CACHE%
-  goto :fail
+if not exist "%PUB_CACHE%" mkdir "%PUB_CACHE%" >nul 2>&1
+if not exist "%PUB_CACHE%" (
+  set "PUB_CACHE=%USERPROFILE%\.pub-cache"
+  if not exist "%PUB_CACHE%" mkdir "%PUB_CACHE%" >nul 2>&1
 )
-echo [OK] GRADLE_USER_HOME=%GRADLE_USER_HOME%
-echo [OK] PUB_CACHE=%PUB_CACHE%
+if not exist "%PUB_CACHE%" (
+  echo [UYARI] Pub onbellegi olusturulamadi - varsayilan kullanilacak
+  set "PUB_CACHE="
+) else (
+  echo [OK] PUB_CACHE=!PUB_CACHE!
+)
 
 echo.
 echo   [ADIM] Python bulunuyor...
@@ -119,6 +133,7 @@ if not defined LAN_IP (
 )
 set "API_BASE=http://!LAN_IP!:8000"
 set "API_MODE=LAN"
+echo !API_BASE!>"%ROOT%\.kpss-last-api-base.txt"
 echo [OK] LAN_IP=!LAN_IP!
 echo [OK] API_BASE=!API_BASE! (cihaz baglaninca USB reverse denenir)
 
@@ -280,6 +295,7 @@ if defined ADB_EXE (
   if not errorlevel 1 (
     set "API_BASE=http://127.0.0.1:8000"
     set "API_MODE=USB"
+    echo !API_BASE!>"%ROOT%\.kpss-last-api-base.txt"
     echo [OK] USB reverse aktif - telefon Django'yu 127.0.0.1:8000 uzerinden gorur
     echo      (Wi-Fi kapali / farkli ag olsa da calisir)
   ) else (
@@ -291,7 +307,7 @@ if defined ADB_EXE (
   echo         Telefon PC ile AYNI Wi-Fi'de olmali.
 )
 echo [OK] API_MODE=!API_MODE!  KPSS_API_BASE=!API_BASE!
-echo   Teşhis: uygulama logu documents/logs/api-diag.log
+echo   Teshis: uygulama logu documents/logs/api-diag.log
 echo   Cekmek icin: adb exec-out run-as ... veya Android/data altindan paylas
 echo.
 echo   [ADIM] flutter pub get...

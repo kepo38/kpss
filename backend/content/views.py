@@ -147,13 +147,31 @@ class ContentCatalogView(APIView):
             .order_by("sort_order", "id")
         )
         # Özet kartlar mobilde bilgi kartına taşındı; eski APK uyumu için boş liste.
+        tests_list = list(tests)
+        question_ids: set[str] = set()
+        non_empty = 0
+        for test in tests_list:
+            published = [
+                q
+                for q in test.questions.all()
+                if q.is_published and q.topic_id == test.topic_id
+            ]
+            if published:
+                non_empty += 1
+            for q in published:
+                question_ids.add(q.public_id)
         payload = {
             "version": get_content_version(),
             "generatedAt": timezone.now(),
             "subjects": subjects_qs,
-            "tests": tests,
+            "tests": tests_list,
             "lessons": lessons,
             "summaryCards": [],
+            "stats": {
+                "questionCount": len(question_ids),
+                "testCount": len(tests_list),
+                "nonEmptyTestCount": non_empty,
+            },
         }
         data = ContentCatalogSerializer(payload, context={"request": request}).data
         return Response(data)
@@ -207,7 +225,14 @@ class PremiumSyncView(APIView):
         raw_premium = request.data.get("isPremium")
         if raw_premium is None:
             raw_premium = request.data.get("is_premium")
-        is_premium = bool(raw_premium)
+        if isinstance(raw_premium, bool):
+            is_premium = raw_premium
+        elif isinstance(raw_premium, (int, float)):
+            is_premium = raw_premium == 1
+        elif isinstance(raw_premium, str):
+            is_premium = raw_premium.strip().lower() in {"1", "true", "yes"}
+        else:
+            is_premium = False
 
         product_id = (
             request.data.get("productId")
@@ -281,12 +306,23 @@ class PublishedQuestionsView(APIView):
 
 
 class SimilarQuestionsView(APIView):
-    """Yanlış soruya anlamsal olarak yakın yayınlı sorular."""
+    """Yanlış soruya anlamsal olarak yakın yayınlı sorular (Premium)."""
 
     authentication_classes = []
     permission_classes = []
 
     def get(self, request, public_id: str):
+        user = get_user_from_request(request)
+        if user is None:
+            return Response({"detail": "Oturum gerekli."}, status=401)
+        if not getattr(user, "premium_active", False):
+            return Response(
+                {
+                    "detail": "Benzer sorular Premium üyelikle açılır.",
+                    "code": "premium_required",
+                },
+                status=403,
+            )
         question = get_object_or_404(
             Question,
             public_id=public_id,
