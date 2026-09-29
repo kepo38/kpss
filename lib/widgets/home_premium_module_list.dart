@@ -48,7 +48,9 @@ class HomePremiumModuleList extends StatelessWidget {
               disabled: !offlineOn,
               premiumTone: true,
               tint: AppTheme.champagne,
-              onTap: () => onNavigate(const OfflinePackScreen()),
+              onTap: () => canOffline
+                  ? onNavigate(const OfflinePackScreen())
+                  : onNavigatePremium(() => const OfflinePackScreen()),
             ),
             HomeModuleRow(
               icon: Icons.checklist_rtl,

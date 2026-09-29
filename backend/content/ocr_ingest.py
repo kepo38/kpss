@@ -14,7 +14,12 @@ from .embeddings import refresh_question_embedding
 from .models import OcrIngestLog, Question, Topic
 from .ocr import ocr_question_image, sanitize_ocr_emphasis, strip_option_emphasis
 from .ocr_diagnostics import compose_error_message, log_ocr_event, merge_diagnostics, new_diagnostics
-from .ocr_gemini import gemini_configured, ocr_question_image_gemini
+from .ocr_gemini import (
+    gemini_configured,
+    gemini_quota_cooldown_active,
+    is_gemini_quota_error,
+    ocr_question_image_gemini,
+)
 from .question_fingerprint import (
     content_fingerprint,
     find_duplicate_question,
@@ -71,6 +76,8 @@ class IngestQuestionResult:
     partial: bool = False
     engine: str = ""
     topic_auto_detected: bool = False
+    # Operator / Telegram: fallback veya kota sonrasi uyari metni
+    operator_warning: str = ""
 
 
 def normalize_correct_option(raw: str) -> str:
@@ -614,6 +621,67 @@ def _apply_gemini_supplement_after_fallback(
     return True, "", meta
 
 
+def _operator_warning_for_fallback(
+    *,
+    gemini_failed: bool,
+    gemini_error: str,
+    correct_option: str,
+    options_unreliable: bool = False,
+) -> str:
+    """Telegram/panel: kota veya bos cevapta sessiz 'Soru alindi' olmasin."""
+    if not gemini_failed:
+        return ""
+    quota = is_gemini_quota_error(gemini_error)
+    missing_answer = not (correct_option or "").strip()
+    if options_unreliable and quota:
+        return (
+            "Uyarı: Gemini kota aşıldı; Tesseract yedek şıkları güvenilir değil "
+            "(eksik/birleşmiş). Soru yayınlanmadı — kota yenilenince fotoğrafı "
+            "yeniden gönderin veya panelden düzeltin."
+        )
+    if options_unreliable:
+        return (
+            "Uyarı: Gemini düştü; Tesseract yedek şıkları güvenilir değil "
+            "(eksik/birleşmiş). Soru yayınlanmadı — fotoğrafı yeniden gönderin "
+            "veya panelden düzeltin."
+        )
+    if quota and missing_answer:
+        return (
+            "Uyarı: Gemini kota aşıldı; doğru cevap boş. "
+            "Lütfen panelden işaretleyin."
+        )
+    if quota:
+        return (
+            "Uyarı: Gemini kota aşıldı; Tesseract yedek kullanıldı. "
+            "Panelden kontrol edin."
+        )
+    if missing_answer:
+        return (
+            "Uyarı: Gemini düştü; doğru cevap boş. "
+            "Lütfen panelden işaretleyin."
+        )
+    return ""
+
+
+_OPTION_EMBEDDED_MARK_RE = re.compile(r"(?i)(?<!\w)[A-E]\s*[\)\]]")
+
+
+def _options_parse_unreliable(opts: dict[str, str]) -> bool:
+    filled = sum(
+        1
+        for letter in "ABCDE"
+        if (opts.get(letter) or "").strip()
+        and not _option_is_weak(opts.get(letter, ""))
+    )
+    if filled < 4:
+        return True
+    for letter in "ABCDE":
+        val = opts.get(letter) or ""
+        if len(_OPTION_EMBEDDED_MARK_RE.findall(val)) >= 1:
+            return True
+    return False
+
+
 def _attach_ocr_diagnostics(
     ocr,
     *,
@@ -631,6 +699,9 @@ def _attach_ocr_diagnostics(
         slot = diag.setdefault("gemini", {})
         if isinstance(slot, dict):
             slot["supplement"] = supplement
+    # merge gemini_result.diagnostics pipeline="gemini" ile ezmesin —
+    # fallback_success / fallback_failed gorunur kalsin.
+    diag["pipeline"] = pipeline
     ocr.diagnostics = diag
     return diag
 
@@ -668,17 +739,32 @@ def _run_ocr(
             ocr = ocr_question_image(image)
             pipeline = "fallback_success" if ocr.ok else "fallback_failed"
             if ocr.ok:
-                applied, supplement_err, supplement_diag = (
-                    _apply_gemini_supplement_after_fallback(
-                        ocr, img_bytes, mime=mime
+                # Primary kota/429 veya surec ici cooldown ise supplement
+                # ayni kotayi yakar — atla.
+                if is_gemini_quota_error(gemini_error) or gemini_quota_cooldown_active():
+                    supplement_diag = {
+                        "attempted": False,
+                        "ok": False,
+                        "error": "skipped: Gemini kota/429 — supplement atlandı",
+                        "skipped_quota": True,
+                        "model": "",
+                        "attempts": [],
+                        "got_answer": False,
+                        "got_solution": False,
+                        "got_options": False,
+                    }
+                else:
+                    applied, supplement_err, supplement_diag = (
+                        _apply_gemini_supplement_after_fallback(
+                            ocr, img_bytes, mime=mime
+                        )
                     )
-                )
-                if supplement_err and not applied:
-                    gemini_error = (
-                        f"{gemini_error} | supplement: {supplement_err}"
-                        if gemini_error
-                        else supplement_err
-                    )
+                    if supplement_err and not applied:
+                        gemini_error = (
+                            f"{gemini_error} | supplement: {supplement_err}"
+                            if gemini_error
+                            else supplement_err
+                        )
     else:
         ocr = ocr_question_image(image)
         pipeline = "tesseract" if ocr.ok else "tesseract_failed"
@@ -1028,6 +1114,18 @@ def ingest_question_from_image(
     partial = not ocr.ok or not any(
         (ocr.options or {}).get(letter, "").strip() for letter in "ABCDE"
     )
+    options_unreliable = bool(gemini_failed) and _options_parse_unreliable(opts)
+    if options_unreliable:
+        partial = True
+    operator_warning = _operator_warning_for_fallback(
+        gemini_failed=bool(gemini_failed),
+        gemini_error=gemini_error or "",
+        correct_option=correct_option,
+        options_unreliable=options_unreliable,
+    )
+    # Bos cevap + fallback: partial uyarisi da gorunsun
+    if operator_warning and not correct_option:
+        partial = True
     return IngestQuestionResult(
         ok=True,
         question=question,
@@ -1036,6 +1134,7 @@ def ingest_question_from_image(
         partial=partial,
         engine=getattr(ocr, "engine", "") or "",
         topic_auto_detected=topic_auto_detected,
+        operator_warning=operator_warning,
     )
 
 

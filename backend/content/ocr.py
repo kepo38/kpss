@@ -19,7 +19,7 @@ from typing import Any, BinaryIO
 from django.conf import settings
 from PIL import Image, ImageFilter, ImageOps
 
-from .ocr_style import extract_styled_text
+from .ocr_style import coalesce_adjacent_markdown_bold, extract_styled_text
 
 OPTION_KEYS = ("A", "B", "C", "D", "E")
 
@@ -630,6 +630,8 @@ def _clean_option_body(text: str) -> str:
     text = re.sub(r"\$\$[\s\S]+?\$\$|\$[^$\n]+\$", _hold, text)
     # Yetim baştaki ")" — içindeki f(x) kapanışını silme
     text = re.sub(r"^\s*\)\s*", "", text)
+    # Tesseract/watermark: baştaki sapık tırnak / yıldız (ör. "'ÜPiter", "'*tnam")
+    text = re.sub(r"^[\s'\"*`‘’“”]+", "", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n+", " ", text)
     text = text.strip(" \t:;")
@@ -659,6 +661,9 @@ _PREMISE_ROMAN = {
     "il": "II",
     "ll": "II",
     "lil": "II",
+    "1l": "II",  # OCR: II -> 1l
+    "l1": "II",
+    "11": "II",
     "iii": "III",
     "lll": "III",
     "lli": "III",
@@ -1210,7 +1215,7 @@ def _clean_stem_body(text: str) -> str:
             flush_buf()
         buf.append(ln)
     flush_buf()
-    return "\n\n".join(chunks)
+    return coalesce_adjacent_markdown_bold("\n\n".join(chunks))
 
 
 @dataclass
@@ -1655,6 +1660,9 @@ def _peel_embedded_options(options: dict[str, str]) -> dict[str, str]:
     Bir şık gövdesine yapışmış sonraki şıkları ayır.
 
     Örnek (Romen şıklı OCR): B = "I ve IV cCc) II ve III" → B="I ve IV", C="II ve III"
+
+    Ayrıca aynı harfin gövdede tekrar etmesi (ör. E = "… Konferansı E) Kardak"):
+    kuyruk o şıkta kalır, baş kısım ilk boş önceki şıkka yazılır.
     """
     out = {k: (options.get(k) or "").strip() for k in OPTION_KEYS}
     for _ in range(len(OPTION_KEYS)):
@@ -1690,6 +1698,31 @@ def _peel_embedded_options(options: dict[str, str]) -> dict[str, str]:
             break
         if not moved:
             break
+
+    # Son şıkta (veya erken atlanan E'de) gömülü «E) …» / kendi harfi
+    for key in OPTION_KEYS:
+        body = out[key]
+        if not body:
+            continue
+        self_match = None
+        for m in _EMBEDDED_OPTION_MARK.finditer(body):
+            nk = _normalize_option_key(m.group("key"))
+            if nk == key:
+                self_match = m
+                break
+        if self_match is None:
+            continue
+        head = body[: self_match.start()].strip()
+        tail = body[self_match.end() :].strip()
+        if not head or not tail:
+            continue
+        out[key] = _clean_option_body(tail)
+        for prior in OPTION_KEYS:
+            if prior == key:
+                break
+            if not out[prior]:
+                out[prior] = _clean_option_body(head)
+                break
     return out
 
 

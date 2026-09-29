@@ -23,6 +23,7 @@ from django.db import IntegrityError
 
 from .models import Question, TelegramBotSession, Topic
 from .ocr_ingest import ingest_question_from_image
+from .osym_archive import parse_telegram_caption_archive_label
 from .panel_context import pending_telegram_question_count
 from .question_fingerprint import find_duplicate_question, image_fingerprint
 from .telegram_conversation import (
@@ -880,49 +881,57 @@ def _allowed_user(user_id: int | None) -> bool:
     return user_id in allowed
 
 
-def _parse_photo_caption(caption: str) -> tuple[str, str, bool]:
-    """Fotoğraf alt yazısını konu slug + çözüm diye ayırır.
+def _parse_photo_caption(caption: str) -> tuple[str, str, bool, str]:
+    """Fotoğraf alt yazısını konu slug + çözüm + arşiv etiketi diye ayırır.
 
     Returns:
-        (topic_slug, solution_text, explicit_topic)
+        (topic_slug, solution_text, explicit_topic, archive_label)
 
     İş yeri / PC kapalı toplu gönderim:
+    - Kısa «2025 TARİH ÖABT» / «2026 KPSS Lisans» → arşiv etiketi (çözüm değil).
     - Alt yazıya doğrudan çözüm yapıştırılabilir.
     - İsteğe bağlı ilk satır: konu slug (örn. mat_problem), alt satırlar çözüm.
     - ``çözüm:`` / ``cozum:`` / ``solution:`` ile başlarsa tamamı çözüm.
     """
     raw = (caption or "").strip()
     if not raw:
-        return "", "", False
+        return "", "", False, ""
+
+    archive_only = parse_telegram_caption_archive_label(raw)
+    if archive_only:
+        return "", "", False, archive_only
 
     lower = raw.lower()
     for prefix in ("çözüm:", "cozum:", "solution:"):
         if lower.startswith(prefix):
-            return "", raw[len(prefix) :].strip(), False
+            return "", raw[len(prefix) :].strip(), False, ""
 
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     if len(lines) >= 2:
         first = lines[0]
+        first_archive = parse_telegram_caption_archive_label(first)
+        if first_archive:
+            return "", "\n\n".join(lines[1:]).strip(), False, first_archive
         first_token = first.split()[0]
         if (
             first == first_token
             and Topic.objects.filter(slug=first_token, is_active=True).exists()
         ):
-            return first_token, "\n\n".join(lines[1:]).strip(), True
-        return "", "\n\n".join(lines).strip(), False
+            return first_token, "\n\n".join(lines[1:]).strip(), True, ""
+        return "", "\n\n".join(lines).strip(), False, ""
 
     tokens = raw.split()
     if len(tokens) == 1:
         token = tokens[0]
         if Topic.objects.filter(slug=token, is_active=True).exists():
-            return token, "", True
+            return token, "", True, ""
         # Bilinmeyen tek kelime slug gibiyse eski hata yolu için slug say.
         if "_" in token and len(token) <= 64:
-            return token, "", True
-        return "", raw, False
+            return token, "", True, ""
+        return "", raw, False, ""
 
     # Çok kelimeli tek satır → çözüm (otomatik konu).
-    return "", raw, False
+    return "", raw, False, ""
 
 
 def _resolve_topic(topic_slug: str = "") -> Topic | None:
@@ -1271,6 +1280,7 @@ def _build_ingest_success_html(
     duplicate: Question | None,
     include_solution_prompt: bool,
     topic_auto_detected: bool = False,
+    operator_warning: str = "",
 ) -> str:
     duration = _escape_html(_format_elapsed(elapsed_seconds))
     subject = _escape_html(topic.subject.name)
@@ -1296,8 +1306,17 @@ def _build_ingest_success_html(
         lines.append(
             "✨ <b>Gemini otomatik çözüm eklendi</b> — panelde görünür."
         )
-    if partial:
+    warn = (operator_warning or "").strip()
+    if warn:
+        lines.append(f"⚠️ <b>{_escape_html(warn)}</b>")
+    elif not (getattr(question, "correct_option", "") or "").strip():
+        lines.append(
+            "⚠️ <b>Uyarı: doğru cevap boş — panelden işaretleyin.</b>"
+        )
+    if partial and not warn:
         lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
+    elif partial and warn:
+        pass  # operator_warning zaten paneli isaret ediyor
     if duplicate is not None:
         dup_id = _escape_html(duplicate.public_id)
         lines.append(
@@ -1339,6 +1358,7 @@ def _build_ingest_success_plain(
     duplicate: Question | None,
     include_solution_prompt: bool,
     topic_auto_detected: bool = False,
+    operator_warning: str = "",
 ) -> str:
     duration = _format_elapsed(elapsed_seconds)
     lines: list[str] = []
@@ -1354,7 +1374,12 @@ def _build_ingest_success_plain(
     lines.append(f"Kimlik: {question.public_id}")
     if (question.solution or "").strip():
         lines.append("✨ Gemini otomatik çözüm eklendi — panelde görünür.")
-    if partial:
+    warn = (operator_warning or "").strip()
+    if warn:
+        lines.append(f"⚠️ {warn}")
+    elif not (getattr(question, "correct_option", "") or "").strip():
+        lines.append("⚠️ Uyarı: doğru cevap boş — panelden işaretleyin.")
+    if partial and not warn:
         lines.append("Uyarı: kısmi OCR — panelden kontrol edin.")
     if duplicate is not None:
         lines.append(
@@ -1394,6 +1419,7 @@ def _send_ingest_success(
     duplicate: Question | None,
     include_solution_prompt: bool,
     topic_auto_detected: bool = False,
+    operator_warning: str = "",
 ) -> None:
     keyboard = (
         solution_prompt_keyboard(question) if include_solution_prompt else None
@@ -1408,6 +1434,7 @@ def _send_ingest_success(
         duplicate=duplicate,
         include_solution_prompt=include_solution_prompt,
         topic_auto_detected=topic_auto_detected,
+        operator_warning=operator_warning,
     )
     sent = send_message(
         chat_id,
@@ -1426,6 +1453,7 @@ def _send_ingest_success(
             duplicate=duplicate,
             include_solution_prompt=include_solution_prompt,
             topic_auto_detected=topic_auto_detected,
+            operator_warning=operator_warning,
         )
         send_message(chat_id, reply_plain, reply_markup=keyboard)
 
@@ -1441,6 +1469,7 @@ def _ingest_photo_worker(
     explicit_topic: bool,
     forwarded: bool,
     skip_duplicate_public_id: str = "",
+    archive_label: str = "",
 ) -> HandleOutcome:
     processing_key = _processing_key(int(chat_id), message_id)
     try:
@@ -1504,6 +1533,31 @@ def _ingest_photo_worker(
                     f"Kaydedilemedi: {result.error or 'bilinmeyen hata'}\n{_retry_hint()}",
                 )
                 return "error"
+
+            if archive_label and result.question:
+                from .osym_archive import resolve_to_catalog_key
+                from .osym_cikmis import normalize_osym_cikmis_label
+
+                label = (
+                    resolve_to_catalog_key(archive_label)
+                    or normalize_osym_cikmis_label(archive_label)
+                )
+                if label:
+                    result.question.osym_sordu = True
+                    result.question.osym_cikmis_adi = label
+                    sol = (result.question.solution or "").strip()
+                    if sol and normalize_osym_cikmis_label(sol).casefold() == (
+                        normalize_osym_cikmis_label(label).casefold()
+                    ):
+                        result.question.solution = ""
+                    result.question.save(
+                        update_fields=[
+                            "osym_sordu",
+                            "osym_cikmis_adi",
+                            "solution",
+                            "updated_at",
+                        ]
+                    )
 
             pending = Question.objects.filter(
                 submission_source=Question.SUBMISSION_SOURCE_TELEGRAM,
@@ -1569,6 +1623,7 @@ def _ingest_photo_worker(
                     duplicate=duplicate,
                     include_solution_prompt=include_prompt,
                     topic_auto_detected=result.topic_auto_detected,
+                    operator_warning=getattr(result, "operator_warning", "") or "",
                 )
                 if auto_solution is not None:
                     _dispatch_conversation_reply(int(chat_id), auto_solution)
@@ -1593,6 +1648,7 @@ def _ingest_photo_worker(
                     duplicate=duplicate,
                     include_solution_prompt=False,
                     topic_auto_detected=result.topic_auto_detected,
+                    operator_warning=getattr(result, "operator_warning", "") or "",
                 )
                 _maybe_send_geometry_solution_photo(int(chat_id), result.question)
                 delete_message(int(chat_id), message_id)
@@ -1614,7 +1670,9 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
 
     file_id, file_unique_id = extracted
     caption = (message.get("caption") or "").strip()
-    topic_slug, caption_solution, explicit_topic = _parse_photo_caption(caption)
+    topic_slug, caption_solution, explicit_topic, archive_label = _parse_photo_caption(
+        caption
+    )
     topic = _resolve_topic(topic_slug)
     if topic is None:
         if topic_slug:
@@ -1733,6 +1791,7 @@ def _process_photo_message(message: dict[str, Any], chat_id: int) -> HandleOutco
             explicit_topic=explicit_topic,
             forwarded=forwarded,
             skip_duplicate_public_id=skip_duplicate_public_id,
+            archive_label=archive_label,
         )
     )
     if worker_outcome in (

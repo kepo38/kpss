@@ -91,6 +91,16 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
         return Icons.cloud_outlined;
       case 'leaderboard':
         return Icons.leaderboard_outlined;
+      case 'coach':
+        return Icons.auto_awesome_rounded;
+      case 'plan':
+        return Icons.calendar_view_week_rounded;
+      case 'repeat':
+        return Icons.replay_circle_filled_outlined;
+      case 'similar':
+        return Icons.join_inner_outlined;
+      case 'unlimited':
+        return Icons.all_inclusive_rounded;
       default:
         return Icons.star_outline;
     }

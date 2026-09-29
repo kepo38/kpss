@@ -306,13 +306,13 @@ class Question(models.Model):
 
     @property
     def osym_cikmis_badge_label(self) -> str:
-        """Panel rozeti: gereksiz «· DGS» sonekini düşürülmüş arşiv anahtarı."""
+        """Panel/API rozeti: katalog kanoniğine indirgenmiş arşiv etiketi."""
         raw = (self.osym_cikmis_adi or "").strip()
         if not raw:
             return ""
-        from .osym_archive import archive_key_from_label
+        from .osym_archive import resolve_to_catalog_key
 
-        return archive_key_from_label(raw) or raw
+        return resolve_to_catalog_key(raw) or raw
     tag_kronoloji = models.BooleanField(
         default=False,
         db_index=True,

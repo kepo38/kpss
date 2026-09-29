@@ -62,16 +62,36 @@ _GEMINI_URL = (
 # Kota / 503 durumunda sırayla dene. Ölü (404) modeller _DEAD_GEMINI_MODELS ile
 # süreç boyunca atlanır — aksi halde her OCR 6×404 ile free-tier kotayı yakar.
 _GEMINI_MODEL_FALLBACKS = (
+    "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-flash-latest",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
 )
 
-# 503 / UNAVAILABLE / 429: ayni modelde kisa backoff ile tekrar dene.
-_GEMINI_TRANSIENT_TOKENS = ("503", "UNAVAILABLE", "429")
+# 503 / UNAVAILABLE: ayni modelde kisa backoff ile tekrar dene.
+# Net kota/429 (RESOURCE_EXHAUSTED / free_tier) buraya GIRMEZ — kotayi yakmamak
+# icin early-abort + surec ici cooldown kullanilir.
+_GEMINI_TRANSIENT_TOKENS = ("503", "UNAVAILABLE")
 _GEMINI_SAME_MODEL_ATTEMPTS = 3
 _GEMINI_TRANSIENT_BACKOFFS = (1.5, 3.0)
+
+# Net kota / rate-limit 429 isaretleri (buyuk/kucuk harf duyarsiz eslesme).
+# Duz "HTTP 429" de Gemini free-tier'da neredeyse her zaman kota/rate-limit'tir.
+_GEMINI_QUOTA_MARKERS = (
+    "resource_exhausted",
+    "free_tier",
+    "generate_content_free_tier",
+    "quota exceeded",
+    "exceeded your current quota",
+    "rate_limit",
+    "rate limit",
+)
+
+# Surec ici cooldown: kota 429 sonrasi ayni process'te yeni Gemini denemeleri
+# atlanir (Telegram burst kotayi tekrar yakmasin). Yeniden baslatinca sifirlanir.
+_GEMINI_QUOTA_COOLDOWN_SEC = 50.0
+_quota_cooldown_until_mono: float = 0.0
 
 # Süreç içi: "no longer available" / "is not found" → bir daha deneme.
 _DEAD_GEMINI_MODELS: set[str] = set()
@@ -724,7 +744,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _model_candidates() -> list[str]:
     configured = (
-        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.6-flash"
+        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.8-flash"
     ).strip()
     out: list[str] = []
     for model in (configured, *_GEMINI_MODEL_FALLBACKS):
@@ -751,7 +771,66 @@ def _mark_dead_gemini_model(model: str, exc: BaseException) -> None:
 
 
 
+def is_gemini_quota_error(exc_or_msg: BaseException | str) -> bool:
+    """Net kota / rate-limit 429 mi? (503 UNAVAILABLE degil.)
+
+    True ise model cascade / ayni-model retry kotayi daha da yakar — early-abort.
+    Surec ici kota cooldown skip mesajlari da True (supplement atlamak icin).
+    """
+    msg = str(exc_or_msg or "")
+    if not msg:
+        return False
+    lower = msg.lower()
+    if "kota cooldown" in lower or "quota cooldown" in lower:
+        return True
+    has_429 = "429" in msg
+    has_exhausted = "resource_exhausted" in lower
+    if not has_429 and not has_exhausted:
+        return False
+    # 503 yolunu kota sanma
+    if "503" in msg and "429" not in msg and not has_exhausted:
+        return False
+    if any(marker in lower for marker in _GEMINI_QUOTA_MARKERS):
+        return True
+    # Gemini HTTP 429 govdesi genelde quota; marker yoksa da abort (guvenli taraf)
+    if "http 429" in lower or has_429:
+        return True
+    return has_exhausted
+
+
+def gemini_quota_cooldown_active() -> bool:
+    """Surec ici kota cooldown aktif mi?"""
+    return time.monotonic() < _quota_cooldown_until_mono
+
+
+def gemini_quota_cooldown_remaining_sec() -> float:
+    return max(0.0, _quota_cooldown_until_mono - time.monotonic())
+
+
+def _arm_gemini_quota_cooldown() -> None:
+    """Kota 429 sonrasi ~50s cooldown — sonraki Gemini cagrilari skip edilir."""
+    global _quota_cooldown_until_mono
+    _quota_cooldown_until_mono = time.monotonic() + _GEMINI_QUOTA_COOLDOWN_SEC
+
+
+def _reset_gemini_quota_cooldown_for_tests() -> None:
+    """Sadece unit testler icin cooldown sifirla."""
+    global _quota_cooldown_until_mono
+    _quota_cooldown_until_mono = 0.0
+
+
+def _quota_cooldown_skip_error() -> RuntimeError:
+    rem = int(gemini_quota_cooldown_remaining_sec() + 0.5)
+    return RuntimeError(
+        f"Gemini kota cooldown aktif (~{rem}s); "
+        "onceki 429 RESOURCE_EXHAUSTED / free_tier sonrasi atlandi."
+    )
+
+
 def _is_transient_gemini_error(exc: BaseException) -> bool:
+    """Gercek gecici hata (503/UNAVAILABLE). Kota 429 buraya girmez."""
+    if is_gemini_quota_error(exc):
+        return False
     msg = str(exc)
     return any(token in msg for token in _GEMINI_TRANSIENT_TOKENS)
 
@@ -765,7 +844,9 @@ def _post_gemini_model_with_retries(
     timeout: int = 45,
     json_mode: bool = True,
 ) -> str:
-    """Ayni modelde 503/429 icin backoff; 404'te uyumadan bir sonraki modele birak."""
+    """Ayni modelde 503 icin backoff; net kota 429'de hemen cik; 404'te uyuma."""
+    if gemini_quota_cooldown_active():
+        raise _quota_cooldown_skip_error()
     last_err: Exception | None = None
     for attempt in range(_GEMINI_SAME_MODEL_ATTEMPTS):
         try:
@@ -779,6 +860,10 @@ def _post_gemini_model_with_retries(
             )
         except RuntimeError as exc:
             last_err = exc
+            # Net kota: ayni modelde tekrar deneme / uyuma — kotayi yakma
+            if is_gemini_quota_error(exc):
+                _arm_gemini_quota_cooldown()
+                raise
             # 404 / dead: hemen cik (uyuma)
             if model in _DEAD_GEMINI_MODELS or not _is_transient_gemini_error(exc):
                 raise
@@ -851,10 +936,13 @@ def _post_gemini_model(
 
 
 def _retryable(exc: RuntimeError) -> bool:
+    """Baska modele gecmeye deger mi? Net kota 429 cascade ETMEZ."""
+    if is_gemini_quota_error(exc):
+        return False
     msg = str(exc)
     return any(
         token in msg
-        for token in ("429", "404", "403", "503", "UNAVAILABLE", "JSON ayrıştırılamadı", "boş yanıt")
+        for token in ("404", "403", "503", "UNAVAILABLE", "JSON ayrıştırılamadı", "boş yanıt")
     )
 
 
@@ -887,6 +975,10 @@ def _post_gemini(
 ) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
     last_err: Exception | None = None
     attempts: list[dict[str, Any]] = []
+    if gemini_quota_cooldown_active():
+        err = _quota_cooldown_skip_error()
+        attempts.append({"model": "(cooldown)", "ok": False, "error": str(err)[:500]})
+        raise GeminiPostError(str(err), attempts) from err
     prompt = _ocr_prompt_with_panel_catalog()
     for model in _model_candidates():
         try:
@@ -903,6 +995,9 @@ def _post_gemini(
             attempts.append(
                 {"model": model, "ok": False, "error": str(exc)[:500]}
             )
+            # Net kota: diger modellere cascade etme (kotayi yakma)
+            if is_gemini_quota_error(exc):
+                raise GeminiPostError(str(exc), attempts) from exc
             if _retryable(exc):
                 continue
             raise GeminiPostError(str(exc), attempts) from exc
@@ -945,6 +1040,11 @@ def gemini_supplement_answer_solution(
     if not gemini_configured():
         return GeminiSupplementResult(
             "", "", "", [], ok=False, error="GEMINI_API_KEY tanımlı değil."
+        )
+    if gemini_quota_cooldown_active():
+        err = _quota_cooldown_skip_error()
+        return GeminiSupplementResult(
+            "", "", "", [], ok=False, error=str(err)
         )
 
     base_prompt = _SUPPLEMENT_PROMPT
@@ -992,6 +1092,10 @@ def gemini_supplement_answer_solution(
             attempts.append(
                 {"model": model, "ok": False, "error": str(exc)[:500]}
             )
+            if is_gemini_quota_error(exc):
+                return GeminiSupplementResult(
+                    "", "", "", attempts, ok=False, error=str(exc)
+                )
             if _retryable(exc):
                 continue
             return GeminiSupplementResult(

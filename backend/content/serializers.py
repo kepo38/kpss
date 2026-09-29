@@ -56,7 +56,9 @@ class QuestionSerializer(serializers.ModelSerializer):
     cozumImageUrl = serializers.SerializerMethodField()
     guncellenmeTarihi = serializers.DateTimeField(source="updated_at")
     osymSordu = serializers.BooleanField(source="osym_sordu")
-    osymSinav = serializers.CharField(source="osym_cikmis_adi", allow_blank=True)
+    osymSinav = serializers.CharField(
+        source="osym_cikmis_badge_label", allow_blank=True, read_only=True
+    )
     difficulty = serializers.CharField()
     attemptCount = serializers.IntegerField(source="attempt_count")
     viewCount = serializers.IntegerField(source="view_count", read_only=True)

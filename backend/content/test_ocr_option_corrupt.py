@@ -1,6 +1,13 @@
 from django.test import SimpleTestCase
 
-from content.ocr import format_premise_stem, repair_premise_markers, repair_premise_option
+from content.ocr import (
+    _clean_option_body,
+    _peel_embedded_options,
+    format_premise_stem,
+    parse_question_text,
+    repair_premise_markers,
+    repair_premise_option,
+)
 from content.ocr_ingest import _option_is_corrupt, finalize_ocr_options_for_panel
 
 
@@ -31,6 +38,9 @@ class OcrOptionCorruptTests(SimpleTestCase):
             "1,ll ve lll": "I, II ve III",
             "1, İl ve lll": "I, II ve III",
             "Yalnız I": "Yalnız I",
+            "Yalnız 1l": "Yalnız II",
+            "Yalnız l1": "Yalnız II",
+            "Yalnız 11": "Yalnız II",
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
@@ -54,6 +64,37 @@ class OcrOptionCorruptTests(SimpleTestCase):
         self.assertEqual(fixed["E"], "I, II ve III")
         self.assertIn("I. Takrir", repair_premise_markers("yıllarda Il. Takrir"))
         self.assertIn("III. Serbest", repair_premise_markers("(11. Serbest"))
+
+
+class OcrOptionPeelAndStripTests(SimpleTestCase):
+    def test_peel_self_embedded_e_from_mashed_option(self):
+        opts = {
+            "A": "Salt-II Antlaşması",
+            "B": "Jüpiter Füzeleri Sorunu",
+            "C": "",
+            "D": "",
+            "E": "Bandung Konferansı E) Kardak Krizi",
+        }
+        peeled = _peel_embedded_options(opts)
+        self.assertEqual(peeled["E"], "Kardak Krizi")
+        self.assertEqual(peeled["C"], "Bandung Konferansı")
+
+    def test_clean_option_strips_leading_quotes_and_stars(self):
+        self.assertEqual(_clean_option_body("'ÜPiter Füzeleri"), "ÜPiter Füzeleri")
+        self.assertEqual(_clean_option_body('"*tnam Savaşı'), "tnam Savaşı")
+        self.assertEqual(_clean_option_body("`Vietnam"), "Vietnam")
+
+    def test_parse_mashed_e_option_via_parse_question_text(self):
+        raw = (
+            "Soğuk Savaş sorusu?\n"
+            "A) Salt-II Antlaşması\n"
+            "B) Jüpiter Füzeleri Sorunu\n"
+            "C) Vietnam Savaşı\n"
+            "D) Bandung Konferansı E) Kardak Krizi\n"
+        )
+        _stem, opts = parse_question_text(raw)
+        self.assertEqual(opts["D"], "Bandung Konferansı")
+        self.assertEqual(opts["E"], "Kardak Krizi")
 
 
 class FormatPremiseStemTests(SimpleTestCase):

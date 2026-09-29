@@ -239,45 +239,70 @@ class TelegramCaptionParseTests(TestCase):
     def test_empty_caption(self):
         from content.telegram_bot import _parse_photo_caption
 
-        self.assertEqual(_parse_photo_caption(""), ("", "", False))
-        self.assertEqual(_parse_photo_caption("  "), ("", "", False))
+        self.assertEqual(_parse_photo_caption(""), ("", "", False, ""))
+        self.assertEqual(_parse_photo_caption("  "), ("", "", False, ""))
 
     def test_solution_marker_is_not_topic(self):
         from content.telegram_bot import _parse_photo_caption
 
-        slug, sol, explicit = _parse_photo_caption(
+        slug, sol, explicit, archive = _parse_photo_caption(
             "çözüm: Doğru cevap A çünkü oran orantı."
         )
         self.assertEqual(slug, "")
         self.assertFalse(explicit)
+        self.assertEqual(archive, "")
         self.assertIn("Doğru cevap A", sol)
 
     def test_long_turkish_caption_is_solution_not_missing_topic(self):
         from content.telegram_bot import _parse_photo_caption
 
-        slug, sol, explicit = _parse_photo_caption(
+        slug, sol, explicit, archive = _parse_photo_caption(
             "Doğru cevap C şıkkıdır çünkü metin bütünlüğü bozulmaz."
         )
         self.assertEqual(slug, "")
         self.assertFalse(explicit)
+        self.assertEqual(archive, "")
         self.assertTrue(sol.startswith("Doğru cevap C"))
+
+    def test_archive_caption_returns_label_empty_solution(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        slug, sol, explicit, archive = _parse_photo_caption("2025 TARİH ÖABT")
+        self.assertEqual(slug, "")
+        self.assertEqual(sol, "")
+        self.assertFalse(explicit)
+        self.assertTrue(archive)
+        self.assertEqual(archive, "2025 ÖABT")
+
+    def test_archive_first_line_rest_is_solution(self):
+        from content.telegram_bot import _parse_photo_caption
+
+        slug, sol, explicit, archive = _parse_photo_caption(
+            "2026 KPSS Lisans\nDoğru cevap B çünkü …"
+        )
+        self.assertEqual(slug, "")
+        self.assertFalse(explicit)
+        self.assertEqual(archive, "2026 KPSS Lisans")
+        self.assertIn("Doğru cevap B", sol)
 
     def test_first_line_known_slug_rest_is_solution(self):
         from content.telegram_bot import _parse_photo_caption
 
-        slug, sol, explicit = _parse_photo_caption(
+        slug, sol, explicit, archive = _parse_photo_caption(
             "mat_problem\nCevap 12’dir."
         )
         self.assertEqual(slug, "mat_problem")
         self.assertTrue(explicit)
+        self.assertEqual(archive, "")
         self.assertEqual(sol, "Cevap 12’dir.")
 
     def test_unknown_underscore_token_stays_slug_error_path(self):
         from content.telegram_bot import _parse_photo_caption
 
-        slug, sol, explicit = _parse_photo_caption("konu_yok_xyz")
+        slug, sol, explicit, archive = _parse_photo_caption("konu_yok_xyz")
         self.assertEqual(slug, "konu_yok_xyz")
         self.assertEqual(sol, "")
+        self.assertEqual(archive, "")
         self.assertTrue(explicit)
 
 

@@ -7,6 +7,7 @@ Telegram için `rich_text_telegram` modülünü kullanın.
 from __future__ import annotations
 
 from .ocr import normalize_turkish_text
+from .ocr_style import coalesce_adjacent_markdown_bold
 from .rich_text_common import (
     _HTML_TAG_RE,
     choose_paste_text,
@@ -83,7 +84,9 @@ def normalize_pasted_stem(
     else:
         chosen = choose_paste_text(raw, "")
     chosen = restore_collapsed_breaks(chosen)
-    return normalize_turkish_text(normalize_paste_text(chosen)).strip()
+    return coalesce_adjacent_markdown_bold(
+        normalize_turkish_text(normalize_paste_text(chosen))
+    ).strip()
 
 
 def normalize_pasted_option(

@@ -1,3 +1,4 @@
+import '../models/user_model.dart';
 import 'database_service.dart';
 import 'app_config_service.dart';
 import '../constants/studio_modules.dart';
@@ -8,16 +9,26 @@ class PremiumService {
   PremiumService._();
   static final PremiumService instance = PremiumService._();
 
+  /// Sunucu/profil grant’i: flag + (varsa) bitiş tarihi.
+  static bool userPremiumActive(UserModel? user, {DateTime? now}) {
+    if (user == null || !user.isPremium) return false;
+    final expiry = user.premiumBitisTarihi;
+    if (expiry == null) return true;
+    return expiry.isAfter(now ?? DateTime.now());
+  }
+
   bool get isPremium {
     final user = DatabaseService.instance.currentUser;
-    if (user?.isPremium ?? false) return true;
+    if (userPremiumActive(user)) return true;
     return PlayBillingService.instance.premiumNotifier.value;
   }
 
   /// Offline paket yalnızca yıllık abonelikte (Play veya sunucu grant).
   bool get isYearlyPremium {
     final user = DatabaseService.instance.currentUser;
-    if (user?.isYearlyPremium ?? false) return true;
+    if (userPremiumActive(user) && (user?.isYearlyPremium ?? false)) {
+      return true;
+    }
     return PlayBillingService.instance.isYearlyPremium;
   }
 
@@ -37,6 +48,17 @@ class PremiumService {
           'Kütüphanede internet olmadan tüm konu testlerini çöz. '
           'Yalnızca yıllık Premium ile.',
       yearlyOnly: true,
+    ),
+    PremiumFeature(
+      iconName: 'coach',
+      title: 'HEDEF KAMU Koç',
+      description:
+          'Net trend, gelişim alanları ve çalışma önceliği — kişisel özet.',
+    ),
+    PremiumFeature(
+      iconName: 'plan',
+      title: 'Haftalık Çalışma Planı',
+      description: 'Zayıf konulara göre günlük rota ve görev önceliği.',
     ),
     PremiumFeature(
       iconName: 'checklist',

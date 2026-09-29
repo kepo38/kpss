@@ -694,7 +694,7 @@ _XPM_SPEECH_GLUE_RE = re.compile(
 _GOOGLE_SPEECH_SIGNAL_RE = re.compile(
     r"\bequals\b|\bfour-thirds\b|\bend-fraction\b|\bcap\s+[A-Za-z]\b|"
     # ``\implies`` LaTeX komutu konuşma sinyali değil
-    r"(?<!\\)\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]|"
+    r"(?<!\\)\bimplies\b|\bopen paren\b|\bclose paren\b|(?<![A-Za-z])cap\s*[A-Za-z]\b|"
     r"\bplus\b|\bminus\b|\bspace\b",
     re.IGNORECASE,
 )

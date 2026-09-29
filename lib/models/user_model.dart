@@ -91,6 +91,10 @@ class UserModel {
     String? premiumGrantNote,
     String? photoUrl,
     DateTime? isimDegistirilebilirAt,
+    bool clearPremiumBitisTarihi = false,
+    bool clearPremiumVerilisTarihi = false,
+    bool clearPremiumGrantNote = false,
+    bool clearPremiumProductId = false,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -99,11 +103,18 @@ class UserModel {
       isPremium: isPremium ?? this.isPremium,
       isAnonymous: isAnonymous ?? this.isAnonymous,
       isYearlyPremium: isYearlyPremium ?? this.isYearlyPremium,
-      premiumProductId: premiumProductId ?? this.premiumProductId,
-      premiumBitisTarihi: premiumBitisTarihi ?? this.premiumBitisTarihi,
-      premiumVerilisTarihi:
-          premiumVerilisTarihi ?? this.premiumVerilisTarihi,
-      premiumGrantNote: premiumGrantNote ?? this.premiumGrantNote,
+      premiumProductId: clearPremiumProductId
+          ? ''
+          : (premiumProductId ?? this.premiumProductId),
+      premiumBitisTarihi: clearPremiumBitisTarihi
+          ? null
+          : (premiumBitisTarihi ?? this.premiumBitisTarihi),
+      premiumVerilisTarihi: clearPremiumVerilisTarihi
+          ? null
+          : (premiumVerilisTarihi ?? this.premiumVerilisTarihi),
+      premiumGrantNote: clearPremiumGrantNote
+          ? null
+          : (premiumGrantNote ?? this.premiumGrantNote),
       photoUrl: photoUrl ?? this.photoUrl,
       isimDegistirilebilirAt:
           isimDegistirilebilirAt ?? this.isimDegistirilebilirAt,

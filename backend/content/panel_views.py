@@ -46,10 +46,11 @@ from .models import (
 from .map_catalog import MAP_CATALOG, iter_map_entries, map_template_choices
 from .map_question_renderer import render_map_question, validate_map_markers
 from .ocr import ocr_question_image, strip_option_emphasis
-from .ocr_gemini import gemini_configured, ocr_question_image_gemini
+from .ocr_gemini import gemini_configured, is_gemini_quota_error, ocr_question_image_gemini
 from .ocr_ingest import (
     finalize_ocr_options_for_panel,
     normalize_correct_option,
+    _operator_warning_for_fallback,
     _option_is_corrupt,
     _run_ocr,
     _compose_fallback_log_error,
@@ -1148,11 +1149,29 @@ def panel_quick_question(request: HttpRequest) -> HttpResponse:
                             ),
                         )
                         if ocr.ok and any(opts.values()):
-                            messages.success(
-                                request,
-                                "Görselden metin okundu — "
-                                "kontrol edip Kaydet'e basın.",
-                            )
+                            if gemini_failed and (
+                                is_gemini_quota_error(gemini_error)
+                                or not (correct_option or "").strip()
+                            ):
+                                warn = _operator_warning_for_fallback(
+                                    gemini_failed=True,
+                                    gemini_error=gemini_error or "",
+                                    correct_option=correct_option or "",
+                                )
+                                messages.warning(
+                                    request,
+                                    warn
+                                    or (
+                                        "Gemini yedek OCR — doğru cevabı "
+                                        "panelden kontrol edin."
+                                    ),
+                                )
+                            else:
+                                messages.success(
+                                    request,
+                                    "Görselden metin okundu — "
+                                    "kontrol edip Kaydet'e basın.",
+                                )
                         elif ocr.raw_text:
                             messages.warning(
                                 request,

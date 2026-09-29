@@ -903,10 +903,32 @@ class FormattedText extends StatelessWidget {
   }
 
   static String _repairSplitBoldLines(String text) {
-    return text.replaceAllMapped(
+    var out = text.replaceAllMapped(
       RegExp(r'\*\*([^\n*][^\n]*?)\n\s+([^\n*][^\n]*?)\*\*'),
       (m) => '**${m.group(1)}${m.group(2)}**',
     );
+    // Soft-joined OCR: **foo** **bar**? → **foo bar?**
+    final adjacent = RegExp(
+      r'\*\*((?:(?!\*\*).)+?)\*\*[ \t]+\*\*((?:(?!\*\*).)+?)\*\*',
+    );
+    String? prev;
+    while (prev != out) {
+      prev = out;
+      out = out.replaceAllMapped(adjacent, (m) {
+        final a = m.group(1)!.trimRight();
+        final b = m.group(2)!.trimLeft();
+        if (RegExp(r'^[A-E]\)', caseSensitive: false).hasMatch(a) ||
+            RegExp(r'^[A-E]\)', caseSensitive: false).hasMatch(b)) {
+          return m.group(0)!;
+        }
+        return '**$a $b**';
+      });
+    }
+    out = out.replaceAllMapped(
+      RegExp(r'\*\*((?:(?!\*\*).)+?)\*\*([?!.…]+)(?!\*)'),
+      (m) => '**${m.group(1)}${m.group(2)}**',
+    );
+    return out;
   }
 
   /// Google/panel yapıştırmasında kalan fragment artıklarını temizler.

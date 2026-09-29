@@ -44,6 +44,21 @@ _KPSS_GYGK_LEGACY_RE = re.compile(
     r"(?:\s·\s*(?:Genel Yetenek\s*-\s*Genel Kültür|GYGK))$",
     re.IGNORECASE,
 )
+# Eski AGS oturum soneki: «2025 AGS · MEB Akademi Giriş Sınavı» → «2025 AGS»
+_AGS_LEGACY_SESSION_RE = re.compile(
+    r"^(\d{4})\s+AGS(?:\s·\s*MEB\s+Akademi\s+Giri[sş]\s+S[ıi]nav[ıi])?$",
+    re.IGNORECASE,
+)
+# Branşlı / ASCII ÖABT: «2025 TARİH ÖABT», «2024 ÖABT Turkce», «2025 OABT» → «YYYY ÖABT»
+_OABT_LOOSE_RE = re.compile(
+    r"^(\d{4})\b(?:(?!\d{4}).)*\b(?:Ö|O|ö|o)ABT\b",
+    re.IGNORECASE,
+)
+# Branşlı AGS (nadir): «2025 AGS Alan» → «2025 AGS»
+_AGS_BRANCH_RE = re.compile(
+    r"^(\d{4})\b(?:(?!\d{4}).)*\bAGS\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -152,9 +167,19 @@ _EXAM_TEMPLATES: tuple[dict, ...] = (
         ),
     },
     {
-        "family": "AGS",
+        "family": "MEB Akademi",
         "exam_name": "AGS",
-        "sessions": (("ags", "MEB Akademi Giriş Sınavı", 80),),
+        "sessions": (("ags", "", 80),),
+        "short_aliases": ("ags",),
+    },
+    {
+        "family": "MEB Akademi",
+        "exam_name": "ÖABT",
+        "sessions": (("oabt", "", 80),),
+        "short_aliases": (
+            "öabt",
+            "oabt",
+        ),
     },
     {
         "family": "ALES",
@@ -245,7 +270,7 @@ def archive_key_from_label(raw: str) -> str:
 
 
 def _collapse_legacy_exam_labels(key: str) -> str:
-    """Eski YKS / HMGS / İYÖS / KPSS etiketlerini güncel katalog biçimine indirger."""
+    """Eski YKS / HMGS / İYÖS / KPSS / AGS / ÖABT etiketlerini güncel katalog biçimine indirger."""
     match = _AYT_LEGACY_EXAM_RE.match(key)
     if match:
         return f"{match.group(1)} AYT"
@@ -263,6 +288,15 @@ def _collapse_legacy_exam_labels(key: str) -> str:
     match = _KPSS_GYGK_LEGACY_RE.match(key)
     if match:
         return match.group(1).strip()
+    match = _AGS_LEGACY_SESSION_RE.match(key)
+    if match:
+        return f"{match.group(1)} AGS"
+    match = _OABT_LOOSE_RE.match(key)
+    if match:
+        return f"{match.group(1)} ÖABT"
+    match = _AGS_BRANCH_RE.match(key)
+    if match:
+        return f"{match.group(1)} AGS"
     return _collapse_redundant_session_suffix(key)
 
 
@@ -302,7 +336,8 @@ def resolve_to_catalog_key(raw: str) -> str:
     """Kısa etiketleri katalog kanoniğine bağlar.
 
     Örnekler:
-    - «2026 AGS» → «2026 AGS · MEB Akademi Giriş Sınavı»
+    - «2026 AGS» / «2025 AGS · MEB Akademi Giriş Sınavı» → «2026 AGS» / «2025 AGS»
+    - «2025 TARİH ÖABT» / «2025 OABT» → «2025 ÖABT»
     - «2025 KPSS Lisans» → «2025 KPSS Lisans»
     - «2025 KPSS Lisans · GYGK» → «2025 KPSS Lisans»
     - «2026 KPSS A» → «2026 KPSS A Grubu»
@@ -572,3 +607,50 @@ def archive_families() -> list[str]:
 
 def archive_years(*, years: Iterable[int] | None = None) -> list[int]:
     return sorted(list(years or DEFAULT_YEARS), reverse=True)
+
+
+# Telegram alt yazısı: «2025 TARİH ÖABT», «2026 KPSS Lisans» gibi arşiv etiketleri.
+# Serbest çözüm metninden ayırmak için bilinen sınav jetonları.
+_CAPTION_EXAM_TOKEN_RE = re.compile(
+    r"(?i)(?<![A-Za-zÇĞİÖŞÜçğıöşü])"
+    r"(?:"
+    r"öabt|oabt|"
+    r"kpss|"
+    r"dgs|"
+    r"ales|"
+    r"ags|"
+    r"hmgs|"
+    r"iy[öo]s|"
+    r"tyt|"
+    r"ayt|"
+    r"yks|"
+    r"ms[üu]|"
+    r"kaymakaml[iı]k"
+    r")"
+    r"(?![A-Za-zÇĞİÖŞÜçğıöşü])"
+)
+
+
+def parse_telegram_caption_archive_label(raw: str) -> str:
+    """Alt yazı yıl + sınav etiketi ise kanonik/normalized etiket döndürür.
+
+    Yalnızca kısa etiket satırları (ör. «2025 TARİH ÖABT», «2026 KPSS Lisans»).
+    Uzun serbest çözüm metni → boş string.
+    """
+    if not (raw or "").strip():
+        return ""
+    # Çok satırlı alt yazıda yalnızca satır satır kontrol edilir (çağıran taraf).
+    if "\n" in raw or "\r" in raw:
+        return ""
+    text = normalize_osym_cikmis_label(raw)
+    if not text:
+        return ""
+    if len(text) > 80 or len(text.split()) > 8:
+        return ""
+    if any(ch in text for ch in ".?!;:"):
+        return ""
+    if not YEAR_PREFIX_RE.match(text):
+        return ""
+    if not _CAPTION_EXAM_TOKEN_RE.search(text):
+        return ""
+    return resolve_to_catalog_key(text) or text

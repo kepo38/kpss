@@ -14,11 +14,14 @@ from .ocr import OcrQuestionResult
 from .ocr_gemini import GeminiSupplementResult, _format_ocr_context
 from .ocr_ingest import (
     _apply_gemini_supplement_after_fallback,
+    _attach_ocr_diagnostics,
     _compose_fallback_log_error,
     _count_corrupt_options,
     _merge_gemini_into_ocr,
+    _operator_warning_for_fallback,
     _option_is_corrupt,
     _question_needs_gemini_repair,
+    _run_ocr,
     coalesce_ocr_options,
     finalize_ocr_options_for_panel,
     ingest_question_from_image,
@@ -164,6 +167,144 @@ class GeminiSupplementFallbackTests(SimpleTestCase):
         self.assertFalse(applied)
         self.assertFalse(meta["attempted"])
         mock_supplement.assert_not_called()
+
+
+class QuotaFallbackSupplementSkipTests(SimpleTestCase):
+    def test_operator_warning_quota_empty_answer(self):
+        msg = _operator_warning_for_fallback(
+            gemini_failed=True,
+            gemini_error="Gemini HTTP 429: RESOURCE_EXHAUSTED free_tier",
+            correct_option="",
+        )
+        self.assertIn("kota", msg.lower())
+        self.assertIn("boş", msg.lower())
+
+    def test_operator_warning_options_unreliable_quota(self):
+        msg = _operator_warning_for_fallback(
+            gemini_failed=True,
+            gemini_error="Gemini HTTP 429: RESOURCE_EXHAUSTED free_tier",
+            correct_option="",
+            options_unreliable=True,
+        )
+        self.assertIn("kota", msg.lower())
+        self.assertIn("güvenilir değil", msg.lower())
+        self.assertIn("yeniden gönderin", msg.lower())
+        # Prefer options-unreliable message over empty-answer-only
+        self.assertNotIn("doğru cevap boş", msg.lower())
+
+    def test_operator_warning_options_unreliable_gemini_failed(self):
+        msg = _operator_warning_for_fallback(
+            gemini_failed=True,
+            gemini_error="Gemini JSON ayrıştırılamadı.",
+            correct_option="E",
+            options_unreliable=True,
+        )
+        self.assertIn("güvenilir değil", msg.lower())
+        self.assertNotIn("kota", msg.lower())
+
+    def test_operator_warning_silent_when_gemini_ok(self):
+        self.assertEqual(
+            _operator_warning_for_fallback(
+                gemini_failed=False,
+                gemini_error="",
+                correct_option="",
+            ),
+            "",
+        )
+
+    def test_attach_keeps_fallback_pipeline(self):
+        gemini = OcrQuestionResult(
+            stem="",
+            options={k: "" for k in "ABCDE"},
+            raw_text="",
+            ok=False,
+            error="Gemini HTTP 429: RESOURCE_EXHAUSTED",
+            engine="gemini",
+            diagnostics=new_diagnostics(pipeline="gemini"),
+        )
+        ocr = OcrQuestionResult(
+            stem="Soru",
+            options={"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"},
+            raw_text="",
+            ok=True,
+            engine="tesseract",
+            diagnostics=new_diagnostics(pipeline="tesseract"),
+        )
+        diag = _attach_ocr_diagnostics(
+            ocr, pipeline="fallback_success", gemini_result=gemini
+        )
+        self.assertEqual(diag["pipeline"], "fallback_success")
+
+    @patch("content.ocr_ingest.image_phash", return_value="phash")
+    @patch("content.ocr_ingest.image_fingerprint", return_value="hash")
+    @patch("content.ocr_ingest._apply_gemini_supplement_after_fallback")
+    @patch("content.ocr_ingest.ocr_question_image")
+    @patch("content.ocr_ingest.ocr_question_image_gemini")
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    def test_run_ocr_skips_supplement_on_quota(
+        self, _cfg, mock_gemini, mock_tess, mock_supplement, _fp, _ph
+    ):
+        mock_gemini.return_value = OcrQuestionResult(
+            stem="",
+            options={k: "" for k in "ABCDE"},
+            raw_text="",
+            ok=False,
+            error=(
+                'Gemini HTTP 429: {"error":{"status":"RESOURCE_EXHAUSTED",'
+                '"message":"generate_content_free_tier"}}'
+            ),
+            engine="gemini",
+            diagnostics=new_diagnostics(pipeline="gemini"),
+        )
+        mock_tess.return_value = OcrQuestionResult(
+            stem="Tesseract soru",
+            options={"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"},
+            raw_text="raw",
+            ok=True,
+            engine="tesseract",
+            diagnostics=new_diagnostics(pipeline="tesseract"),
+        )
+        ocr, *_rest = _run_ocr(io.BytesIO(b"fake"), mime="image/jpeg")
+        mock_supplement.assert_not_called()
+        self.assertTrue(ocr.ok)
+        self.assertEqual(ocr.diagnostics.get("pipeline"), "fallback_success")
+        sup = (ocr.diagnostics.get("gemini") or {}).get("supplement") or {}
+        self.assertTrue(sup.get("skipped_quota"))
+        self.assertFalse(sup.get("attempted"))
+
+    @patch("content.ocr_ingest.image_phash", return_value="phash")
+    @patch("content.ocr_ingest.image_fingerprint", return_value="hash")
+    @patch("content.ocr_ingest._apply_gemini_supplement_after_fallback")
+    @patch("content.ocr_ingest.ocr_question_image")
+    @patch("content.ocr_ingest.ocr_question_image_gemini")
+    @patch("content.ocr_ingest.gemini_configured", return_value=True)
+    def test_run_ocr_still_supplements_on_non_quota(
+        self, _cfg, mock_gemini, mock_tess, mock_supplement, _fp, _ph
+    ):
+        mock_gemini.return_value = OcrQuestionResult(
+            stem="",
+            options={k: "" for k in "ABCDE"},
+            raw_text="",
+            ok=False,
+            error="Gemini JSON ayrıştırılamadı.",
+            engine="gemini",
+            diagnostics=new_diagnostics(pipeline="gemini"),
+        )
+        mock_tess.return_value = OcrQuestionResult(
+            stem="Tesseract soru",
+            options={"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"},
+            raw_text="raw",
+            ok=True,
+            engine="tesseract",
+            diagnostics=new_diagnostics(pipeline="tesseract"),
+        )
+        mock_supplement.return_value = (
+            False,
+            "",
+            {"attempted": True, "ok": False, "error": "empty"},
+        )
+        _run_ocr(io.BytesIO(b"fake"), mime="image/jpeg")
+        mock_supplement.assert_called_once()
 
     @patch("content.ocr_gemini.gemini_supplement_answer_solution")
     def test_supplement_fills_missing_options(self, mock_supplement):

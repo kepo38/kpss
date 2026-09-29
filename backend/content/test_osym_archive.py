@@ -7,6 +7,7 @@ from content.osym_archive import (
     archive_key_from_label,
     archive_families,
     parse_archive_key,
+    parse_telegram_caption_archive_label,
     resolve_to_catalog_key,
 )
 
@@ -27,17 +28,28 @@ class OsmArchiveLabelTests(SimpleTestCase):
 
     def test_ags_catalog_slot(self):
         slot = OsymArchiveSlot(
-            family="AGS",
+            family="MEB Akademi",
             exam_name="AGS",
             session_key="ags",
-            session_name="MEB Akademi Giriş Sınavı",
+            session_name="",
             expected_count=80,
         )
-        self.assertEqual(
-            slot.canonical_label(2025),
-            "2025 AGS · MEB Akademi Giriş Sınavı",
+        self.assertEqual(slot.canonical_label(2025), "2025 AGS")
+        self.assertIn("MEB Akademi", archive_families())
+        self.assertNotIn("AGS", archive_families())
+
+    def test_oabt_catalog_slot(self):
+        slot = OsymArchiveSlot(
+            family="MEB Akademi",
+            exam_name="ÖABT",
+            session_key="oabt",
+            session_name="",
+            expected_count=80,
         )
-        self.assertIn("AGS", archive_families())
+        self.assertEqual(slot.canonical_label(2026), "2026 ÖABT")
+        self.assertEqual(resolve_to_catalog_key("2026 ÖABT"), "2026 ÖABT")
+        self.assertEqual(resolve_to_catalog_key("2026 OABT"), "2026 ÖABT")
+        self.assertEqual(resolve_to_catalog_key("2026 oabt"), "2026 ÖABT")
 
     def test_dgs_canonical_label_omits_redundant_session(self):
         slot = OsymArchiveSlot(
@@ -64,7 +76,7 @@ class OsmArchiveLabelTests(SimpleTestCase):
         self.assertEqual(resolve_to_catalog_key("2025 ALES · ALES"), "2025 ALES")
 
     def test_useful_session_suffix_still_kept(self):
-        # AGS / TYT oturum açıklaması sınav adından farklı → sonek kalır.
+        # TYT oturum açıklaması sınav adından farklı → sonek kalır.
         tyt = OsymArchiveSlot(
             family="YKS",
             exam_name="TYT",
@@ -86,9 +98,32 @@ class OsmArchiveLabelTests(SimpleTestCase):
         )
 
     def test_short_ags_label_resolves_to_catalog(self):
+        self.assertEqual(resolve_to_catalog_key("2026 AGS"), "2026 AGS")
         self.assertEqual(
-            resolve_to_catalog_key("2026 AGS"),
-            "2026 AGS · MEB Akademi Giriş Sınavı",
+            resolve_to_catalog_key("2025 AGS · MEB Akademi Giriş Sınavı"),
+            "2025 AGS",
+        )
+        self.assertEqual(
+            archive_key_from_label("2025 AGS · MEB Akademi Giriş Sınavı"),
+            "2025 AGS",
+        )
+
+    def test_oabt_branch_captions_collapse_to_exam(self):
+        self.assertEqual(
+            resolve_to_catalog_key("2025 TARİH ÖABT"),
+            "2025 ÖABT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2025 TARIH OABT"),
+            "2025 ÖABT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2024 ÖABT Turkce"),
+            "2024 ÖABT",
+        )
+        self.assertEqual(
+            resolve_to_catalog_key("2026 Turkce OABT"),
+            "2026 ÖABT",
         )
 
     def test_ambiguous_kpss_short_label_stays_on_even_year(self):
@@ -227,4 +262,52 @@ class OsmArchiveLabelTests(SimpleTestCase):
         self.assertEqual(
             resolve_to_catalog_key("2024 AYT Dil · Yabancı Dil Testi"),
             "2024 AYT",
+        )
+
+
+class TelegramCaptionArchiveLabelTests(SimpleTestCase):
+    def test_short_oabt_caption(self):
+        self.assertEqual(
+            parse_telegram_caption_archive_label("2025 TARİH ÖABT"),
+            "2025 ÖABT",
+        )
+        self.assertEqual(
+            parse_telegram_caption_archive_label("2025 TARIH OABT"),
+            "2025 ÖABT",
+        )
+        self.assertEqual(
+            parse_telegram_caption_archive_label("2024 ÖABT Turkce"),
+            "2024 ÖABT",
+        )
+
+    def test_ags_caption(self):
+        self.assertEqual(
+            parse_telegram_caption_archive_label("2026 AGS"),
+            "2026 AGS",
+        )
+        self.assertEqual(
+            parse_telegram_caption_archive_label(
+                "2025 AGS · MEB Akademi Giriş Sınavı"
+            ),
+            "2025 AGS",
+        )
+
+    def test_kpss_lisans_caption(self):
+        self.assertEqual(
+            parse_telegram_caption_archive_label("2026 KPSS Lisans"),
+            "2026 KPSS Lisans",
+        )
+
+    def test_long_solution_prose_rejected(self):
+        prose = (
+            "Doğru cevap E şıkkıdır çünkü Kardak Krizi Soğuk Savaş "
+            "döneminde değil 1990'larda yaşanmıştır ve bu yüzden "
+            "ödevde beklenmez."
+        )
+        self.assertEqual(parse_telegram_caption_archive_label(prose), "")
+
+    def test_solution_like_without_year_rejected(self):
+        self.assertEqual(
+            parse_telegram_caption_archive_label("çözüm gibi ÖABT notu"),
+            "",
         )

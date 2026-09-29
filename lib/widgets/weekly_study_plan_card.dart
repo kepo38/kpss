@@ -1292,7 +1292,9 @@ class DailyMissionProTeaser extends StatelessWidget {
       context,
       emoji: '📋',
       title: 'TÜM GÖREVLER',
-      subtitle: kProUpsellSubtitle,
+      subtitle:
+          'Kilitli günlük görevler ve tam rota Premium ile açılır.\n'
+          'Pro ile çalışma önceliğini kaçırma.',
     );
   }
 
@@ -1473,7 +1475,7 @@ class DailyMissionProTeaser extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Görevleri Tamamla',
+                            'Pro ile aç',
                             style: TextStyle(
                               fontSize: 11,
                               height: 1.2,

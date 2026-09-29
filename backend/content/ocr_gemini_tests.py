@@ -650,12 +650,14 @@ class GeminiTransientRetryTests(SimpleTestCase):
         from content import ocr_gemini as og
 
         og._DEAD_GEMINI_MODELS.clear()
+        og._reset_gemini_quota_cooldown_for_tests()
 
     def test_transient_503_retries_same_model(self):
         from unittest.mock import patch
         from content import ocr_gemini as og
 
         og._DEAD_GEMINI_MODELS.clear()
+        og._reset_gemini_quota_cooldown_for_tests()
         sleeps: list[float] = []
         calls = {"n": 0}
 
@@ -679,6 +681,7 @@ class GeminiTransientRetryTests(SimpleTestCase):
         from content import ocr_gemini as og
 
         og._DEAD_GEMINI_MODELS.clear()
+        og._reset_gemini_quota_cooldown_for_tests()
         sleeps: list[float] = []
 
         def fake_post(*args, **kwargs):
@@ -697,8 +700,103 @@ class GeminiTransientRetryTests(SimpleTestCase):
         self.assertEqual(sleeps, [])
         self.assertIn("gemini-2.5-flash", og._DEAD_GEMINI_MODELS)
 
-    def test_fallback_order_prefers_3_6(self):
+    def test_fallback_order_3_8_primary_cascade(self):
         from content import ocr_gemini as og
 
-        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[0], "gemini-3.6-flash")
+        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[0], "gemini-3.7-flash")
+        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[1], "gemini-3.6-flash")
         self.assertNotIn("gemini-2.5-flash", og._GEMINI_MODEL_FALLBACKS)
+        with override_settings(GEMINI_OCR_MODEL="gemini-3.8-flash"):
+            self.assertEqual(
+                og._model_candidates()[:3],
+                [
+                    "gemini-3.8-flash",
+                    "gemini-3.7-flash",
+                    "gemini-3.6-flash",
+                ],
+            )
+
+    def test_quota_classification(self):
+        from content.ocr_gemini import is_gemini_quota_error
+
+        self.assertTrue(
+            is_gemini_quota_error(
+                'Gemini HTTP 429: {"error":{"status":"RESOURCE_EXHAUSTED",'
+                '"message":"generate_content_free_tier quota exceeded"}}'
+            )
+        )
+        self.assertTrue(
+            is_gemini_quota_error("Gemini HTTP 429: You exceeded your current quota")
+        )
+        self.assertFalse(is_gemini_quota_error("Gemini HTTP 503: UNAVAILABLE"))
+        self.assertFalse(is_gemini_quota_error("Gemini JSON ayrıştırılamadı."))
+
+    def test_quota_429_early_abort_no_same_model_retry(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._reset_gemini_quota_cooldown_for_tests()
+        sleeps: list[float] = []
+        calls = {"n": 0}
+
+        def fake_post(*args, **kwargs):
+            calls["n"] += 1
+            raise RuntimeError(
+                'Gemini HTTP 429: {"error":{"code":429,"status":"RESOURCE_EXHAUSTED",'
+                '"message":"Quota exceeded for generate_content_free_tier"}}'
+            )
+
+        with patch.object(og, "_post_gemini_model", side_effect=fake_post):
+            with patch.object(og.time, "sleep", side_effect=lambda s: sleeps.append(s)):
+                with self.assertRaises(RuntimeError) as ctx:
+                    og._post_gemini_model_with_retries(
+                        b"img", "image/png", "gemini-3.6-flash"
+                    )
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(sleeps, [])
+        self.assertTrue(og.is_gemini_quota_error(ctx.exception))
+        self.assertTrue(og.gemini_quota_cooldown_active())
+
+    def test_quota_429_no_model_cascade(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._reset_gemini_quota_cooldown_for_tests()
+        models_hit: list[str] = []
+
+        def fake_retries(image_bytes, mime, model, prompt="", **kwargs):
+            models_hit.append(model)
+            raise RuntimeError(
+                'Gemini HTTP 429: RESOURCE_EXHAUSTED free_tier generate_content_free_tier'
+            )
+
+        with patch.object(og, "_post_gemini_model_with_retries", side_effect=fake_retries):
+            with patch.object(
+                og, "_model_candidates", return_value=["m1", "m2", "m3"]
+            ):
+                with self.assertRaises(og.GeminiPostError) as ctx:
+                    og._post_gemini(b"img", "image/png")
+        self.assertEqual(models_hit, ["m1"])
+        self.assertTrue(og.is_gemini_quota_error(ctx.exception))
+
+    def test_quota_cooldown_skips_subsequent_attempts(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._reset_gemini_quota_cooldown_for_tests()
+        og._arm_gemini_quota_cooldown()
+        calls = {"n": 0}
+
+        def fake_post(*args, **kwargs):
+            calls["n"] += 1
+            return '{"ok": true}'
+
+        with patch.object(og, "_post_gemini_model", side_effect=fake_post):
+            with self.assertRaises(RuntimeError) as ctx:
+                og._post_gemini_model_with_retries(
+                    b"img", "image/png", "gemini-3.6-flash"
+                )
+        self.assertEqual(calls["n"], 0)
+        self.assertIn("cooldown", str(ctx.exception).lower())
+        self.assertTrue(og.is_gemini_quota_error(ctx.exception))
+        og._reset_gemini_quota_cooldown_for_tests()

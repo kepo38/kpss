@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/studio_modules.dart';
 import '../services/app_config_service.dart';
+import '../services/premium_service.dart';
 import '../screens/analytics_hub_screen.dart';
 import 'countdown_widget.dart';
 import '../screens/current_info_screen.dart';
@@ -89,7 +90,12 @@ class HomeToolsModuleList extends StatelessWidget {
               disabled: !cfg.isStudioModuleEnabled(StudioModules.performance),
               accent: true,
               tint: const Color(0xFF60A5FA),
-              onTap: () => onNavigate(AnalyticsHubScreen(kpssType: kpssType)),
+              onTap: () => onNavigate(
+                AnalyticsHubScreen(
+                  kpssType: kpssType,
+                  isPremium: PremiumService.instance.isPremium,
+                ),
+              ),
             ),
             HomeModuleRow(
               icon: Icons.analytics_outlined,

@@ -173,6 +173,79 @@ def _clear_isolated_italic_flags(words: list[OcrWord]) -> None:
             italic_words[0].italic = False
 
 
+_ADJACENT_BOLD_RE = re.compile(
+    r"\*\*((?:(?!\*\*).)+?)\*\*"
+    r"((?:[ \t]+|\n[ \t]*\n?[ \t]*))"
+    r"\*\*((?:(?!\*\*).)+?)\*\*",
+)
+
+
+def _bold_spans_should_merge(left: str, right: str) -> bool:
+    """Şık harfi / numaralı adım başlıklarını birleştirme."""
+    a = (left or "").strip()
+    b = (right or "").strip()
+    if not a or not b:
+        return False
+    if re.match(r"^[A-E]\)", a, re.I) or re.match(r"^[A-E]\)", b, re.I):
+        return False
+    if re.match(r"^\d+\.\s", a) and re.match(r"^\d+\.\s", b):
+        return False
+    return True
+
+
+def _blank_line_soft_join_ok(left: str, right: str) -> bool:
+    """``\\n\\n`` araliginda yalnizca cumle ortasi soft-join.
+
+    Bilerek ayri kalin baslik paragraflarini birlestirme:
+    sol cumle sonu (.!?:…) veya sag buyuk harfle basliyorsa dokunma.
+    """
+    a = (left or "").rstrip()
+    b = (right or "").lstrip()
+    if not a or not b:
+        return False
+    if a.endswith((".", "!", "?", "…", ":", ";")):
+        return False
+    first = b[:1]
+    if not first:
+        return False
+    # Turkce kucuk harf / devam (hangisidir…) — basliklar genelde Buyuk Harf
+    return first.islower()
+
+
+def coalesce_adjacent_markdown_bold(text: str) -> str:
+    """OCR satır kırığı sonrası ``**a**\\n**b**`` / ``**a** **b**`` → ``**a b**``.
+
+    Tek bos satir (``\\n\\n``) yalnizca cumle-ortasi soft-join icin birlestirilir;
+    bilerek ayri kalin baslik paragraflari korunur.
+
+    ÖSYM soru kökü kalın satırı tek markdown bloğunda kalsın; trailing ``?``
+    bloğun içinde olsun.
+    """
+    src = text or ""
+    if "**" not in src:
+        return src
+
+    def _merge(match: re.Match[str]) -> str:
+        left, sep, right = match.group(1), match.group(2), match.group(3)
+        if not _bold_spans_should_merge(left, right):
+            return match.group(0)
+        # Bos satir: yalnizca mid-sentence (risky heading merge yok)
+        if sep.count("\n") >= 2 and not _blank_line_soft_join_ok(left, right):
+            return match.group(0)
+        return f"**{left.rstrip()} {right.lstrip()}**"
+
+    prev = None
+    while prev != src:
+        prev = src
+        src = _ADJACENT_BOLD_RE.sub(_merge, src)
+    src = re.sub(
+        r"\*\*((?:(?!\*\*).)+?)\*\*([?!.…]+)(?!\*)",
+        r"**\1\2**",
+        src,
+    )
+    return src
+
+
 def _wrap_markdown(text: str, bold: bool, italic: bool, underline: bool) -> str:
     if not text or not (bold or italic or underline):
         return text
@@ -236,7 +309,7 @@ def words_to_styled_text(words: list[OcrWord]) -> str:
             current_key = w.line_key
         line_words.append(w)
     flush_line()
-    return "\n".join(lines_out)
+    return coalesce_adjacent_markdown_bold("\n".join(lines_out))
 
 
 def tesseract_words(img: Image.Image, lang: str, psm: int) -> list[OcrWord]:

@@ -365,10 +365,19 @@ class PlayBillingService {
 
     final user = DatabaseService.instance.currentUser;
     if (user != null) {
+      final pid = (productId ?? '').trim();
+      final yearly = isPremium &&
+          (pid.toLowerCase().contains('yearly') ||
+              pid.toLowerCase().contains('yillik') ||
+              pid.toLowerCase().contains('yıllık'));
       DatabaseService.instance.setCurrentUser(
         user.copyWith(
           isPremium: isPremium,
+          isYearlyPremium: isPremium ? yearly : false,
+          premiumProductId: isPremium ? pid : '',
           premiumBitisTarihi: isPremium ? expiry : null,
+          clearPremiumBitisTarihi: !isPremium,
+          clearPremiumProductId: !isPremium,
         ),
       );
     }
