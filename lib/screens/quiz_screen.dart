@@ -13,9 +13,7 @@ import '../models/question_model.dart';
 import '../models/quiz_result.dart';
 import '../services/ad_manager.dart';
 import '../services/ad_constants.dart';
-import '../services/ad_service.dart';
 import '../services/answer_feedback_service.dart';
-import '../services/app_config_service.dart';
 import '../services/content_bank_service.dart';
 import '../services/daily_mini_exam_service.dart';
 import '../services/favorites_service.dart';
@@ -26,12 +24,10 @@ import '../services/premium_service.dart';
 import '../services/question_error_report_service.dart';
 import '../services/question_attempt_service.dart';
 import '../services/question_note_service.dart';
-import '../services/tg_exam_service.dart';
 import '../services/wrong_notebook_drawing_service.dart';
 import '../services/question_rating_service.dart';
 import '../services/question_view_service.dart';
 import '../theme/app_theme.dart';
-import '../theme/exam_typography.dart';
 import '../utils/option_percentage_utils.dart';
 import '../utils/solution_preview.dart';
 import '../utils/tg_exam_subject_filter.dart';
@@ -41,7 +37,6 @@ import '../widgets/app_back_button.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/embossed_app_bar_title.dart';
 import '../widgets/favorite_heart_button.dart';
-import '../widgets/cached_remote_image.dart';
 import '../widgets/exam_text/exam_option_view.dart';
 import '../widgets/exam_text/exam_scenario_passage_view.dart';
 import '../widgets/exam_text/exam_solution_view.dart';
@@ -61,6 +56,7 @@ import '../widgets/quiz_take_note_button.dart';
 import '../widgets/quiz_wrong_notebook_banner.dart';
 import '../widgets/pro_upsell_sheet.dart';
 import '../widgets/shareable_result_card.dart';
+import '../widgets/solution_reveal_button.dart';
 
 /// Test / soru çözme ekranı — süre, navigator, favori.
 class QuizScreen extends StatefulWidget {
@@ -129,6 +125,8 @@ class _QuizScreenState extends State<QuizScreen>
     with SingleTickerProviderStateMixin {
   late int _currentIndex;
   String? _selectedAnswer;
+  /// Şık seçilince artar; «Çözümü Gör» pulse animasyonunu tetikler.
+  int _solutionPulseToken = 0;
   bool _showingSolution = false;
   late DateTime _startedAt;
   late final List<String?> _answers;
@@ -260,6 +258,8 @@ class _QuizScreenState extends State<QuizScreen>
     _flashCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 520),
+      // Animasyonlar kapalıyken flaşın kaybolmaması için.
+      animationBehavior: AnimationBehavior.preserve,
     );
     _flashOpacity = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 0, end: 0.42), weight: 18),
@@ -513,6 +513,7 @@ class _QuizScreenState extends State<QuizScreen>
     final isCorrect = key == _currentQuestion.dogruCevap;
     setState(() {
       _selectedAnswer = key;
+      _solutionPulseToken++;
       _answers[_currentIndex] = key;
       if (!widget.tgExamMode) {
         _pauseTimer();
@@ -2218,7 +2219,8 @@ class _QuizScreenState extends State<QuizScreen>
                     if (!widget.tgExamMode) const SizedBox(width: 6),
                     if (!widget.tgExamMode)
                       Expanded(
-                        child: _SolutionRevealButton(
+                        child: SolutionRevealButton(
+                          pulseToken: _solutionPulseToken,
                           enabled: canToggleSolution,
                           showingSolution: _showingSolution,
                           style: solutionStyle(enabled: canToggleSolution),
@@ -3772,180 +3774,6 @@ class _ResultRewardChip extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Şık seçilince aktif olan «Çözümü Gör» — tek seferlik hafif pulse.
-class _SolutionRevealButton extends StatefulWidget {
-  final bool enabled;
-  final bool showingSolution;
-  final ButtonStyle style;
-  final VoidCallback? onPressed;
-
-  const _SolutionRevealButton({
-    required this.enabled,
-    required this.showingSolution,
-    required this.style,
-    required this.onPressed,
-  });
-
-  @override
-  State<_SolutionRevealButton> createState() => _SolutionRevealButtonState();
-}
-
-class _SolutionRevealButtonState extends State<_SolutionRevealButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
-  late final Animation<double> _glow;
-  late final Animation<double> _flash;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    );
-    _scale = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.1)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 38,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.1, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 32,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.05)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.05, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 15,
-      ),
-    ]).animate(_ctrl);
-    _glow = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 30,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 0.45)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 40,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 0.45, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 30,
-      ),
-    ]).animate(_ctrl);
-    _flash = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 0.42)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 35,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 0.42, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 65,
-      ),
-    ]).animate(_ctrl);
-  }
-
-  void _playActivatePulse() {
-    if (!mounted || widget.showingSolution) return;
-    _ctrl.forward(from: 0);
-  }
-
-  @override
-  void didUpdateWidget(covariant _SolutionRevealButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!oldWidget.enabled && widget.enabled && !widget.showingSolution) {
-      // Stil/layout setState sonrası pulse kaçmasın.
-      WidgetsBinding.instance.addPostFrameCallback((_) => _playActivatePulse());
-    }
-    if (!widget.enabled && (_ctrl.isAnimating || _ctrl.value > 0)) {
-      _ctrl.stop();
-      _ctrl.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) {
-        final g = _glow.value;
-        final flash = _flash.value;
-        return Transform.scale(
-          scale: _scale.value,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: g <= 0.02
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: AppTheme.champagne.withValues(alpha: 0.55 * g),
-                        blurRadius: 22 * g,
-                        spreadRadius: 1.2 * g,
-                      ),
-                      BoxShadow(
-                        color: AppTheme.champagneLight.withValues(alpha: 0.25 * g),
-                        blurRadius: 8 * g,
-                      ),
-                    ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                child!,
-                if (flash > 0.01)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: AppTheme.champagneLight
-                                .withValues(alpha: flash),
-                            width: 1.6,
-                          ),
-                          color: AppTheme.champagne.withValues(alpha: flash * 0.35),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-      child: OutlinedButton(
-        onPressed: widget.onPressed,
-        style: widget.style,
-        child: Text(
-          widget.showingSolution ? 'Çözümü Gizle' : 'Çözümü Gör',
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
       ),
     );
   }

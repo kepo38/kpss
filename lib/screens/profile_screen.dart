@@ -1689,43 +1689,30 @@ class _PremiumStatChip extends StatelessWidget {
 class _StatChip extends StatelessWidget {
   final Color neon;
   final String label;
-  final bool filled;
-  final VoidCallback? onTap;
 
   const _StatChip({
     required this.neon,
     required this.label,
-    this.filled = false,
-    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final chip = Container(
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: filled ? neon.withValues(alpha: 0.24) : Colors.transparent,
-        border: Border.all(color: neon.withValues(alpha: filled ? 0.85 : 0.55)),
-        boxShadow: SubjectNeonPalette.glow(neon, blur: filled ? 10 : 6),
+        color: Colors.transparent,
+        border: Border.all(color: neon.withValues(alpha: 0.55)),
+        boxShadow: SubjectNeonPalette.glow(neon, blur: 6),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: filled ? Colors.white : neon,
+          color: neon,
           fontSize: 11,
           fontWeight: FontWeight.w800,
-          letterSpacing: filled ? 1.0 : 0.1,
+          letterSpacing: 0.1,
         ),
-      ),
-    );
-    if (onTap == null) return chip;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: chip,
       ),
     );
   }

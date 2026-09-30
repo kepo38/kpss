@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
 import '../theme/exam_typography.dart';
-import '../utils/turkish_hyphenation.dart';
+import 'line_break_hyphen_text.dart';
 
 /// Markdown + LaTeX: **kalın**, *italik*, __altı çizili__, {green}renk{/green}, $...$ / $$...$$.
 /// Panel ile uyumlu paragraf düzeni ve HTML etiket yedek desteği.
@@ -228,7 +228,7 @@ class FormattedText extends StatelessWidget {
     if (mathRomans.length >= 2) {
       out = out.replaceAllMapped(
         RegExp(
-          r'(?:(?<=\$)|(?<=§§M\d+§§))(?!\n)(?=\s*(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)',
+          r'(?:(?<=\$)|(?<=§§M\d+§§))[ \t]*(?=(?:VIII|VII|III|VI|IV|IX|II|V|I|X)\.\s)',
         ),
         (_) => '\n',
       );
@@ -1601,6 +1601,11 @@ class FormattedText extends StatelessWidget {
     );
     src = _splitGluedRomanSections(src);
     src = _expandHolders(src, mdHolders, r'§§K(\d+)§§');
+    // Markdown holder açıldıktan sonra: ``**Buna göre** I. $...$``
+    src = src.replaceAllMapped(
+      RegExp(r'(göre\*{0,2})\s+(?=(?:I|II|III|IV|V)\.)'),
+      (m) => '${m.group(1)}\n',
+    );
     src = src.replaceAllMapped(
       RegExp(r'(§§M\d+§§)\s*(?=\*\*(?:\d+\.\s+Adım|[a-zçğıöşüâîû]))'),
       (m) => '${m.group(1)}\n',
@@ -2167,7 +2172,7 @@ class FormattedText extends StatelessWidget {
         widgets.add(
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 1),
-            child: span.child ?? const SizedBox.shrink(),
+            child: span.child,
           ),
         );
       } else if (span is TextSpan) {
@@ -2267,6 +2272,25 @@ class FormattedText extends StatelessWidget {
     };
   }
 
+  static final RegExp _colorTagRe = RegExp(
+    r'\{green\}([\s\S]+?)\{/green\}|'
+    r'\{red\}([\s\S]+?)\{/red\}|'
+    r'\{blue\}([\s\S]+?)\{/blue\}',
+    caseSensitive: false,
+  );
+
+  /// Renk etiketi içinde `$…$` varsa etiket math ayrıştırmasından önce soyulmalı;
+  /// aksi halde `{red}` / `{/red}` literal kalır. Math içermeyen renkler
+  /// `_parseMarkdown`'da kalır ki `**…{green}…{/green}):**` kalın sarmalayıcı
+  /// bozulmasın.
+  static bool _colorTagWrapsMath(String input) {
+    for (final m in _colorTagRe.allMatches(input)) {
+      final inner = m.group(1) ?? m.group(2) ?? m.group(3) ?? '';
+      if (inner.contains(r'$')) return true;
+    }
+    return false;
+  }
+
   static List<InlineSpan> _parse(
     String input,
     TextStyle base, {
@@ -2274,14 +2298,70 @@ class FormattedText extends StatelessWidget {
   }) {
     if (input.isEmpty) return [TextSpan(text: '', style: base)];
 
+    final prepared = rewriteSymbolicShapeOperators(input);
+    if (_colorTagWrapsMath(prepared)) {
+      return _parseColorWrappingMath(
+        prepared,
+        base,
+        forceDisplayMath: forceDisplayMath,
+      );
+    }
     // Renk etiketleri _parseMarkdown içinde işlenir; burada önce bölmek
-    // ``**… __YOKTUR__ -{green}…{/green}):**`` gibi kalın/altı çizili sarmalayıcıları kırar.
+    // `**… __YOKTUR__ -{green}…{/green}):**` gibi kalın/altı çizili sarmalayıcıları kırar.
     // ÖSYM kutu/üçgen: preNormalized yolda da $\square AB$ → shapebox.
     return _parseMath(
-      rewriteSymbolicShapeOperators(input),
+      prepared,
       base,
       forceDisplayMath: forceDisplayMath,
     );
+  }
+
+  static List<InlineSpan> _parseColorWrappingMath(
+    String input,
+    TextStyle base, {
+    bool forceDisplayMath = false,
+  }) {
+    final spans = <InlineSpan>[];
+    var i = 0;
+    for (final m in _colorTagRe.allMatches(input)) {
+      if (m.start > i) {
+        spans.addAll(
+          _parseMath(
+            input.substring(i, m.start),
+            base,
+            forceDisplayMath: forceDisplayMath,
+          ),
+        );
+      }
+      final coloredBase = m.group(1) != null
+          ? _emphasis(base, textColor: _greenText)
+          : m.group(2) != null
+              ? _emphasis(base, textColor: _redText)
+              : _emphasis(base, textColor: _blueText);
+      final inner = m.group(1) ?? m.group(2) ?? m.group(3) ?? '';
+      if (inner.contains(r'$')) {
+        spans.addAll(
+          _parseMath(
+            inner,
+            coloredBase,
+            forceDisplayMath: forceDisplayMath,
+          ),
+        );
+      } else {
+        spans.addAll(_parseMarkdown(inner, coloredBase));
+      }
+      i = m.end;
+    }
+    if (i < input.length) {
+      spans.addAll(
+        _parseMath(
+          input.substring(i),
+          base,
+          forceDisplayMath: forceDisplayMath,
+        ),
+      );
+    }
+    return spans;
   }
 
   static List<InlineSpan> _parseMath(
@@ -2706,44 +2786,26 @@ class _WrappedExamLine extends StatelessWidget {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return const SizedBox.shrink();
 
-    // Soft hyphen (U+00AD) Flutter'da satırı kırar ama `-` çizmez; ölçümle
-    // satır sonundaki soft hyphen'leri görünür tireye çevir.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        var maxW = constraints.maxWidth;
-        if (!maxW.isFinite || maxW <= 0) {
-          maxW = MediaQuery.sizeOf(context).width - 48;
-        }
-        final align = textAlign ?? TextAlign.start;
-        final display = TurkishHyphenation.applyVisibleLineBreakHyphens(
-          trimmed,
-          maxWidth: maxW,
-          style: base,
-          textAlign: align,
-          textScaler: MediaQuery.textScalerOf(context),
-        );
-        return Text.rich(
-          TextSpan(
-            style: base,
-            children: FormattedText.parseSpans(display, base),
-          ),
-          textAlign: align,
-          softWrap: true,
-          textWidthBasis: TextWidthBasis.parent,
-          // Kesir/kök WidgetSpan'i sabit strut yüksekliğine zorlanırsa satırın
-          // dışına taşıp alttaki şık kutusuna yaklaşır. Matematikli satır kendi
-          // gerçek yüksekliği kadar büyüyebilsin.
-          strutStyle: FormattedText.examStrutStyle(
-            base,
-            forceHeight: !FormattedText.usesDisplayMath(display),
-          ),
-          textHeightBehavior: FormattedText.examTextHeightBehavior,
-        );
-      },
+    // Soft hyphen (U+00AD) Flutter'da satırı kırar ama `-` çizmez.
+    // LineBreakHyphenText yalnızca gerçekten satır sonuna düşen hecelerde
+    // görünür tire çizer (gerçek span ağacıyla ölçerek, yazı tipi yüklenince
+    // yeniden hesaplayarak).
+    return LineBreakHyphenText(
+      style: base,
+      children: FormattedText.parseSpans(trimmed, base),
+      textAlign: textAlign ?? TextAlign.start,
+      textWidthBasis: TextWidthBasis.parent,
+      // Kesir/kök WidgetSpan'i sabit strut yüksekliğine zorlanırsa satırın
+      // dışına taşıp alttaki şık kutusuna yaklaşır. Matematikli satır kendi
+      // gerçek yüksekliği kadar büyüyebilsin.
+      strutStyle: FormattedText.examStrutStyle(
+        base,
+        forceHeight: !FormattedText.usesDisplayMath(trimmed),
+      ),
+      textHeightBehavior: FormattedText.examTextHeightBehavior,
     );
   }
 }
-
 /// Tek satır: parçalı Row + FittedBox ile yatay taşmayı önler.
 class _ExamLine extends StatelessWidget {
   final String line;
