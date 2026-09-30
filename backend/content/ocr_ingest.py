@@ -976,12 +976,19 @@ def ingest_question_from_image(
     # Telegram/panel kayıt: onarılamayan OCR çöpünü şık alanına yazma.
     stem, opts, _corrupt_opts = finalize_ocr_options_for_panel(stem, opts, raw_text)
     opts = _normalize_options(opts)
+    # Styled Tesseract sometimes leaves bogus **bold**; strip when options are unreliable.
+    if _options_parse_unreliable(opts) and "**" in (stem or ""):
+        stem = re.sub(r"\*\*\*([^*]+)\*\*\*", r"\1", stem)
+        stem = re.sub(r"\*\*([^*]+)\*\*", r"\1", stem)
+        stem = sanitize_ocr_emphasis(stem)
     figure_svg = _sanitize_figure_svg(getattr(ocr, "figure_svg", "") or "")
     correct_option = _normalize_correct_option(getattr(ocr, "correct_option", ""))
     solution = (getattr(ocr, "solution", "") or "").strip()
 
     topic_auto_detected = False
-    if auto_classify_topic:
+    options_look_unreliable = _options_parse_unreliable(opts)
+    # Skip keyword auto-topic when options are garbage/partial.
+    if auto_classify_topic and not options_look_unreliable:
         classified = classify_topic_from_ocr(
             stem,
             opts,
@@ -993,6 +1000,20 @@ def ingest_question_from_image(
         if classified is not None and classified.source != "fallback":
             topic = classified.topic
             topic_auto_detected = True
+    elif auto_classify_topic and options_look_unreliable:
+        slug_hint = (getattr(ocr, "topic_slug", "") or "").strip()
+        if slug_hint:
+            classified = classify_topic_from_ocr(
+                stem,
+                opts,
+                getattr(ocr, "raw_text", "") or "",
+                topic_slug_hint=slug_hint,
+                subject_slug_hint=getattr(ocr, "subject_slug", "") or "",
+                fallback=topic,
+            )
+            if classified is not None and classified.source == "panel_slug":
+                topic = classified.topic
+                topic_auto_detected = True
 
     c_hash = content_fingerprint(
         stem,

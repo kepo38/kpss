@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/exam_typography.dart';
+import '../../utils/turkish_hyphenation.dart';
 import '../cached_remote_image.dart';
 import '../formatted_text.dart';
 import '../question_stem_content.dart';
@@ -17,8 +18,11 @@ class ExamSolutionView extends StatelessWidget {
     if (text.trim().isEmpty) {
       return const SizedBox.shrink();
     }
+    final prepared = FormattedText.looksLikeMath(text) || text.contains(r'$')
+        ? text
+        : TurkishHyphenation.hyphenate(text);
     return FormattedText(
-      text,
+      prepared,
       preNormalized: true,
       preserveLineBreaks: true,
       examLayout: true,

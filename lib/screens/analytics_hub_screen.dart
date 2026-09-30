@@ -452,313 +452,229 @@ class _HeroSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasData = overall.solved > 0;
-    final rate = (overall.successRate * 100).round();
-    final progress = overall.successRate.clamp(0.0, 1.0);
+    final netPct = (overall.netAccuracy * 100).round();
+    final rawPct = (overall.successRate * 100).round();
+    final netLabel = overall.net.toStringAsFixed(2);
 
     return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF8B1538).withValues(alpha: 0.22),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-          BoxShadow(
-            color: AppTheme.ink.withValues(alpha: 0.18),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF1A2438),
-                      Color(0xFF121A2A),
-                      Color(0xFF0C1424),
-                    ],
-                    stops: [0, 0.55, 1],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              right: -36,
-              top: -48,
-              child: Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      const Color(0xFFC41E3A).withValues(alpha: 0.28),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: -20,
-              bottom: -30,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppTheme.champagne.withValues(alpha: 0.12),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-              child: hasData
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(alpha: 0.14),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'BAŞARI',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1.6,
-                                        color: AppTheme.champagneLight,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                '%$rate',
-                                style: const TextStyle(
-                                  fontFamily: 'serif',
-                                  fontSize: 46,
-                                  height: 0.95,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -1.5,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  _StatChip(
-                                    label: '${overall.correct} doğru',
-                                    color: const Color(0xFF34D399),
-                                  ),
-                                  _StatChip(
-                                    label: '${overall.wrong} yanlış',
-                                    color: const Color(0xFFF87171),
-                                  ),
-                                  if (overall.blank > 0)
-                                    _StatChip(
-                                      label: '${overall.blank} boş',
-                                      color: Colors.white.withValues(alpha: 0.55),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(999),
-                                child: LinearProgressIndicator(
-                                  value: progress,
-                                  minHeight: 6,
-                                  backgroundColor:
-                                      Colors.white.withValues(alpha: 0.1),
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Text(
-                                    '${overall.solved} çözülen',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white.withValues(alpha: 0.78),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    '${overall.totalQuestions} soruluk havuz',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white.withValues(alpha: 0.42),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        _SuccessRing(progress: progress, rate: rate),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            'BAŞARI',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.6,
-                              color: AppTheme.champagneLight,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Henüz ölçüm yok',
-                          style: TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 26,
-                            height: 1.1,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Konu testlerini çözdükçe başarı oranın burada toplanır.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            height: 1.4,
-                            color: Colors.white.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF1A283C),
+            Color(0xFF0C1424),
+            Color(0xFF0A101C),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _StatChip({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
+        border: Border.all(
+          color: AppTheme.champagne.withValues(alpha: 0.38),
         ),
-      ),
-    );
-  }
-}
-
-class _SuccessRing extends StatelessWidget {
-  final double progress;
-  final int rate;
-
-  const _SuccessRing({required this.progress, required this.rate});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 78,
-      height: 78,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          SizedBox.expand(
-            child: CircularProgressIndicator(
-              value: progress,
-              strokeWidth: 6,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
-              color: Colors.white,
-              strokeCap: StrokeCap.round,
-            ),
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '$rate',
-                style: const TextStyle(
-                  fontFamily: 'serif',
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  height: 1,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                '%',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.65),
-                ),
-              ),
-            ],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
+      child: hasData
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'NET',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 3.2,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.champagne.withValues(alpha: 0.78),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  netLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 48,
+                    fontWeight: FontWeight.w700,
+                    height: 0.95,
+                    color: AppTheme.champagneLight,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Net oranı %$netPct',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.neonEdge.withValues(alpha: 0.95),
+                  ),
+                ),
+                if (rawPct != netPct) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ham %$rawPct',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.38),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white.withValues(alpha: 0.04),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _HeroMetric(
+                          label: 'Doğru',
+                          value: '${overall.correct}',
+                          color: const Color(0xFF4ADE80),
+                        ),
+                      ),
+                      _HeroMetricDivider(),
+                      Expanded(
+                        child: _HeroMetric(
+                          label: 'Yanlış',
+                          value: '${overall.wrong}',
+                          color: const Color(0xFFF87171),
+                        ),
+                      ),
+                      _HeroMetricDivider(),
+                      Expanded(
+                        child: _HeroMetric(
+                          label: 'Boş',
+                          value: '${overall.blank}',
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Text(
+                      '${overall.solved} çözülen',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${overall.totalQuestions} soruluk havuz',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.42),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'NET',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 3.2,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.champagne.withValues(alpha: 0.78),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Henüz ölçüm yok',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 26,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Konu testlerini çözdükçe net oranın burada toplanır.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _HeroMetricDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 28,
+      color: Colors.white.withValues(alpha: 0.1),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _HeroMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: Colors.white.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
     );
   }
 }

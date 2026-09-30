@@ -506,6 +506,9 @@ class _QuizScreenState extends State<QuizScreen>
 
   void _selectAnswer(String key) {
     if (widget.tgExamSolutionReview || widget.fromWrongNotebook) return;
+    // Pratik modda ilk şık kilitlenir; değiştirmek kişisel/genel istatistiği bozar.
+    // TG sınavında süre bitene kadar şık değiştirilebilir (attempt yalnızca bitişte).
+    if (!widget.tgExamMode && _selectedAnswer != null) return;
     if (_selectedAnswer == key) return;
     final isCorrect = key == _currentQuestion.dogruCevap;
     setState(() {
@@ -629,11 +632,11 @@ class _QuizScreenState extends State<QuizScreen>
   }
 
   String _emotionalFeedback(QuizResult result) {
-    final pct = result.accuracy;
-    if (pct >= 0.9) {
+    final pct = result.netAccuracy;
+    if (pct >= 0.7) {
       return 'Muazzam! Kamuya bir adım daha yaklaştın.';
     }
-    if (pct >= 0.5) {
+    if (pct >= 0.4) {
       return 'Güzel ilerleme, eksikleri kapatma zamanı.';
     }
     return 'Asla pes etme. Yanlışlar en büyük öğretmendir.';
@@ -1243,8 +1246,10 @@ class _QuizScreenState extends State<QuizScreen>
                   percentage: revealed && _showOptionPercentages
                       ? _visibleOptionPercentages[entry.key]
                       : null,
-                  onTap: widget.tgExamSolutionReview || widget.fromWrongNotebook
-                      ? () {}
+                  onTap: widget.tgExamSolutionReview ||
+                          widget.fromWrongNotebook ||
+                          (!widget.tgExamMode && _selectedAnswer != null)
+                      ? null
                       : () => _selectAnswer(entry.key),
                 );
               },
@@ -1879,13 +1884,14 @@ class _QuizScreenState extends State<QuizScreen>
             return AlertDialog(
               backgroundColor: AppTheme.inkSoft,
               insetPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 24,
+                horizontal: 18,
+                vertical: 28,
               ),
-              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-              contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 8),
+              contentPadding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
               ),
               title: SizedBox(
                 width: double.infinity,
@@ -1899,40 +1905,37 @@ class _QuizScreenState extends State<QuizScreen>
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontFamily: 'serif',
-                        fontSize: 18,
+                        fontSize: 19,
                         fontWeight: FontWeight.w700,
                         height: 1.2,
                         color: AppTheme.champagneLight,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     Text(
                       _emotionalFeedback(result),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                        color: Colors.white.withValues(alpha: 0.78),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: _ResultRewardChip(
-                            icon: Icons.bolt_rounded,
-                            label: '+$gainedXp XP',
-                            color: AppTheme.neonEdge,
-                          ),
+                        _ResultRewardChip(
+                          icon: Icons.bolt_rounded,
+                          label: '+$gainedXp XP',
+                          color: AppTheme.neonEdge,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _ResultRewardChip(
-                            icon: Icons.local_fire_department_rounded,
-                            label: '$streak gün seri',
-                            color: const Color(0xFFFB923C),
-                          ),
+                        const SizedBox(width: 10),
+                        _ResultRewardChip(
+                          icon: Icons.local_fire_department_rounded,
+                          label: '$streak gün seri',
+                          color: const Color(0xFFFB923C),
                         ),
                       ],
                     ),
@@ -1973,9 +1976,9 @@ class _QuizScreenState extends State<QuizScreen>
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.neonEdge,
                     side: BorderSide(
-                      color: AppTheme.neonEdge.withValues(alpha: 0.65),
+                      color: AppTheme.neonEdge.withValues(alpha: 0.55),
                     ),
-                    minimumSize: const Size(double.infinity, 44),
+                    minimumSize: const Size(double.infinity, 46),
                   ),
                   icon: sharing
                       ? const SizedBox(
@@ -1988,7 +1991,7 @@ class _QuizScreenState extends State<QuizScreen>
                 ),
                 const SizedBox(height: 8),
                 if (showWrongReview) ...[
-                  _ResultWrongReviewButton(wrongCount: result.wrong),
+                  const _ResultWrongReviewButton(),
                   const SizedBox(height: 8),
                 ],
                 FilledButton(
@@ -1996,7 +1999,7 @@ class _QuizScreenState extends State<QuizScreen>
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.champagne,
                     foregroundColor: AppTheme.ink,
-                    minimumSize: const Size(double.infinity, 44),
+                    minimumSize: const Size(double.infinity, 46),
                   ),
                   child: const Text('Tamam'),
                 ),
@@ -2176,6 +2179,7 @@ class _QuizScreenState extends State<QuizScreen>
       child: Material(
         color: _quizInkSoft,
         elevation: 0,
+        clipBehavior: Clip.none,
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border(
@@ -2214,7 +2218,10 @@ class _QuizScreenState extends State<QuizScreen>
                     if (!widget.tgExamMode) const SizedBox(width: 6),
                     if (!widget.tgExamMode)
                       Expanded(
-                        child: OutlinedButton(
+                        child: _SolutionRevealButton(
+                          enabled: canToggleSolution,
+                          showingSolution: _showingSolution,
+                          style: solutionStyle(enabled: canToggleSolution),
                           onPressed: !canToggleSolution
                               ? null
                               : _showingSolution
@@ -2223,13 +2230,6 @@ class _QuizScreenState extends State<QuizScreen>
                                         _drawingEnabled = false;
                                       })
                                   : _requestSolution,
-                          style: solutionStyle(enabled: canToggleSolution),
-                          child: Text(
-                            _showingSolution ? 'Çözümü Gizle' : 'Çözümü Gör',
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
                         ),
                       ),
                     if (!widget.tgExamMode) const SizedBox(width: 6),
@@ -3453,7 +3453,7 @@ class _OptionTile extends StatelessWidget {
   final bool isSelected;
   final _OptionTone? tone;
   final double? percentage;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _OptionTile({
     required this.label,
@@ -3649,9 +3649,7 @@ class _OptionTile extends StatelessWidget {
 enum _DailyMiniExitChoice { stay, submitRanking, saveOnly }
 
 class _ResultWrongReviewButton extends StatelessWidget {
-  final int wrongCount;
-
-  const _ResultWrongReviewButton({required this.wrongCount});
+  const _ResultWrongReviewButton();
 
   static const _wrongRed = Color(0xFFF87171);
 
@@ -3665,63 +3663,46 @@ class _ResultWrongReviewButton extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
+            border: Border.all(
+              color: AppTheme.champagne.withValues(alpha: 0.42),
+            ),
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFFFFF6E8),
-                Color(0xFFE2C998),
-                AppTheme.champagne,
+                const Color(0xFF24141A),
+                _wrongRed.withValues(alpha: 0.14),
+                const Color(0xFF161018),
               ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.champagne.withValues(alpha: 0.28),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
-          child: Container(
-            margin: const EdgeInsets.all(1.4),
-            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12.6),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF2A1218),
-                  _wrongRed.withValues(alpha: 0.18),
-                  const Color(0xFF1A1018),
-                ],
-              ),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
             child: Row(
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 36,
+                  height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: _wrongRed.withValues(alpha: 0.14),
+                    color: _wrongRed.withValues(alpha: 0.12),
                     border: Border.all(
-                      color: AppTheme.champagne.withValues(alpha: 0.45),
+                      color: AppTheme.champagne.withValues(alpha: 0.35),
                     ),
                   ),
                   child: const Icon(
                     Icons.menu_book_rounded,
-                    size: 20,
+                    size: 18,
                     color: AppTheme.champagneLight,
                   ),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
+                const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Yanlışlarımı Gör',
                         style: TextStyle(
                           fontFamily: 'serif',
@@ -3730,13 +3711,13 @@ class _ResultWrongReviewButton extends StatelessWidget {
                           color: Color(0xFFF6E7C3),
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2),
                       Text(
-                        '$wrongCount soru · hemen tekrar et',
+                        'Yanlışları hemen tekrar et',
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.68),
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xADFFFFFF),
                         ),
                       ),
                     ],
@@ -3745,7 +3726,7 @@ class _ResultWrongReviewButton extends StatelessWidget {
                 Icon(
                   Icons.arrow_forward_rounded,
                   size: 18,
-                  color: AppTheme.champagne.withValues(alpha: 0.9),
+                  color: AppTheme.champagne.withValues(alpha: 0.85),
                 ),
               ],
             ),
@@ -3770,30 +3751,201 @@ class _ResultRewardChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Şık seçilince aktif olan «Çözümü Gör» — tek seferlik hafif pulse.
+class _SolutionRevealButton extends StatefulWidget {
+  final bool enabled;
+  final bool showingSolution;
+  final ButtonStyle style;
+  final VoidCallback? onPressed;
+
+  const _SolutionRevealButton({
+    required this.enabled,
+    required this.showingSolution,
+    required this.style,
+    required this.onPressed,
+  });
+
+  @override
+  State<_SolutionRevealButton> createState() => _SolutionRevealButtonState();
+}
+
+class _SolutionRevealButtonState extends State<_SolutionRevealButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _glow;
+  late final Animation<double> _flash;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.1)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 38,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.1, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 32,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 1.05)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 15,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.05, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 15,
+      ),
+    ]).animate(_ctrl);
+    _glow = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 0.45)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.45, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 30,
+      ),
+    ]).animate(_ctrl);
+    _flash = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 0.42)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 35,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.42, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 65,
+      ),
+    ]).animate(_ctrl);
+  }
+
+  void _playActivatePulse() {
+    if (!mounted || widget.showingSolution) return;
+    _ctrl.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SolutionRevealButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.enabled && widget.enabled && !widget.showingSolution) {
+      // Stil/layout setState sonrası pulse kaçmasın.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _playActivatePulse());
+    }
+    if (!widget.enabled && (_ctrl.isAnimating || _ctrl.value > 0)) {
+      _ctrl.stop();
+      _ctrl.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
+        final g = _glow.value;
+        final flash = _flash.value;
+        return Transform.scale(
+          scale: _scale.value,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: g <= 0.02
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: AppTheme.champagne.withValues(alpha: 0.55 * g),
+                        blurRadius: 22 * g,
+                        spreadRadius: 1.2 * g,
+                      ),
+                      BoxShadow(
+                        color: AppTheme.champagneLight.withValues(alpha: 0.25 * g),
+                        blurRadius: 8 * g,
+                      ),
+                    ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                child!,
+                if (flash > 0.01)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: AppTheme.champagneLight
+                                .withValues(alpha: flash),
+                            width: 1.6,
+                          ),
+                          color: AppTheme.champagne.withValues(alpha: flash * 0.35),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+      child: OutlinedButton(
+        onPressed: widget.onPressed,
+        style: widget.style,
+        child: Text(
+          widget.showingSolution ? 'Çözümü Gizle' : 'Çözümü Gör',
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
   }

@@ -1,6 +1,11 @@
+import 'package:flutter/painting.dart';
+
 /// Türkçe satır sonu heceleme — TDK kuralları + soft hyphen (U+00AD).
 ///
-/// Soft hyphen görünmezdir; yalnızca satır kırılınca `-` olarak çizilir.
+/// Soft hyphen görünmezdir; yalnızca satır kırılınca `-` olarak çizilmelidir.
+/// Flutter (3.44 ve öncesi) U+00AD noktasında satırı kırar ama tireyi
+/// çizmez ([flutter#18443](https://github.com/flutter/flutter/issues/18443)).
+/// [applyVisibleLineBreakHyphens] bu boşluğu doldurur.
 ///
 /// Kurallar:
 /// - Her hecede bir ünlü vardır; heceler bölünmez.
@@ -54,6 +59,121 @@ class TurkishHyphenation {
   /// Test / debug için: soft hyphen'leri `-` ile göster.
   static String visibleBreaks(String input) =>
       hyphenate(input).replaceAll(softHyphen, '-');
+
+  /// Soft hyphen ile kırılan satır sonlarına görünür `-` koyar.
+  ///
+  /// Flutter soft hyphen'i kırılma fırsatı sayar ama tireyi boyamaz.
+  /// İlk ölçümde satır sonu sanılan soft hyphen'ler hard `-` yapıldığında
+  /// metin yeniden akar ve tire satır ortasında kalabilir — bu yüzden
+  /// ikinci (ve gerekirse üçüncü) geçişte satır sonunda olmayan
+  /// hece tireleri budanır. Metindeki gerçek tireler (ör. `zarf-fiil`)
+  /// yalnızca soft hyphen'den üretilen indeksler budandığı için korunur.
+  static String applyVisibleLineBreakHyphens(
+    String input, {
+    required double maxWidth,
+    required TextStyle style,
+    TextAlign textAlign = TextAlign.start,
+    TextDirection textDirection = TextDirection.ltr,
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    if (input.isEmpty || maxWidth <= 0 || !input.contains(softHyphen)) {
+      return input;
+    }
+
+    TextPainter painterFor(String text) => TextPainter(
+          text: TextSpan(text: text, style: style),
+          textAlign: textAlign,
+          textDirection: textDirection,
+          textScaler: textScaler,
+        )..layout(maxWidth: maxWidth);
+
+    final softCode = softHyphen.codeUnitAt(0);
+
+    Set<int> softHyphensAtLineEnds(String text, TextPainter painter) {
+      final breakAt = <int>{};
+      var offset = 0;
+      var guard = 0;
+      while (offset < text.length && guard++ < text.length + 4) {
+        final boundary = painter.getLineBoundary(TextPosition(offset: offset));
+        final end = boundary.end;
+        if (end <= offset) break;
+        // Yalnızca satırın son karakteri soft hyphen ise — `end` konumundaki
+        // soft hyphen (sonraki satır başı) false-positive üretir.
+        if (end < text.length &&
+            end > 0 &&
+            text.codeUnitAt(end - 1) == softCode) {
+          breakAt.add(end - 1);
+        }
+        offset = end;
+      }
+      return breakAt;
+    }
+
+    Set<int> hardHyphensAtLineEnds(
+      String text,
+      TextPainter painter,
+      Set<int> candidates,
+    ) {
+      if (candidates.isEmpty) return {};
+      final keep = <int>{};
+      var offset = 0;
+      var guard = 0;
+      while (offset < text.length && guard++ < text.length + 4) {
+        final boundary = painter.getLineBoundary(TextPosition(offset: offset));
+        final end = boundary.end;
+        if (end <= offset) break;
+        if (end < text.length &&
+            end > 0 &&
+            text[end - 1] == '-' &&
+            candidates.contains(end - 1)) {
+          keep.add(end - 1);
+        }
+        offset = end;
+      }
+      return keep;
+    }
+
+    final initialBreaks = softHyphensAtLineEnds(input, painterFor(input));
+
+    // Soft → hard (yalnızca aday satır sonları); diğer soft hyphen'ler silinir.
+    final built = StringBuffer();
+    var hardIdx = <int>{};
+    for (var i = 0; i < input.length; i++) {
+      if (input.codeUnitAt(i) == softCode) {
+        if (initialBreaks.contains(i)) {
+          hardIdx.add(built.length);
+          built.write('-');
+        }
+      } else {
+        built.write(input[i]);
+      }
+    }
+    var out = built.toString();
+    if (hardIdx.isEmpty) return out;
+
+    // Reflow sonrası satır ortasında kalan hece tirelerini buda.
+    for (var pass = 0; pass < 3; pass++) {
+      final keep = hardHyphensAtLineEnds(out, painterFor(out), hardIdx);
+      if (keep.length == hardIdx.length) break;
+
+      final next = StringBuffer();
+      final nextHard = <int>{};
+      for (var i = 0; i < out.length; i++) {
+        if (out[i] == '-' && hardIdx.contains(i) && !keep.contains(i)) {
+          continue;
+        }
+        if (out[i] == '-' && hardIdx.contains(i)) {
+          nextHard.add(next.length);
+        }
+        next.write(out[i]);
+      }
+      out = next.toString();
+      hardIdx = nextHard;
+      if (hardIdx.isEmpty) break;
+    }
+
+    return out;
+  }
 
   static String _hyphenateWord(String word) {
     final breaks = _breakOffsets(word);

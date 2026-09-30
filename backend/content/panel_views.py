@@ -456,8 +456,14 @@ def panel_home(request: HttpRequest) -> HttpResponse:
             f"«{question_query}» ile eşleşen soru bulunamadı.",
         )
 
+    # Yalnızca aktif müfredat dersleri — test/probe (dbg_cap, fp_d_probe)
+    # artıkları is_active olsa bile burada listelenmemeli; boş junk silinir.
     subjects = (
-        Subject.objects.annotate(
+        Subject.objects.filter(is_active=True)
+        .exclude(slug__startswith="dbg_")
+        .exclude(slug__endswith="_probe")
+        .exclude(slug__in=("fp_d", "dbg_cap"))
+        .annotate(
             topic_count=Count("topics", distinct=True),
             question_count=Count("topics__questions", distinct=True),
         )

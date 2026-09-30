@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
 import '../theme/exam_typography.dart';
+import '../utils/turkish_hyphenation.dart';
 
 /// Markdown + LaTeX: **kalın**, *italik*, __altı çizili__, {green}renk{/green}, $...$ / $$...$$.
 /// Panel ile uyumlu paragraf düzeni ve HTML etiket yedek desteği.
@@ -2705,22 +2706,40 @@ class _WrappedExamLine extends StatelessWidget {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return const SizedBox.shrink();
 
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: FormattedText.parseSpans(trimmed, base),
-      ),
-      textAlign: textAlign ?? TextAlign.start,
-      softWrap: true,
-      textWidthBasis: TextWidthBasis.parent,
-      // Kesir/kök WidgetSpan'i sabit strut yüksekliğine zorlanırsa satırın
-      // dışına taşıp alttaki şık kutusuna yaklaşır. Matematikli satır kendi
-      // gerçek yüksekliği kadar büyüyebilsin.
-      strutStyle: FormattedText.examStrutStyle(
-        base,
-        forceHeight: !FormattedText.usesDisplayMath(trimmed),
-      ),
-      textHeightBehavior: FormattedText.examTextHeightBehavior,
+    // Soft hyphen (U+00AD) Flutter'da satırı kırar ama `-` çizmez; ölçümle
+    // satır sonundaki soft hyphen'leri görünür tireye çevir.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        var maxW = constraints.maxWidth;
+        if (!maxW.isFinite || maxW <= 0) {
+          maxW = MediaQuery.sizeOf(context).width - 48;
+        }
+        final align = textAlign ?? TextAlign.start;
+        final display = TurkishHyphenation.applyVisibleLineBreakHyphens(
+          trimmed,
+          maxWidth: maxW,
+          style: base,
+          textAlign: align,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        return Text.rich(
+          TextSpan(
+            style: base,
+            children: FormattedText.parseSpans(display, base),
+          ),
+          textAlign: align,
+          softWrap: true,
+          textWidthBasis: TextWidthBasis.parent,
+          // Kesir/kök WidgetSpan'i sabit strut yüksekliğine zorlanırsa satırın
+          // dışına taşıp alttaki şık kutusuna yaklaşır. Matematikli satır kendi
+          // gerçek yüksekliği kadar büyüyebilsin.
+          strutStyle: FormattedText.examStrutStyle(
+            base,
+            forceHeight: !FormattedText.usesDisplayMath(display),
+          ),
+          textHeightBehavior: FormattedText.examTextHeightBehavior,
+        );
+      },
     );
   }
 }

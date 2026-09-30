@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
+import '../../utils/turkish_hyphenation.dart';
 import '../formatted_text.dart';
 
 /// Olay kurgusu (ortak senaryo metni) — softWrap, punto sabit; FittedBox yok.
@@ -11,8 +12,11 @@ class ExamScenarioPassageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final prepared = FormattedText.looksLikeMath(text) || text.contains(r'$')
+        ? text
+        : TurkishHyphenation.hyphenate(text);
     return FormattedText(
-      text,
+      prepared,
       preserveLineBreaks: true,
       examLayout: true,
       examWrap: true,

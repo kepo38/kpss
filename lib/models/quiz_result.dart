@@ -31,6 +31,9 @@ class QuizResult {
   double get accuracy => total == 0 ? 0 : correct / total;
   double get net => correct - (wrong / 4);
 
+  /// KPSS tarzı: net / soru sayısı (negatif net mümkün).
+  double get netAccuracy => total == 0 ? 0 : net / total;
+
   /// Toplam sürenin soru sayısına bölünmesi.
   Duration get averageQuestionDuration {
     if (total <= 0) return Duration.zero;

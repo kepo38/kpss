@@ -40,7 +40,8 @@ _SUBJECT_HINTS: dict[str, list[tuple[str, int]]] = {
     ],
     "cografya": [
         (r"\b(coğrafya|cografya|iklim|nüfus|nufus|tarım|tarim|sanayi|bölge|bolge)\b", 8),
-        (r"\b(yer\s*şekli|yersekli|akarsu|göl|gol|plato|ova|fay|deprem|harita)\b", 7),
+        (r"\b(yer\s*şekli|yersekli|akarsu|göl|gol|plato|ova|fay|deprem|harita\w*)\b", 7),
+        (r"\b(unesco|turizm|miras\s*listesi|dünya\s*miras|dunya\s*miras)\b", 8),
         (r"\b(enlem|boylam|meridyen|paralel|jeopolitik|kıyı|kiyi)\b", 6),
     ],
     "vatandaslik": [
@@ -126,19 +127,30 @@ def _panel_topic_by_slug(slug: str) -> Topic | None:
     return None
 
 
+def _token_in_blob(token: str, blob: str) -> bool:
+    """Topic name/slug token must match as a whole word in blob.
+
+    Substring matches cause false positives (e.g. turk inside turkiye).
+    """
+    token = (token or "").strip()
+    if len(token) < 4:
+        return False
+    return re.search(rf"(?<!\w){re.escape(token)}(?!\w)", blob) is not None
+
+
 def _topic_name_bonus(blob: str, topic: Topic) -> int:
     name = _normalize(topic.name)
     if len(name) >= 4 and name in blob:
         return 14
-    tokens = [t for t in re.split(r"[\s·\-–—/]+", name) if len(t) >= 4]
-    return sum(4 for t in tokens if t in blob)
+    tokens = [t for t in re.split(r"[\s\u00b7\-\u2013\u2014/]+", name) if len(t) >= 4]
+    return sum(4 for t in tokens if _token_in_blob(t, blob))
 
 
 def _topic_slug_bonus(blob: str, topic: Topic) -> int:
     score = 0
     for part in topic.slug.split("_"):
         part_norm = _normalize(part)
-        if len(part_norm) >= 4 and part_norm in blob:
+        if _token_in_blob(part_norm, blob):
             score += 3
     return score
 

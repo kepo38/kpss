@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/exam_typography.dart';
+import '../../utils/turkish_hyphenation.dart';
 import '../cached_remote_image.dart';
 import '../formatted_text.dart';
 import 'option_column_layout.dart';
@@ -172,12 +173,18 @@ class ExamOptionView extends StatelessWidget {
     // render'da kalın/altı çizili işaretleri korunmalı.
     final wrapped = FormattedText.wrapBareLatex(text);
     final prepared = FormattedText.prepareStoredExamJustifyText(wrapped);
+    // Uzun düz şıklarda TDK hecelemesi; matematik/LaTeX şıklara dokunma.
+    final cleaned = mathStyle ||
+            FormattedText.looksLikeMath(prepared) ||
+            prepared.contains(r'$')
+        ? prepared
+        : TurkishHyphenation.hyphenate(prepared);
     final align = textAlign ?? (mathStyle ? TextAlign.center : TextAlign.start);
     // examWrap=true iken tek satır $\frac$ display bloğuna düşüp her zaman
     // ortalanır; chip'te start hizası için wrap kapatılır.
     final wrap = examWrap ?? true;
     return FormattedText(
-      prepared,
+      cleaned,
       preNormalized: true,
       preserveLineBreaks: true,
       examLayout: true,

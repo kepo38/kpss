@@ -25,31 +25,32 @@ class ShareableResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pct = (result.accuracy * 100).round();
+    final netPct = (result.netAccuracy * 100).round();
+    final rawPct = (result.accuracy * 100).round();
     final net = result.net.toStringAsFixed(2);
 
     return Container(
       width: 320,
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF162338),
+            Color(0xFF1A283C),
             Color(0xFF0C1424),
-            Color(0xFF101A2C),
+            Color(0xFF0A101C),
           ],
         ),
         border: Border.all(
-          color: AppTheme.champagne.withValues(alpha: 0.45),
-          width: 1.2,
+          color: AppTheme.champagne.withValues(alpha: 0.38),
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.champagne.withValues(alpha: 0.18),
-            blurRadius: 22,
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -58,18 +59,11 @@ class ShareableResultCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const BrandMark(dark: true, logoSize: 34, compact: true),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppTheme.champagne.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppTheme.champagne.withValues(alpha: 0.4),
-                  ),
-                ),
+              const BrandMark(dark: true, logoSize: 36, compact: true),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Text(
                   testTitle,
                   maxLines: 2,
@@ -77,127 +71,131 @@ class ShareableResultCard extends StatelessWidget {
                   textAlign: TextAlign.right,
                   style: const TextStyle(
                     fontFamily: 'serif',
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
+                    height: 1.25,
+                    letterSpacing: 0.15,
                     color: AppTheme.champagneLight,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 28),
           Text(
-            'Soru başı ort. ${QuizResult.formatDuration(result.averageQuestionDuration)}',
+            'NET',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
+              letterSpacing: 3.2,
               fontWeight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: 0.5),
+              color: AppTheme.champagne.withValues(alpha: 0.78),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            net,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'serif',
+              fontSize: 52,
+              fontWeight: FontWeight.w700,
+              height: 0.95,
+              color: AppTheme.champagneLight,
             ),
           ),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: Colors.white.withValues(alpha: 0.05),
-              border: Border.all(
-                color: AppTheme.champagne.withValues(alpha: 0.28),
+          Text(
+            'Net oranı %$netPct',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.neonEdge.withValues(alpha: 0.95),
+            ),
+          ),
+          if (rawPct != netPct) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Ham %$rawPct',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: Colors.white.withValues(alpha: 0.38),
               ),
             ),
-            child: Column(
+          ],
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: Colors.white.withValues(alpha: 0.04),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
               children: [
-                Text(
-                  'NET',
-                  style: TextStyle(
-                    fontSize: 11,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.champagne.withValues(alpha: 0.85),
+                Expanded(
+                  child: _MetricStripItem(
+                    label: 'Doğru',
+                    value: '${result.correct}',
+                    color: const Color(0xFF4ADE80),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  net,
-                  style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 44,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                    color: AppTheme.champagneLight,
+                _MetricDivider(),
+                Expanded(
+                  child: _MetricStripItem(
+                    label: 'Yanlış',
+                    value: '${result.wrong}',
+                    color: const Color(0xFFF87171),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '%$pct başarı',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.neonEdge.withValues(alpha: 0.95),
+                _MetricDivider(),
+                Expanded(
+                  child: _MetricStripItem(
+                    label: 'Boş',
+                    value: '${result.blank}',
+                    color: Colors.white70,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _StatCell(
-                  label: 'Doğru',
-                  value: '${result.correct}',
-                  color: const Color(0xFF4ADE80),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _StatCell(
-                  label: 'Yanlış',
-                  value: '${result.wrong}',
-                  color: const Color(0xFFF87171),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _StatCell(
-                  label: 'Boş',
-                  value: '${result.blank}',
-                  color: Colors.white70,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             children: [
               Icon(
                 Icons.timer_outlined,
                 size: 14,
-                color: Colors.white.withValues(alpha: 0.45),
+                color: Colors.white.withValues(alpha: 0.42),
               ),
               const SizedBox(width: 6),
               Text(
                 QuizResult.formatDuration(result.duration),
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.55),
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.5),
                 ),
               ),
               const Spacer(),
               Text(
-                '${result.total} soru',
+                '${result.total} soru · ort. ${QuizResult.formatDuration(result.averageQuestionDuration)}',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.55),
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.5),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Container(
             height: 1,
-            color: Colors.white.withValues(alpha: 0.08),
+            color: Colors.white.withValues(alpha: 0.07),
           ),
           const SizedBox(height: 12),
           Text(
@@ -206,7 +204,7 @@ class ShareableResultCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w500,
-              color: Colors.white.withValues(alpha: 0.5),
+              color: Colors.white.withValues(alpha: 0.42),
             ),
           ),
         ],
@@ -215,12 +213,23 @@ class ShareableResultCard extends StatelessWidget {
   }
 }
 
-class _StatCell extends StatelessWidget {
+class _MetricDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 28,
+      color: Colors.white.withValues(alpha: 0.1),
+    );
+  }
+}
+
+class _MetricStripItem extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
-  const _StatCell({
+  const _MetricStripItem({
     required this.label,
     required this.value,
     required this.color,
@@ -228,33 +237,27 @@ class _StatCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
+            color: color,
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.6),
-            ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: Colors.white.withValues(alpha: 0.55),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -305,9 +308,9 @@ class ResultCardShare {
   }
 
   static String shareText(String title, QuizResult result) {
-    final pct = (result.accuracy * 100).round();
+    final netPct = (result.netAccuracy * 100).round();
     return '${BrandConstants.appName} · $title\n'
-        'Net ${result.net.toStringAsFixed(2)} · %$pct başarı\n'
+        'Net ${result.net.toStringAsFixed(2)} · Net oranı %$netPct\n'
         'Doğru ${result.correct} · Yanlış ${result.wrong} · Boş ${result.blank}\n'
         '${BrandConstants.shareHashtag}';
   }

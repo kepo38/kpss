@@ -10,6 +10,17 @@ class TopicClassifierTests(TestCase):
         self.turkce = Subject.objects.create(slug="turkce", name="Türkçe")
         self.tarih = Subject.objects.create(slug="tarih", name="Tarih")
         self.matematik = Subject.objects.create(slug="matematik", name="Matematik")
+        self.cografya = Subject.objects.create(slug="cografya", name="Cografya")
+        self.cog_turizm = Topic.objects.create(
+            subject=self.cografya,
+            slug="cog_ulasim_turizm",
+            name="Turkiyede Ulasim Ticaret ve Turizm",
+        )
+        self.tarih_kultur = Topic.objects.create(
+            subject=self.tarih,
+            slug="tarih_turk-islam-kultur-ve-medeniyeti",
+            name="Turk-Islam Kultur ve Medeniyeti",
+        )
         self.turkce_anlam = Topic.objects.create(
             subject=self.turkce,
             slug="turkce_anlam",
@@ -84,3 +95,31 @@ class TopicClassifierTests(TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result.topic.subject.slug, "matematik")
+
+    def test_token_boundary_avoids_turk_inside_turkiye(self):
+        from content.topic_classifier import _token_in_blob
+
+        self.assertFalse(_token_in_blob("turk", "turkiye unesco"))
+        self.assertTrue(_token_in_blob("turkiye", "turkiye unesco"))
+
+    def test_haritada_unesco_prefers_cografya_not_kultur(self):
+        stem = (
+            "Asagidaki haritada bazi alanlar numaralandirilarak gosterilmistir. "
+            "Buna gore Turkiye'nin UNESCO Dunya Kultur Mirasi Listesi'nde bulunan "
+            "varliklarindan hangisinin bulundugu alan yanlis gosterilmistir?"
+        )
+        opts = {
+            "A": "I - Afrodisias",
+            "B": "II - Bursa",
+            "C": "III - Hattusa",
+            "D": "IV - Nemrut",
+            "E": "V - Ani",
+        }
+        result = classify_topic_from_ocr(stem, opts, fallback=self.turkce_anlam)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.topic.subject.slug, "cografya")
+        self.assertNotEqual(
+            result.topic.slug, "tarih_turk-islam-kultur-ve-medeniyeti"
+        )
+
