@@ -22,15 +22,18 @@ class AnswerFeedbackService {
       AudioContext(
         android: const AudioContextAndroid(
           contentType: AndroidContentType.sonification,
-          usageType: AndroidUsageType.assistanceSonification,
-          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.none,
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.ambient,
+          options: {AVAudioSessionOptions.mixWithOthers},
         ),
       ),
     );
+    await _player.setPlayerMode(PlayerMode.mediaPlayer);
     await _player.setReleaseMode(ReleaseMode.stop);
+    await _player.setVolume(1.0);
     _ready = true;
   }
 
@@ -57,32 +60,33 @@ class AnswerFeedbackService {
   Future<void> playCorrect() async {
     await ensureReady();
     HapticFeedback.lightImpact();
-    await _playAsset(
-      _player,
-      'sounds/correct.wav',
-      onFailure: () => SystemSound.play(SystemSoundType.click),
-    );
+    unawaited(_playSfx('sounds/correct.wav', SystemSoundType.click));
   }
 
   Future<void> playWrong() async {
     await ensureReady();
     HapticFeedback.mediumImpact();
-    await _playAsset(
-      _player,
-      'sounds/wrong.wav',
-      onFailure: () => SystemSound.play(SystemSoundType.alert),
-    );
+    unawaited(_playSfx('sounds/wrong.wav', SystemSoundType.click));
   }
 
   /// TG denemede son 10 dakikaya girildiğinde tek seferlik uyarı.
   Future<void> playExamTimeWarning() async {
     await ensureReady();
     HapticFeedback.heavyImpact();
-    await _playAsset(
-      _player,
-      'sounds/focus_complete.wav',
-      onFailure: () => SystemSound.play(SystemSoundType.alert),
-    );
+    unawaited(_playSfx('sounds/focus_complete.wav', SystemSoundType.click));
+  }
+
+  /// Kısa efekt: complete beklenmez, Pomodoro’ya dokunulmaz.
+  Future<void> _playSfx(String asset, SystemSoundType fallback) async {
+    try {
+      await _player.setVolume(1.0);
+      await _player.play(AssetSource(asset));
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('AnswerFeedbackService asset failed ($asset): $e\n$st');
+      }
+      SystemSound.play(fallback);
+    }
   }
 
   /// Test bitince sonuç ekranı — kısa tamamlanma efekti (~2,5 sn).
@@ -119,7 +123,6 @@ class AnswerFeedbackService {
   }) async {
     StreamSubscription<void>? sub;
     try {
-      await player.stop();
       if (waitForCompletion) {
         final completer = Completer<void>();
         sub = player.onPlayerComplete.listen((_) {
@@ -133,10 +136,6 @@ class AnswerFeedbackService {
         );
       } else {
         await player.play(AssetSource(asset));
-        await player.onPlayerComplete.first.timeout(
-          completionTimeout,
-          onTimeout: () {},
-        );
       }
     } catch (e, st) {
       if (kDebugMode) {
@@ -145,16 +144,7 @@ class AnswerFeedbackService {
       onFailure();
     } finally {
       await sub?.cancel();
-      if (player == _player) {
-        await _restorePomodoroMusic();
-      }
     }
-  }
-
-  /// Cevap sesi odak çalmış olabilir — Pomodoro ortam / Deep Work devam etsin.
-  Future<void> _restorePomodoroMusic() async {
-    await PomodoroService.instance.ensureDeepWorkKeepsPlaying();
-    await PomodoroService.instance.ensureAmbientKeepsPlaying();
   }
 
   Future<void> dispose() async {

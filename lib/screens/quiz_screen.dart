@@ -529,9 +529,9 @@ class _QuizScreenState extends State<QuizScreen>
     _flashColor = isCorrect ? _correctGreen : _wrongRed;
     _flashCtrl.forward(from: 0);
     if (isCorrect) {
-      AnswerFeedbackService.instance.playCorrect();
+      unawaited(AnswerFeedbackService.instance.playCorrect());
     } else {
-      AnswerFeedbackService.instance.playWrong();
+      unawaited(AnswerFeedbackService.instance.playWrong());
     }
   }
 
