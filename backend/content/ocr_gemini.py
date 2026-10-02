@@ -60,13 +60,11 @@ _GEMINI_URL = (
 )
 
 # Kota / 503 durumunda sırayla dene. Ölü (404) modeller _DEAD_GEMINI_MODELS ile
-# süreç boyunca atlanır — aksi halde her OCR 6×404 ile free-tier kotayı yakar.
+# süreç boyunca atlanır. Yedekler Lite kalsın — 3.8 Flash OCR maliyetini
+# tekrar şişirmesin.
 _GEMINI_MODEL_FALLBACKS = (
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-flash-latest",
     "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview",
+    "gemini-2.5-flash-lite",
 )
 
 # 503 / UNAVAILABLE: ayni modelde kisa backoff ile tekrar dene.
@@ -90,8 +88,10 @@ _GEMINI_QUOTA_MARKERS = (
 
 # Surec ici cooldown: kota 429 sonrasi ayni process'te yeni Gemini denemeleri
 # atlanir (Telegram burst kotayi tekrar yakmasin). Yeniden baslatinca sifirlanir.
+# Ucretli anahtar varsa free-tier 429 cooldown acmaz; paid'e gecer.
 _GEMINI_QUOTA_COOLDOWN_SEC = 50.0
 _quota_cooldown_until_mono: float = 0.0
+_prefer_paid_key: bool = False
 
 # Süreç içi: "no longer available" / "is not found" → bir daha deneme.
 _DEAD_GEMINI_MODELS: set[str] = set()
@@ -456,8 +456,40 @@ def strip_geometry_auto_solution(
     return solution or ""
 
 
+def _gemini_free_key() -> str:
+    return (getattr(settings, "GEMINI_API_KEY", "") or "").strip()
+
+
+def _gemini_paid_key() -> str:
+    return (getattr(settings, "GEMINI_API_KEY_PAID", "") or "").strip()
+
+
 def gemini_configured() -> bool:
-    return bool(getattr(settings, "GEMINI_API_KEY", ""))
+    return bool(_gemini_free_key() or _gemini_paid_key())
+
+
+def _paid_key_available() -> bool:
+    paid = _gemini_paid_key()
+    return bool(paid) and paid != _gemini_free_key()
+
+
+def _current_api_key() -> str:
+    paid = _gemini_paid_key()
+    free = _gemini_free_key()
+    if _prefer_paid_key and paid:
+        return paid
+    return free or paid
+
+
+def _promote_to_paid_key() -> bool:
+    """Ücretsiz kota bitince süreç boyunca ücretli anahtara geç."""
+    global _prefer_paid_key
+    if _prefer_paid_key:
+        return False
+    if not _paid_key_available():
+        return False
+    _prefer_paid_key = True
+    return True
 
 
 def _payload_stem(data: dict[str, Any]) -> str:
@@ -744,7 +776,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _model_candidates() -> list[str]:
     configured = (
-        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.8-flash"
+        getattr(settings, "GEMINI_OCR_MODEL", "") or "gemini-3.5-flash-lite"
     ).strip()
     out: list[str] = []
     for model in (configured, *_GEMINI_MODEL_FALLBACKS):
@@ -814,9 +846,10 @@ def _arm_gemini_quota_cooldown() -> None:
 
 
 def _reset_gemini_quota_cooldown_for_tests() -> None:
-    """Sadece unit testler icin cooldown sifirla."""
-    global _quota_cooldown_until_mono
+    """Sadece unit testler icin cooldown / paid-fallback sifirla."""
+    global _quota_cooldown_until_mono, _prefer_paid_key
     _quota_cooldown_until_mono = 0.0
+    _prefer_paid_key = False
 
 
 def _quota_cooldown_skip_error() -> RuntimeError:
@@ -860,8 +893,11 @@ def _post_gemini_model_with_retries(
             )
         except RuntimeError as exc:
             last_err = exc
-            # Net kota: ayni modelde tekrar deneme / uyuma — kotayi yakma
+            # Net kota: ayni modelde tekrar deneme / uyuma — kotayi yakma.
+            # Ucretli anahtar varsa once ona gec; paid de 429 olursa cooldown.
             if is_gemini_quota_error(exc):
+                if _promote_to_paid_key():
+                    continue
                 _arm_gemini_quota_cooldown()
                 raise
             # 404 / dead: hemen cik (uyuma)
@@ -885,12 +921,17 @@ def _post_gemini_model(
     timeout: int = 45,
     json_mode: bool = True,
 ) -> str:
-    api_key = settings.GEMINI_API_KEY
+    api_key = _current_api_key()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY tanımlı değil.")
     url = f"{_GEMINI_URL.format(model=model)}?key={api_key}"
     b64 = base64.b64encode(image_bytes).decode("ascii")
     generation: dict[str, Any] = {"temperature": 0.1}
     if json_mode:
         generation["responseMimeType"] = "application/json"
+    # Lite OCR: düşünme token'ı (çıkış faturası) kesilsin.
+    if "lite" in (model or "").lower():
+        generation["thinkingConfig"] = {"thinkingBudget": 0}
     body = {
         "contents": [
             {

@@ -619,12 +619,16 @@ class OcrScoreTests(SimpleTestCase):
         self.assertEqual(result.options["D"], "16")
         self.assertEqual(result.options["E"], "18")
 
-    @override_settings(GEMINI_API_KEY="")
+    @override_settings(GEMINI_API_KEY="", GEMINI_API_KEY_PAID="")
     def test_not_configured(self):
         self.assertFalse(gemini_configured())
 
     @override_settings(GEMINI_API_KEY="test-key")
     def test_configured(self):
+        self.assertTrue(gemini_configured())
+
+    @override_settings(GEMINI_API_KEY="", GEMINI_API_KEY_PAID="paid-key")
+    def test_configured_with_paid_only(self):
         self.assertTrue(gemini_configured())
 
 
@@ -700,19 +704,19 @@ class GeminiTransientRetryTests(SimpleTestCase):
         self.assertEqual(sleeps, [])
         self.assertIn("gemini-2.5-flash", og._DEAD_GEMINI_MODELS)
 
-    def test_fallback_order_3_8_primary_cascade(self):
+    def test_fallback_order_lite_primary_cascade(self):
         from content import ocr_gemini as og
 
-        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[0], "gemini-3.7-flash")
-        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[1], "gemini-3.6-flash")
-        self.assertNotIn("gemini-2.5-flash", og._GEMINI_MODEL_FALLBACKS)
-        with override_settings(GEMINI_OCR_MODEL="gemini-3.8-flash"):
+        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[0], "gemini-3.1-flash-lite")
+        self.assertEqual(og._GEMINI_MODEL_FALLBACKS[1], "gemini-2.5-flash-lite")
+        self.assertNotIn("gemini-3.8-flash", og._GEMINI_MODEL_FALLBACKS)
+        with override_settings(GEMINI_OCR_MODEL="gemini-3.5-flash-lite"):
             self.assertEqual(
                 og._model_candidates()[:3],
                 [
-                    "gemini-3.8-flash",
-                    "gemini-3.7-flash",
-                    "gemini-3.6-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.1-flash-lite",
+                    "gemini-2.5-flash-lite",
                 ],
             )
 
@@ -799,4 +803,54 @@ class GeminiTransientRetryTests(SimpleTestCase):
         self.assertEqual(calls["n"], 0)
         self.assertIn("cooldown", str(ctx.exception).lower())
         self.assertTrue(og.is_gemini_quota_error(ctx.exception))
+        og._reset_gemini_quota_cooldown_for_tests()
+
+    @override_settings(GEMINI_API_KEY="free-key", GEMINI_API_KEY_PAID="paid-key")
+    def test_quota_429_falls_back_to_paid_key(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._reset_gemini_quota_cooldown_for_tests()
+        keys_seen: list[str] = []
+
+        def fake_post(*args, **kwargs):
+            keys_seen.append(og._current_api_key())
+            if og._current_api_key() == "free-key":
+                raise RuntimeError(
+                    'Gemini HTTP 429: {"error":{"code":429,"status":"RESOURCE_EXHAUSTED",'
+                    '"message":"Quota exceeded for generate_content_free_tier"}}'
+                )
+            return '{"ok": true}'
+
+        with patch.object(og, "_post_gemini_model", side_effect=fake_post):
+            raw = og._post_gemini_model_with_retries(
+                b"img", "image/png", "gemini-3.6-flash"
+            )
+        self.assertEqual(raw, '{"ok": true}')
+        self.assertEqual(keys_seen, ["free-key", "paid-key"])
+        self.assertFalse(og.gemini_quota_cooldown_active())
+        og._reset_gemini_quota_cooldown_for_tests()
+
+    @override_settings(GEMINI_API_KEY="free-key", GEMINI_API_KEY_PAID="paid-key")
+    def test_paid_quota_429_still_cools_down(self):
+        from unittest.mock import patch
+        from content import ocr_gemini as og
+
+        og._reset_gemini_quota_cooldown_for_tests()
+        calls = {"n": 0}
+
+        def fake_post(*args, **kwargs):
+            calls["n"] += 1
+            raise RuntimeError(
+                'Gemini HTTP 429: {"error":{"code":429,"status":"RESOURCE_EXHAUSTED",'
+                '"message":"Quota exceeded for generate_content_free_tier"}}'
+            )
+
+        with patch.object(og, "_post_gemini_model", side_effect=fake_post):
+            with self.assertRaises(RuntimeError):
+                og._post_gemini_model_with_retries(
+                    b"img", "image/png", "gemini-3.6-flash"
+                )
+        self.assertEqual(calls["n"], 2)
+        self.assertTrue(og.gemini_quota_cooldown_active())
         og._reset_gemini_quota_cooldown_for_tests()

@@ -118,9 +118,11 @@ TESSDATA_DIR = os.environ.get("TESSDATA_DIR", str(BASE_DIR / "tessdata"))
 TESSERACT_LANG = os.environ.get("TESSERACT_LANG", "tur,tur+eng")
 DEFAULT_CHARSET = "utf-8"
 
-# Gemini Vision — matematik OCR fallback (ücretsiz kota: AI Studio)
+# Gemini Vision — matematik OCR fallback
+# GEMINI_API_KEY: ücretsiz (AI Studio). Kota bitince GEMINI_API_KEY_PAID kullanılır.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_OCR_MODEL = os.environ.get("GEMINI_OCR_MODEL", "gemini-3.8-flash")
+GEMINI_API_KEY_PAID = os.environ.get("GEMINI_API_KEY_PAID", "")
+GEMINI_OCR_MODEL = os.environ.get("GEMINI_OCR_MODEL", "gemini-3.5-flash-lite")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 
