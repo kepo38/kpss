@@ -1,6 +1,6 @@
 # Hedef Kamu (KPSS Akademi) — Özellik Kataloğu
 
-> **Son güncelleme:** 2026-09-20 (panel bilgi sıralama · varsayılan Sıra · Konuyu Öğren · kalem · VPN)
+> **Son güncelleme:** 2026-10-03 (KPSS net · Gelişim BAŞARI · pratik şık kilidi)
 
 Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kaynakta toplar. Yeni özellik eklendiğinde, mevcut bir özellik değiştirildiğinde veya kaldırıldığında **aynı PR/commit ile güncellenmelidir**.
 
@@ -21,13 +21,23 @@ Bu dosya uygulamadaki **tüm kullanıcı ve yönetici özelliklerini** tek kayna
 
 > **Dart paketi:** `kpss_akademi` · **Android applicationId:** `com.hedefkamu.hedef_kamu` · **Sürüm:** `1.0.1+3` · **Stack:** Flutter + Django REST + panel (`/panel/`)
 
+### 2–3 Ekim 2026 — KPSS net · Gelişim BAŞARI · pratik şık kilidi
+
+Konu testi ve Gelişim **net** hesabı (4 yanlış = 1 doğru); pratikte ilk şık kilitlenir.
+
+| Alan | Ne yapıldı | Dosyalar |
+|:---|:---|:---|
+| **Konu testi net** | Sonuç: **net = doğru − yanlış/4** (KPSS) | `quiz_screen.dart` |
+| **Gelişim BAŞARI** | **Net oranı** yay + Net X.XX (`AnalyticsSuccessHero`) | `analytics_success_hero.dart`, `analytics_hub_screen.dart` |
+| **Pratik şık kilidi** | İlk işaret kilit. TG denemede süre bitene kadar şık değişir | `quiz_screen.dart` |
+
 ### 20 Eylül 2026 — Konuyu Öğren (bilgi) · özet öğrenci yolu kapatıldı · ders kalemi · stacked math · VPN allowlist
 
 Bu tur: canlı öğrenci yolu **bilgi kartları** (`LessonReaderScreen`); özet deste / `TopicSummaryStudyScreen` canlı değil; Favoriler **Bilgi Kartları**; ders okuyucuda kalem; dikey aritmetik formül; VPN’de Premium + QA/dev muafiyeti.
 
 | Alan | Ne yapıldı | Dosyalar |
 |:---|:---|:---|
-| **Konuyu Öğren** | `topic_detail` → `_KonuyuOgrenButton` (Premium pulse/shimmer) → `LessonReaderScreen`; Unuttum/Biliyorum/kalp; alt yazı «N bilgi kartı · kaydırarak çalış» | `topic_detail_screen.dart`, `lesson_reader_screen.dart` |
+| **Konuyu Öğren** | `topic_detail` → `_KonuyuOgrenButton` → `LessonReaderScreen`; Unuttum/Biliyorum/kalp; alt yazı «N bilgi kartı · kaydırarak çalış» | `topic_detail_screen.dart`, `lesson_reader_screen.dart` |
 | **Özet kart (öğrenci)** | Canlı yol kaldırıldı; API eski istemciler için `summaryCards: []`; panel özet stüdyo kapalı / bilgiye soft-redirect; `TopicSummaryCard` DB kalabilir | `serializers.py`, `views.py`, panel `ozet-kart` |
 | **Favorilerim** | İkinci sekme **Bilgi Kartları** (Özet Kartlar değil); `LessonCardProgressService`; `LessonCardFace.showViewer` | `favorites_screen.dart`, `lesson_card_progress_service.dart` |
 | **Ders kalemi** | Üst satır `QuizPenToolbar`; çizimler `LessonCardDrawingService` (`lesson_card_drawings_v1_<user>`); sarı swatch; çizimde sayaç satırı yok | `lesson_reader_screen.dart`, `lesson_card_drawing_service.dart`, `quiz_pen_toolbar.dart` |
@@ -101,7 +111,6 @@ Bu tur: TG canlı denemede **GY/GK + ders pill** navigasyonu; TG **çık-gir ki�
 | **GY / GK toggle** | Üst şeritte GY (1–60) / GK (61–120); tekrar tıklayınca tüm sorular | `tg_section_filter_toggle.dart`, `quiz_screen.dart` |
 | **Ders pill filtresi** | GY → Türkçe / Matematik; GK → Tarih / Coğrafya / Vatandaşlık / Güncel; soru numaralarının üstünde ortalanmış premium bar | `tg_subject_filter_bar.dart`, `tg_exam_subject_filter.dart` |
 | **ÖSYM sıra eşlemesi** | `dersAdi` yoksa indeks: 30+30+27+18+9+6 | `tgSubjectKeyByIndex`, `TgExamConstants` |
-| **Chip kaydırma** | Filtre değişince aktif chip görünür alana animasyonla gelir | `_scrollChipIntoView` |
 | **Kişisel sayaç** | Çıkıp geri gelince kalan süre duraklar; `canEnterLiveExam`, `hasOpenAttempt`, `tgQuizRemainingTime` | `tg_exam_models.dart`, `exam_welcome_screen.dart` |
 | **Devam Et** | Açık attempt varken karşılama + liste kartında «Denemeye Devam Et» | `tg_exams_section.dart`, `exam_welcome_screen.dart` |
 | **Progress upsert** | `saveProgress` yanıtından yerel exam modeli güncellenir | `tg_exam_service.dart` |
@@ -419,7 +428,7 @@ Bu tur: Pomodoro ortam sesleri yenilendi; çözüm reklam kotası; profil NEDEN 
 | **Odak Modu UI** | Neon kırmızı↔cyan arka plan; süre halkası altında play/pause (+ küçük sıfırla); Başlat satırı kaldırıldı | `focus_mode_screen.dart` |
 | **Ortam sesleri** | Yağmur, Orman, Kafe, Kütüphane, Deniz, binaural 40/60/80 Hz; kafe/kütüphane/deniz WAV yenilendi; kilitliyken çalma (`stayAwake`, `wakelock_plus`, iOS `UIBackgroundModes: audio`) | `pomodoro_session_model.dart`, `pomodoro_service.dart`, `assets/sounds/ambient_*.wav`, `Info.plist`, `AndroidManifest.xml` |
 | **Süre bitiş uyarısı** | Yerel bildirim + `focus_complete.wav` zil + haptic; bitiş zamanına göre senkron (arka plan) | `notification_service.dart`, `focus_mode_screen.dart` |
-| **Gelişim Pomodoro CTA** | Sağ üst ink+şampanya **ODAK / Pomodoro** pill (nabız glow); Odak Modu açar | `app_shell_top_bar.dart` |
+| **Gelişim Pomodoro CTA** | Sağ üst **ODAK / Pomodoro** pill; Odak Modu açar | `app_shell_top_bar.dart` |
 | **Offline pack auth** | `GET /pack/` + `pack/version/` → Bearer zorunlu + **yıllık** premium (`is_yearly_premium`); 401/403; `POST /premium/sync/` Play ürün bilgisini sunucuya yazar | `views.py`, `models.py` (`premium_product_id`), `0045_…`, `premium_sync_service.dart`, `content_sync_service.dart`, `offline_pack_service.dart` |
 | **Tablo sorusu bayrağı** | Panel **Yok / İkili / Üçlü**; otomatik tire algısı kapalı; Flutter yalnızca `optionTable` dual/triple iken sütun; başlık↔hücre hizası | `Question.option_table`, `0044_…`, `question_form.html`, `option-table.js`, `question_model.dart`, `exam_option_view.dart`, `quiz_screen.dart` |
 | **Özel Notlarım** | Stüdyo «Güncel Bilgiler» → **ÖZEL NOTLARIM**; kart PageView aynı; mock kişisel not | `home_tools_module_list.dart`, `current_info_screen.dart`, `database_service.dart` |
@@ -527,7 +536,7 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | Alan | Ne yapıldı | Dosyalar |
 |---|---|---|
 | **Favori bilgi kartı** *(güncel)* | Tıklanınca `LessonCardFace.showViewer()`; konuya gitmez | `favorites_screen.dart`, `lesson_reader_screen.dart` |
-| **Konu detayı** *(güncel)* | Premium pulse/shimmer **Konuyu Öğren** (`_KonuyuOgrenButton`) → `LessonReaderScreen`; özet/`TopicSummaryStudyScreen` canlı değil | `topic_detail_screen.dart`, `lesson_reader_screen.dart` |
+| **Konu detayı** *(güncel)* | **Konuyu Öğren** → `LessonReaderScreen`; özet/`TopicSummaryStudyScreen` canlı değil | `topic_detail_screen.dart`, `lesson_reader_screen.dart` |
 
 #### Panel — ödül, markdown, harita fırça
 
@@ -690,9 +699,9 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Dersler başlığı** | «Dersler · N soru» satırının sağında dikdörtgen **Notlarım** (kırık beyaz zemin, siyah yazı) | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Dersler sekmesi** | 2 sütunlu ders ızgarası (daha alçak kartlar); kartta soru sayısı + ilerleme; katalog yenileme | `lib/screens/study_hub_screen.dart` | Ücretsiz |
 | **Özel Testler** | Dersler altında 3D `ÖZEL TESTLER`; kategoriler: **HARİTALARLA COĞRAFYA**, **TARİH KRONOLOJİ**, **PADİŞAHLAR VE ANTLAŞMALAR**, **ÇELDİRİCİSİ GÜÇLÜ**; bayrak + keyword ile 20’lik sanal testler | `special_tests_entry.dart`, `special_tests_screen.dart`, `special_map_geography_screen.dart`, `backend/content/special_tests.py`, `special_question_tags.py` | Ücretsiz; ilgili ders günlük kotası |
-| **Gelişim sekmesi** | Genel doğruluk (yalnızca **konu testleri**; günün mini denemesi 20 sorusu sayılmaz), haftalık plan, yanlış/favori/not kasası, yatay kaydırmalı ders kartları, **HEDEF KAMU KOÇLUK**; **Puan Hesaplama bu sekmede yok** | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart` | Ücretsiz (+ koç Premium) |
+| **Gelişim sekmesi** | **BAŞARI** herosu: KPSS **net oranı** (doğru − yanlış/4) yay + Net X.XX; konu testleri (mini deneme 20’si sayılmaz); haftalık plan, yanlış/favori/not kasası, yatay ders kartları, **HEDEF KAMU KOÇLUK**; **Puan Hesaplama yok** | `analytics_hub_screen.dart`, `analytics_success_hero.dart`, `performance_summary_service.dart` | Ücretsiz (+ koç Premium) |
 | **Konu listesi** | Konu bazında çözülen/toplam ilerleme | `study_hub_screen.dart` | Ücretsiz |
-| **Konu detayı** | İstatistik; premium pulse/shimmer **Konuyu Öğren** (`_KonuyuOgrenButton`) → `LessonReaderScreen`; test listesi; bitirilen testte **BAŞLA** yanında yeşil ✓. Özet deste / `TopicSummaryStudyScreen` canlı değil | `topic_detail_screen.dart`, `lesson_reader_screen.dart` | Günlük kota |
+| **Konu detayı** | İstatistik; **Konuyu Öğren** → `LessonReaderScreen`; test listesi; bitirilen testte **BAŞLA** yanında yeşil ✓. Özet deste / `TopicSummaryStudyScreen` canlı değil | `topic_detail_screen.dart`, `lesson_reader_screen.dart` | Günlük kota |
 | **Ders okuyucu** | Bilgi kartları; Unuttum/Biliyorum/kalp; alt yazı «N bilgi kartı · kaydırarak çalış»; üst satır `QuizPenToolbar`; çizimler `LessonCardDrawingService` (`lesson_card_drawings_v1_<user>`); sarı kalem; çizimde sayaç satırı yok | `lesson_reader_screen.dart`, `lesson_card_progress_service.dart`, `lesson_card_drawing_service.dart`, `quiz_pen_toolbar.dart` | Ücretsiz |
 | **Bilgi kartı notları** | Okuyucuda **NOTLAR** chip; kart başına yerel not `LessonCardNotesService` | `lesson_reader_screen.dart`, `lesson_card_notes_service.dart` | Ücretsiz |
 | **Kaldığın yerden devam** | Yarım test kartı SharedPreferences’ta durur; uygulama kapanınca soru gövdesi RAM’de olmasa da kart kalır, devamda sorular API’den çekilir | `continue_study_card.dart`, `last_study_session_service.dart` | Ücretsiz |
@@ -721,8 +730,9 @@ Bu tarihte yapılan **yeni özellikler**, **davranış değişiklikleri** ve **p
 | **Soru puanlama** | 1–5 yıldız; oturum varsa sunucuya senkron | `lib/widgets/question_rating_bar.dart`, `lib/services/question_rating_service.dart` | Oturum önerilir |
 | **Hata bildirimi** | Yanlış kök/şık/çözüm bildirimi; **Google girişi zorunlu**; ücretsiz **5**, Premium **3** konu testi bitirme; günde 1 bildirim | `lib/widgets/question_error_report_button.dart`, `lib/services/question_error_report_service.dart` | Google + 5 / Premium + 3 |
 | **Çözüm kilidi** | Günde **5** farklı soru detaylı çözüm (her biri ~30 sn ödüllü reklam); 6.+ Pro; kısa önizleme her zaman; aynı soru aynı gün tekrar ücretsiz | `quiz_screen.dart`, `ad_manager.dart`, `daily_solution_quota_service.dart`, `ad_constants.dart` | 5/gün reklam / Pro |
-| **Ses ve titreşim** | Doğru/yanlış geri bildirimi | `lib/services/answer_feedback_service.dart` | Ücretsiz |
-| **Sonuç paylaşımı** | Test sonucunu görsel kart olarak paylaşma; sonuç panelinde konu adı en üstte, motive mesajı, kazandığı XP ve seri; soru başı ortalama süre NET kutusunun üstünde | `lib/widgets/shareable_result_card.dart`, `lib/screens/quiz_screen.dart` | Ücretsiz |
+| **Pratik şık kilidi** | İlk şık kilitlenir. TG canlı denemede süre bitene kadar değiştirilebilir | `quiz_screen.dart` | Ücretsiz |
+| **Ses ve titreşim** | Pratik doğru/yanlış geri bildirimi; TG canlı denemede şık sesi yok | `answer_feedback_service.dart` | Ücretsiz |
+| **Sonuç (konu testi)** | KPSS **net = doğru − yanlış/4**; paylaşım kartında konu adı, XP, seri; soru başı süre NET üstünde | `quiz_screen.dart`, `shareable_result_card.dart` | Ücretsiz |
 | **Filigran** | Marka filigranı ücretsiz ve Premium’da; haritalı/görselli soruda metnin yanında görselin üstüne de biner | `lib/widgets/watermark_widget.dart`, `question_stem_content.dart` | Tüm planlar |
 | **Quiz banner reklamı** | Test sırasında alt banner; test ortasında interstitial yok | `lib/services/ad_manager.dart` | Premium veya 12s kampanya |
 | **Pro Üyelik üst bar CTA** | Kompakt pill (maskot yok); Ana/Dersler/Deneme sekmelerinde | `lib/widgets/premium_header_button.dart`, `lib/widgets/app_shell_top_bar.dart` | Ücretsiz kullanıcı |
@@ -770,7 +780,7 @@ Panel önizlemesi CSS: `--exam-serif`, `--exam-math`, `--exam-sans` (`panel.css`
 
 | Özellik | Açıklama | Dosyalar | Erişim |
 |---|---|---|---|
-| **Gelişim sekmesi** | Genel doğruluk (yalnızca konu testleri; mini deneme sayılmaz), haftalık plan, çalışma kasası, yatay kaydırmalı ders kartları + nokta göstergesi, **HEDEF KAMU KOÇLUK** (DERSLER altında); **Puan Hesaplama yok**; üst barda **ODAK · Pomodoro** CTA | `lib/screens/analytics_hub_screen.dart`, `lib/services/performance_summary_service.dart`, `app_shell_top_bar.dart`, `ai_coach_insight_card.dart` | Ücretsiz (+ koç **Premium**) |
+| **Gelişim sekmesi** | **Net oranı** herosu (konu testleri; mini deneme sayılmaz), haftalık plan, çalışma kasası, yatay ders kartları + nokta, **HEDEF KAMU KOÇLUK** (DERSLER altında); **Puan Hesaplama yok**; üst barda **ODAK · Pomodoro** | `analytics_hub_screen.dart`, `analytics_success_hero.dart`, `performance_summary_service.dart`, `app_shell_top_bar.dart`, `ai_coach_insight_card.dart` | Ücretsiz (+ koç **Premium**) |
 | **HEDEF KAMU KOÇLUK** | Premium koç kartı: konu testi + deneme trendi birleşik içgörü; Deneme sekmesinde **gösterilmez** | `ai_coach_insight_card.dart`, `analytics_hub_screen.dart` | **Premium** |
 | **Ders analitiği** | Tek ders için konu/test geçmişi | `lib/screens/subject_analytics_detail_screen.dart` | Ücretsiz |
 | **Çalışma kasası** | Yanlış / Favoriler / Notlar kısayolları | `lib/widgets/analytics_study_vault.dart` | Ücretsiz |
@@ -1430,12 +1440,17 @@ Mobil JSON alan eşlemesi: `backend/content/serializers.py` ↔ `lib/models/ques
 
 ---
 
+## Sürüm notu (2026-10-03)
+
+- **KPSS net:** konu testi sonuç + Gelişim BAŞARI (4 yanlış = 1 doğru)
+- **Quiz:** pratikte ilk şık kilitlenir (TG canlıda şık değişebilir)
+
 ## Sürüm notu (2026-09-20)
 
 - **Panel bilgi sırası:** ⠿ sürükle-bırak → `POST /panel/konu/<id>/bilgiler/sirala/`; canlı «Sıra N»
 - **Yeni bilgi Sıra:** varsayılan `max(sort_order)+1` (0 değil)
 - **basla-telefon:** `findstr /C:IPv4` — `do was unexpected` düzeltmesi
-- **Konuyu Öğren:** `_KonuyuOgrenButton` (pulse/shimmer) → `LessonReaderScreen`; Unuttum/Biliyorum/kalp; «N bilgi kartı · kaydırarak çalış»
+- **Konuyu Öğren:** `_KonuyuOgrenButton` → `LessonReaderScreen`; Unuttum/Biliyorum/kalp; «N bilgi kartı · kaydırarak çalış»
 - **Özet kartlar:** öğrenci yolu kapatıldı; API `summaryCards: []`; panel özet stüdyo soft-redirect → bilgi; `TopicSummaryCard` DB kalabilir
 - **Favorilerim:** **Bilgi Kartları** sekmesi; `LessonCardProgressService` + `LessonCardFace.showViewer`
 - **Ders kalemi:** `QuizPenToolbar` + `LessonCardDrawingService` (`lesson_card_drawings_v1_<user>`); sarı swatch; çizimde sayaç yok
