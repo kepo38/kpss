@@ -912,6 +912,25 @@ def _post_gemini_model_with_retries(
     assert last_err is not None
     raise last_err
 
+def _is_gemini_3_family(model: str) -> bool:
+    return (model or "").lower().startswith("gemini-3")
+
+
+def _generation_config_for_model(model: str, *, json_mode: bool = True) -> dict[str, Any]:
+    """Gemini 3.x Flash-Lite: temperature + thinkingBudget → HTTP 400 INVALID_ARGUMENT."""
+    generation: dict[str, Any] = {}
+    if json_mode:
+        generation["responseMimeType"] = "application/json"
+    name = (model or "").lower()
+    if _is_gemini_3_family(name):
+        generation["thinkingConfig"] = {"thinkingLevel": "minimal"}
+        return generation
+    generation["temperature"] = 0.1
+    if "lite" in name:
+        generation["thinkingConfig"] = {"thinkingBudget": 0}
+    return generation
+
+
 def _post_gemini_model(
     image_bytes: bytes,
     mime: str,
@@ -926,12 +945,7 @@ def _post_gemini_model(
         raise RuntimeError("GEMINI_API_KEY tanımlı değil.")
     url = f"{_GEMINI_URL.format(model=model)}?key={api_key}"
     b64 = base64.b64encode(image_bytes).decode("ascii")
-    generation: dict[str, Any] = {"temperature": 0.1}
-    if json_mode:
-        generation["responseMimeType"] = "application/json"
-    # Lite OCR: düşünme token'ı (çıkış faturası) kesilsin.
-    if "lite" in (model or "").lower():
-        generation["thinkingConfig"] = {"thinkingBudget": 0}
+    generation = _generation_config_for_model(model, json_mode=json_mode)
     body = {
         "contents": [
             {
@@ -983,7 +997,16 @@ def _retryable(exc: RuntimeError) -> bool:
     msg = str(exc)
     return any(
         token in msg
-        for token in ("404", "403", "503", "UNAVAILABLE", "JSON ayrıştırılamadı", "boş yanıt")
+        for token in (
+            "404",
+            "403",
+            "400",
+            "INVALID_ARGUMENT",
+            "503",
+            "UNAVAILABLE",
+            "JSON ayrıştırılamadı",
+            "boş yanıt",
+        )
     )
 
 

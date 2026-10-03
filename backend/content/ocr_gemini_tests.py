@@ -11,7 +11,13 @@ from content.ocr import (
     _needs_gemini_fallback,
     _ocr_result_score,
 )
-from content.ocr_gemini import _extract_json, gemini_configured, repair_json_latex_escapes
+from content.ocr_gemini import (
+    _extract_json,
+    _generation_config_for_model,
+    _retryable,
+    gemini_configured,
+    repair_json_latex_escapes,
+)
 
 
 @contextmanager
@@ -854,3 +860,26 @@ class GeminiTransientRetryTests(SimpleTestCase):
         self.assertEqual(calls["n"], 2)
         self.assertTrue(og.gemini_quota_cooldown_active())
         og._reset_gemini_quota_cooldown_for_tests()
+
+
+class Gemini3GenerationConfigTests(SimpleTestCase):
+    def test_flash_lite_3x_omits_temperature_and_thinking_budget(self):
+        cfg = _generation_config_for_model("gemini-3.5-flash-lite", json_mode=True)
+        self.assertEqual(cfg.get("responseMimeType"), "application/json")
+        self.assertNotIn("temperature", cfg)
+        self.assertEqual(cfg.get("thinkingConfig"), {"thinkingLevel": "minimal"})
+        budget = (cfg.get("thinkingConfig") or {}).get("thinkingBudget")
+        self.assertIsNone(budget)
+
+    def test_flash_lite_25_keeps_budget_zero(self):
+        cfg = _generation_config_for_model("gemini-2.5-flash-lite", json_mode=True)
+        self.assertEqual(cfg.get("temperature"), 0.1)
+        self.assertEqual(cfg.get("thinkingConfig"), {"thinkingBudget": 0})
+
+    def test_http_400_is_retryable_for_model_cascade(self):
+        err = RuntimeError(
+            'Gemini HTTP 400: {\n  "error": {\n    "code": 400,\n'
+            '    "message": "Request contains an invalid argument.",\n'
+            '    "status": "INVALID_ARGUMENT"\n  }\n}'
+        )
+        self.assertTrue(_retryable(err))

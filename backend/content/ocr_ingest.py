@@ -1163,28 +1163,31 @@ def repair_question_with_gemini(
     question: Question,
     *,
     dry_run: bool = False,
+    image_bytes: bytes | None = None,
+    mime: str = "",
 ) -> dict:
     """Kaynak görselden Gemini ile cevap/çözüm/metin yenile (Tesseract fallback onarımı)."""
-    if not question.image:
-        return {"ok": False, "error": "Kaynak görsel yok", "pk": question.pk}
+    if image_bytes is None:
+        if not question.image:
+            return {"ok": False, "error": "Kaynak görsel yok", "pk": question.pk}
+        try:
+            with question.image.open("rb") as handle:
+                image_bytes = handle.read()
+        except OSError as exc:
+            return {"ok": False, "error": f"Görsel okunamadı: {exc}", "pk": question.pk}
+        name = (question.image.name or "").lower()
+        if name.endswith(".png"):
+            mime = "image/png"
+        elif name.endswith(".webp"):
+            mime = "image/webp"
+        elif name.endswith(".gif"):
+            mime = "image/gif"
+        else:
+            mime = "image/jpeg"
+    elif not mime:
+        mime = "image/jpeg"
     if not gemini_configured():
         return {"ok": False, "error": "GEMINI_API_KEY tanımlı değil", "pk": question.pk}
-
-    try:
-        with question.image.open("rb") as handle:
-            image_bytes = handle.read()
-    except OSError as exc:
-        return {"ok": False, "error": f"Görsel okunamadı: {exc}", "pk": question.pk}
-
-    name = (question.image.name or "").lower()
-    if name.endswith(".png"):
-        mime = "image/png"
-    elif name.endswith(".webp"):
-        mime = "image/webp"
-    elif name.endswith(".gif"):
-        mime = "image/gif"
-    else:
-        mime = "image/jpeg"
 
     ocr = ocr_question_image_gemini(image_bytes, mime)
     if not ocr.ok:
