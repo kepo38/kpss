@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'content_bank_service.dart';
 import 'content_sync_service.dart';
+import 'auth_service.dart';
 import 'premium_service.dart';
 
 enum OfflinePackDownloadStatus { idle, downloading, ready, error, denied }
@@ -74,7 +75,10 @@ class OfflinePackService extends ChangeNotifier {
   }
 
   String statusLabel() {
-    if (!PremiumService.instance.canUseOfflinePack) {
+    if (!PremiumService.instance.isOfflinePackModuleEnabled) {
+      return 'Geçici olarak kapalı';
+    }
+    if (!PremiumService.instance.isYearlyPremium) {
       return 'Yalnızca yıllık Premium';
     }
     if (isReady) {
@@ -85,6 +89,20 @@ class OfflinePackService extends ChangeNotifier {
 
   /// Wi‑Fi üzerinde tam paketi indirir ve çevrimdışı kullanıma damgalar.
   Future<bool> downloadPack({bool force = true}) async {
+    if (!AuthService.instance.hasPermanentAccount) {
+      _status = OfflinePackDownloadStatus.denied;
+      _lastError = 'Offline paket için Google ile giriş gerekli.';
+      notifyListeners();
+      return false;
+    }
+
+    if (!PremiumService.instance.isOfflinePackModuleEnabled) {
+      _status = OfflinePackDownloadStatus.denied;
+      _lastError = 'Offline paket şu an kullanıma kapalı.';
+      notifyListeners();
+      return false;
+    }
+
     if (!PremiumService.instance.canUseOfflinePack) {
       _status = OfflinePackDownloadStatus.denied;
       _lastError =
@@ -97,7 +115,7 @@ class OfflinePackService extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
-    final ok = await ContentSyncService.instance.syncPublishedPack(
+    final outcome = await ContentSyncService.instance.syncPublishedPackOutcome(
       force: force,
       timeout: const Duration(seconds: 45),
     );
@@ -105,11 +123,15 @@ class OfflinePackService extends ChangeNotifier {
     final bank = ContentBankService.instance;
     await bank.initialize();
 
-    if (!ok || !bank.hasCachedPack) {
+    if (!outcome.success || !bank.hasCachedPack) {
       _status = OfflinePackDownloadStatus.error;
-      _lastError = ok
-          ? 'Paket indirildi ama içerik boş görünüyor.'
-          : 'Paket indirilemedi. İnternet bağlantınızı kontrol edin.';
+      if (!outcome.success) {
+        _lastError = outcome.message ??
+            ContentSyncService.instance.lastPackError ??
+            'Paket indirilemedi. İnternet bağlantınızı kontrol edin.';
+      } else {
+        _lastError = 'Paket indirildi ama içerik boş görünüyor.';
+      }
       notifyListeners();
       return false;
     }

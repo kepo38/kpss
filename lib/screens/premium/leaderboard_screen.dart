@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/leaderboard_model.dart';
+import '../../services/daily_mini_ranking_service.dart';
 import '../../services/leaderboard_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
@@ -17,45 +20,68 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   LeaderboardPeriod _period = LeaderboardPeriod.haftalik;
 
   @override
-  Widget build(BuildContext context) {
-    final entries = LeaderboardService.instance.getEntries(_period);
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(DailyMiniRankingService.instance.refresh());
+    });
+  }
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(),
-        title: const Text('Sıralama'),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: SegmentedButton<LeaderboardPeriod>(
-              segments: const [
-                ButtonSegment(
-                  value: LeaderboardPeriod.haftalik,
-                  label: Text('Haftalık'),
-                ),
-                ButtonSegment(
-                  value: LeaderboardPeriod.aylik,
-                  label: Text('Aylık'),
-                ),
-              ],
-              selected: {_period},
-              onSelectionChanged: (s) => setState(() => _period = s.first),
-            ),
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: DailyMiniRankingService.instance,
+      builder: (context, _) {
+        final entries = LeaderboardService.instance.getEntries(_period);
+        final loading = DailyMiniRankingService.instance.loading &&
+            entries.every((e) => e.totalCorrect == 0);
+
+        return Scaffold(
+          appBar: AppBar(
+            leading: const AppBackButton(),
+            title: const Text('Sıralama'),
           ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: entries.length,
-              itemBuilder: (context, i) {
-                final e = entries[i];
-                return _LeaderboardTile(entry: e);
-              },
-            ),
-          ),
-        ],
-      ),
+          body: loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: SegmentedButton<LeaderboardPeriod>(
+                        segments: const [
+                          ButtonSegment(
+                            value: LeaderboardPeriod.haftalik,
+                            label: Text('Haftalık'),
+                          ),
+                          ButtonSegment(
+                            value: LeaderboardPeriod.aylik,
+                            label: Text('Aylık'),
+                          ),
+                        ],
+                        selected: {_period},
+                        onSelectionChanged: (s) =>
+                            setState(() => _period = s.first),
+                      ),
+                    ),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: () =>
+                            DailyMiniRankingService.instance.refresh(force: true),
+                        child: ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: entries.length,
+                          itemBuilder: (context, i) {
+                            final e = entries[i];
+                            return _LeaderboardTile(entry: e);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -91,7 +117,7 @@ class _LeaderboardTile extends StatelessWidget {
           ),
         ),
         trailing: Text(
-          '${entry.xp} XP',
+          '${entry.totalCorrect} doğru',
           style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             color: AppTheme.lightAccent,

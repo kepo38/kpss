@@ -1,8 +1,9 @@
 /// Django içerik API tabanı.
 ///
 /// Emülatör → `http://10.0.2.2:8000`
-/// Fiziksel cihaz → PC LAN IP (aşağıdaki varsayılan)
-/// Özel: `--dart-define=KPSS_API_BASE=http://192.168.x.x:8000`
+/// Fiziksel cihaz → `basla-telefon.bat` otomatik `--dart-define=KPSS_API_BASE=...`
+/// Manuel: `--dart-define=KPSS_API_BASE=http://192.168.x.x:8000`
+/// [defaultValue] yalnızca dart-define verilmeden derlenince kullanılır.
 class ApiConfig {
   ApiConfig._();
 
@@ -18,11 +19,15 @@ class ApiConfig {
   static const String healthPath = '/api/v1/health/';
   static const String deviceTokensPath = '/api/v1/device-tokens/';
   static const String announcementsPath = '/api/v1/announcements/';
+  static const String mobileUiPath = '/api/v1/mobile-ui/';
   static const String authGooglePath = '/api/v1/auth/google/';
   static const String mePath = '/api/v1/me/';
   static const String meMessagesPath = '/api/v1/me/messages/';
   static const String dailyMiniExamPath = '/api/v1/daily-mini-exam/';
+  static const String tgExamsPath = '/api/v1/tg-exams/';
   static const String promoRedeemPath = '/api/v1/promo/redeem/';
+  static const String premiumSyncPath = '/api/v1/premium/sync/';
+  static const String dailyQuotaPath = '/api/v1/daily-quota/';
 
   static Uri packUri() => Uri.parse('$baseUrl$packPath');
   static Uri packVersionUri() => Uri.parse('$baseUrl$packVersionPath');
@@ -37,12 +42,39 @@ class ApiConfig {
   static Uri healthUri() => Uri.parse('$baseUrl$healthPath');
   static Uri deviceTokensUri() => Uri.parse('$baseUrl$deviceTokensPath');
   static Uri announcementsUri() => Uri.parse('$baseUrl$announcementsPath');
+  static Uri mobileUiUri() => Uri.parse('$baseUrl$mobileUiPath');
   static Uri authGoogleUri() => Uri.parse('$baseUrl$authGooglePath');
   static Uri meUri() => Uri.parse('$baseUrl$mePath');
   static Uri meMessagesUri() => Uri.parse('$baseUrl$meMessagesPath');
+  static Uri premiumSyncUri() => Uri.parse('$baseUrl$premiumSyncPath');
+  static Uri dailyQuotaUri({String? subject}) {
+    final base = Uri.parse('$baseUrl$dailyQuotaPath');
+    if (subject == null || subject.isEmpty) return base;
+    return base.replace(queryParameters: {'subject': subject});
+  }
   static Uri dailyMiniExamUri(String kpssType) => Uri.parse(
         '$baseUrl$dailyMiniExamPath',
       ).replace(queryParameters: {'kpss_type': kpssType});
+  static Uri dailyMiniPeriodRankingUri({
+    required String period,
+    required String kpssType,
+  }) =>
+      Uri.parse('${baseUrl}${dailyMiniExamPath}period-ranking/').replace(
+        queryParameters: {
+          'period': period,
+          'kpss_type': kpssType,
+        },
+      );
+  static Uri dailyMiniRewardHistoryUri({
+    required String kpssType,
+    int limit = 24,
+  }) =>
+      Uri.parse('${baseUrl}${dailyMiniExamPath}reward-history/').replace(
+        queryParameters: {
+          'kpss_type': kpssType,
+          'limit': '$limit',
+        },
+      );
   static Uri promoRedeemUri() => Uri.parse('$baseUrl$promoRedeemPath');
   static Uri examTypesUri() => Uri.parse('$baseUrl/api/v1/exam-types/');
   static Uri questionRatingUri(String questionId) => Uri.parse(
@@ -51,6 +83,9 @@ class ApiConfig {
   static Uri questionAttemptUri(String questionId) => Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/attempt/',
       );
+  static Uri questionViewUri(String questionId) => Uri.parse(
+        '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/view/',
+      );
   static Uri questionErrorReportUri(String questionId) => Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/error-report/',
       );
@@ -58,4 +93,39 @@ class ApiConfig {
       Uri.parse(
         '$baseUrl/api/v1/questions/${Uri.encodeComponent(questionId)}/similar/',
       ).replace(queryParameters: {'limit': '$limit'});
+
+  static Uri examPacksUri({String? examTypeId}) {
+    final base = Uri.parse('$baseUrl/api/v1/exam-packs/');
+    if (examTypeId == null || examTypeId.isEmpty) return base;
+    return base.replace(queryParameters: {'exam_type': examTypeId});
+  }
+
+  static Uri specialTestsUri() => Uri.parse('$baseUrl/api/v1/special-tests/');
+
+  static Uri examPackDetailUri(String packId) => Uri.parse(
+        '$baseUrl/api/v1/exam-packs/${Uri.encodeComponent(packId)}/',
+      );
+
+  static Uri examPackExamQuestionsUri(String packId, int examIndex) =>
+      Uri.parse(
+        '$baseUrl/api/v1/exam-packs/${Uri.encodeComponent(packId)}/exams/$examIndex/questions/',
+      );
+
+  static Uri tgExamsUri({String? kpssType}) {
+    final base = Uri.parse('$baseUrl$tgExamsPath');
+    if (kpssType == null || kpssType.isEmpty) return base;
+    return base.replace(queryParameters: {'kpss_type': kpssType});
+  }
+
+  static Uri tgExamDetailUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/');
+
+  static Uri tgExamQuestionsUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/questions/');
+
+  static Uri tgExamProgressUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/progress/');
+
+  static Uri tgExamSubmitUri(int examId) =>
+      Uri.parse('$baseUrl$tgExamsPath$examId/submit/');
 }

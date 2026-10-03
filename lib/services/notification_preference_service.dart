@@ -45,7 +45,7 @@ class NotificationPreferenceService extends ChangeNotifier {
     NotificationKindMeta(
       kind: NotificationKind.eveningFomo,
       title: 'Gece hatırlatması',
-      subtitle: '21:00 · 4 görev dolunca son ders uyarısı',
+      subtitle: '20:58 · 4 görev dolunca son ders uyarısı',
     ),
     NotificationKindMeta(
       kind: NotificationKind.weeklySummary,

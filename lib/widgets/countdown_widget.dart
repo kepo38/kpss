@@ -6,6 +6,16 @@ import '../theme/app_theme.dart';
 
 enum KpssType { lisans, onLisans, ortaogretim }
 
+/// ÖSYM oturumları seçilen günde yerel saat 10:00’da başlar.
+const kExamStartHour = 10;
+
+DateTime examStartOn(DateTime date) => DateTime(
+      date.year,
+      date.month,
+      date.day,
+      kExamStartHour,
+    );
+
 /// Sayaç / hedef sınav — panelden eklenen tipler + yerel yedekler.
 class ExamTrack {
   final String id;
@@ -130,17 +140,15 @@ class ExamTrack {
   bool hasUpcomingDate([DateTime? from]) {
     if (yearlyRepeat || skipsOddYears) return true;
     final now = from ?? DateTime.now();
-    final dayAfterExam =
-        DateTime(examDate.year, examDate.month, examDate.day + 1);
-    return dayAfterExam.isAfter(now);
+    return examStartOn(examDate).isAfter(now);
   }
 
   DateTime nextExamDate([DateTime? from]) {
     final now = from ?? DateTime.now();
-    var target = DateTime(examDate.year, examDate.month, examDate.day);
+    var target = examStartOn(examDate);
     if (!yearlyRepeat && !skipsOddYears) return target;
     while (!target.isAfter(now) || (skipsOddYears && target.year.isOdd)) {
-      target = DateTime(target.year + 1, target.month, target.day);
+      target = examStartOn(DateTime(target.year + 1, target.month, target.day));
     }
     return target;
   }
@@ -202,11 +210,11 @@ extension KpssTypeExtension on KpssType {
   DateTime examDate(int year) {
     switch (this) {
       case KpssType.lisans:
-        return DateTime(year, 9, 6);
+        return examStartOn(DateTime(year, 9, 6));
       case KpssType.onLisans:
-        return DateTime(year, 10, 4);
+        return examStartOn(DateTime(year, 10, 4));
       case KpssType.ortaogretim:
-        return DateTime(year, 10, 25);
+        return examStartOn(DateTime(year, 10, 25));
     }
   }
 

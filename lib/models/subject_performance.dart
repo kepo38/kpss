@@ -50,6 +50,12 @@ class OverallPerformance {
   });
 
   double get successRate => solved == 0 ? 0 : correct / solved;
+
+  /// KPSS tarzı net (4 yanlış = 1 doğru).
+  double get net => correct - (wrong / 4);
+
+  /// Net / çözülen soru.
+  double get netAccuracy => solved == 0 ? 0 : net / solved;
 }
 
 /// Tek test oturumu — detay ekranı satırı.

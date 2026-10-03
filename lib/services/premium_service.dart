@@ -1,4 +1,7 @@
+import '../models/user_model.dart';
 import 'database_service.dart';
+import 'app_config_service.dart';
+import '../constants/studio_modules.dart';
 import 'play_billing_service.dart';
 
 /// Premium erişim kontrolü — tüm premium modüller bu servis üzerinden doğrulanır.
@@ -6,15 +9,33 @@ class PremiumService {
   PremiumService._();
   static final PremiumService instance = PremiumService._();
 
-  bool get isPremium {
-    if (PlayBillingService.instance.premiumNotifier.value) return true;
-    return DatabaseService.instance.currentUser?.isPremium ?? false;
+  /// Sunucu/profil grant’i: flag + (varsa) bitiş tarihi.
+  static bool userPremiumActive(UserModel? user, {DateTime? now}) {
+    if (user == null || !user.isPremium) return false;
+    final expiry = user.premiumBitisTarihi;
+    if (expiry == null) return true;
+    return expiry.isAfter(now ?? DateTime.now());
   }
 
-  /// Offline paket yalnızca yıllık abonelikte.
-  bool get isYearlyPremium => PlayBillingService.instance.isYearlyPremium;
+  bool get isPremium {
+    final user = DatabaseService.instance.currentUser;
+    if (userPremiumActive(user)) return true;
+    return PlayBillingService.instance.premiumNotifier.value;
+  }
 
-  bool get canUseOfflinePack => isYearlyPremium;
+  /// Offline paket yalnızca yıllık abonelikte (Play veya sunucu grant).
+  bool get isYearlyPremium {
+    final user = DatabaseService.instance.currentUser;
+    if (userPremiumActive(user) && (user?.isYearlyPremium ?? false)) {
+      return true;
+    }
+    return PlayBillingService.instance.isYearlyPremium;
+  }
+
+  bool get isOfflinePackModuleEnabled =>
+      AppConfigService.instance.isStudioModuleEnabled(StudioModules.offlinePack);
+
+  bool get canUseOfflinePack => isYearlyPremium && isOfflinePackModuleEnabled;
 
   bool checkAccess() => isPremium;
 
@@ -29,20 +50,20 @@ class PremiumService {
       yearlyOnly: true,
     ),
     PremiumFeature(
+      iconName: 'coach',
+      title: 'HEDEF KAMU Koç',
+      description:
+          'Net trend, gelişim alanları ve çalışma önceliği — kişisel özet.',
+    ),
+    PremiumFeature(
+      iconName: 'plan',
+      title: 'Haftalık Çalışma Planı',
+      description: 'Zayıf konulara göre günlük rota ve görev önceliği.',
+    ),
+    PremiumFeature(
       iconName: 'checklist',
       title: 'Konu Takibi',
       description: 'ÖSYM müfredatında ilerlemenizi işaretleyin ve görün.',
-    ),
-    PremiumFeature(
-      iconName: 'timer',
-      title: 'Odak Modu & Pomodoro',
-      description: '25/50/90 dk odak seansları, ortam sesleri, mola hatırlatıcı.',
-    ),
-    PremiumFeature(
-      iconName: 'analytics',
-      title: 'Deneme Analizi Pro',
-      description:
-          'GK/GY ayrımı, yayın evi karşılaştırma, çizgi grafikler, haftalık özet bildirimi.',
     ),
     PremiumFeature(
       iconName: 'task',
@@ -57,7 +78,23 @@ class PremiumService {
     PremiumFeature(
       iconName: 'leaderboard',
       title: 'Sıralama',
-      description: 'Haftalık ve aylık XP sıralaması.',
+      description: 'Haftalık ve aylık toplam doğru sıralaması.',
+    ),
+    PremiumFeature(
+      iconName: 'repeat',
+      title: 'Akıllı Tekrar',
+      description:
+          'Yanlış defteri, telafi konuları ve zayıf konulardan günlük SRS oturumu.',
+    ),
+    PremiumFeature(
+      iconName: 'similar',
+      title: 'Benzer Sorular',
+      description: 'Yanlış defterinden embedding ile benzer soru seti.',
+    ),
+    PremiumFeature(
+      iconName: 'unlimited',
+      title: 'Sınırsız Konu Testi',
+      description: 'Günlük ders kotası ve reklam zorunluluğu kalkar.',
     ),
   ];
 }

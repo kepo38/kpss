@@ -64,6 +64,31 @@ Ana sayfa / hub ekranlarını şişirme; parçalar `lib/widgets/` altında:
 
 Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine gömme.
 
+## Dosya ayrımı (konu ayrı, dosya ayrı)
+
+Ayrı iş = ayrı dosya. Harita, tablo/eşleştirme şıkları, yapıştırma, önizleme, reklam gibi **farklı değişim türlerini** aynı büyük dosyaya yığma. Yeni dosya mevcut ağaçta olsun (`lib/widgets/…`, `backend/static/panel/…`); kökte rastgele klasör / ikinci mimari yok.
+
+- Büyük dosyayı (`question-preview.js`, `panel.css`, `quiz_screen.dart`, `home_screen.dart`, `models.py` …) yalnızca **ince çağrı / 1–2 satır bağlama** için aç; asıl kural ve stil kendi dosyasında kalsın.
+- Değişiklik yaparken o konunun dosyasını oku; dev dosyanın tamamını bağlama (token + hata yüzeyi).
+- Aynı işi ikinci kopya olarak başka dosyada tekrar yazma; tek kaynak, diğerleri çağırır.
+
+Örnek: eşleştirme şıkları → `option-table.js` + `option-table.css` + `option_column_layout.dart`; önizleme yalnızca `KpssOptionTable.apply`.
+
+## Panel OCR (ayrı kural — burada tekrarlama yok)
+
+Panel OCR, soru formu, şık/çözüm önizlemesi veya `ocr_ingest` / `panel_views` / `question-preview.js` dokunulacaksa **önce** `.cursor/rules/panel-ocr-preview.mdc` oku.
+
+- O dosya glob ile otomatik bağlanır; akış, zorunlu helper’lar ve yasaklar orada.
+- Bu anayasa genel mimari içindir; OCR → JSON → form → önizleme zincirini burada yeniden yazma.
+- Değişiklik sonrası: panel düzenleme sayfasında şık + çözüm önizlemede görünsün; `content.ocr_ingest_tests` yeşil kalsın.
+
+## Anayasa (onaysız sapma yok)
+
+- Kullanıcının söylediği iş tam olarak o iş; başka ekran/layout/metin/akış değiştirme.
+- `README.md` veya `FEATURES.md` ile çelişen davranış uydurma; README’yi kullanıcı istemeden değiştirme.
+- İstekte olmayan bir değişiklik gerekirse **önce onay iste**; onay olmadan uygulama.
+- Her değişiklik mevcut mimari, klasör, API, state ve reklam kurallarıyla **sistem bütünüyle tutarlı** olsun; paralel ikinci yol / yeni paket / kökte yeni klasör açma.
+
 ## Davranış
 
 - Tüm dosyayı yeniden yazma; sadece değişen blok
@@ -72,6 +97,7 @@ Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine g�
 - Yeni paket önerme; mevcut servisleri reuse et
 - Büyük soru listelerinde async + sayfalama / gereksiz full-bank yükleme yok
 - `const` mümkün olduğunca; DRY → `lib/widgets/`
+- **Yeni özellik veya davranış değişikliğinde `FEATURES.md` güncelle** (aynı commit/PR)
 
 ## Soru / test veri yönetimi
 
@@ -85,3 +111,10 @@ Yeni kart/liste için mevcut widget’ı genişlet; `home_screen.dart` içine g�
 - `RewardedAd.load` / interstitial / banner **widget veya buton içine yazılmaz**.
 - SDK: `lib/services/ad_manager.dart`. UI çağrısı: `AdService.showRewardedAd(...)`.
 - Örnek: `AdService.showRewardedAd(kind: AdRewardKind.campaign, onComplete: () { ... });`
+
+## Disk dolu — kaynak koruma
+
+- ENOSPC / "No space left" / "Diskte yeterli yer yok" görünce **Write/StrReplace yapma**; işi durdur, kullanıcıya yer açmasını söyle.
+- Disk açmak için yalnızca `build/`, `android/**/build`, `.gradle` cache, `.dart_tool/flutter_build`, TEMP — **asla** `lib/`, `backend/` kaynak, `assets/`, panel JS/CSS truncate/silme.
+- Yazma başarısız olup dosya 0 byte kaldıysa boş bırakma; `git checkout -- dosya` veya Cursor Local History ile geri al, sonra devam et.
+- Kaynak bütünlüğü özellik bitirmekten önce gelir.

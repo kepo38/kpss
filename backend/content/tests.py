@@ -6,7 +6,11 @@ from django.test import SimpleTestCase, TestCase
 from PIL import Image, ImageDraw
 
 from content.models import Question
-from content.ocr import parse_question_text, strip_option_emphasis
+from content.ocr import (
+    normalize_turkish_text,
+    parse_question_text,
+    strip_option_emphasis,
+)
 
 
 class OptionParseTests(SimpleTestCase):
@@ -412,6 +416,15 @@ E) IV ve V
             strip_option_emphasis("__altı__ $x^2$"),
             "altı $x^2$",
         )
+        self.assertEqual(
+            strip_option_emphasis(r"-\frac{1}{2}"),
+            r"$-\frac{1}{2}$",
+        )
+        self.assertEqual(
+            strip_option_emphasis("-frac{1}{2}"),
+            r"$-\frac{1}{2}$",
+        )
+        self.assertEqual(strip_option_emphasis("-1"), "-1")
         raw = """
 Hangisi doğrudur?
 A) **Türkiye**
@@ -582,6 +595,51 @@ class QuestionFingerprintTests(TestCase):
         self.assertEqual(dup2.id, q.id)
         self.assertEqual(match2, "content")
 
+    def test_phash_alone_does_not_block_different_content(self):
+        from content.question_fingerprint import find_duplicate_question
+
+        q = Question.objects.create(
+            topic=self.topic,
+            public_id="q_fp_phash",
+            stem="Kök içeren farklı soru metni burada uzun.",
+            option_a="1",
+            option_b="2",
+            option_c="3",
+            option_d="4",
+            option_e="5",
+            source_image_phash="0000000000000000",
+            content_hash="content_a",
+            stem_hash="stem_a",
+        )
+        dup, match = find_duplicate_question(
+            image_phash_hex="000000000000000f",  # 4 bit fark
+            content_hash="content_b",
+            stem_hash="stem_b",
+        )
+        self.assertIsNone(dup)
+        self.assertEqual(match, "")
+
+    def test_phash_strict_blocks_near_identical_image(self):
+        from content.question_fingerprint import find_duplicate_question
+
+        Question.objects.create(
+            topic=self.topic,
+            public_id="q_fp_phash2",
+            stem="Aynı görsel tekrar.",
+            option_a="1",
+            option_b="2",
+            option_c="3",
+            option_d="4",
+            option_e="5",
+            source_image_phash="ffffffffffffffff",
+        )
+        dup, match = find_duplicate_question(
+            image_phash_hex="fffffffffffffffe",  # 1 bit fark
+            content_hash="totally_different",
+        )
+        self.assertIsNone(dup)
+        self.assertEqual(match, "")
+
     def test_normalized_punctuation_match(self):
         from content.question_fingerprint import content_fingerprint
 
@@ -602,6 +660,105 @@ class QuestionFingerprintTests(TestCase):
             "E seçenek",
         )
         self.assertEqual(a, c)
+
+    def test_map_placeholder_does_not_change_fingerprint(self):
+        from content.question_fingerprint import content_fingerprint
+
+        opts = ("Sığla ağacı", "Garig", "Geven otu", "Ladin", "Alpin çayırlar")
+        without_map = content_fingerprint(
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n\nBuna göre hangisi beklenmez?",
+            *opts,
+        )
+        with_map = content_fingerprint(
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n\n[HARITA]\n\n"
+            "Buna göre hangisi beklenmez?",
+            *opts,
+        )
+        self.assertEqual(without_map, with_map)
+
+    def test_figure_placeholder_does_not_change_fingerprint(self):
+        from content.question_fingerprint import content_fingerprint
+
+        base = "Asagidaki sekilde ABC ucgeni verilmistir."
+        without_fig = content_fingerprint(base, "A", "B", "C", "D", "E")
+        with_fig = content_fingerprint(
+            base + "\n\n[" + "ŞEKİL" + "]\n\n",
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+        )
+        with_ascii = content_fingerprint(
+            base + "\n\n[sekil]\n\n",
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+        )
+        self.assertEqual(without_fig, with_fig)
+        self.assertEqual(without_fig, with_ascii)
+
+
+    def test_screenshot_text_matches_mapped_question(self):
+        from content.question_fingerprint import (
+            content_fingerprint,
+            find_duplicate_question,
+            stem_fingerprint,
+        )
+
+        stored_stem = (
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n\n[HARITA]\n\n"
+            "Buna göre, bu doğrultuda seyahat eden bir coğrafyacının "
+            "yolculuğu boyunca aşağıdaki bitki veya ağaç türlerinden "
+            "hangisiyle karşılaşması coğrafi şartlar gereği beklenmez?"
+        )
+        q = Question.objects.create(
+            topic=self.topic,
+            public_id="q_fp_map",
+            stem=stored_stem,
+            option_a="Sığla ağacı",
+            option_b="Garig toplulukları",
+            option_c="Geven otu",
+            option_d="Ladin",
+            option_e="Alpin çayırlar",
+        )
+        pasted = (
+            "Aşağıdaki haritada Muğla ile Kars arasında uzanan bir "
+            "araştırma doğrultusu verilmiştir.\n"
+            "(Not: Soru paneline eklerken, haritada Muğla'dan başlayıp "
+            "İç Anadolu üzerinden geçerek Kars'a uzanan yatay-diyagonal "
+            "bir ok çizgisi hayal edebilirsiniz).\n"
+            "Buna göre, bu doğrultuda seyahat eden bir coğrafyacının "
+            "yolculuğu boyunca aşağıdaki bitki veya ağaç türlerinden "
+            "hangisiyle karşılaşması coğrafi şartlar gereği beklenmez?"
+        )
+        c_hash = content_fingerprint(
+            pasted,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            q.option_e,
+        )
+        s_hash = stem_fingerprint(pasted)
+        dup, match = find_duplicate_question(
+            content_hash=c_hash,
+            stem_hash=s_hash,
+            require_options=True,
+            stem=pasted,
+            option_a=q.option_a,
+            option_b=q.option_b,
+            option_c=q.option_c,
+            option_d=q.option_d,
+            option_e=q.option_e,
+        )
+        self.assertEqual(dup.id, q.id)
+        self.assertEqual(match, "content")
 
     def test_quick_upload_blocks_duplicate_image(self):
         User = get_user_model()
@@ -674,6 +831,124 @@ class QuestionFingerprintTests(TestCase):
         self.assertContains(edit, "Görselden soru")
         self.assertContains(edit, "Henüz kaydedilmedi")
 
+    def _stem_dup_payload(self, stem: str, **extra):
+        data = {
+            "topic_id": self.topic.id,
+            "subtopic": "",
+            "stem": stem,
+            "option_a": "A şıkkı",
+            "option_b": "B şıkkı",
+            "option_c": "C şıkkı",
+            "option_d": "D şıkkı",
+            "option_e": "E şıkkı",
+            "correct_option": "A",
+            "solution": "",
+            "test_assignment": "auto",
+            "is_published": "on",
+        }
+        data.update(extra)
+        return data
+
+    def test_edit_save_allowed_when_sibling_shares_stem(self):
+        """Aynı kök metinli kardeş varken mevcut soruyu (çözüm vb.) kaydetmek serbest."""
+        from content.question_fingerprint import stem_fingerprint
+
+        User = get_user_model()
+        staff = User.objects.create_user(
+            username="fp_stem_edit", password="x", is_staff=True
+        )
+        shared_stem = (
+            "Aşağıdaki cümlelerin hangisinde yazım yanlışı vardır? "
+            "Bu kök metin yeterince uzun olmalı."
+        )
+        sibling = Question.objects.create(
+            topic=self.topic,
+            public_id="q_1efdee2354",
+            stem=shared_stem,
+            option_a="Bir",
+            option_b="İki",
+            option_c="Üç",
+            option_d="Dört",
+            option_e="Beş",
+            correct_option="A",
+            is_published=True,
+        )
+        editing = Question.objects.create(
+            topic=self.topic,
+            public_id="q_027f476a50",
+            stem=shared_stem,
+            option_a="Alpha",
+            option_b="Beta",
+            option_c="Gamma",
+            option_d="Delta",
+            option_e="Epsilon",
+            correct_option="B",
+            solution="Eski çözüm",
+            is_published=True,
+        )
+        self.assertEqual(stem_fingerprint(shared_stem), sibling.stem_hash)
+        self.assertEqual(editing.stem_hash, sibling.stem_hash)
+
+        self.client.force_login(staff)
+        new_solution = "Güncellenmiş çözüm metni — kayıt engellenmemeli."
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/{editing.id}/",
+            self._stem_dup_payload(
+                shared_stem,
+                option_a="Alpha",
+                option_b="Beta",
+                option_c="Gamma",
+                option_d="Delta",
+                option_e="Epsilon",
+                correct_option="B",
+                solution=new_solution,
+            ),
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertNotIn("/soru/yeni/", res.url)
+        editing.refresh_from_db()
+        self.assertEqual(editing.solution, new_solution)
+        self.assertEqual(editing.public_id, "q_027f476a50")
+
+    def test_create_blocked_when_stem_matches_existing(self):
+        """Yeni soru, mevcut bir sorunun kök metniyle aynıysa sert engellenir."""
+        User = get_user_model()
+        staff = User.objects.create_user(
+            username="fp_stem_new", password="x", is_staff=True
+        )
+        shared_stem = (
+            "Aşağıdaki cümlelerin hangisinde yazım yanlışı vardır? "
+            "Bu kök metin yeterince uzun olmalı."
+        )
+        Question.objects.create(
+            topic=self.topic,
+            public_id="q_1efdee2354",
+            stem=shared_stem,
+            option_a="Bir",
+            option_b="İki",
+            option_c="Üç",
+            option_d="Dört",
+            option_e="Beş",
+            correct_option="A",
+            is_published=True,
+        )
+        before = Question.objects.count()
+        self.client.force_login(staff)
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._stem_dup_payload(
+                shared_stem,
+                option_a="Farklı A",
+                option_b="Farklı B",
+                option_c="Farklı C",
+                option_d="Farklı D",
+                option_e="Farklı E",
+            ),
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("/soru/yeni/", res.url)
+        self.assertEqual(Question.objects.count(), before)
+
 
 class PanelTopicManageTests(TestCase):
     def setUp(self):
@@ -719,6 +994,34 @@ class PanelTopicManageTests(TestCase):
         self.t2.refresh_from_db()
         self.assertEqual(self.t1.sort_order, 2)
         self.assertEqual(self.t2.sort_order, 1)
+
+    def test_reorder_lessons_from_drag_order(self):
+        from content.models import TopicLesson
+
+        self.client.force_login(self.staff)
+        l1 = TopicLesson.objects.create(
+            topic=self.t1,
+            public_id="les_reorder_1",
+            title="Kart A",
+            body="A",
+            sort_order=1,
+        )
+        l2 = TopicLesson.objects.create(
+            topic=self.t1,
+            public_id="les_reorder_2",
+            title="Kart B",
+            body="B",
+            sort_order=2,
+        )
+        res = self.client.post(
+            f"/panel/konu/{self.t1.id}/bilgiler/sirala/",
+            {"lesson_ids": [str(l2.id), str(l1.id)]},
+        )
+        self.assertEqual(res.status_code, 204)
+        l1.refresh_from_db()
+        l2.refresh_from_db()
+        self.assertEqual(l1.sort_order, 2)
+        self.assertEqual(l2.sort_order, 1)
 
     def test_delete_topic_removes_questions(self):
         from content.models import Question, Topic
@@ -860,13 +1163,28 @@ class QuestionOsymSorduTests(TestCase):
         self.client.force_login(self.staff)
         res = self.client.post(
             f"/panel/konu/{self.topic.id}/soru/yeni/",
-            self._question_payload(osym_sordu="on"),
+            self._question_payload(
+                osym_sordu="on",
+                osym_cikmis_adi="2022 KPSS B Grubu · Soru 8",
+            ),
         )
         self.assertEqual(res.status_code, 302)
         question = Question.objects.get(topic=self.topic)
         self.assertTrue(question.osym_sordu)
+        # Panel etiketi arşiv katalog anahtarına indirger (soru no arşivde tutulmaz).
+        self.assertEqual(question.osym_cikmis_adi, "2022 KPSS B Grubu")
 
-    def test_api_exposes_osym_sordu(self):
+    def test_panel_save_osym_requires_cikmis_adi(self):
+        self.client.force_login(self.staff)
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._question_payload(osym_sordu="on"),
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(Question.objects.filter(topic=self.topic).exists())
+
+    def test_api_exposes_osym_sordu_not_cikmis_adi(self):
+        from content.models import OsymCikmisOneri
         from content.serializers import QuestionSerializer
 
         question = Question.objects.create(
@@ -879,6 +1197,65 @@ class QuestionOsymSorduTests(TestCase):
             option_d="d",
             option_e="e",
             osym_sordu=True,
+            osym_cikmis_adi="2021 KPSS · Gizli etiket",
         )
         data = QuestionSerializer(question).data
         self.assertTrue(data["osymSordu"])
+        self.assertEqual(data["osymSinav"], "2021 KPSS · Gizli etiket")
+        self.assertNotIn("osym_cikmis_adi", data)
+        self.assertNotIn("osymCikmisAdi", data)
+
+    def test_osym_cikmis_oneri_recorded_on_save(self):
+        from content.models import OsymCikmisOneri
+
+        self.client.force_login(self.staff)
+        label = "2020 KPSS A Grubu · Tarih 5"
+        res = self.client.post(
+            f"/panel/konu/{self.topic.id}/soru/yeni/",
+            self._question_payload(osym_sordu="on", osym_cikmis_adi=label),
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(OsymCikmisOneri.objects.filter(label=label).exists())
+
+    def test_api_exposes_osym_sordu(self):
+        from content.serializers import QuestionSerializer
+
+        question = Question.objects.create(
+            topic=self.topic,
+            public_id="q_osym_2",
+            stem="Metin",
+            option_a="a",
+            option_b="b",
+            option_c="c",
+            option_d="d",
+            option_e="e",
+            osym_sordu=True,
+        )
+        data = QuestionSerializer(question).data
+        self.assertTrue(data["osymSordu"])
+
+
+class NormalizeTurkishTextTests(SimpleTestCase):
+    def test_preserves_real_gbreve(self):
+        src = "mahkemeye getirilmesi gerektiğini ifade etmiştir"
+        self.assertEqual(normalize_turkish_text(src), src)
+        self.assertIn("\u011f", normalize_turkish_text(src))
+
+    def test_repairs_gerekti_space_ini(self):
+        src = "getirilmesi gerekti ini ifade etmiştir"
+        out = normalize_turkish_text(src)
+        self.assertIn("gerektiğini", out)
+        self.assertNotIn("gerekti ini", out)
+
+    def test_repairs_utf8_mojibake_gbreve_latin1(self):
+        # UTF-8 C4 9F (ğ) mis-decoded as latin-1 → U+00C4 U+009F
+        src = "gerekti" + bytes([0xC4, 0x9F]).decode("latin-1") + "ini"
+        out = normalize_turkish_text(src)
+        self.assertIn("gerektiğini", out)
+        self.assertNotIn("\u00c4", out)
+
+    def test_repairs_utf8_mojibake_gbreve_cp1252(self):
+        # cp1252 maps 0x9F → Ÿ
+        src = "gerekti\u00c4\u0178ini"
+        out = normalize_turkish_text(src)
+        self.assertIn("gerektiğini", out)

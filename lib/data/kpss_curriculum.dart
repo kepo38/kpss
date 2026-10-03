@@ -271,6 +271,14 @@ class KpssCurriculum {
             'Küreselleşen Dünya (1990\'lardan Günümüze)',
           ],
         ),
+        KpssTopic(
+          id: 'tarih_kronoloji',
+          name: 'Tarih Kronoloji',
+        ),
+        KpssTopic(
+          id: 'tarih_padisah_antlasma',
+          name: 'Padişahlar ve Antlaşmalar',
+        ),
       ],
     ),
     KpssSubject(

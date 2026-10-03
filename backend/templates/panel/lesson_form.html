@@ -1,6 +1,8 @@
 {% extends "panel/base.html" %}
 {% load static %}
 {% block content %}
+<link rel="stylesheet" href="{% static 'panel/lesson-preview.css' %}?v=3">
+
 <div class="crumb">
   <a href="{% url 'panel_home' %}">Dersler</a> /
   <a href="{% url 'panel_subject' subject.id %}">{{ subject.name }}</a> /
@@ -8,30 +10,72 @@
   Bilgi
 </div>
 <h1>{{ page_title }}</h1>
-<p class="lead">Öğrenci uygulamada bu kartı konu içinde okur. Metni seçip kalın / italik yapabilirsiniz.</p>
+<p class="lead">
+  Öğrenci uygulamada bu kartı konu içinde okur. Metni seçip kalın / italik / altı çizili yapın;
+  sağdaki telefon önizlemesi anlık gösterir.
+</p>
 
-<form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
-  {% csrf_token %}
-  <label>Başlık
-    <input type="text" name="title" required value="{{ lesson.title|default:'' }}">
-  </label>
-  <label>İçerik
-    <textarea class="js-rich" name="body" required>{{ lesson.body|default:'' }}</textarea>
-  </label>
-  <label>Sıra
-    <input type="number" name="sort_order" value="{{ lesson.sort_order|default:0 }}">
-  </label>
-  <label>Görsel
-    <input type="file" name="image" accept="image/*">
-  </label>
-  <label class="check">
-    <input type="checkbox" name="is_published" {% if lesson.is_published %}checked{% endif %}>
-    Yayında
-  </label>
-  <div style="display:flex;gap:10px;">
-    <button class="btn btn-primary" type="submit">Kaydet</button>
-    <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'lessons' %}">İptal</a>
+<div class="workspace">
+  <div class="lesson-studio-left">
+    <form class="form" method="post" enctype="multipart/form-data" accept-charset="UTF-8" id="lesson-form">
+      {% csrf_token %}
+      <label>Başlık
+        <input type="text" name="title" id="lesson-title" required value="{{ lesson.title|default:'' }}">
+      </label>
+      <label>İçerik
+        <textarea class="js-rich" name="body" id="lesson-body" required rows="12">{{ lesson.body|default:'' }}</textarea>
+      </label>
+      <label>Sıra
+        <input type="number" name="sort_order" value="{{ default_sort_order }}">
+      </label>
+      <label>Görsel
+        <input type="file" name="image" id="lesson-image" accept="image/*">
+      </label>
+      {% if lesson and lesson.image %}
+      <div class="lesson-existing-image">
+        <img src="{{ lesson.image.url }}" alt="Mevcut görsel" id="lesson-existing-thumb">
+        <label class="check">
+          <input type="checkbox" name="clear_image" id="lesson-clear-image">
+          Görseli kaldır
+        </label>
+      </div>
+      {% endif %}
+      <label class="check">
+        <input type="checkbox" name="is_published" {% if lesson.is_published %}checked{% endif %}>
+        Yayında
+      </label>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" type="submit">Kaydet</button>
+        <a class="btn btn-ghost" href="{% url 'panel_topic' topic.id 'lessons' %}">İptal</a>
+      </div>
+    </form>
   </div>
-</form>
-<script src="{% static 'panel/rich-format.js' %}"></script>
+
+  <aside class="preview-pane" aria-label="Telefon önizlemesi">
+    <p class="preview-label">Telefon önizlemesi</p>
+    <div class="phone">
+      <div class="phone-notch" aria-hidden="true"></div>
+      <div class="phone-screen lesson-phone-screen">
+        <div class="lesson-mock-bar">
+          <span class="lesson-mock-back" aria-hidden="true"></span>
+          <span class="lesson-mock-topic">{{ topic.name }}</span>
+        </div>
+        <div class="lesson-mock-scroll">
+          <div class="lesson-mock-card">
+            <p class="lesson-mock-counter">1 / 1</p>
+            <h2 class="lesson-mock-title is-empty" id="pv-lesson-title">Başlık buraya…</h2>
+            <img class="lesson-mock-img" id="pv-lesson-img" alt="" hidden>
+            <div class="lesson-mock-body lesson-rich-preview" id="pv-lesson-body">
+              <p class="lesson-mock-placeholder">İçerik buraya…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>window.KPSS_NORMALIZE_PASTE_URL = "{% url 'panel_normalize_paste' %}";</script>
+<script src="{% static 'panel/rich-format.js' %}?v=10"></script>
+<script src="{% static 'panel/lesson-preview.js' %}?v=1"></script>
 {% endblock %}

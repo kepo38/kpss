@@ -5,55 +5,68 @@ import 'package:flutter/material.dart';
 import '../constants/brand_constants.dart';
 import '../theme/app_theme.dart';
 
-/// Soru kökünün arkasında tek 45° filigran (şıklar hariç).
+/// Soru kökünde tek 45° filigran (şıklar hariç).
 ///
-/// Tam ortalanmaz: metin sola hizalı olduğu için kısa satırların sağındaki
-/// boşluğa düşmesin diye marka metin tarafına (sola) yaslanır.
+/// [fitToChild] açıkken işaret çocuk kutusuna göre küçülür.
+/// [overlay] açıkken işaret çocuğun üstüne biner (harita/görsel).
+/// [centered] açıkken (veya [overlay]) işaret çocuğun ortasına hizalanır.
 class WatermarkWidget extends StatelessWidget {
   static const logoAsset = BrandConstants.watermarkAsset;
 
   final Widget child;
   final double opacity;
+  final bool fitToChild;
+  final bool overlay;
+  final bool centered;
 
   const WatermarkWidget({
     super.key,
     required this.child,
     this.opacity = 0.26,
+    this.fitToChild = false,
+    this.overlay = false,
+    this.centered = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: LayoutBuilder(
-              builder: (context, box) {
-                if (!box.hasBoundedWidth ||
-                    !box.hasBoundedHeight ||
-                    box.maxWidth <= 0 ||
-                    box.maxHeight <= 0) {
-                  return const SizedBox.shrink();
-                }
-                final size = math
-                    .min(
-                      148.0,
-                      math.min(box.maxWidth * 0.48, box.maxHeight * 0.62),
-                    )
-                    .clamp(96.0, 148.0);
-                // LTR soru metni: sola yakın, dikeyde hafif yukarı — boş sağ
-                // alan ve alt boşluktan uzak.
-                return Align(
-                  alignment: const Alignment(-0.78, -0.22),
-                  child: _LogoMark(size: size, opacity: opacity),
-                );
-              },
-            ),
-          ),
+    final mark = Positioned.fill(
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (context, box) {
+            if (!box.hasBoundedWidth ||
+                !box.hasBoundedHeight ||
+                box.maxWidth <= 0 ||
+                box.maxHeight <= 0) {
+              return const SizedBox.shrink();
+            }
+            final minSize = fitToChild ? 36.0 : 96.0;
+            final maxSize = fitToChild ? 120.0 : 148.0;
+            final size = math
+                .min(
+                  maxSize,
+                  math.min(
+                    box.maxWidth * (fitToChild ? 0.72 : 0.48),
+                    box.maxHeight * (fitToChild ? 0.92 : 0.62),
+                  ),
+                )
+                .clamp(minSize, maxSize);
+            return Align(
+              alignment: (overlay || centered)
+                  ? Alignment.center
+                  : (fitToChild
+                      ? const Alignment(-0.42, 0.0)
+                      : const Alignment(-0.78, -0.22)),
+              child: _LogoMark(size: size, opacity: opacity),
+            );
+          },
         ),
-        child,
-      ],
+      ),
+    );
+    // Clip.hardEdge rotated mark'ı kısa kök metinde kesiyordu → filigran kayboluyordu.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: overlay ? [child, mark] : [mark, child],
     );
   }
 }

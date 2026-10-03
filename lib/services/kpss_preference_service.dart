@@ -31,8 +31,7 @@ class KpssPreferenceService extends ChangeNotifier {
     _trackId = snapshot.examTrackId.isNotEmpty
         ? snapshot.examTrackId
         : 'kpssLisans';
-    _hasChosenExam = snapshot.hasChosenExam;
-    _initialized = true;
+    // hasChosenExam yalnızca SharedPreferences (initialize) — BootStore önbelleği değil.
     notifyListeners();
   }
 

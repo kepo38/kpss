@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from content.ocr_style import (
     OcrWord,
+    coalesce_adjacent_markdown_bold,
     detect_word_styles,
     words_to_styled_text,
     _wrap_markdown,
@@ -47,3 +48,56 @@ class OcrStyleUnitTests(SimpleTestCase):
         detect_word_styles(img, words)
         self.assertTrue(words[0].underline or words[1].underline)
         self.assertFalse(words[2].underline)
+
+
+class CoalesceAdjacentBoldTests(SimpleTestCase):
+    def test_merge_soft_joined_prompt_bold(self):
+        src = (
+            "paragraf. **Bu parçada anlatılmak istenen aşağıdakilerden** "
+            "**hangisidir**?"
+        )
+        out = coalesce_adjacent_markdown_bold(src)
+        self.assertIn(
+            "**Bu parçada anlatılmak istenen aşağıdakilerden hangisidir?**",
+            out,
+        )
+        self.assertNotIn("** **", out)
+
+    def test_merge_newline_split_bold(self):
+        src = (
+            "**Bu parçada anlatılmak istenen aşağıdakilerden**\n"
+            "**hangisidir**?"
+        )
+        out = coalesce_adjacent_markdown_bold(src)
+        self.assertEqual(
+            out,
+            "**Bu parçada anlatılmak istenen aşağıdakilerden hangisidir?**",
+        )
+
+    def test_merge_blank_line_mid_sentence_prompt(self):
+        src = (
+            "**Bu parçada anlatılmak istenen aşağıdakilerden**\n\n"
+            "**hangisidir**?"
+        )
+        out = coalesce_adjacent_markdown_bold(src)
+        self.assertEqual(
+            out,
+            "**Bu parçada anlatılmak istenen aşağıdakilerden hangisidir?**",
+        )
+
+    def test_does_not_merge_blank_line_bold_headings(self):
+        src = "**Birinci başlık**\n\n**İkinci başlık**"
+        self.assertEqual(coalesce_adjacent_markdown_bold(src), src)
+
+    def test_does_not_merge_option_letter_bold(self):
+        src = "- **A)** bir\n- **B)** iki"
+        self.assertEqual(coalesce_adjacent_markdown_bold(src), src)
+
+    def test_words_to_styled_text_merges_cross_line_bold(self):
+        words = [
+            OcrWord("Bu", 0, 0, 20, 20, 1, 1, 1, 90, bold=True),
+            OcrWord("parçada", 30, 0, 40, 20, 1, 1, 1, 90, bold=True),
+            OcrWord("hangisidir?", 0, 40, 60, 20, 1, 1, 2, 90, bold=True),
+        ]
+        text = words_to_styled_text(words)
+        self.assertEqual(text, "**Bu parçada hangisidir?**")

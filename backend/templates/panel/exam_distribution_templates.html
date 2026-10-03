@@ -1,0 +1,45 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Deneme dağılım şablonu</div>
+<h1>Deneme dağılım şablonu</h1>
+<p class="lead">
+  Sınav tipine göre ders/konu soru adetleri. Deneme paketi üretiminde yalnızca
+  <strong>en az 1000 kez cevaplanmış orta zorlukta</strong> sorular kullanılır.
+</p>
+
+<div class="toolbar">
+  <form method="get" class="inline-form">
+    <label>
+      Sınav tipi
+      <select name="exam_type" onchange="this.form.submit()">
+        <option value="">Tümü</option>
+        {% for e in exam_types %}
+        <option value="{{ e.id }}" {% if selected_exam_type_id == e.id %}selected{% endif %}>{{ e.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  <a class="btn btn-primary" href="{% url 'panel_exam_distribution_new' %}">Yeni satır</a>
+</div>
+
+<div class="list">
+  {% for t in templates %}
+  <div class="row">
+    <div class="name">
+      <a href="{% url 'panel_exam_distribution_edit' t.id %}">{{ t.exam_type.name }} · {{ t.subject.name }}</a>
+      <div class="hint">
+        {% if t.topic %}{{ t.topic.name }}{% else %}Ders toplamı{% endif %}
+        · {{ t.question_count }} soru
+      </div>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'panel_exam_distribution_edit' t.id %}">Düzenle</a>
+    <form method="post" action="{% url 'panel_exam_distribution_delete' t.id %}" onsubmit="return confirm('Silinsin mi?');">
+      {% csrf_token %}
+      <button class="btn btn-danger" type="submit">Sil</button>
+    </form>
+  </div>
+  {% empty %}
+  <div class="empty">Henüz şablon satırı yok.</div>
+  {% endfor %}
+</div>
+{% endblock %}

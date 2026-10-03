@@ -4,6 +4,63 @@
   <h1>Dersler</h1>
   <p class="lead">Bir ders seçin — konular, bilgi kartları ve sorular o derse bağlı açılır.</p>
 </header>
+
+<form method="get" action="{% url 'panel_home' %}" class="panel-card question-id-search" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;padding:14px 16px;">
+  <label for="question-id-q" style="margin:0;font-weight:600;white-space:nowrap;">Soru ara</label>
+  <input
+    type="search"
+    id="question-id-q"
+    name="q"
+    value="{{ question_query|default:'' }}"
+    placeholder="public_id veya pk — örn. q_f0f5fc7ff9"
+    autocomplete="off"
+    style="flex:1;min-width:220px;padding:10px 12px;border-radius:8px;border:1px solid rgba(148,163,184,.35);background:rgba(15,23,42,.45);color:inherit;"
+  >
+  <button class="btn btn-primary" type="submit">Soruya git</button>
+  {% if question_query %}
+  <a class="btn btn-ghost" href="{% url 'panel_home' %}">Temizle</a>
+  {% endif %}
+</form>
+
+<section class="panel-card today-questions-card">
+  <div class="panel-card-head">
+    <div>
+      <h2>Bugün eklenen sorular</h2>
+      <p class="media-hint">
+        İstanbul saatine göre bugün oluşan kayıtlar (en fazla 100).
+        Telegram taslakları ayrı oluşmaz — onay kuyruğuna düşer.
+        {% if today_pending_count %}
+        <a href="{% url 'panel_pending_questions' %}">Onay bekleyen ({{ today_pending_count }})</a>
+        {% else %}
+        <a href="{% url 'panel_pending_questions' %}">Onay bekleyen sorular</a>
+        {% endif %}
+      </p>
+    </div>
+    <span class="pill pill-gold">{{ today_question_count }}</span>
+  </div>
+  {% if today_questions %}
+  <div class="list">
+    {% for q in today_questions %}
+    <a class="row" href="{% url 'panel_question_edit' topic_id=q.topic_id question_id=q.id %}">
+      <div class="name">
+        <strong>{{ q.topic.subject.name }} · {{ q.topic.name }}</strong>
+        <div class="hint">{{ q.public_id }} · {{ q.created_at|date:"H:i" }} · {{ q.stem|truncatechars:80 }}</div>
+      </div>
+      {% if q.is_published %}
+      <span class="badge on">Yayında</span>
+      {% elif q.submission_source == 'telegram' %}
+      <span class="badge off">Onay bekliyor</span>
+      {% else %}
+      <span class="badge off">Taslak</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">Bugün henüz soru eklenmedi.</p>
+  {% endif %}
+</section>
+
 <div class="grid">
   {% for s in subjects %}
   <a class="card" href="{% url 'panel_subject' s.id %}">

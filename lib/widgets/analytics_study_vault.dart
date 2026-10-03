@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'scale_button.dart';
 
-/// Gelişim sekmesi — Yanlış / Favori / Not kısayolları (ink–champagne vault).
+/// Gelişim sekmesi — Yanlış / Favori / Not kısayolları.
 class AnalyticsStudyVault extends StatelessWidget {
   final int wrongCount;
   final int favoriteCount;
@@ -24,174 +24,152 @@ class AnalyticsStudyVault extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.champagne.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(18),
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: AppTheme.champagne.withValues(alpha: 0.22),
-              width: 0.8,
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppTheme.pageTop(context).withValues(alpha: 0.95),
-                AppTheme.page(context),
-                AppTheme.pageDeep(context).withValues(alpha: 0.9),
-              ],
-              stops: const [0, 0.5, 1],
-            ),
-          ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _VaultCell(
-                    icon: Icons.menu_book_rounded,
-                    label: 'Yanlış',
-                    count: wrongCount,
-                    unit: 'soru',
-                    accent: const Color(0xFFF87171),
-                    onTap: onWrongTap,
-                  ),
-                ),
-                _VaultDivider(),
-                Expanded(
-                  child: _VaultCell(
-                    icon: Icons.favorite_rounded,
-                    label: 'Favoriler',
-                    count: favoriteCount,
-                    unit: 'soru',
-                    accent: AppTheme.champagneLight,
-                    onTap: onFavoritesTap,
-                  ),
-                ),
-                _VaultDivider(),
-                Expanded(
-                  child: _VaultCell(
-                    icon: Icons.sticky_note_2_rounded,
-                    label: 'Notlarım',
-                    count: notesCount,
-                    unit: 'not',
-                    accent: AppTheme.neonEdge,
-                    onTap: onNotesTap,
-                  ),
-                ),
-              ],
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: _VaultTile(
+            icon: Icons.menu_book_rounded,
+            label: 'Yanlış',
+            count: wrongCount,
+            gradient: const [
+              Color(0xFFFFF1F1),
+              Color(0xFFFFE4E4),
+            ],
+            accent: const Color(0xFFDC2626),
+            accentSoft: const Color(0xFFF87171),
+            onTap: onWrongTap,
           ),
         ),
-      ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _VaultTile(
+            icon: Icons.favorite_rounded,
+            label: 'Favoriler',
+            count: favoriteCount,
+            gradient: const [
+              Color(0xFFFFF8EE),
+              Color(0xFFFAEFDC),
+            ],
+            accent: const Color(0xFFB8944A),
+            accentSoft: AppTheme.champagne,
+            onTap: onFavoritesTap,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _VaultTile(
+            icon: Icons.sticky_note_2_rounded,
+            label: 'Notlarım',
+            count: notesCount,
+            gradient: const [
+              Color(0xFFEEF8FF),
+              Color(0xFFE0F2FE),
+            ],
+            accent: const Color(0xFF0284C7),
+            accentSoft: AppTheme.neonEdge,
+            onTap: onNotesTap,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _VaultDivider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return VerticalDivider(
-      width: 1,
-      thickness: 0.5,
-      indent: 18,
-      endIndent: 18,
-      color: AppTheme.champagne.withValues(alpha: 0.18),
-    );
-  }
-}
-
-class _VaultCell extends StatelessWidget {
+class _VaultTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final int count;
-  final String unit;
+  final List<Color> gradient;
   final Color accent;
+  final Color accentSoft;
   final VoidCallback onTap;
 
-  const _VaultCell({
+  const _VaultTile({
     required this.icon,
     required this.label,
     required this.count,
-    required this.unit,
+    required this.gradient,
     required this.accent,
+    required this.accentSoft,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final on = AppTheme.onPage(context);
+
     return ScaleButton(
       onPressed: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 16, 10, 14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradient,
+          ),
+          border: Border.all(color: accent.withValues(alpha: 0.14)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: accent.withValues(alpha: 0.14),
-                border: Border.all(color: accent.withValues(alpha: 0.28)),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    accentSoft.withValues(alpha: 0.95),
+                    accent,
+                  ],
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: accent.withValues(alpha: 0.18),
-                    blurRadius: 12,
+                    color: accent.withValues(alpha: 0.28),
+                    blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              child: Icon(icon, size: 18, color: accent),
+              child: Icon(icon, size: 19, color: Colors.white),
             ),
             const SizedBox(height: 12),
-            Text(
-              '$count',
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 26,
-                height: 1,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.8,
-                color: AppTheme.onPage(context).withValues(alpha: count == 0 ? 0.4 : 0.95),
-              ),
-            ),
-            const SizedBox(height: 6),
             Text(
               label.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
                 color: accent,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 5),
             Text(
-              unit,
-              maxLines: 1,
+              '$count',
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.onPage(context).withValues(alpha: 0.38),
+                fontFamily: 'serif',
+                fontSize: 28,
+                height: 1,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -1,
+                color: on.withValues(alpha: count == 0 ? 0.35 : 0.95),
               ),
             ),
           ],

@@ -1,0 +1,62 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  <a href="{% url 'panel_promo_list' %}">Promosyon kodları</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">
+  Kod büyük harfe çevrilir (en fazla 32 karakter). Uygulamada Premium ekranından girilir.
+</p>
+
+<form class="form" method="post" style="max-width:640px;">
+  {% csrf_token %}
+  <label>Kod *
+    <input type="text" name="code" required maxlength="32"
+      value="{{ promo.code|default:'' }}"
+      placeholder="Örn. HEDEF30" style="text-transform:uppercase;letter-spacing:0.06em;">
+  </label>
+  <label>Başlık <span style="opacity:.65;font-weight:400">(yalnızca panelde görünür)</span>
+    <input type="text" name="title" maxlength="120"
+      value="{{ promo.title|default:'' }}"
+      placeholder="Kampanya / hediye notu">
+  </label>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <label>Maks. kullanım *
+      <input type="number" name="max_redemptions" required min="1"
+        value="{{ promo.max_redemptions|default:100 }}">
+    </label>
+    <label>Premium süresi (gün) *
+      <input type="number" name="premium_duration_days" required min="1"
+        value="{{ promo.premium_duration_days|default:30 }}">
+    </label>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <label>Geçerlilik başlangıcı
+      <input type="datetime-local" name="valid_from"
+        value="{% if promo.valid_from %}{{ promo.valid_from|date:'Y-m-d\\TH:i' }}{% endif %}">
+    </label>
+    <label>Geçerlilik bitişi *
+      <input type="datetime-local" name="valid_until" required
+        value="{% if promo.valid_until %}{{ promo.valid_until|date:'Y-m-d\\TH:i' }}{% endif %}">
+    </label>
+  </div>
+  <label class="check">
+    <input type="checkbox" name="is_active" {% if promo.is_active or not promo %}checked{% endif %}>
+    Aktif (uygulamada kullanılabilir)
+  </label>
+
+  {% if promo and promo.pk %}
+  <p class="media-hint">
+    Kullanım: {{ promo.redemption_count }} / {{ promo.max_redemptions }}
+    · Kalan: {{ promo.remaining_slots }}
+  </p>
+  {% endif %}
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+    <button class="btn btn-primary" type="submit">Kaydet</button>
+    <a class="btn btn-ghost" href="{% url 'panel_promo_list' %}">Liste</a>
+  </div>
+</form>
+{% endblock %}

@@ -10,12 +10,32 @@ _FORBIDDEN = re.compile(
     r"javascript:|data:text/html|on\w+\s*=|<!ENTITY\b|<!DOCTYPE\b|<\?xml-stylesheet\b)",
     re.IGNORECASE,
 )
-_EXTERNAL_HREF = re.compile(
-    r"(?:xlink:)?href\s*=\s*['\"]?(?!#)[^'\"\s>]+",
+# Gömülü fotoğraf / harici kaynak — OCR tarama görseli SVG içinde saklanmasın.
+_RASTER_OR_EXTERNAL = re.compile(
+    r"(<\s*image\b|data:image|(?:xlink:)?href\s*=\s*['\"]?(?!#)[^'\"\s>]+)",
+    re.IGNORECASE,
+)
+_IMAGE_TAG = re.compile(
+    r"<\s*image\b[^>]*(?:/\s*>|>[\s\S]*?<\s*/\s*image\s*>)",
+    re.IGNORECASE,
+)
+_DATA_IMAGE_ATTR = re.compile(
+    r"(?:xlink:)?href\s*=\s*['\"]?\s*data:image[^'\"\s>]*",
     re.IGNORECASE,
 )
 _DRAW_TAG = re.compile(
     r"<\s*(path|line|polyline|polygon|circle|rect|ellipse|text|g)\b",
+    re.IGNORECASE,
+)
+# ÖSYM / sınav filigranı — köşe <text> veya tspan olarak çizilmesin.
+_WATERMARK_TEXT = re.compile(
+    r"<\s*text\b[^>]*>[^<]*?(?:ö\s*s\s*y\s*m|osym|ösym|dösym|dosym|dösvm|"
+    r"ölçme\s*seçme|olcme\s*secme)[^<]*?<\s*/\s*text\s*>",
+    re.IGNORECASE,
+)
+_WATERMARK_TSPAN = re.compile(
+    r"<\s*tspan\b[^>]*>[^<]*?(?:ö\s*s\s*y\s*m|osym|ösym|dösym|dosym)[^<]*?"
+    r"<\s*/\s*tspan\s*>",
     re.IGNORECASE,
 )
 
@@ -36,6 +56,24 @@ def extract_svg(raw: str) -> str:
     return ""
 
 
+def strip_raster_embeds(code: str) -> str:
+    """SVG içindeki <image> ve data:image gömülerini temizle (foto kalmasın)."""
+    if not code:
+        return ""
+    cleaned = _IMAGE_TAG.sub("", code)
+    cleaned = _DATA_IMAGE_ATTR.sub("", cleaned)
+    return cleaned.strip()
+
+
+def strip_watermark_marks(code: str) -> str:
+    """SVG içindeki ÖSYM / watermark metinlerini çıkar."""
+    if not code:
+        return ""
+    cleaned = _WATERMARK_TEXT.sub("", code)
+    cleaned = _WATERMARK_TSPAN.sub("", cleaned)
+    return cleaned.strip()
+
+
 def is_safe_svg(code: str) -> bool:
     if not code:
         return False
@@ -44,6 +82,16 @@ def is_safe_svg(code: str) -> bool:
         return False
     if _FORBIDDEN.search(code):
         return False
-    if _EXTERNAL_HREF.search(code):
+    if _RASTER_OR_EXTERNAL.search(code):
         return False
     return bool(_DRAW_TAG.search(code))
+
+
+def sanitize_figure_svg(raw: str) -> str:
+    """OCR/panel çıktısından güvenli vektör SVG üret; gömülü fotoğrafı at."""
+    code = extract_svg(raw or "")
+    if not code:
+        return ""
+    code = strip_raster_embeds(code)
+    code = strip_watermark_marks(code)
+    return code if is_safe_svg(code) else ""

@@ -1,5 +1,6 @@
-from django.urls import path
+from django.urls import include, path
 
+from .telegram_views import telegram_webhook
 from .views import (
     AnnouncementListView,
     ContentCatalogView,
@@ -9,27 +10,40 @@ from .views import (
     DeviceTokenView,
     GoogleAuthView,
     HealthView,
+    MobileUiConfigView,
     MeMessagesView,
     MeView,
+    PremiumSyncView,
     PublishedQuestionsView,
     PublishedTestsView,
     QuestionRatingView,
     QuestionErrorReportView,
     SimilarQuestionsView,
     DailyMiniExamView,
+    DailyMiniPeriodRankingView,
+    DailyMiniRewardHistoryView,
+    ExamPackDetailView,
+    ExamPackExamQuestionsView,
+    ExamPackListView,
     ExamTypeListView,
     PromoRedeemView,
+    SpecialTestsView,
     TestQuestionsView,
     TestAttemptView,
     QuestionAttemptView,
+    QuestionViewRecordView,
+    DailyQuotaView,
 )
+from .tg_exam.api_urls import urlpatterns as tg_exam_api_urls
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
+    path("mobile-ui/", MobileUiConfigView.as_view(), name="mobile-ui"),
     path("pack/", ContentPackView.as_view(), name="content-pack"),
     path("pack/version/", ContentPackVersionView.as_view(), name="content-pack-version"),
     path("catalog/", ContentCatalogView.as_view(), name="content-catalog"),
     path("curriculum/", CurriculumView.as_view(), name="curriculum"),
+    path("daily-quota/", DailyQuotaView.as_view(), name="daily-quota"),
     path("questions/", PublishedQuestionsView.as_view(), name="questions"),
     path(
         "questions/<str:public_id>/similar/",
@@ -45,6 +59,11 @@ urlpatterns = [
         "questions/<str:public_id>/attempt/",
         QuestionAttemptView.as_view(),
         name="question-attempt",
+    ),
+    path(
+        "questions/<str:public_id>/view/",
+        QuestionViewRecordView.as_view(),
+        name="question-view",
     ),
     path(
         "questions/<str:public_id>/error-report/",
@@ -67,7 +86,35 @@ urlpatterns = [
     path("auth/google/", GoogleAuthView.as_view(), name="auth-google"),
     path("me/", MeView.as_view(), name="me"),
     path("me/messages/", MeMessagesView.as_view(), name="me-messages"),
+    path("premium/sync/", PremiumSyncView.as_view(), name="premium-sync"),
     path("daily-mini-exam/", DailyMiniExamView.as_view(), name="daily-mini-exam"),
+    path(
+        "daily-mini-exam/period-ranking/",
+        DailyMiniPeriodRankingView.as_view(),
+        name="daily-mini-period-ranking",
+    ),
+    path(
+        "daily-mini-exam/reward-history/",
+        DailyMiniRewardHistoryView.as_view(),
+        name="daily-mini-reward-history",
+    ),
     path("promo/redeem/", PromoRedeemView.as_view(), name="promo-redeem"),
     path("exam-types/", ExamTypeListView.as_view(), name="exam-types"),
-]
+    path("special-tests/", SpecialTestsView.as_view(), name="special-tests"),
+    path("exam-packs/", ExamPackListView.as_view(), name="exam-packs"),
+    path(
+        "exam-packs/<str:pack_id>/",
+        ExamPackDetailView.as_view(),
+        name="exam-pack-detail",
+    ),
+    path(
+        "exam-packs/<str:pack_id>/exams/<int:exam_index>/questions/",
+        ExamPackExamQuestionsView.as_view(),
+        name="exam-pack-exam-questions",
+    ),
+    path(
+        "telegram/webhook/<str:secret>/",
+        telegram_webhook,
+        name="telegram-webhook",
+    ),
+] + tg_exam_api_urls

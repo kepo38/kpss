@@ -37,13 +37,17 @@ class NotificationService {
 
   bool _initialized = false;
   bool _listeningProgress = false;
+  bool _canUseExactAlarms = false;
 
   static const int weeklySummaryId = 1000;
   static const int premiumSavingsNotificationId = 1001;
   static const int dailyMiniExamId = 1002;
   static const int morningMotivationId = 1003;
   static const int eveningFomoId = 1004;
+  static const int examReminderId = 1005;
+  static const int focusTimerCompleteId = 1006;
   static const _eveningSentKey = 'evening_fomo_sent_date_v1';
+  static const _examReminderKey = 'exam_sunday_reminder_v1';
 
   Future<void> initialize() async {
     if (kIsWeb || _initialized) return;
@@ -70,7 +74,7 @@ class NotificationService {
 
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.requestNotificationsPermission();
+    await _ensureAndroidReady(androidPlugin);
 
     _initialized = true;
     if (!_listeningProgress) {
@@ -91,14 +95,86 @@ class NotificationService {
 
   /// Açılış ve öne gelince zamanlanmış bildirimleri yeniler.
   Future<void> ensureScheduled() async {
+    if (!_initialized) {
+      await initialize();
+    }
     if (!_initialized) return;
+
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await _ensureAndroidReady(androidPlugin);
+
     await scheduleWeeklySummary();
     await scheduleMorningMotivation();
     await scheduleEveningFomo();
+    await scheduleExamReminderIfEnabled();
   }
 
-  bool _pref(NotificationKind kind) =>
-      NotificationPreferenceService.instance.isEnabled(kind);
+  Future<void> _ensureAndroidReady(
+    AndroidFlutterLocalNotificationsPlugin? androidPlugin,
+  ) async {
+    if (androidPlugin == null) return;
+
+    await androidPlugin.requestNotificationsPermission();
+
+    var canExact = await androidPlugin.canScheduleExactNotifications();
+    if (canExact != true) {
+      await androidPlugin.requestExactAlarmsPermission();
+      canExact = await androidPlugin.canScheduleExactNotifications();
+    }
+    _canUseExactAlarms = canExact == true;
+  }
+
+  AndroidScheduleMode get _dailyScheduleMode => _canUseExactAlarms
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
+
+  Future<bool> isExamReminderEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_examReminderKey) ?? false;
+  }
+
+  /// Pazar 10:00 deneme hatırlatıcısını aç/kapa.
+  Future<bool> setExamReminderEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_examReminderKey, enabled);
+    if (enabled) {
+      await scheduleExamReminderIfEnabled();
+    } else {
+      await _plugin.cancel(examReminderId);
+    }
+    return enabled;
+  }
+
+  Future<void> scheduleExamReminderIfEnabled() async {
+    if (!_initialized) return;
+    await _plugin.cancel(examReminderId);
+    if (!await isExamReminderEnabled()) return;
+
+    await _plugin.zonedSchedule(
+      examReminderId,
+      '${BrandConstants.appName} — Deneme zamanı',
+      'Pazar deneme hatırlatması: bugün bir deneme çöz, netlerini güncelle.',
+      _nextWeeklyAt(weekday: DateTime.sunday, hour: 10),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'exam_reminder',
+          'Deneme Hatırlatıcısı',
+          channelDescription: 'Her Pazar 10:00 deneme çözme hatırlatması',
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+        ),
+      ),
+      androidScheduleMode: _dailyScheduleMode,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  }
+
+  bool _pref(NotificationKind kind) {
+    final prefs = NotificationPreferenceService.instance;
+    if (!prefs.isInitialized) return true;
+    return prefs.isEnabled(kind);
+  }
 
   void _onNotificationTap(NotificationResponse response) {
     final payload = response.payload;
@@ -137,7 +213,7 @@ class NotificationService {
           priority: Priority.defaultPriority,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
   }
@@ -147,13 +223,16 @@ class NotificationService {
     final bank = ContentBankService.instance;
     final wrongCount = bank.wrongQuestionCount;
     final topics = bank.wrongTopicsSummary(limit: 3);
-    final degisim = summary.netDegisim >= 0 ? '+' : '';
-
     final buffer = StringBuffer(
       'Bu hafta ${summary.denemeSayisi} deneme, '
-      'ort. ${summary.ortalamaNet.toStringAsFixed(1)} net '
-      '($degisim${summary.netDegisim.toStringAsFixed(1)}). ',
+      'ort. ${summary.ortalamaNet.toStringAsFixed(1)} net',
     );
+    final netDegisim = summary.netDegisim;
+    if (netDegisim != null) {
+      final degisim = netDegisim >= 0 ? '+' : '';
+      buffer.write(' ($degisim${netDegisim.toStringAsFixed(1)})');
+    }
+    buffer.write('. ');
 
     if (wrongCount == 0) {
       buffer.write('Yanlış defterin boş.');
@@ -186,6 +265,86 @@ class NotificationService {
         ),
       ),
     );
+  }
+
+  /// Odak süresi bitince (arka plan / kilit ekranı).
+  Future<void> scheduleFocusTimerComplete({
+    required DateTime endsAt,
+    required bool isBreakEnding,
+  }) async {
+    if (kIsWeb) return;
+    if (!_initialized) await initialize();
+    if (!_initialized) return;
+
+    await _plugin.cancel(focusTimerCompleteId);
+    var when = tz.TZDateTime.from(endsAt, tz.local);
+    final nowTz = tz.TZDateTime.now(tz.local);
+    // Saat dilimi sapması / milisaniye farkı: play anında bitiş sesi çalıp
+    // Deep Work müziğini kesmesin — en az ~1 sn sonraya kaydır.
+    if (!when.isAfter(nowTz.add(const Duration(milliseconds: 800)))) {
+      when = nowTz.add(const Duration(seconds: 1));
+    }
+
+    final title = isBreakEnding ? 'Mola bitti' : 'Odak tamamlandı';
+    final body = isBreakEnding
+        ? 'Mola süren doldu. Yeni bir odak turuna hazır mısın?'
+        : 'Seansın bitti. Kısa bir mola veya yeni tur zamanı.';
+
+    await _plugin.zonedSchedule(
+      focusTimerCompleteId,
+      '${BrandConstants.appName} — $title',
+      body,
+      when,
+      const NotificationDetails(android: AndroidNotificationDetails(
+          'focus_timer',
+          'Odak Modu',
+          channelDescription: 'Pomodoro süre bitiş uyarıları',
+          importance: Importance.high,
+          priority: Priority.high,
+          category: AndroidNotificationCategory.alarm,
+          playSound: true,
+          enableVibration: true,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      payload: jsonEncode({'type': 'focus_timer'}),
+    );
+  }
+
+  Future<void> showFocusTimerComplete({required bool isBreakEnding}) async {
+    if (kIsWeb) return;
+    if (!_initialized) await initialize();
+    if (!_initialized) return;
+
+    await _plugin.cancel(focusTimerCompleteId);
+    final title = isBreakEnding ? 'Mola bitti' : 'Odak tamamlandı';
+    final body = isBreakEnding
+        ? 'Mola süren doldu. Yeni bir odak turuna hazır mısın?'
+        : 'Seansın bitti. Kısa bir mola veya yeni tur zamanı.';
+
+    await _plugin.show(
+      focusTimerCompleteId,
+      '${BrandConstants.appName} — $title',
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'focus_timer',
+          'Odak Modu',
+          channelDescription: 'Pomodoro süre bitiş uyarıları',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          playSound: true,
+          enableVibration: true,
+        ),
+      ),
+      payload: jsonEncode({'type': 'focus_timer'}),
+    );
+  }
+
+  Future<void> cancelFocusTimerComplete() async {
+    if (!_initialized) return;
+    await _plugin.cancel(focusTimerCompleteId);
   }
 
   /// 20 test kilometre taşı — tıklanınca paywall açılır.
@@ -243,13 +402,13 @@ class NotificationService {
           priority: Priority.high,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
       matchDateTimeComponents: DateTimeComponents.time,
       payload: payload,
     );
   }
 
-  /// 21:00 FOMO — yalnızca 4 bar dolu, 1 ders kalınca.
+  /// 20:58 FOMO — yalnızca 4 bar dolu, 1 ders kalınca.
   Future<void> scheduleEveningFomo() async {
     if (!_initialized) return;
 
@@ -276,8 +435,16 @@ class NotificationService {
     );
     final body = DailyMissionCopy.eveningBody(remaining);
     final now = tz.TZDateTime.now(tz.local);
+    final scheduledToday = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      DailyMissionCopy.eveningHour,
+      DailyMissionCopy.eveningMinute,
+    );
 
-    if (now.hour >= DailyMissionCopy.eveningHour) {
+    if (!now.isBefore(scheduledToday)) {
       await _showEveningFomoOnce(body, details, payload);
       return;
     }
@@ -286,9 +453,13 @@ class NotificationService {
       eveningFomoId,
       DailyMissionCopy.eveningTitle,
       body,
-      _nextDailyAt(hour: DailyMissionCopy.eveningHour),
+      _nextDailyAt(
+        hour: DailyMissionCopy.eveningHour,
+        minute: DailyMissionCopy.eveningMinute,
+      ),
       details,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: _dailyScheduleMode,
+      matchDateTimeComponents: DateTimeComponents.time,
       payload: payload,
     );
   }

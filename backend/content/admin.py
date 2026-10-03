@@ -13,19 +13,28 @@ from .models import (
     AppUser,
     DailyMiniExam,
     DailyMiniExamAttempt,
+    DailySubjectFreeUsage,
     DeviceToken,
     ExamType,
+    ExamDistributionTemplate,
+    ExamPack,
+    ExamPackExam,
+    ExamPackExamQuestion,
     MapTemplate,
     PromoCode,
     PromoCodeRedemption,
     Question,
     QuestionAttempt,
     QuestionRating,
+    OcrIngestLog,
     QuestionErrorReport,
     Subject,
     Topic,
     TopicLesson,
+    TopicSummaryCard,
     TopicTest,
+    TgExam,
+    TgExamAttempt,
     UserMessage,
 )
 
@@ -154,6 +163,7 @@ class QuestionAdmin(ModelAdmin):
         "correct_option",
         "difficulty",
         "attempt_count",
+        "view_count",
         "average_rating",
         "rating_count",
         "is_published",
@@ -172,9 +182,12 @@ class QuestionAdmin(ModelAdmin):
     autocomplete_fields = ("topic",)
     readonly_fields = (
         "attempt_count",
+        "view_count",
         "correct_count",
         "wrong_count",
         "blank_count",
+        "last_used_in_tg_exam_at",
+        "tg_exam_cooldown_counter",
         "created_at",
         "updated_at",
     )
@@ -192,6 +205,10 @@ class QuestionAdmin(ModelAdmin):
                     "subtopic",
                     "is_published",
                     "osym_sordu",
+                    "osym_cikmis_adi",
+                    "tag_kronoloji",
+                    "tag_padisah_antlasma",
+                    "tag_celdirici",
                     "difficulty",
                 ),
             },
@@ -230,6 +247,7 @@ class QuestionAdmin(ModelAdmin):
                 "classes": ["tab"],
                 "fields": (
                     "attempt_count",
+                    "view_count",
                     "correct_count",
                     "wrong_count",
                     "blank_count",
@@ -335,6 +353,69 @@ class QuestionErrorReportAdmin(ModelAdmin):
         return False
 
 
+@admin.register(OcrIngestLog)
+class OcrIngestLogAdmin(ModelAdmin):
+    list_display = (
+        "created_at",
+        "status",
+        "engine",
+        "used_model",
+        "ok",
+        "issue_formula_missing",
+        "issue_char_drift",
+        "duplicate_match",
+        "topic",
+        "duplicate_question",
+    )
+    list_filter = (
+        "status",
+        "ok",
+        "engine",
+        "issue_formula_missing",
+        "issue_char_drift",
+        "duplicate_match",
+        "topic__subject",
+    )
+    search_fields = (
+        "image_path",
+        "source_image_hash",
+        "source_image_phash",
+        "used_model",
+        "raw_response",
+        "stem",
+        "raw_text",
+        "error_message",
+        "duplicate_question__public_id",
+    )
+    readonly_fields = (
+        "created_at",
+        "source_image_hash",
+        "source_image_phash",
+        "image_path",
+        "engine",
+        "used_model",
+        "status",
+        "topic",
+        "duplicate_question",
+        "duplicate_match",
+        "initiated_by",
+        "ok",
+        "error_message",
+        "raw_response",
+        "stem",
+        "options",
+        "raw_text",
+        "issue_formula_missing",
+        "issue_char_drift",
+    )
+    list_filter_sheet = False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
 @admin.register(TopicLesson)
 class TopicLessonAdmin(ModelAdmin):
     list_display = ("title", "topic", "sort_order", "is_published", "updated_at")
@@ -342,6 +423,35 @@ class TopicLessonAdmin(ModelAdmin):
     search_fields = ("title", "public_id", "body")
     autocomplete_fields = ("topic",)
     list_filter_sheet = False
+
+
+@admin.register(TopicSummaryCard)
+class TopicSummaryCardAdmin(ModelAdmin):
+    list_display = (
+        "title",
+        "kind",
+        "topic",
+        "sort_order",
+        "is_published",
+        "updated_at",
+    )
+    list_filter = ("kind", "is_published", "topic__subject")
+    search_fields = ("title", "public_id", "body")
+    autocomplete_fields = ("topic",)
+    list_filter_sheet = False
+    fields = (
+        "public_id",
+        "topic",
+        "kind",
+        "title",
+        "body",
+        "image",
+        "sort_order",
+        "is_published",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(TopicTest)
@@ -441,14 +551,16 @@ class AppUserAdmin(ModelAdmin):
     list_display = (
         "email",
         "display_name",
+        "is_anonymous",
         "is_premium",
         "premium_granted_at",
         "premium_expires_at",
         "status_label",
+        "last_active_at",
         "last_login_at",
         "created_at",
     )
-    list_filter = ("is_premium", "is_active")
+    list_filter = ("is_anonymous", "is_premium", "is_active")
     search_fields = ("email", "display_name", "google_sub")
     readonly_fields = (
         "google_sub",
@@ -456,7 +568,9 @@ class AppUserAdmin(ModelAdmin):
         "created_at",
         "updated_at",
         "last_login_at",
+        "last_active_at",
         "premium_granted_at",
+        "is_anonymous",
     )
     fieldsets = (
         (
@@ -467,6 +581,7 @@ class AppUserAdmin(ModelAdmin):
                     "display_name",
                     "photo_url",
                     "google_sub",
+                    "is_anonymous",
                     "is_active",
                     "block_reason",
                 ),
@@ -479,6 +594,7 @@ class AppUserAdmin(ModelAdmin):
                     "is_premium",
                     "premium_granted_at",
                     "premium_expires_at",
+                    "premium_product_id",
                     "premium_grant_note",
                 ),
             },
@@ -489,6 +605,7 @@ class AppUserAdmin(ModelAdmin):
                 "fields": (
                     "api_token",
                     "last_login_at",
+                    "last_active_at",
                     "created_at",
                     "updated_at",
                 ),
@@ -686,6 +803,15 @@ class DeviceTokenAdmin(ModelAdmin):
         return f"{obj.token[:24]}…"
 
 
+@admin.register(DailySubjectFreeUsage)
+class DailySubjectFreeUsageAdmin(ModelAdmin):
+    list_display = ("user", "subject_slug", "day", "created_at")
+    list_filter = ("day", "subject_slug")
+    search_fields = ("user__email", "user__display_name", "subject_slug")
+    date_hierarchy = "day"
+    readonly_fields = ("created_at",)
+
+
 @admin.register(DailyMiniExam)
 class DailyMiniExamAdmin(ModelAdmin):
     list_display = ("exam_date", "kpss_type", "question_count", "created_at")
@@ -754,6 +880,74 @@ class ExamTypeAdmin(ModelAdmin):
         if obj:
             return {}
         return self.prepopulated_fields
+
+
+class ExamPackExamQuestionInline(TabularInline):
+    model = ExamPackExamQuestion
+    extra = 0
+    autocomplete_fields = ("question",)
+    ordering = ("sort_order",)
+
+
+class ExamPackExamInline(TabularInline):
+    model = ExamPackExam
+    extra = 0
+    show_change_link = True
+    ordering = ("index",)
+
+
+@admin.register(ExamDistributionTemplate)
+class ExamDistributionTemplateAdmin(ModelAdmin):
+    list_display = (
+        "exam_type",
+        "subject",
+        "topic",
+        "question_count",
+        "updated_at",
+    )
+    list_filter = ("exam_type", "subject")
+    search_fields = ("exam_type__name", "subject__name", "topic__name")
+    autocomplete_fields = ("exam_type", "subject", "topic")
+
+
+@admin.register(ExamPack)
+class ExamPackAdmin(ModelAdmin):
+    list_display = (
+        "title",
+        "public_id",
+        "exam_type",
+        "pack_kind",
+        "subject",
+        "exam_count",
+        "is_published",
+        "sort_order",
+    )
+    list_display_links = ("title", "public_id")
+    list_editable = ("is_published", "sort_order")
+    list_filter = ("pack_kind", "is_published", "exam_type")
+    search_fields = ("title", "public_id", "play_product_id")
+    inlines = (ExamPackExamInline,)
+    autocomplete_fields = ("exam_type", "subject")
+    actions = ("activate_packs", "deactivate_packs")
+
+    @admin.action(description="Seçili paketleri aktif et (Dersler vitrini)")
+    def activate_packs(self, request, queryset):
+        updated = queryset.update(is_published=True)
+        self.message_user(request, f"{updated} paket aktif edildi.")
+
+    @admin.action(description="Seçili paketleri pasif et (vitrinden çıkar)")
+    def deactivate_packs(self, request, queryset):
+        updated = queryset.update(is_published=False)
+        self.message_user(request, f"{updated} paket pasif edildi.")
+
+
+@admin.register(ExamPackExam)
+class ExamPackExamAdmin(ModelAdmin):
+    list_display = ("pack", "index", "title", "question_count")
+    list_filter = ("pack__exam_type",)
+    search_fields = ("title", "pack__title")
+    inlines = (ExamPackExamQuestionInline,)
+    autocomplete_fields = ("pack",)
 
 
 class PromoCodeRedemptionInline(TabularInline):
@@ -867,3 +1061,90 @@ class PromoCodeRedemptionAdmin(ModelAdmin):
     readonly_fields = ("redeemed_at",)
     date_hierarchy = "redeemed_at"
     list_filter_sheet = False
+
+
+@admin.register(TgExam)
+class TgExamAdmin(ModelAdmin):
+    list_display = (
+        "title",
+        "kpss_type",
+        "start_at",
+        "end_at",
+        "duration_minutes",
+        "is_published",
+        "is_results_published",
+        "announcement_push_sent_at",
+        "results_push_sent_at",
+    )
+    list_filter = ("kpss_type", "is_published", "is_results_published")
+    search_fields = ("title",)
+    list_editable = ("is_published",)
+    date_hierarchy = "start_at"
+    actions = ("publish_results_action", "send_announcement_action")
+    readonly_fields = (
+        "announcement_push_sent_at",
+        "announcement_push_success_count",
+        "announcement_push_fail_count",
+        "results_published_at",
+        "results_push_sent_at",
+        "results_push_success_count",
+        "results_push_fail_count",
+        "created_at",
+        "updated_at",
+    )
+
+    @admin.action(description="Sonuçları yayınla ve katılımcılara bildirim gönder")
+    def publish_results_action(self, request, queryset):
+        from django.contrib import messages
+        from django.utils import timezone
+
+        from .tg_exam import publish_exam_results
+
+        count = 0
+        for exam in queryset:
+            if timezone.now() < exam.end_at:
+                messages.warning(
+                    request,
+                    f"{exam.title}: Bitiş saati gelmeden yayınlanamaz.",
+                )
+                continue
+            if publish_exam_results(exam, send_push=True):
+                count += 1
+        if count:
+            messages.success(request, f"{count} deneme sonucu yayınlandı.")
+
+    @admin.action(description="Deneme duyuru bildirimi gönder (FCM — manuel)")
+    def send_announcement_action(self, request, queryset):
+        from django.contrib import messages
+
+        from .tg_exam import send_scheduled_tg_exam_announcement
+
+        for exam in queryset:
+            if send_scheduled_tg_exam_announcement(exam, send_push=True, force=True):
+                exam.refresh_from_db()
+                messages.success(
+                    request,
+                    f"{exam.title}: duyuru gönderildi "
+                    f"({exam.announcement_push_success_count} başarılı).",
+                )
+            else:
+                messages.error(
+                    request,
+                    f"{exam.title}: duyuru gönderilemedi (yayında değil veya zaten gönderildi).",
+                )
+
+
+@admin.register(TgExamAttempt)
+class TgExamAttemptAdmin(ModelAdmin):
+    list_display = (
+        "user",
+        "exam",
+        "net",
+        "ranking",
+        "is_submitted",
+        "submitted_at",
+    )
+    list_filter = ("is_submitted", "exam")
+    search_fields = ("user__email", "exam__title")
+    readonly_fields = ("started_at", "submitted_at")
+    autocomplete_fields = ("user", "exam")

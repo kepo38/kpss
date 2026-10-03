@@ -12,8 +12,12 @@ void main() {
       DateTime(2026, 8, 14, 9),
     );
     expect(
-      nextDailyFire(DateTime(2026, 8, 13, 20, 0), hour: 21),
-      DateTime(2026, 8, 13, 21),
+      nextDailyFire(DateTime(2026, 8, 13, 20, 0), hour: 20, minute: 58),
+      DateTime(2026, 8, 13, 20, 58),
+    );
+    expect(
+      nextDailyFire(DateTime(2026, 8, 13, 21, 0), hour: 20, minute: 58),
+      DateTime(2026, 8, 14, 20, 58),
     );
   });
 }

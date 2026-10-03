@@ -26,8 +26,8 @@ class AnnouncementModel {
       title: (json['title'] as String?)?.trim() ?? '',
       body: (json['body'] as String?)?.trim() ?? '',
       imageUrl: (rawImage == null || rawImage.isEmpty) ? null : rawImage,
-      createdAt: _parseDate(json['created_at']),
-      pushSentAt: _parseDate(json['push_sent_at']),
+      createdAt: _parseDate(json['createdAt'] ?? json['created_at']),
+      pushSentAt: _parseDate(json['pushSentAt'] ?? json['push_sent_at']),
     );
   }
 

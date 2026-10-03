@@ -3,23 +3,60 @@
 <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Kullanıcılar</div>
 <h1>Kullanıcılar &amp; Premium</h1>
 <p class="lead">
-  Google ile giriş yapan kullanıcılara ücretsiz premium tanımlayın.
-  Veriliş tarihi uygulama profilinde görünür.
+  Google hesabı olan kullanıcılara premium tanımlayın; misafir / seçili kayıtları toplu silebilirsiniz.
 </p>
 
-<form class="toolbar" method="get" action="{% url 'panel_users' %}">
-  <input type="search" name="q" value="{{ query }}" placeholder="Ad veya e-posta ara…" style="min-width:240px;padding:10px 12px;border-radius:8px;border:1px solid #ccc;">
-  <button class="btn btn-primary" type="submit">Ara</button>
-  {% if query %}
-  <a class="btn btn-ghost" href="{% url 'panel_users' %}">Temizle</a>
+<div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:center;">
+  <form method="get" action="{% url 'panel_users' %}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+    <input type="search" name="q" value="{{ query }}" placeholder="Ad veya e-posta ara…" style="min-width:240px;padding:10px 12px;border-radius:8px;border:1px solid #ccc;">
+    <select name="scope" style="padding:10px 12px;border-radius:8px;border:1px solid #ccc;">
+      <option value="all" {% if scope == "all" %}selected{% endif %}>Tümü</option>
+      <option value="account" {% if scope == "account" %}selected{% endif %}>Hesaplı</option>
+      <option value="guest" {% if scope == "guest" %}selected{% endif %}>Misafir</option>
+    </select>
+    <button class="btn btn-primary" type="submit">Ara</button>
+    {% if query or scope != "all" %}
+    <a class="btn btn-ghost" href="{% url 'panel_users' %}">Temizle</a>
+    {% endif %}
+  </form>
+  {% if guest_count > 0 %}
+  <form method="post" action="{% url 'panel_user_purge_guests' %}" onsubmit="return confirm('{{ guest_count }} misafir kullanıcı silinsin mi? Bu işlem geri alınamaz.');">
+    {% csrf_token %}
+    <button class="btn btn-danger" type="submit">Misafirleri temizle ({{ guest_count }})</button>
+  </form>
   {% endif %}
+</div>
+
+<form
+  id="user-bulk-form"
+  class="bulk-form"
+  method="post"
+  action="{% url 'panel_user_bulk_delete' %}"
+  onsubmit="return confirm('Seçili kullanıcılar silinsin mi? Bu işlem geri alınamaz.');"
+>
+  {% csrf_token %}
+  <input type="hidden" name="return_q" value="{{ query }}">
+  <input type="hidden" name="return_scope" value="{{ scope }}">
+  <div class="bulk-bar">
+    <label class="bulk-select-all">
+      <input type="checkbox" id="user-select-all"> Tümünü seç
+    </label>
+    <span class="bulk-count" id="user-bulk-count">0 seçili</span>
+    <button class="btn btn-danger" type="submit" id="user-bulk-delete" disabled>Seçilenleri sil</button>
+  </div>
 </form>
 
 <div class="list">
   {% for u in page_obj %}
   <div class="row" style="align-items:flex-start;flex-wrap:wrap;gap:12px;">
+    <label style="display:flex;align-items:center;padding-top:4px;">
+      <input class="user-check" form="user-bulk-form" type="checkbox" name="ids" value="{{ u.id }}">
+    </label>
     <div class="name" style="flex:1;min-width:220px;">
       <strong>{{ u.display_name|default:"—" }}</strong>
+      {% if u.is_anonymous %}
+      <span class="badge off" style="margin-left:6px;">Misafir</span>
+      {% endif %}
       <div class="hint">{{ u.email }}</div>
       <div class="hint">
         Son giriş: {% if u.last_login_at %}{{ u.last_login_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}
@@ -51,6 +88,7 @@
     </form>
     {% else %}
     <span class="badge off">Standart</span>
+    {% if not u.is_anonymous %}
     <form method="post" action="{% url 'panel_user_grant_premium' u.id %}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
       {% csrf_token %}
       <input type="hidden" name="return_q" value="{{ query }}">
@@ -59,21 +97,49 @@
       <button class="btn btn-primary" type="submit">Ücretsiz premium ver</button>
     </form>
     {% endif %}
+    {% endif %}
   </div>
   {% empty %}
-  <div class="empty">Kullanıcı bulunamadı. Uygulamaya en az bir kez Google ile giriş yapılmalı.</div>
+  <div class="empty">Kullanıcı bulunamadı.</div>
   {% endfor %}
 </div>
 
 {% if page_obj.paginator.num_pages > 1 %}
 <div class="toolbar" style="margin-top:16px;">
   {% if page_obj.has_previous %}
-  <a class="btn btn-ghost" href="?q={{ query|urlencode }}&amp;page={{ page_obj.previous_page_number }}">← Önceki</a>
+  <a class="btn btn-ghost" href="?q={{ query|urlencode }}&amp;scope={{ scope }}&amp;page={{ page_obj.previous_page_number }}">← Önceki</a>
   {% endif %}
   <span>Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
   {% if page_obj.has_next %}
-  <a class="btn btn-ghost" href="?q={{ query|urlencode }}&amp;page={{ page_obj.next_page_number }}">Sonraki →</a>
+  <a class="btn btn-ghost" href="?q={{ query|urlencode }}&amp;scope={{ scope }}&amp;page={{ page_obj.next_page_number }}">Sonraki →</a>
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+(function () {
+  var selectAll = document.getElementById("user-select-all");
+  var checks = document.querySelectorAll(".user-check");
+  var btn = document.getElementById("user-bulk-delete");
+  var countEl = document.getElementById("user-bulk-count");
+  function sync() {
+    var n = 0;
+    checks.forEach(function (c) { if (c.checked) n += 1; });
+    if (countEl) countEl.textContent = n + " seçili";
+    if (btn) btn.disabled = n === 0;
+    if (selectAll) {
+      selectAll.checked = checks.length > 0 && n === checks.length;
+      selectAll.indeterminate = n > 0 && n < checks.length;
+    }
+  }
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      checks.forEach(function (c) { c.checked = selectAll.checked; });
+      sync();
+    });
+  }
+  checks.forEach(function (c) { c.addEventListener("change", sync); });
+  sync();
+})();
+</script>
 {% endblock %}

@@ -38,7 +38,7 @@
 
   function stemToHtml(text) {
     if (window.KpssMathRender) {
-      return window.KpssMathRender.paragraphHtml(text);
+      return window.KpssMathRender.examDocumentHtml(text);
     }
     var clean = examFormat(text);
     if (!clean) return "";
@@ -112,7 +112,9 @@
     if (solWrap && solBody) {
       if (q.solution) {
         solBody.innerHTML = window.KpssMathRender
-          ? window.KpssMathRender.documentHtml(q.solution)
+          ? (window.KpssMathRender.solutionDocumentHtml
+              ? window.KpssMathRender.solutionDocumentHtml(q.solution)
+              : window.KpssMathRender.examDocumentHtml(q.solution))
           : stemToHtml(q.solution);
         solWrap.classList.add("is-on");
       } else {

@@ -1,17 +1,18 @@
-# kpss_akademi
+# Hedef Kamu (KPSS Akademi)
 
-A new Flutter project.
+Flutter mobil uygulama + Django REST API ve içerik paneli.
 
-## Getting Started
+**Özellik kataloğu:** [FEATURES.md](FEATURES.md) — tüm modüller, premium/reklam kuralları ve panel/API yetenekleri. Yeni özellik veya davranış değişikliğinde bu dosya güncellenir.
 
-This project is a starting point for a Flutter application.
+## Geliştirme
 
-A few resources to get you started if this is your first Flutter project:
+- Mobil: Flutter (`lib/`), paket adı `kpss_akademi`
+- Backend: `backend/content/` — API `/api/v1/`, panel `/panel/`, admin `/admin/`
+- API tabanı: `lib/config/api_config.dart`
+
+## Getting Started (Flutter)
+
+This project is a Flutter application.
 
 - [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- [Flutter documentation](https://docs.flutter.dev/)

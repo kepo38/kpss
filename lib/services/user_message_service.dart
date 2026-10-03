@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../models/user_message_model.dart';
+import 'app_preferences.dart';
 import 'auth_service.dart';
 
 /// Admin'den kullanıcıya özel mesajlar.
@@ -13,10 +14,17 @@ class UserMessageService extends ChangeNotifier {
   static final UserMessageService instance = UserMessageService._();
 
   final List<UserMessageModel> _items = [];
+  final Set<int> _baselineIds = {};
   bool _loaded = false;
+  bool _baselineDone = false;
 
-  List<UserMessageModel> get items => List.unmodifiable(_items);
-  int get unreadCount => _items.where((m) => !m.isRead).length;
+  static const _kBaseline = 'user_message_inbox_baseline_v1';
+  static const _kBaselineIds = 'user_message_inbox_baseline_ids_v1';
+
+  List<UserMessageModel> get items => List.unmodifiable(
+        _items.where(_isVisible),
+      );
+  int get unreadCount => items.where((m) => !m.isRead).length;
 
   UserMessageModel? byId(int id) {
     for (final m in _items) {
@@ -28,10 +36,42 @@ class UserMessageService extends ChangeNotifier {
   Future<void> initialize() async {
     if (_loaded) return;
     _loaded = true;
+    await _ensureBaselinePrefs();
     await refresh();
   }
 
+  Future<void> _ensureBaselinePrefs() async {
+    await AppPreferences.firstOpenAt();
+    final prefs = await AppPreferences.instance;
+    _baselineDone = prefs.getBool(_kBaseline) ?? false;
+    final raw = prefs.getStringList(_kBaselineIds) ?? const [];
+    _baselineIds
+      ..clear()
+      ..addAll(raw.map((e) => int.tryParse(e)).whereType<int>());
+  }
+
+  bool _isVisible(UserMessageModel m) {
+    if (_baselineIds.contains(m.id)) return false;
+    if (AppPreferences.isPreInstall(m.createdAt)) return false;
+    return true;
+  }
+
+  Future<void> _applyInstallBaseline() async {
+    if (_baselineDone) return;
+    for (final m in _items) {
+      if (m.id > 0) _baselineIds.add(m.id);
+    }
+    final prefs = await AppPreferences.instance;
+    await prefs.setStringList(
+      _kBaselineIds,
+      _baselineIds.map((e) => e.toString()).toList(),
+    );
+    await prefs.setBool(_kBaseline, true);
+    _baselineDone = true;
+  }
+
   Future<void> refresh() async {
+    await _ensureBaselinePrefs();
     final auth = AuthService.instance;
     if (!auth.isSignedIn) {
       _items.clear();
@@ -54,6 +94,7 @@ class UserMessageService extends ChangeNotifier {
             ),
           ),
         );
+      await _applyInstallBaseline();
       notifyListeners();
     } catch (e) {
       debugPrint('Kullanıcı mesajları: $e');

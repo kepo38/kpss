@@ -8,7 +8,8 @@ void main() {
       contains('Tarih ve Coğrafya barlarını yeşile boyamak'),
     );
     expect(DailyMissionCopy.morningHour, 9);
-    expect(DailyMissionCopy.eveningHour, 21);
+    expect(DailyMissionCopy.eveningHour, 20);
+    expect(DailyMissionCopy.eveningMinute, 58);
   });
 
   test('gece FOMO kalan ders adını yerleştirir', () {

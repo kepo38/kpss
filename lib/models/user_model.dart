@@ -4,10 +4,13 @@ class UserModel {
   final String eposta;
   final bool isPremium;
   final bool isAnonymous;
+  final bool isYearlyPremium;
+  final String premiumProductId;
   final DateTime? premiumBitisTarihi;
   final DateTime? premiumVerilisTarihi;
   final String? premiumGrantNote;
   final String? photoUrl;
+  final DateTime? isimDegistirilebilirAt;
 
   /// Auth henüz hazır değilken onboarding için geçici misafir.
   factory UserModel.placeholderGuest() => const UserModel(
@@ -23,11 +26,20 @@ class UserModel {
     required this.eposta,
     this.isPremium = false,
     this.isAnonymous = false,
+    this.isYearlyPremium = false,
+    this.premiumProductId = '',
     this.premiumBitisTarihi,
     this.premiumVerilisTarihi,
     this.premiumGrantNote,
     this.photoUrl,
+    this.isimDegistirilebilirAt,
   });
+
+  bool get canChangeDisplayName {
+    final at = isimDegistirilebilirAt;
+    if (at == null) return true;
+    return !at.isAfter(DateTime.now());
+  }
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
@@ -36,6 +48,8 @@ class UserModel {
       eposta: (json['eposta'] ?? json['email'] ?? '') as String,
       isPremium: json['isPremium'] as bool? ?? false,
       isAnonymous: json['isAnonymous'] as bool? ?? false,
+      isYearlyPremium: json['isYearlyPremium'] as bool? ?? false,
+      premiumProductId: (json['premiumProductId'] as String?) ?? '',
       premiumBitisTarihi: json['premiumBitisTarihi'] != null
           ? DateTime.tryParse('${json['premiumBitisTarihi']}')
           : null,
@@ -44,6 +58,9 @@ class UserModel {
           : null,
       premiumGrantNote: json['premiumGrantNote'] as String?,
       photoUrl: json['photoUrl'] as String?,
+      isimDegistirilebilirAt: json['isimDegistirilebilirAt'] != null
+          ? DateTime.tryParse('${json['isimDegistirilebilirAt']}')
+          : null,
     );
   }
 
@@ -53,6 +70,8 @@ class UserModel {
         'eposta': eposta,
         'isPremium': isPremium,
         'isAnonymous': isAnonymous,
+        'isYearlyPremium': isYearlyPremium,
+        'premiumProductId': premiumProductId,
         'premiumBitisTarihi': premiumBitisTarihi?.toIso8601String(),
         'premiumVerilisTarihi': premiumVerilisTarihi?.toIso8601String(),
         'premiumGrantNote': premiumGrantNote,
@@ -65,10 +84,17 @@ class UserModel {
     String? eposta,
     bool? isPremium,
     bool? isAnonymous,
+    bool? isYearlyPremium,
+    String? premiumProductId,
     DateTime? premiumBitisTarihi,
     DateTime? premiumVerilisTarihi,
     String? premiumGrantNote,
     String? photoUrl,
+    DateTime? isimDegistirilebilirAt,
+    bool clearPremiumBitisTarihi = false,
+    bool clearPremiumVerilisTarihi = false,
+    bool clearPremiumGrantNote = false,
+    bool clearPremiumProductId = false,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -76,11 +102,22 @@ class UserModel {
       eposta: eposta ?? this.eposta,
       isPremium: isPremium ?? this.isPremium,
       isAnonymous: isAnonymous ?? this.isAnonymous,
-      premiumBitisTarihi: premiumBitisTarihi ?? this.premiumBitisTarihi,
-      premiumVerilisTarihi:
-          premiumVerilisTarihi ?? this.premiumVerilisTarihi,
-      premiumGrantNote: premiumGrantNote ?? this.premiumGrantNote,
+      isYearlyPremium: isYearlyPremium ?? this.isYearlyPremium,
+      premiumProductId: clearPremiumProductId
+          ? ''
+          : (premiumProductId ?? this.premiumProductId),
+      premiumBitisTarihi: clearPremiumBitisTarihi
+          ? null
+          : (premiumBitisTarihi ?? this.premiumBitisTarihi),
+      premiumVerilisTarihi: clearPremiumVerilisTarihi
+          ? null
+          : (premiumVerilisTarihi ?? this.premiumVerilisTarihi),
+      premiumGrantNote: clearPremiumGrantNote
+          ? null
+          : (premiumGrantNote ?? this.premiumGrantNote),
       photoUrl: photoUrl ?? this.photoUrl,
+      isimDegistirilebilirAt:
+          isimDegistirilebilirAt ?? this.isimDegistirilebilirAt,
     );
   }
 }

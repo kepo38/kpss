@@ -1,0 +1,94 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<div class="crumb">
+  <a href="{% url 'panel_home' %}">Dersler</a> /
+  {{ page_title }}
+</div>
+<h1>{{ page_title }}</h1>
+<p class="lead">Ana sayfa balonu, quiz banner ve Stüdyo modül görünürlüğünü buradan yönetin.</p>
+
+<form class="form" method="post" style="max-width:720px;">
+  {% csrf_token %}
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Yanlış defteri balonu</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Ana sayfa sağ kenarında premium tarzı baloncuk gösterilir; tıklanınca yanlış defterine gider.
+      Kullanıcı balonu kapatabilir; ayar tekrar kaydedildiğinde balon yeniden görünür.
+    </p>
+    <label class="check">
+      <input type="checkbox" name="wrong_notebook_bubble_enabled"
+        {% if config.wrong_notebook_bubble_enabled %}checked{% endif %}>
+      Balonu göster (aktif)
+    </label>
+    <label>Balon metni
+      <input type="text" name="wrong_notebook_bubble_label" maxlength="48" required
+        value="{{ config.wrong_notebook_bubble_label|default:'YANLIŞ DEFTERİM' }}"
+        placeholder="YANLIŞLARINI GÖR">
+    </label>
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Play Store güncelleme uyarısı</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Kullanıcının yüklü sürümü bu değerden düşükse uygulama açılışında bir kez
+      güncelleme diyaloğu gösterilir. Boş bırakılırsa uyarı kapalıdır.
+      Sürüm formatı: <code>1.0.2</code> (build numarası yazmayın).
+    </p>
+    <label>Önerilen sürüm
+      <input type="text" name="recommended_app_version" maxlength="32"
+        value="{{ config.recommended_app_version|default:'' }}"
+        placeholder="1.0.2">
+    </label>
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Quiz banner reklamları</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Test ekranının altındaki AdMob banner’ı. Kapalıyken yalnızca banner gizlenir;
+      ödüllü çözüm, interstitial ve kota reklamları etkilenmez. Premium ve 12 saat
+      reklamsız kampanya kuralları aynen geçerlidir.
+    </p>
+    <label class="check">
+      <input type="checkbox" name="banner_ads_enabled"
+        {% if config.banner_ads_enabled %}checked{% endif %}>
+      Banner reklamları göster (aktif)
+    </label>
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Stüdyo — Premium suite</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Pasif modüller uygulamada soluk görünür ve tıklanamaz. Offline Paket kapalıyken
+      indirme ve satın alma akışı da engellenir.
+    </p>
+    {% for row in studio_rows %}
+      {% if row.section == "premium" %}
+      <label class="check">
+        <input type="checkbox" name="studio_{{ row.db_key }}"
+          {% if row.enabled %}checked{% endif %}>
+        {{ row.label }} <span class="media-hint">({{ row.api_key }})</span>
+      </label>
+      {% endif %}
+    {% endfor %}
+  </fieldset>
+
+  <fieldset style="border:none;padding:0;margin:0 0 20px;">
+    <legend style="font-weight:600;margin-bottom:8px;">Stüdyo — Çalışma araçları</legend>
+    <p class="media-hint" style="margin-top:0;">
+      Ücretsiz araçlar. Pasif yapıldığında Stüdyo listesinde görünür ama kullanılamaz.
+    </p>
+    {% for row in studio_rows %}
+      {% if row.section == "tools" %}
+      <label class="check">
+        <input type="checkbox" name="studio_{{ row.db_key }}"
+          {% if row.enabled %}checked{% endif %}>
+        {{ row.label }} <span class="media-hint">({{ row.api_key }})</span>
+      </label>
+      {% endif %}
+    {% endfor %}
+  </fieldset>
+
+  <p class="media-hint">Son güncelleme: {{ config.updated_at|date:"d.m.Y H:i" }}</p>
+  <button class="btn btn-primary" type="submit">Kaydet</button>
+</form>
+{% endblock %}

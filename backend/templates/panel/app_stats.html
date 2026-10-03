@@ -1,0 +1,79 @@
+{% extends "panel/base.html" %}
+{% block content %}
+<header class="page-header">
+  <div class="crumb"><a href="{% url 'panel_home' %}">Dersler</a> / Uygulama durumu</div>
+  <h1>Uygulama durumu</h1>
+  <p class="lead">
+    Benzersiz kullanıcı, FCM jetonları, canlı oturum ve premium özeti.
+    Canlı sayım son {{ active_window_minutes }} dakikadaki aktiviteye göre hesaplanır.
+    Sayfa ~30 sn’de bir yenilenir.
+  </p>
+</header>
+
+<meta http-equiv="refresh" content="30">
+
+<div class="app-stats-grid">
+  <article class="app-stat-card app-stat-card--install">
+    <p class="app-stat-label">Benzersiz kullanıcı (FCM)</p>
+    <p class="app-stat-value">{{ stats.unique_token_users }}</p>
+    <p class="app-stat-hint">
+      En az bir aktif jetonu hesaba bağlı kullanıcı.
+      Yetim jeton: {{ stats.orphan_tokens }}
+    </p>
+  </article>
+
+  <article class="app-stat-card app-stat-card--install">
+    <p class="app-stat-label">Son görülen jeton</p>
+    <p class="app-stat-value">{{ stats.tokens_seen_24h }}</p>
+    <p class="app-stat-hint">
+      Son 24 saatte görülen aktif FCM jetonu.
+      Toplam aktif jeton: {{ stats.install_devices }}
+    </p>
+  </article>
+
+  <article class="app-stat-card app-stat-card--live">
+    <p class="app-stat-label">Şu an aktif</p>
+    <p class="app-stat-value">{{ stats.active_now }}</p>
+    <p class="app-stat-hint">Son {{ active_window_minutes }} dk içinde API kullanan veya cihazı görünen oturumlar.</p>
+  </article>
+
+  <article class="app-stat-card app-stat-card--premium">
+    <p class="app-stat-label">Premium</p>
+    <p class="app-stat-value">{{ stats.premium_users }}</p>
+    <p class="app-stat-hint">
+      Yıllık: {{ stats.premium_yearly }}
+      · Aylık / diğer: {{ stats.premium_monthly_or_other }}
+    </p>
+  </article>
+
+  <article class="app-stat-card">
+    <p class="app-stat-label">Kayıtlı kullanıcı</p>
+    <p class="app-stat-value">{{ stats.total_users }}</p>
+    <p class="app-stat-hint">
+      Hesaplı: {{ stats.account_users }}
+      · Misafir: {{ stats.guest_users }}
+    </p>
+  </article>
+
+  <article class="app-stat-card">
+    <p class="app-stat-label">Son 24 saat aktif</p>
+    <p class="app-stat-value">{{ stats.active_24h }}</p>
+    <p class="app-stat-hint">En az bir API aktivitesi olan kullanıcılar.</p>
+  </article>
+</div>
+
+<div class="panel-card" style="margin-top:18px;">
+  <h2 style="margin-top:0;">Nasıl okunur?</h2>
+  <ul class="app-stats-notes">
+    <li><strong>Benzersiz kullanıcı (FCM)</strong> — Bildirim jetonunu Google/misafir hesaba bağlamış farklı kişi sayısı. Aynı kişinin eski jetonları burayı şişirmez.</li>
+    <li><strong>Son görülen jeton</strong> — Son 24 saatte sunucuya görünen aktif FCM kaydı. Toplam aktif jeton yeniden kurulum / jeton yenileme ile daha yüksek olabilir.</li>
+    <li><strong>Yetim jeton</strong> — Hesaba bağlanmamış (giriş yapmamış) kurulumlar.</li>
+    <li><strong>Şu an aktif</strong> — Uygulamayı açık tutup sunucuya istek atan oturumlar.</li>
+    <li><strong>Premium</strong> — Süresi dolmamış veya süresiz premium hesaplar.</li>
+  </ul>
+  <p class="media-hint" style="margin-bottom:0;">
+    Detaylı liste için
+    <a href="{% url 'panel_users' %}">Kullanıcılar</a> sayfasına bakın.
+  </p>
+</div>
+{% endblock %}

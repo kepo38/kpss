@@ -1,63 +1,121 @@
 {% extends "panel/base.html" %}
+{% load static %}
 {% block content %}
+<link rel="stylesheet" href="{% static 'panel/announcement-push-preview.css' %}?v=1">
+
 <div class="crumb">
   <a href="{% url 'panel_home' %}">Dersler</a> /
   <a href="{% url 'panel_announcement_list' %}">Duyurular</a> /
   {{ page_title }}
 </div>
 <h1>{{ page_title }}</h1>
-<p class="lead">Metin, fotoğraf veya ikisini birden ekleyebilirsiniz. Kaydettikten sonra bildirim gönderebilirsiniz.</p>
+<p class="lead">
+  Telefondaki genişletilmiş bildirim gibi: üstte büyük görsel, altta kalın başlık ve kısa metin.
+  Sağda anlık önizleme — Hepsiburada tarzı kart.
+</p>
 {% if not firebase_ready %}
 <div class="flash flash-warning">{{ firebase_hint }}</div>
 {% endif %}
 
-<form class="form" method="post" enctype="multipart/form-data" style="max-width:720px;">
-  {% csrf_token %}
-  <label>Başlık
-    <input type="text" name="title" required maxlength="160" value="{{ announcement.title|default:'' }}" placeholder="Örn. Yeni deneme eklendi">
-  </label>
-  <label>Metin <span style="opacity:.65;font-weight:400">(isteğe bağlı — fotoğraf varsa boş bırakılabilir)</span>
-    <textarea name="body" rows="6" placeholder="Duyuru metni…">{{ announcement.body|default:'' }}</textarea>
-  </label>
-  <label>Fotoğraf <span style="opacity:.65;font-weight:400">(isteğe bağlı — metin varsa zorunlu değil)</span>
-    <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif">
-  </label>
-  {% if announcement and announcement.image %}
-  <div class="media-preview" style="margin:8px 0 12px;">
-    <img src="{{ announcement.image.url }}" alt="Duyuru görseli" style="max-width:100%;max-height:280px;border-radius:8px;">
+<div class="workspace ann-workspace">
+  <div class="ann-studio-left">
+    <form class="form" method="post" enctype="multipart/form-data" id="announcement-form">
+      {% csrf_token %}
+
+      <div class="ann-templates" aria-label="Hazır şablonlar">
+        <p class="ann-templates-label">Hazır şablon</p>
+        <div class="ann-template-chips">
+          <button type="button" class="ann-chip" data-ann-tpl="campaign"
+            data-title="Yeni içerik seni bekliyor 🎒"
+            data-body="📚 Konu testleri ve denemelerde süper hazırlık">Kampanya</button>
+          <button type="button" class="ann-chip" data-ann-tpl="new"
+            data-title="Yeni deneme paketi yayında ✨"
+            data-body="🧪 İlk denemeyi çöz, sıralamada yerini gör">Yeni paket</button>
+          <button type="button" class="ann-chip" data-ann-tpl="nudge"
+            data-title="Bugünkü görevin hazır ⏰"
+            data-body="💪 15 dakika ayır, streak’ini bozma">Hatırlatma</button>
+        </div>
+      </div>
+
+      <label>Başlık <span class="ann-hint">(emoji kullanabilirsiniz)</span>
+        <input type="text" name="title" id="ann-title" required maxlength="160"
+               value="{{ announcement.title|default:'' }}"
+               placeholder="Örn. Okul alışverişi tamamlansın🎒">
+      </label>
+      <label>Metin <span class="ann-hint">(isteğe bağlı — görsel varsa boş bırakılabilir)</span>
+        <textarea name="body" id="ann-body" rows="4"
+                  placeholder="Örn. 🧪 Suluk ve mataralarda süper fiyatlar">{{ announcement.body|default:'' }}</textarea>
+      </label>
+      <label>Büyük görsel <span class="ann-hint">(geniş yatay — bildirimde üstte çıkar)</span>
+        <input type="file" name="image" id="ann-image" accept="image/png,image/jpeg,image/webp,image/gif">
+      </label>
+      {% if announcement and announcement.image %}
+      <div class="ann-existing">
+        <img src="{{ announcement.image.url }}" alt="Mevcut görsel" id="ann-existing-thumb">
+        <label class="check">
+          <input type="checkbox" name="clear_image" id="ann-clear-image">
+          Görseli kaldır
+        </label>
+      </div>
+      {% endif %}
+      <label class="check">
+        <input type="checkbox" name="is_published" {% if announcement.is_published or not announcement %}checked{% endif %}>
+        Uygulama duyuru listesinde yayınla
+      </label>
+
+      {% if announcement and announcement.push_sent_at %}
+      <p class="media-hint">
+        Son bildirim: {{ announcement.push_sent_at|date:"d.m.Y H:i" }}
+        — {{ announcement.push_success_count }} başarılı / {{ announcement.push_fail_count }} hata
+      </p>
+      {% endif %}
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" type="submit">Kaydet</button>
+        <button class="btn btn-primary" type="submit" name="send_push" value="1"
+          onclick="return confirm('Kaydedilip tüm kullanıcılara bildirim gönderilsin mi?');">
+          Kaydet ve bildirim gönder
+        </button>
+        <a class="btn btn-ghost" href="{% url 'panel_announcement_list' %}">Liste</a>
+      </div>
+    </form>
+
+    {% if announcement %}
+    <form method="post" action="{% url 'panel_announcement_send' announcement.id %}"
+          style="margin-top:12px;"
+          onsubmit="return confirm('Mevcut duyuru tüm kullanıcılara tekrar gönderilsin mi?');">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit">Sadece bildirim gönder</button>
+    </form>
+    {% endif %}
   </div>
-  <label class="check">
-    <input type="checkbox" name="clear_image">
-    Mevcut fotoğrafı kaldır
-  </label>
-  {% endif %}
-  <label class="check">
-    <input type="checkbox" name="is_published" {% if announcement.is_published or not announcement %}checked{% endif %}>
-    Uygulama duyuru listesinde yayınla
-  </label>
 
-  {% if announcement and announcement.push_sent_at %}
-  <p class="media-hint">
-    Son bildirim: {{ announcement.push_sent_at|date:"d.m.Y H:i" }}
-    — {{ announcement.push_success_count }} başarılı / {{ announcement.push_fail_count }} hata
-  </p>
-  {% endif %}
+  <aside class="preview-pane" aria-label="Bildirim önizlemesi">
+    <p class="preview-label">Telefon bildirimi</p>
+    <div class="ann-push-card" id="ann-push-preview">
+      <div class="ann-push-head">
+        <div class="ann-push-app">
+          <span class="ann-push-icon" aria-hidden="true">HK</span>
+          <span class="ann-push-name">Hedef Kamu</span>
+          <span class="ann-push-dot">·</span>
+          <span class="ann-push-time">şimdi</span>
+        </div>
+        <span class="ann-push-chevron" aria-hidden="true">⌃</span>
+      </div>
+      <div class="ann-push-media" id="pv-ann-media" hidden>
+        <img id="pv-ann-img" alt="">
+      </div>
+      <div class="ann-push-copy">
+        <p class="ann-push-title" id="pv-ann-title">Başlık buraya…</p>
+        <p class="ann-push-body" id="pv-ann-body">Kısa açıklama buraya…</p>
+      </div>
+      <div class="ann-push-action">Uygulamada aç</div>
+    </div>
+    <p class="ann-preview-tip">
+      Görsel + başlık + metin doluysa Android’de genişletilmiş (big picture) bildirim gibi görünür.
+    </p>
+  </aside>
+</div>
 
-  <div style="display:flex;gap:10px;flex-wrap:wrap;">
-    <button class="btn btn-primary" type="submit">Kaydet</button>
-    <button class="btn btn-primary" type="submit" name="send_push" value="1"
-      onclick="return confirm('Kaydedilip tüm kullanıcılara bildirim gönderilsin mi?');">
-      Kaydet ve bildirim gönder
-    </button>
-    <a class="btn btn-ghost" href="{% url 'panel_announcement_list' %}">Liste</a>
-  </div>
-</form>
-
-{% if announcement %}
-<form method="post" action="{% url 'panel_announcement_send' announcement.id %}" style="margin-top:16px;max-width:720px;"
-  onsubmit="return confirm('Mevcut duyuru tüm kullanıcılara tekrar gönderilsin mi?');">
-  {% csrf_token %}
-  <button class="btn btn-ghost" type="submit">Sadece bildirim gönder</button>
-</form>
-{% endif %}
+<script src="{% static 'panel/announcement-push-preview.js' %}?v=1"></script>
 {% endblock %}

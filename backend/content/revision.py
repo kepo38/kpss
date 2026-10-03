@@ -18,6 +18,7 @@ from .models import (
     Subject,
     Topic,
     TopicLesson,
+    TopicSummaryCard,
     TopicTest,
 )
 
@@ -89,6 +90,8 @@ def _bump_from_signal(**kwargs) -> None:
 @receiver(post_delete, sender=TopicTest)
 @receiver(post_save, sender=TopicLesson)
 @receiver(post_delete, sender=TopicLesson)
+@receiver(post_save, sender=TopicSummaryCard)
+@receiver(post_delete, sender=TopicSummaryCard)
 @receiver(post_save, sender=Topic)
 @receiver(post_delete, sender=Topic)
 @receiver(post_save, sender=Subject)
